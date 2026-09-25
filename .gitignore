@@ -1,0 +1,16 @@
+# Secretos: nunca se suben al repo
+secrets.env
+*.env
+!secrets.env.example
+
+# Entorno y cachés
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Artefactos generados por la prueba E2E
+artifacts/
+
+# Datos locales (por si alguien apunta carpeta_datos dentro del repo)
+data/

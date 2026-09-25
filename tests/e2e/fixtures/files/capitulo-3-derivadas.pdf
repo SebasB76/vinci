@@ -1,0 +1,81 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 335 >>
+stream
+BT
+/F1 12 Tf
+72 740 Td
+16 TL
+(C\341lculo Diferencial - Cap\355tulo 3: Derivadas) Tj T*
+(3.1 Definici\363n de la derivada) Tj T*
+(La derivada de f en x es el l\355mite del cociente incremental) Tj T*
+(\(f\(x+h\) - f\(x\)\) / h cuando h tiende a cero.) Tj T*
+(Geom\351tricamente es la pendiente de la recta tangente a la curva.) Tj T*
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 331 >>
+stream
+BT
+/F1 12 Tf
+72 740 Td
+16 TL
+(3.2 La regla de la cadena) Tj T*
+(La regla de la cadena permite derivar una composici\363n de funciones.) Tj T*
+(Si y = f\(g\(x\)\), entonces y' = f'\(g\(x\)\) * g'\(x\).) Tj T*
+(Ejemplo: la derivada de sen\(x^2\) es cos\(x^2\) * 2x.) Tj T*
+(Se aplica de afuera hacia adentro, capa por capa.) Tj T*
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 313 >>
+stream
+BT
+/F1 12 Tf
+72 740 Td
+16 TL
+(3.3 Aplicaciones: optimizaci\363n) Tj T*
+(Para hallar m\341ximos y m\355nimos se iguala la derivada a cero.) Tj T*
+(Los puntos cr\355ticos se clasifican con el criterio de la segunda derivada.) Tj T*
+(Ejercicio 4: maximizar el \341rea de un rectangulo de per\355metro 20 m.) Tj T*
+ET
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000133 00000 n 
+0000000230 00000 n 
+0000000356 00000 n 
+0000000742 00000 n 
+0000000868 00000 n 
+0000001250 00000 n 
+0000001376 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1740
+%%EOF

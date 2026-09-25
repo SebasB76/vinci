@@ -1,0 +1,58 @@
+[
+  {
+    "id": 8101,
+    "name": "Semana 1: Vectores",
+    "position": 1,
+    "unlock_at": null,
+    "require_sequential_progress": false,
+    "requirement_type": "all",
+    "publish_final_grade": false,
+    "prerequisite_module_ids": [],
+    "state": "unlocked",
+    "completed_at": null,
+    "items_count": 1,
+    "items_url": "{{BASE}}/api/v1/courses/102/modules/8101/items",
+    "items": [
+      {
+        "id": 81011,
+        "title": "Lectura recomendada",
+        "position": 1,
+        "indent": 0,
+        "quiz_lti": false,
+        "type": "Page",
+        "module_id": 8101,
+        "html_url": "{{BASE}}/courses/102/modules/items/81011",
+        "published": true
+      }
+    ]
+  },
+  {
+    "id": 8102,
+    "name": "Semana 2: Cinemática",
+    "position": 2,
+    "unlock_at": null,
+    "require_sequential_progress": false,
+    "requirement_type": "all",
+    "publish_final_grade": false,
+    "prerequisite_module_ids": [],
+    "state": "unlocked",
+    "completed_at": null,
+    "items_count": 1,
+    "items_url": "{{BASE}}/api/v1/courses/102/modules/8102/items",
+    "items": [
+      {
+        "id": 81021,
+        "title": "Semana 2 - Cinemática",
+        "position": 1,
+        "indent": 0,
+        "quiz_lti": false,
+        "type": "File",
+        "module_id": 8102,
+        "html_url": "{{BASE}}/courses/102/modules/items/81021",
+        "published": true,
+        "content_id": 5101,
+        "url": "{{BASE}}/api/v1/courses/102/files/5101"
+      }
+    ]
+  }
+]

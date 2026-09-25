@@ -1,0 +1,2 @@
+# This repository has no CI workflows; the local no-mistakes validation is the gate.
+no_ci: true

@@ -10,8 +10,10 @@ each item against the previous snapshot and appends an `events` row for:
 The first successful read of each course resource (assignments, announcements,
 files) only seeds the store, so the student is not flooded with every historical
 item. A resource that fails is left as it was and read again on the next sync,
-without holding back the others; `SyncReport.failed` lists it. Events are consumed
-by whoever needs them (the Telegram bot); the CLI can sync without losing them.
+without holding back the others; `SyncReport.failed` lists it with how many reads
+in a row have failed, and `mark_reported` flags it until it reads fine again.
+Events are consumed by whoever needs them (the Telegram bot); the CLI can sync
+without losing them.
 """
 
 from __future__ import annotations
@@ -28,9 +30,18 @@ from typing import Any
 from aula_core import timefmt
 from aula_core.canvas import CanvasClient, CanvasError, InvalidTokenError
 from aula_core.config import CoreConfig
-from aula_core.store import get_meta, set_meta
+from aula_core.store import delete_meta, get_meta, set_meta
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class FailedResource:
+    course_id: int
+    resource: str
+    what: str
+    reads: int
+    reported: bool
 
 
 @dataclass
@@ -39,7 +50,7 @@ class SyncReport:
     courses: int = 0
     events: int = 0
     warnings: list[str] = field(default_factory=list)
-    failed: list[str] = field(default_factory=list)
+    failed: list[FailedResource] = field(default_factory=list)
     requests: int = 0
 
 
@@ -54,6 +65,10 @@ def html_to_text(value: str | None) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n\n", text)
     return text.strip()
+
+
+def _resource_key(kind: str, course_id: int, resource: str) -> str:
+    return f"{kind}:{course_id}:{resource}"
 
 
 def _record(conn, now_iso: str, kind: str, course_id: int, ref_id: int, payload: dict) -> None:
@@ -71,7 +86,7 @@ class _Syncer:
         self.now_iso = timefmt.iso(now)
         self.events = 0
         self.warnings: list[str] = []
-        self.failed: list[str] = []
+        self.failed: list[FailedResource] = []
 
     def emit(self, quiet: bool, kind: str, course: dict, ref_id: int, payload: dict) -> None:
         if quiet:
@@ -316,7 +331,9 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
         for resource, label, step in (("assignments", "tareas", s.assignments),
                                       ("announcements", "anuncios", s.announcements),
                                       ("files", "archivos", s.files)):
-            baseline = f"seeded:{course['id']}:{resource}"
+            baseline = _resource_key("seeded", course["id"], resource)
+            failing = _resource_key("failing", course["id"], resource)
+            reported = _resource_key("reported", course["id"], resource)
             seeded = get_meta(conn, baseline) is not None
             try:
                 step(course, not seeded)
@@ -327,10 +344,15 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
                 s.warnings.append(f"{course['name']}: {exc}")
                 log.warning("%s: %s", course["name"], exc)
                 if exc.status not in (401, 403, 404):
-                    s.failed.append(f"los {label} de {course['name']}")
-                continue
-            if not seeded:
-                set_meta(conn, baseline, s.now_iso)
+                    reads = int(get_meta(conn, failing) or 0) + 1
+                    set_meta(conn, failing, str(reads))
+                    s.failed.append(FailedResource(course["id"], resource, f"los {label} de {course['name']}",
+                                                   reads, get_meta(conn, reported) is not None))
+                    continue
+            else:
+                if not seeded:
+                    set_meta(conn, baseline, s.now_iso)
+            delete_meta(conn, failing, reported)
         conn.commit()
     set_meta(conn, "initialized", "1")
     set_meta(conn, "last_sync", s.now_iso)
@@ -350,6 +372,11 @@ def pending_events(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute("SELECT * FROM events WHERE delivered_at IS NULL ORDER BY id").fetchall()
     return [{"id": r["id"], "kind": r["kind"], "course_id": r["course_id"], "ref_id": r["ref_id"],
              "created_at": r["created_at"], **json.loads(r["payload"])} for r in rows]
+
+
+def mark_reported(conn: sqlite3.Connection, failure: FailedResource, now: datetime) -> None:
+    set_meta(conn, _resource_key("reported", failure.course_id, failure.resource), timefmt.iso(now))
+    conn.commit()
 
 
 def mark_delivered(conn: sqlite3.Connection, event_ids: list[int], now: datetime) -> None:

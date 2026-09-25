@@ -8,9 +8,10 @@ What it does, as real processes (the same commands Hermes cron and the captain r
      announcement, posted grade, new material, a submission), then poll 2 and 3.
   4. the 07:00 daily summary (twice: the second must not resend).
   5. retrieval: sample questions must hit the right file and page.
-  6. a fresh install where one resource (Física's announcements) keeps failing:
-     the rest keeps working, the captain is alerted once, and when it recovers
-     its old items are stored silently instead of being sent as new.
+  6. a fresh install where two resources fail at different polls (Física's
+     announcements, Cálculo's files), one of them recovering and failing again:
+     the rest keeps working, each failure episode is alerted exactly once per
+     resource, and a resource first read after failing is stored silently.
 
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
 temporary paths are normalized, so reruns produce the same files.
@@ -48,9 +49,7 @@ T_POLL2 = "2026-09-29T00:30:00-05:00"   # después de los cambios; Taller 2 venc
 T_POLL3 = "2026-09-29T01:00:00-05:00"   # sin cambios: no debe enviar nada
 T_SUMMARY = "2026-09-29T07:00:00-05:00"
 T_POLL4 = "2026-09-29T20:30:00-05:00"   # Taller 2 vence en 2.5 h → recordatorio de 3 h
-T_FAILING = ["2026-09-30T12:00:00-05:00", "2026-09-30T12:30:00-05:00",   # instalación nueva, con los
-             "2026-09-30T13:00:00-05:00", "2026-09-30T13:30:00-05:00"]   # anuncios de Física en 503
-T_RECOVERED = "2026-09-30T14:00:00-05:00"
+T_RESILIENCE = [f"2026-09-30T{12 + i // 2}:{i % 2 * 30:02d}:00-05:00" for i in range(9)]  # 12:00 … 16:00
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -226,27 +225,36 @@ def test_e2e(tmp_path):
         pend = run([aula, "tareas", "--dias", "7", "--sin-actualizar"], T_SUMMARY)
         cli_md.append(f"## `aula tareas --dias 7` (después de los cambios)\n\n```\n{normalize(pend.stdout).rstrip()}\n```\n")
 
-        # 6. one resource keeps failing on a fresh install -------------------------------
+        # 6. two resources failing at different polls on a fresh install ---------------
         fresh_config = tmp_path / "config-resiliencia.toml"
         fresh_config.write_text(config.replace(str(data_dir), str(tmp_path / "resiliencia")), encoding="utf-8")
         fresh = {"AULA_CONFIG": str(fresh_config)}
-        canvas.failing.add("/api/v1/courses/102/discussion_topics")
-        failing = []
-        for i, now in enumerate(T_FAILING, start=1):
+        fisica_anuncios, calculo_archivos = "/api/v1/courses/102/discussion_topics", "/api/v1/courses/101/files"
+        names = {fisica_anuncios: "anuncios de Física", calculo_archivos: "archivos de Cálculo"}
+        plan = [{fisica_anuncios}, {fisica_anuncios}, {fisica_anuncios, calculo_archivos},
+                {fisica_anuncios, calculo_archivos}, {calculo_archivos}, {fisica_anuncios, calculo_archivos},
+                {fisica_anuncios}, {fisica_anuncios}, set()]
+        polls = []
+        for i, (now, paths) in enumerate(zip(T_RESILIENCE, plan), start=1):
+            canvas.failing = set(paths)
             run([bot, "sondeo"], now, env_extra=fresh)
-            failing.append(take(f"Anuncios de Física fallando · sondeo {i}"))
-        assert "FÍSICA I" in failing[0][0]["text"], "la bienvenida lista la materia aunque falle una parte"
-        alerts = [(i, m["text"]) for i, poll in enumerate(failing, start=1) for m in poll if "sin poder leer" in m["text"]]
-        assert len(alerts) == 1 and alerts[0][0] == 3 and "anuncios de FÍSICA I" in alerts[0][1], alerts
-        fisica = json.loads(run([aula, "tareas", "--curso", "fisica", "--sin-actualizar", "--json"],
-                                T_FAILING[-1], env_extra=fresh).stdout)
-        assert "Examen parcial" in [t["tarea"] for t in fisica], "las tareas de Física siguen disponibles"
-        canvas.failing.clear()
-        run([bot, "sondeo"], T_RECOVERED, env_extra=fresh)
-        recovered = take("Anuncios de Física recuperados")
-        assert all("Recordatorio" in m["text"] for m in recovered), "el anuncio viejo no se envía como nuevo"
+            failing = ", ".join(names[p] for p in sorted(paths)) or "nada"
+            polls.append(take(f"Resiliencia · sondeo {i} ({now[11:16]}), fallando: {failing}"))
+            if i == 4:
+                fisica = json.loads(run([aula, "tareas", "--curso", "fisica", "--sin-actualizar", "--json"],
+                                        now, env_extra=fresh).stdout)
+                assert "Examen parcial" in [t["tarea"] for t in fisica], "las tareas de Física siguen disponibles"
+        assert "FÍSICA I" in polls[0][0]["text"], "la bienvenida lista la materia aunque falle una parte"
+        alerts = [(i, re.search(r"sin poder leer (.+?);", m["text"]).group(1))
+                  for i, poll in enumerate(polls, start=1) for m in poll if m["text"].startswith("\u26a0")]
+        fisica_what = "los anuncios de FÍSICA I - PARALELO 3"
+        calculo_what = "los archivos de CÁLCULO DE UNA VARIABLE - PARALELO 5"
+        assert alerts == [(3, fisica_what), (5, calculo_what), (8, fisica_what)], alerts
+        for poll in polls[1:]:
+            assert all(m["text"].startswith(("\u23f0", "\u26a0")) for m in poll), \
+                f"al recuperarse no se reenvía lo viejo: {[m['text'][:40] for m in poll]}"
         anuncios = json.loads(run([aula, "anuncios", "--curso", "fisica", "--sin-actualizar", "--json"],
-                                  T_RECOVERED, env_extra=fresh).stdout)
+                                  T_RESILIENCE[-1], env_extra=fresh).stdout)
         assert len(anuncios) == 1, "al recuperarse, el anuncio existente queda guardado"
 
         # Safety: read-only, captain-only --------------------------------------------------
@@ -282,8 +290,9 @@ def test_e2e(tmp_path):
         "Física con la pestaña Archivos oculta (material encontrado vía Módulos).",
         *[f"- {label}: {n} mensaje(s)" for label, n in counts.items()],
         "- Sondeo 3 y el resumen repetido no enviaron nada (sin duplicados).",
-        "- Instalación nueva con los anuncios de Física en 503: las demás partes siguieron funcionando, "
-        "una sola alerta (sondeo 3) y al recuperarse el anuncio viejo se guardó sin reenviarse.",
+        "- Instalación nueva con los anuncios de Física y los archivos de Cálculo fallando en distintos sondeos: "
+        "lo demás siguió funcionando, una alerta por episodio y recurso (sondeos 3, 5 y 8) y lo leído al "
+        "recuperarse se guardó sin reenviarse.",
         *[f"- Recuperación «{r['pregunta']}» → {r['resultados'][0]['archivo']}, "
           f"{r['resultados'][0]['unidad']} {r['resultados'][0]['pagina']} ✓" for r in retrieval],
         "\nArchivos: `notificaciones.md`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, "

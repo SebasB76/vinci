@@ -2,7 +2,8 @@
 
 Tables:
   meta           key/value (last sync time, initialized flag, which course
-                 resources already have their silent first read)
+                 resources already have their silent first read, and which
+                 ones are failing and whether that was already reported)
   courses, assignments, announcements, files
                  the latest snapshot read from Canvas
   events         changes detected by a sync (new assignment, grade posted, ...);
@@ -124,6 +125,10 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
         "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
+
+
+def delete_meta(conn: sqlite3.Connection, *keys: str) -> None:
+    conn.execute(f"DELETE FROM meta WHERE key IN ({','.join('?' * len(keys))})", keys)
 
 
 @contextmanager

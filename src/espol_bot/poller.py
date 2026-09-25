@@ -2,8 +2,9 @@
 
 `poll()` runs every `intervalo_minutos` from a Hermes no-agent cron job:
   1. sync the aula virtual (plus material download/indexing) through aula_core;
-  2. send one Telegram message per undelivered event (grouped when there are many);
-  3. send the 24 h / 3 h reminders for unsubmitted deliverables.
+  2. report, once per failure episode, each course resource that keeps failing;
+  3. send one Telegram message per undelivered event (grouped when there are many);
+  4. send the 24 h / 3 h reminders for unsubmitted deliverables.
 `summary()` runs at `resumen_diario` and sends the week at a glance.
 
 Events stay undelivered, and reminders unmarked, until Telegram accepts the
@@ -20,7 +21,7 @@ from datetime import datetime, timedelta
 from aula_core import Aula, queries, timefmt
 from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
-from aula_core.store import get_meta, set_meta
+from aula_core.store import delete_meta, get_meta, set_meta
 from espol_bot import messages
 from espol_bot.config import BotConfig
 from espol_bot.telegram import Telegram, TelegramError
@@ -37,7 +38,7 @@ CREATE TABLE IF NOT EXISTS bot_reminders (
 );
 """
 
-ALERT_AFTER = 3                  # consecutive failed polls before telling the captain
+ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
 
 
@@ -64,8 +65,8 @@ class Bot:
     # -- failure handling ------------------------------------------------------------
 
     def _fail(self, key: str, text: str, *, threshold: int) -> str:
-        count = int(get_meta(self.conn, "bot_fail_count") or 0) + 1
-        set_meta(self.conn, "bot_fail_count", str(count))
+        count = int(get_meta(self.conn, f"bot_fail_count_{key}") or 0) + 1
+        set_meta(self.conn, f"bot_fail_count_{key}", str(count))
         last = timefmt.parse(get_meta(self.conn, f"bot_alert_{key}"))
         now = self.aula.now()
         if count >= threshold and (last is None or now - last >= ALERT_EVERY):
@@ -78,7 +79,7 @@ class Bot:
         return text
 
     def _ok(self) -> None:
-        set_meta(self.conn, "bot_fail_count", "0")
+        delete_meta(self.conn, "bot_fail_count_token", "bot_fail_count_red")
         self.conn.commit()
 
     # -- poll ------------------------------------------------------------------------
@@ -96,12 +97,7 @@ class Bot:
             result.error = self._fail(
                 "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=ALERT_AFTER)
             return result
-        if report.failed:
-            result.error = self._fail(
-                "recurso", f"Llevo un rato sin poder leer {', '.join(report.failed)}; lo sigo intentando "
-                "en cada revisión y el resto de tus materias funciona normal.", threshold=ALERT_AFTER)
-        else:
-            self._ok()
+        self._ok()
         now = self.aula.now()
 
         try:
@@ -112,12 +108,21 @@ class Bot:
                 set_meta(self.conn, "bot_welcomed", timefmt.iso(now))
                 self.conn.commit()
                 result.sent.append(text)
+            self._report_failures(report.failed, now)
             self._deliver_events(result, now)
             self._send_reminders(result, now)
         except TelegramError as exc:
             log.error("%s", exc)
             result.error = str(exc)
         return result
+
+    def _report_failures(self, failed: list[core_sync.FailedResource], now: datetime) -> None:
+        for failure in failed:
+            if failure.reads >= ALERT_AFTER and not failure.reported:
+                self.telegram.send(messages.alert(
+                    f"Llevo un rato sin poder leer {failure.what}; lo sigo intentando en cada revisión "
+                    "y el resto de tus materias funciona normal."))
+                core_sync.mark_reported(self.conn, failure, now)
 
     def _deliver_events(self, result: PollResult, now: datetime) -> None:
         events = core_sync.pending_events(self.conn)

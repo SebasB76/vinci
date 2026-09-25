@@ -103,7 +103,10 @@ tail -f ~/.local/share/espol-academic-bot/bot.log     # registro del sondeo
 Para que siga funcionando con la sesión cerrada: `sudo loginctl enable-linger "$USER"`.
 
 El primer sondeo te manda un mensaje de bienvenida con tus materias; desde ahí solo te escribe cuando hay algo
-nuevo. Para forzar una revisión ahora: `espol cron run espol-sondeo`.
+nuevo o algo falla. Si una parte de una materia (sus tareas, anuncios o archivos) no se puede leer tres veces
+seguidas, te avisa una sola vez nombrando la materia y la parte, sigue reintentando y el resto funciona normal;
+si vuelve a fallar después de recuperarse, te avisa de nuevo. Para forzar una revisión ahora:
+`espol cron run espol-sondeo`.
 
 ## Uso
 
@@ -174,10 +177,9 @@ Todo queda en tu PC, en `~/.local/share/espol-academic-bot/`:
 uv run pytest
 ```
 
-Una sola prueba de punta a punta (`tests/e2e/test_e2e.py`): levanta un Canvas falso con datos grabados
-(`tests/e2e/fixtures/`) y un Telegram falso, corre `setup.sh` dos veces en un HOME temporal (con el Hermes real si
-está instalado; nunca toca tu `~/.hermes`), usa `aula`, hace los sondeos antes y después de cambiar los datos, envía
-el resumen y verifica que la búsqueda encuentre el archivo y la página correctos. Deja el resultado en
+Una sola prueba de punta a punta (`tests/e2e/test_e2e.py`; su encabezado describe cada paso): levanta un Canvas
+falso con datos grabados (`tests/e2e/fixtures/`) y un Telegram falso y recorre todo el flujo con los comandos
+reales, en un HOME temporal (usa el Hermes real si está instalado; nunca toca tu `~/.hermes`). Deja el resultado en
 **`artifacts/e2e/`**: `REPORTE.md`, `notificaciones.md` (todos los mensajes), `resumen_diario.txt`,
 `recuperacion.json`, `cli.md`, `canvas_requests.log` y `setup.log`. Es repetible: dos corridas dan los mismos archivos.
 

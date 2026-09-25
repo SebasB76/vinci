@@ -1,0 +1,29 @@
+[
+  {
+    "id": 8101,
+    "name": "Semana 1: Vectores",
+    "position": 1,
+    "unlock_at": null,
+    "require_sequential_progress": false,
+    "requirement_type": "all",
+    "publish_final_grade": false,
+    "prerequisite_module_ids": [],
+    "state": "unlocked",
+    "completed_at": null,
+    "items_count": 1,
+    "items_url": "{{BASE}}/api/v1/courses/102/modules/8101/items",
+    "items": [
+      {
+        "id": 81011,
+        "title": "Lectura recomendada",
+        "position": 1,
+        "indent": 0,
+        "quiz_lti": false,
+        "type": "Page",
+        "module_id": 8101,
+        "html_url": "{{BASE}}/courses/102/modules/items/81011",
+        "published": true
+      }
+    ]
+  }
+]

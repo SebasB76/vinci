@@ -1,0 +1,42 @@
+# Configuración del bot académico de ESPOL y de la herramienta `aula`.
+# Este es el único archivo que necesitas tocar para cambiar horarios y recordatorios.
+# Después de editarlo, vuelve a correr ./setup.sh para que Hermes tome los cambios
+# (la frecuencia del sondeo y la hora del resumen viven en los cron jobs de Hermes).
+
+[canvas]
+# Tu aula virtual (Canvas LMS). Todo aquí solo LEE: nunca envía, publica ni cambia nada.
+url = "https://aulavirtual.espol.edu.ec"
+# El comando `aula` reutiliza los datos locales si tienen menos de estos minutos;
+# si son más viejos, vuelve a leer el aula virtual antes de responder.
+cache_minutos = 10
+
+[general]
+# Zona horaria para fechas, recordatorios y el resumen.
+zona_horaria = "America/Guayaquil"
+
+[notificaciones]
+# Cada cuántos minutos el bot revisa el aula virtual.
+intervalo_minutos = 30
+# Recordatorios antes de cada entrega que aún no has enviado (en horas).
+recordatorios_horas = [24, 3]
+# Hora del resumen diario de la semana (formato 24 h, HH:MM).
+resumen_diario = "07:00"
+# Si en un mismo sondeo hay más avisos que este número, se agrupan en un solo mensaje.
+max_mensajes_por_sondeo = 8
+
+[material]
+# Tipos de archivo que se descargan e indexan para poder preguntar sobre ellos.
+extensiones = ["pdf", "pptx", "docx"]
+# Archivos más grandes que esto no se descargan.
+tamano_maximo_mb = 60
+
+[almacenamiento]
+# Dónde se guardan la base de datos y el material descargado (queda en tu PC).
+carpeta_datos = "~/.local/share/espol-academic-bot"
+
+[hermes]
+# Perfil de Hermes propio de este bot (separado del perfil por defecto y de otros bots).
+perfil = "espol"
+# Modelo para las preguntas sobre el material (las notificaciones no gastan tokens).
+proveedor = "anthropic"
+modelo = "claude-sonnet-5"

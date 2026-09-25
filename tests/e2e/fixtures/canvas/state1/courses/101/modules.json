@@ -1,0 +1,71 @@
+[
+  {
+    "id": 8001,
+    "name": "Semana 1: Límites",
+    "position": 1,
+    "unlock_at": null,
+    "require_sequential_progress": false,
+    "requirement_type": "all",
+    "publish_final_grade": false,
+    "prerequisite_module_ids": [],
+    "state": "unlocked",
+    "completed_at": null,
+    "items_count": 1,
+    "items_url": "{{BASE}}/api/v1/courses/101/modules/8001/items",
+    "items": [
+      {
+        "id": 80011,
+        "title": "Syllabus",
+        "position": 1,
+        "indent": 0,
+        "quiz_lti": false,
+        "type": "File",
+        "module_id": 8001,
+        "html_url": "{{BASE}}/courses/101/modules/items/80011",
+        "published": true,
+        "content_id": 5002,
+        "url": "{{BASE}}/api/v1/courses/101/files/5002"
+      }
+    ]
+  },
+  {
+    "id": 8003,
+    "name": "Semana 3: Derivadas",
+    "position": 3,
+    "unlock_at": null,
+    "require_sequential_progress": false,
+    "requirement_type": "all",
+    "publish_final_grade": false,
+    "prerequisite_module_ids": [],
+    "state": "unlocked",
+    "completed_at": null,
+    "items_count": 2,
+    "items_url": "{{BASE}}/api/v1/courses/101/modules/8003/items",
+    "items": [
+      {
+        "id": 80031,
+        "title": "Capítulo 3 - Derivadas",
+        "position": 1,
+        "indent": 0,
+        "quiz_lti": false,
+        "type": "File",
+        "module_id": 8003,
+        "html_url": "{{BASE}}/courses/101/modules/items/80031",
+        "published": true,
+        "content_id": 5001,
+        "url": "{{BASE}}/api/v1/courses/101/files/5001"
+      },
+      {
+        "id": 80032,
+        "title": "Video de la clase",
+        "position": 2,
+        "indent": 0,
+        "quiz_lti": false,
+        "type": "ExternalUrl",
+        "module_id": 8003,
+        "html_url": "{{BASE}}/courses/101/modules/items/80032",
+        "published": true
+      }
+    ]
+  }
+]

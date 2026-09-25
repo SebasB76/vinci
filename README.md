@@ -113,7 +113,6 @@ nuevo. Para forzar una revisión ahora: `espol cron run espol-sondeo`.
 - «Explícame la regla de la cadena» / «Resúmeme el capítulo 3 de Cálculo»
 - «Hazme 5 preguntas tipo examen de cinemática»
 - «¿Qué dijo el profe de Física en el último anuncio?» / «¿Cómo me fue en la Lección 1?»
-- `/pendientes` y `/semana`: respuestas instantáneas sin usar el modelo.
 
 **En la terminal** con `aula` (añade `--json` para salida de máquina):
 

@@ -117,8 +117,15 @@ class CanvasClient:
     def _url(self, path: str) -> str:
         return path if path.startswith("http") else self.api + "/" + path.lstrip("/")
 
+    @staticmethod
+    def _json(resp: requests.Response) -> Any:
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise CanvasError(f"Canvas no respondió JSON para {urlsplit(resp.url).path}") from exc
+
     def get(self, path: str, params: dict | list | None = None) -> Any:
-        return self._get(self._url(path), params=params).json()
+        return self._json(self._get(self._url(path), params=params))
 
     def get_all(self, path: str, params: dict | list | None = None) -> list[Any]:
         return list(self.iter_pages(path, params))
@@ -128,7 +135,7 @@ class CanvasClient:
         query = _with_per_page(params)
         while url:
             resp = self._get(url, params=query)
-            data = resp.json()
+            data = self._json(resp)
             if isinstance(data, list):
                 yield from data
             else:
@@ -140,10 +147,10 @@ class CanvasClient:
     def download(self, url: str, dest: Path, *, max_bytes: int) -> int:
         """Download a file (GET) to `dest`; returns the size written."""
         resp = self._get(url, stream=True)
-        dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_name(dest.name + ".part")
         size = 0
         try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
             with tmp.open("wb") as fh:
                 for chunk in resp.iter_content(chunk_size=65536):
                     size += len(chunk)
@@ -151,6 +158,8 @@ class CanvasClient:
                         raise CanvasError(f"Archivo demasiado grande: {dest.name}")
                     fh.write(chunk)
             tmp.replace(dest)
+        except (requests.RequestException, OSError) as exc:
+            raise CanvasError(f"No pude bajar {dest.name}: {exc}") from exc
         finally:
             resp.close()
             tmp.unlink(missing_ok=True)

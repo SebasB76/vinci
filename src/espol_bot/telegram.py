@@ -60,7 +60,7 @@ class Telegram:
                 resp = requests.post(self._url, json=payload, timeout=30)
             except requests.RequestException as exc:
                 if attempt == 3:
-                    raise TelegramError(f"No pude conectar con Telegram: {exc}") from exc
+                    raise TelegramError(f"No pude conectar con Telegram ({type(exc).__name__})") from None
                 self._sleep(2 ** attempt)
                 continue
             if resp.status_code == 429:

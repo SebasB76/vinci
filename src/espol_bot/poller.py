@@ -35,12 +35,6 @@ CREATE TABLE IF NOT EXISTS bot_reminders (
     sent_at TEXT NOT NULL,
     PRIMARY KEY (assignment_id, hours, due_at)
 );
-CREATE TABLE IF NOT EXISTS bot_sent (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind TEXT NOT NULL,
-    text TEXT NOT NULL,
-    sent_at TEXT NOT NULL
-);
 """
 
 NETWORK_ALERT_AFTER = 3          # consecutive failed polls before telling the captain
@@ -67,12 +61,6 @@ class Bot:
     def conn(self) -> sqlite3.Connection:
         return self.aula.conn
 
-    def send(self, kind: str, text: str) -> None:
-        self.telegram.send(text)
-        self.conn.execute("INSERT INTO bot_sent(kind, text, sent_at) VALUES (?, ?, ?)",
-                          (kind, text, timefmt.iso(self.aula.now())))
-        self.conn.commit()
-
     # -- failure handling ------------------------------------------------------------
 
     def _fail(self, key: str, text: str, *, threshold: int) -> str:
@@ -82,7 +70,7 @@ class Bot:
         now = self.aula.now()
         if count >= threshold and (last is None or now - last >= ALERT_EVERY):
             try:
-                self.send("alerta", messages.alert(text))
+                self.telegram.send(messages.alert(text))
                 set_meta(self.conn, f"bot_alert_{key}", timefmt.iso(now))
             except TelegramError as exc:
                 log.error("No pude avisar por Telegram: %s", exc)
@@ -115,7 +103,7 @@ class Bot:
             if get_meta(self.conn, "bot_welcomed") is None:
                 week = queries.pending(self.conn, now, days=7, overdue_days=0)
                 text = messages.welcome(queries.courses(self.conn), len(week), self.cfg.poll_minutes)
-                self.send("bienvenida", text)
+                self.telegram.send(text)
                 set_meta(self.conn, "bot_welcomed", timefmt.iso(now))
                 self.conn.commit()
                 result.sent.append(text)
@@ -133,7 +121,7 @@ class Bot:
             return
         if len(events) > self.cfg.max_messages_per_poll:
             text = messages.digest(events, self.tz)
-            self.send("resumen_novedades", text)
+            self.telegram.send(text)
             result.sent.append(text)
             core_sync.mark_delivered(self.conn, [ev["id"] for ev in events], now)
             return
@@ -143,7 +131,7 @@ class Bot:
                 row = self.conn.execute("SELECT index_status FROM files WHERE id = ?", (ev["ref_id"],)).fetchone()
                 status = row["index_status"] if row else None
             text = messages.event_message(ev, self.tz, now, status)
-            self.send(ev["kind"], text)
+            self.telegram.send(text)
             result.sent.append(text)
             core_sync.mark_delivered(self.conn, [ev["id"]], now)
 
@@ -166,7 +154,7 @@ class Bot:
             if already:
                 continue
             text = messages.reminder_message(task, smallest, self.tz, now)
-            self.send("recordatorio", text)
+            self.telegram.send(text)
             result.sent.append(text)
             result.reminders += 1
             # Mark every larger offset too, so a late-created task gets one reminder, not two.
@@ -196,7 +184,7 @@ class Bot:
             return result
         text = self.summary_text(now)
         try:
-            self.send("resumen_diario", text)
+            self.telegram.send(text)
         except TelegramError as exc:
             result.error = str(exc)
             return result

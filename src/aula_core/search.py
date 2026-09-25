@@ -52,7 +52,7 @@ def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | N
     ).fetchall()
     return [{
         "archivo": r["display_name"], "archivo_id": r["file_id"], "curso": r["course_name"], "modulo": r["module"],
-        "unidad": extract.UNIT.get(Path(r["display_name"]).suffix.lower().lstrip("."), "página"),
+        "unidad": extract.UNIT.get(Path(r["local_path"] or r["display_name"]).suffix.lower().lstrip("."), "página"),
         "pagina": int(r["page"]), "fragmento": " ".join(r["snippet"].split()), "texto": r["text"],
         "url": r["html_url"], "ruta_local": r["local_path"], "puntaje": round(-r["score"], 3),
     } for r in rows]

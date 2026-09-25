@@ -115,15 +115,10 @@ def provision(cfg: BotConfig, *, hermes_bin: str | None = None) -> int:
     config_file = profile / "config.yaml"
     current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
     current = current if isinstance(current, dict) else {}
-    env_prefix = f"AULA_CONFIG='{config_path()}' AULA_SECRETS='{secrets_path()}'"
     managed = {
         "model": {"provider": cfg.hermes_provider, "default": cfg.hermes_model},
         "timezone": str(cfg.core.tz),
         "terminal": {"cwd": str(cfg.core.data_dir)},
-        "quick_commands": {
-            "pendientes": {"type": "exec", "command": f"{env_prefix} '{aula_bin}' tareas --sin-actualizar"},
-            "semana": {"type": "exec", "command": f"{env_prefix} '{bot_bin}' resumen --imprimir"},
-        },
         "approvals": {"deny": ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]},
     }
     merged = _deep_merge(current, managed)

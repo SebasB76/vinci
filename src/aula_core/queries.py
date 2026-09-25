@@ -169,6 +169,6 @@ def read_pages(conn: sqlite3.Connection, file_id: int, first: int | None = None,
         number = int(r["page"])
         if (first is None or number >= first) and (last is None or number <= last):
             pages.setdefault(number, []).append(r["text"])
-    unit = extract.UNIT.get(Path(info["archivo"]).suffix.lower().lstrip("."), "página")
+    unit = extract.UNIT.get(Path(info["descargado"] or info["archivo"]).suffix.lower().lstrip("."), "página")
     return {**info, "unidad": unit,
             "contenido": [{"pagina": n, "texto": "".join(parts)} for n, parts in sorted(pages.items())]}

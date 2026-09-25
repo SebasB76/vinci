@@ -23,6 +23,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
+from aula_core.config import parse_env_file
+
 HERE = Path(__file__).parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
@@ -118,10 +122,14 @@ def test_e2e(tmp_path):
                 by_name["espol-resumen"]["schedule_display"] == "0 7 * * *"
             assert all(j["no_agent"] and j["deliver"] == f"telegram:{CAPTAIN_ID}" for j in jobs)
             assert "sin cambios" in second.stdout and "creado" not in second.stdout
-            env_file = (profile / ".env").read_text()
-            assert f"TELEGRAM_ALLOWED_USERS={CAPTAIN_ID}" in env_file and f"TELEGRAM_BOT_TOKEN={BOT_TOKEN}" in env_file
-            profile_config = (profile / "config.yaml").read_text()
-            assert "timezone: America/Guayaquil" in profile_config and "provider: anthropic" in profile_config
+            profile_env = parse_env_file(profile / ".env")
+            assert profile_env["TELEGRAM_BOT_TOKEN"] == BOT_TOKEN
+            assert profile_env["TELEGRAM_ALLOWED_USERS"] == profile_env["TELEGRAM_HOME_CHANNEL"] == CAPTAIN_ID
+            profile_config = yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8"))
+            assert profile_config["timezone"] == "America/Guayaquil"
+            assert profile_config["model"]["provider"] == "anthropic"
+            assert profile_config["terminal"]["cwd"] == str(data_dir)
+            assert {"*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"} <= set(profile_config["approvals"]["deny"])
             skill = (profile / "skills" / "espol" / "espol-academico" / "SKILL.md").read_text()
             assert str(VENV_BIN / "aula") in skill
             assert (home / ".local" / "bin" / "aula").is_file()

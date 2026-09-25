@@ -305,22 +305,30 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
     conn.execute(
         f"UPDATE courses SET active = 0 WHERE id NOT IN ({','.join('?' * len(ids)) or 'NULL'})", ids
     )
+    conn.commit()
+    seeded = True
     for course in courses:
         known = s.upsert_course(course)
-        quiet = first or not known
-        if not first and not known:
-            s.emit(False, "new_course", course, course["id"], {"codigo": course["course_code"], "url": course["html_url"]})
         for step in (s.assignments, s.announcements, s.files):
             try:
-                step(course, quiet)
+                step(course, not known)
             except InvalidTokenError:
                 conn.rollback()
                 raise
             except CanvasError as exc:
                 s.warnings.append(f"{course['name']}: {exc}")
                 log.warning("%s: %s", course["name"], exc)
+                if not known and exc.status not in (401, 403, 404):
+                    conn.rollback()
+                    seeded = False
+                    break
+        else:
+            if not first and not known:
+                s.emit(False, "new_course", course, course["id"],
+                       {"codigo": course["course_code"], "url": course["html_url"]})
         conn.commit()
-    set_meta(conn, "initialized", "1")
+    if seeded:
+        set_meta(conn, "initialized", "1")
     set_meta(conn, "last_sync", s.now_iso)
     conn.commit()
     report.events = s.events

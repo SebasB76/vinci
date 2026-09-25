@@ -63,7 +63,10 @@ def download(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, fi
     if row["local_path"]:
         dest = Path(row["local_path"])
     else:
-        dest = folder / safe_filename(row["display_name"])
+        name, ext = safe_filename(row["display_name"]), extension(row)
+        if ext and Path(name).suffix.lower().lstrip(".") != ext:
+            name = f"{name}.{ext}"
+        dest = folder / name
         taken = conn.execute("SELECT 1 FROM files WHERE local_path = ? AND id != ?", (str(dest), file_id)).fetchone()
         if taken:
             dest = dest.with_name(f"{dest.stem} ({file_id}){dest.suffix}")

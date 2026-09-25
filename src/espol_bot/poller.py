@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS bot_reminders (
 );
 """
 
-NETWORK_ALERT_AFTER = 3          # consecutive failed polls before telling the captain
+ALERT_AFTER = 3                  # consecutive failed polls before telling the captain
 ALERT_EVERY = timedelta(hours=24)
 
 
@@ -86,7 +86,7 @@ class Bot:
     def poll(self) -> PollResult:
         result = PollResult()
         try:
-            self.aula.sync(materials=True)
+            report = self.aula.sync(materials=True)
         except InvalidTokenError:
             result.error = self._fail(
                 "token", "Tu token de Canvas ya no funciona (¿expiró?). Crea uno nuevo en el aula virtual "
@@ -94,9 +94,14 @@ class Bot:
             return result
         except CanvasError as exc:
             result.error = self._fail(
-                "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=NETWORK_ALERT_AFTER)
+                "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=ALERT_AFTER)
             return result
-        self._ok()
+        if report.failed:
+            result.error = self._fail(
+                "recurso", f"Llevo un rato sin poder leer {', '.join(report.failed)}; lo sigo intentando "
+                "en cada revisión y el resto de tus materias funciona normal.", threshold=ALERT_AFTER)
+        else:
+            self._ok()
         now = self.aula.now()
 
         try:

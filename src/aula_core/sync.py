@@ -7,8 +7,10 @@ each item against the previous snapshot and appends an `events` row for:
   new_course, new_assignment, due_changed, new_announcement,
   grade_posted, grade_changed, new_file, file_updated
 
-The very first sync (and the first time a course shows up) only seeds the store,
-so the student is not flooded with every historical item. Events are consumed
+The first successful read of each course resource (assignments, announcements,
+files) only seeds the store, so the student is not flooded with every historical
+item. A resource that fails is left as it was and read again on the next sync,
+without holding back the others; `SyncReport.failed` lists it. Events are consumed
 by whoever needs them (the Telegram bot); the CLI can sync without losing them.
 """
 
@@ -37,6 +39,7 @@ class SyncReport:
     courses: int = 0
     events: int = 0
     warnings: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
     requests: int = 0
 
 
@@ -68,6 +71,7 @@ class _Syncer:
         self.now_iso = timefmt.iso(now)
         self.events = 0
         self.warnings: list[str] = []
+        self.failed: list[str] = []
 
     def emit(self, quiet: bool, kind: str, course: dict, ref_id: int, payload: dict) -> None:
         if quiet:
@@ -248,6 +252,8 @@ class _Syncer:
             if exc.status not in (401, 403, 404):
                 raise
             modules_ok = False
+        if not listing_ok and not modules_ok:
+            raise CanvasError("no tengo acceso a Archivos ni a Módulos", 403)
 
         for fid, entry in found.items():
             f = entry["file"]
@@ -283,8 +289,6 @@ class _Syncer:
             )
         if listing_ok and modules_ok:
             self._deactivate("files", cid, list(found))
-        if not listing_ok and not modules_ok:
-            self.warnings.append(f"{course['name']}: no tengo acceso a Archivos ni a Módulos")
 
     def _deactivate(self, table: str, course_id: int, seen: list[int]) -> None:
         marks = ",".join("?" * len(seen)) or "NULL"
@@ -305,34 +309,35 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
     conn.execute(
         f"UPDATE courses SET active = 0 WHERE id NOT IN ({','.join('?' * len(ids)) or 'NULL'})", ids
     )
-    conn.commit()
-    seeded = True
     for course in courses:
         known = s.upsert_course(course)
-        for step in (s.assignments, s.announcements, s.files):
+        if not first and not known:
+            s.emit(False, "new_course", course, course["id"], {"codigo": course["course_code"], "url": course["html_url"]})
+        for resource, label, step in (("assignments", "tareas", s.assignments),
+                                      ("announcements", "anuncios", s.announcements),
+                                      ("files", "archivos", s.files)):
+            baseline = f"seeded:{course['id']}:{resource}"
+            seeded = get_meta(conn, baseline) is not None
             try:
-                step(course, not known)
+                step(course, not seeded)
             except InvalidTokenError:
                 conn.rollback()
                 raise
             except CanvasError as exc:
                 s.warnings.append(f"{course['name']}: {exc}")
                 log.warning("%s: %s", course["name"], exc)
-                if not known and exc.status not in (401, 403, 404):
-                    conn.rollback()
-                    seeded = False
-                    break
-        else:
-            if not first and not known:
-                s.emit(False, "new_course", course, course["id"],
-                       {"codigo": course["course_code"], "url": course["html_url"]})
+                if exc.status not in (401, 403, 404):
+                    s.failed.append(f"los {label} de {course['name']}")
+                continue
+            if not seeded:
+                set_meta(conn, baseline, s.now_iso)
         conn.commit()
-    if seeded:
-        set_meta(conn, "initialized", "1")
+    set_meta(conn, "initialized", "1")
     set_meta(conn, "last_sync", s.now_iso)
     conn.commit()
     report.events = s.events
     report.warnings = s.warnings
+    report.failed = s.failed
     report.requests = client.requests_made
     return report
 

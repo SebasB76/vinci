@@ -1,7 +1,8 @@
 """Local SQLite store: the last known state of the aula virtual plus derived data.
 
 Tables:
-  meta           key/value (last sync time, initialized flag)
+  meta           key/value (last sync time, initialized flag, which course
+                 resources already have their silent first read)
   courses, assignments, announcements, files
                  the latest snapshot read from Canvas
   events         changes detected by a sync (new assignment, grade posted, ...);

@@ -8,6 +8,9 @@ What it does, as real processes (the same commands Hermes cron and the captain r
      announcement, posted grade, new material, a submission), then poll 2 and 3.
   4. the 07:00 daily summary (twice: the second must not resend).
   5. retrieval: sample questions must hit the right file and page.
+  6. a fresh install where one resource (Física's announcements) keeps failing:
+     the rest keeps working, the captain is alerted once, and when it recovers
+     its old items are stored silently instead of being sent as new.
 
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
 temporary paths are normalized, so reruns produce the same files.
@@ -45,6 +48,9 @@ T_POLL2 = "2026-09-29T00:30:00-05:00"   # después de los cambios; Taller 2 venc
 T_POLL3 = "2026-09-29T01:00:00-05:00"   # sin cambios: no debe enviar nada
 T_SUMMARY = "2026-09-29T07:00:00-05:00"
 T_POLL4 = "2026-09-29T20:30:00-05:00"   # Taller 2 vence en 2.5 h → recordatorio de 3 h
+T_FAILING = ["2026-09-30T12:00:00-05:00", "2026-09-30T12:30:00-05:00",   # instalación nueva, con los
+             "2026-09-30T13:00:00-05:00", "2026-09-30T13:30:00-05:00"]   # anuncios de Física en 503
+T_RECOVERED = "2026-09-30T14:00:00-05:00"
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -220,6 +226,29 @@ def test_e2e(tmp_path):
         pend = run([aula, "tareas", "--dias", "7", "--sin-actualizar"], T_SUMMARY)
         cli_md.append(f"## `aula tareas --dias 7` (después de los cambios)\n\n```\n{normalize(pend.stdout).rstrip()}\n```\n")
 
+        # 6. one resource keeps failing on a fresh install -------------------------------
+        fresh_config = tmp_path / "config-resiliencia.toml"
+        fresh_config.write_text(config.replace(str(data_dir), str(tmp_path / "resiliencia")), encoding="utf-8")
+        fresh = {"AULA_CONFIG": str(fresh_config)}
+        canvas.failing.add("/api/v1/courses/102/discussion_topics")
+        failing = []
+        for i, now in enumerate(T_FAILING, start=1):
+            run([bot, "sondeo"], now, env_extra=fresh)
+            failing.append(take(f"Anuncios de Física fallando · sondeo {i}"))
+        assert "FÍSICA I" in failing[0][0]["text"], "la bienvenida lista la materia aunque falle una parte"
+        alerts = [(i, m["text"]) for i, poll in enumerate(failing, start=1) for m in poll if "sin poder leer" in m["text"]]
+        assert len(alerts) == 1 and alerts[0][0] == 3 and "anuncios de FÍSICA I" in alerts[0][1], alerts
+        fisica = json.loads(run([aula, "tareas", "--curso", "fisica", "--sin-actualizar", "--json"],
+                                T_FAILING[-1], env_extra=fresh).stdout)
+        assert "Examen parcial" in [t["tarea"] for t in fisica], "las tareas de Física siguen disponibles"
+        canvas.failing.clear()
+        run([bot, "sondeo"], T_RECOVERED, env_extra=fresh)
+        recovered = take("Anuncios de Física recuperados")
+        assert all("Recordatorio" in m["text"] for m in recovered), "el anuncio viejo no se envía como nuevo"
+        anuncios = json.loads(run([aula, "anuncios", "--curso", "fisica", "--sin-actualizar", "--json"],
+                                  T_RECOVERED, env_extra=fresh).stdout)
+        assert len(anuncios) == 1, "al recuperarse, el anuncio existente queda guardado"
+
         # Safety: read-only, captain-only --------------------------------------------------
         methods = {m for m, _ in canvas.requests}
         assert methods == {"GET"}, f"hubo solicitudes que no son GET: {methods}"
@@ -253,6 +282,8 @@ def test_e2e(tmp_path):
         "Física con la pestaña Archivos oculta (material encontrado vía Módulos).",
         *[f"- {label}: {n} mensaje(s)" for label, n in counts.items()],
         "- Sondeo 3 y el resumen repetido no enviaron nada (sin duplicados).",
+        "- Instalación nueva con los anuncios de Física en 503: las demás partes siguieron funcionando, "
+        "una sola alerta (sondeo 3) y al recuperarse el anuncio viejo se guardó sin reenviarse.",
         *[f"- Recuperación «{r['pregunta']}» → {r['resultados'][0]['archivo']}, "
           f"{r['resultados'][0]['unidad']} {r['resultados'][0]['pagina']} ✓" for r in retrieval],
         "\nArchivos: `notificaciones.md`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, "

@@ -4,6 +4,7 @@ FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ the way
 Canvas does: Bearer auth, `Link` pagination (capped at 2 items per page so the
 client must follow it), `X-Rate-Limit-Remaining`, one 429 to exercise backoff,
 a course whose Files tab is hidden (401 unauthorized), and file downloads.
+API paths added to `failing` answer 503 until removed (a resource that keeps failing).
 It answers 405 to anything but GET and records every request.
 
 TelegramStub records each sendMessage call instead of delivering it.
@@ -46,6 +47,7 @@ class FakeCanvas(_Server):
         self.state = "state1"
         self.requests: list[tuple[str, str]] = []
         self.throttled = False
+        self.failing: set[str] = set()
         self.lock = threading.Lock()
 
     def load(self, api_path: str):
@@ -101,6 +103,9 @@ class _CanvasHandler(_Quiet):
 
         if not url.path.startswith("/api/v1/"):
             return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]})
+
+        if url.path in canvas.failing:
+            return self._json(503, {"errors": [{"message": "Service Unavailable"}]}, {"Retry-After": "0"})
 
         if url.path == THROTTLE_ONCE and not canvas.throttled:
             canvas.throttled = True

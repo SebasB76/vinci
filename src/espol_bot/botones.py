@@ -23,7 +23,7 @@ import re
 from datetime import datetime
 
 from aula_core import Aula
-from espol_bot import horario, materias, messages, store
+from espol_bot import equipo, horario, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
@@ -46,7 +46,7 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
         conn = store.ensure(aula.conn)
         if kind == "a":
             return _handoff(cfg, conn, ref, arg.upper(), now)
-        return save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
+        return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()
 
@@ -64,7 +64,6 @@ def _handoff(cfg: BotConfig, conn, alert_id: int, code: str, now: datetime) -> d
 
 
 def _team(cfg: BotConfig, kind: str, code: str) -> dict:
-    from espol_bot import equipo  # equipo imports this module
     subject = materias.by_code(materias.load(cfg.core), code)
     if subject is None:
         return _answer("Esa materia ya no está en tu equipo.")
@@ -85,7 +84,7 @@ def _team(cfg: BotConfig, kind: str, code: str) -> dict:
     return _answer(f"Creemos {subject.display}")
 
 
-def save_schedule(cfg: BotConfig, conn, proposal_id: int, now: datetime) -> dict:
+def _save_schedule(cfg: BotConfig, conn, proposal_id: int, now: datetime) -> dict:
     proposal = store.proposal(conn, proposal_id)
     if proposal is None:
         return _answer("No encuentro esa propuesta de horario.")

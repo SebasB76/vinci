@@ -1,5 +1,5 @@
-"""Bot-specific settings: [notificaciones], [clases], [telegram] and [hermes] from
-config.toml, plus the Telegram secrets. The core settings come from aula_core.config."""
+"""Bot-specific settings: [notificaciones], [clases] and [hermes] from config.toml, plus
+the Telegram secrets. The core settings come from aula_core.config."""
 
 from __future__ import annotations
 
@@ -42,7 +42,6 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     core = core or load_config()
     notif = section(core.raw, "notificaciones")
     clases = section(core.raw, "clases")
-    telegram = section(core.raw, "telegram")
     hermes = section(core.raw, "hermes")
 
     summary_raw = str(notif.get("resumen_diario", "07:00"))
@@ -66,9 +65,9 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not PROFILE_RE.fullmatch(profile) or profile == "default":
         raise ConfigError(f"perfil de Hermes inválido: {profile!r}")
 
-    api = os.environ.get("ESPOL_TELEGRAM_API_BASE") or str(telegram.get("api", DEFAULT_TELEGRAM_API))
+    api = os.environ.get("ESPOL_TELEGRAM_API_BASE") or DEFAULT_TELEGRAM_API
     if not api.startswith(("https://", "http://")):
-        raise ConfigError("telegram.api debe empezar con https://")
+        raise ConfigError("ESPOL_TELEGRAM_API_BASE debe empezar con https://")
 
     return BotConfig(
         core=core,

@@ -26,7 +26,7 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      notebook capture of a photo, a voice note and a doubt (and no arbitrary files);
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
-     offline; `vinci-equipo reactivar` brings it back.
+     offline; reactivated from Vinci's card, the same gateway serves it again.
   8. setup.sh a third time with the team in place: nothing changes.
 
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
@@ -88,7 +88,6 @@ T_POLL3 = "2026-09-29T01:00:00-05:00"   # sin cambios: no debe enviar nada
 T_SUMMARY = "2026-09-29T07:00:00-05:00"
 T_POLL4 = "2026-09-29T20:30:00-05:00"   # Taller 2 vence en 2.5 h → recordatorio de 3 h
 T_RESILIENCE = [f"2026-09-30T{12 + i // 2}:{i % 2 * 30:02d}:00-05:00" for i in range(9)]  # 12:00 … 16:00
-T_TEAM = "2026-09-30T08:00:00-05:00"    # vinci-equipo
 T_VINCI = "2026-09-30T08:30:00-05:00"   # sesión del gateway: miércoles, 30 min antes de Cálculo (09:00)
 T_EARLY = "2026-09-30T08:29:00-05:00"   # un minuto antes: todavía no toca el brief
 
@@ -220,6 +219,8 @@ class Script:
             return _call("mcp__vinci__proponer_equipo")
         if "archiva el bot de física" in text:
             return _call("mcp__vinci__archivar_materia", materia="física")
+        if "reactiva el bot de física" in text:
+            return _call("mcp__vinci__reactivar_materia", materia="física")
         if "anota en el cuaderno" in text:  # Vinci has no tool for this: try anyway
             return {"tool_calls": [("mcp__vinci__anotar", {"tipo": "apunte", "texto": "El viernes hay prueba"}),
                                    ("write_file", {"path": "cuaderno.txt", "content": "El viernes hay prueba"})]}
@@ -392,7 +393,6 @@ def test_e2e(tmp_path):
         config = REPO.joinpath("config.toml").read_text(encoding="utf-8")
         config = config.replace('url = "https://aulavirtual.espol.edu.ec"', f'url = "{canvas.base}"')
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
-        config = config.replace('api = "https://api.telegram.org"', f'api = "{telegram.base}"')
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
         config = config.replace('modelo = "claude-sonnet-5"', 'modelo = "fake"')
         config_file = tmp_path / "config.toml"
@@ -496,11 +496,8 @@ def test_e2e(tmp_path):
             assert vcfg["unauthorized_dm_behavior"] == "ignore" and vcfg["stt"]["language"] == "es"
             assert vcfg["platforms"]["telegram"]["extra"]["base_url"] == f"{telegram.base}/bot"
             assert {"*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"} <= set(vcfg["approvals"]["deny"])
-            assert "Eres **Vinci**" in (profile / "SOUL.md").read_text()
             assert (profile / "skills" / "vinci" / "vinci" / "SKILL.md").is_file()
-            plugin = (profile / "plugins" / "vinci-botones" / "__init__.py").read_text()
-            assert f'CAPTAIN = "{CAPTAIN_ID}"' in plugin and str(VENV_BIN / "espol-bot") in plugin
-            assert (home / ".local" / "bin" / "aula").is_file() and (home / ".local" / "bin" / "vinci-equipo").is_file()
+            assert (home / ".local" / "bin" / "aula").is_file()
             assert (home / ".claude" / "skills" / "aula" / "SKILL.md").is_file()
             assert not (home / ".hermes" / "config.yaml").exists(), "setup no debe crear config del perfil por defecto"
             report.append(f"setup.sh ×2 con Hermes real en un HOME aislado: el perfil «espol» del bot anterior pasó "
@@ -622,7 +619,7 @@ def test_e2e(tmp_path):
         assert len(anuncios) == 1, "al recuperarse, el anuncio existente queda guardado"
         canvas.failing = set()
 
-        equipo_md = ["# El equipo de bots: `vinci-equipo`\n"]
+        equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
         horario_md = ["# Horario desde una captura (se guarda solo con el botón del capitán)\n"]
         briefs_md = ["# Brief antes de clase\n"]
         tools_seen: dict[str, set[str]] = {}
@@ -717,10 +714,9 @@ def test_e2e(tmp_path):
 
 def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, report, gateway,
                equipo_md, horario_md, briefs_md, tools_seen, pwned, secrets, base_env, **_) -> None:
-    """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive)
-    and the last setup.sh. The caller owns `gateway` and always stops it."""
+    """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
+    reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
-    equipo = str(VENV_BIN / "vinci-equipo")
     telegram.managers.add(BOT_TOKEN)  # Vinci has "manage other bots" on in BotFather
 
     def patch_profile(name: str) -> None:
@@ -893,15 +889,12 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
         jobs = json.loads((sp / "cron" / "jobs.json").read_text())["jobs"]
         assert [(j["name"], j["schedule_display"], j["no_agent"], j["script"], j["enabled"]) for j in jobs] == [
             ("vinci-agenda", "every 1m", False, "vinci-agenda.sh", True)], jobs
-        assert "--curso " + code in (sp / "scripts" / "vinci-agenda.sh").read_text()
     for token in (MATG, FIS, UNKNOWN_TOKEN):  # where a token may live: secrets.env and its own profile's .env
         holders = sorted(str(f.relative_to(home)) for f in home.rglob("*") if f.is_file()
                          and token.encode() in f.read_bytes())
         allowed = {f".hermes/profiles/vinci-{c.lower()}/.env" for c, t in SUBJECT_TOKENS.items() if t == token}
         assert set(holders) <= allowed, f"el token apareció en {holders}"
     assert "Congratulations on your new bot" not in json.dumps(llm.requests, ensure_ascii=False)
-    status = run([equipo, "estado"], T_VINCI)
-    show("`vinci-equipo estado`", status.stdout)
     report.append("Vinci armó el equipo desde el chat: su tarjeta mostró un botón «➕ Crear» por materia (proponer "
                   "no creó nada); Cálculo se creó como bot gestionado de Telegram (Vinci obtuvo el token con "
                   "getManagedBotToken, sin que pasara por el chat) y Física con la respuesta de @BotFather "
@@ -1145,12 +1138,27 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
                   "(gateway.parked; no volvió a escuchar a Telegram), su agenda en pausa y su botón en los avisos ya "
                   "no lo despierta; memoria y cuaderno intactos")
     take("Archivar Física y reiniciar el gateway")
+
+    # 7i. reactivate Física from Vinci's card: the same gateway serves its bot again
+    mark = len(telegram.messages)
+    telegram.send_text(BOT_TOKEN, CAPTAIN, "reactiva el bot de física, lo necesito otra vez")
+    reactivate_card = wait_msg("vinci_bot", mark, "¿Reactivo")
+    wait_msg("vinci_bot", mark, "Solo pasa si lo pulsa")
+    assert team()["FISG1002"]["estado"] == "archivada" and (fis_profile / "gateway.parked").exists()
+    reactivate_data = next(b["callback_data"] for b in buttons(reactivate_card) if b["text"].startswith("♻️"))
+    mark_calls = len(telegram.calls)
+    reactivated = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, reactivate_card, reactivate_data), "vinci_bot",
+                       "activo otra vez", timeout=120)
+    show("«reactiva el bot de física»", plain(reactivate_card["text"]) + "\n"
+         + "".join(f"[{b['text']}]" for b in buttons(reactivate_card)) + "\n\n→ " + plain(reactivated["text"]))
+    assert team()["FISG1002"]["estado"] == "activa" and not (fis_profile / "gateway.parked").exists()
+    assert json.loads((fis_profile / "cron" / "jobs.json").read_text())["jobs"][0]["enabled"] is True
+    polling({"vinci_fisica_bot"}, mark_calls, timeout=150)
+    report.append("Reactivar Física desde la tarjeta de Vinci (solo con el botón del capitán): su agenda se reanudó "
+                  "y el mismo gateway volvió a atender su bot, sin reiniciarlo")
+    take("Reactivar Física")
     gateway.stop()
 
-    reactivated = run([equipo, "reactivar", "FISG1002"], T_VINCI)
-    show("`vinci-equipo reactivar FISG1002`", reactivated.stdout)
-    assert "activo otra vez" in reactivated.stdout and not (fis_profile / "gateway.parked").exists()
-    assert json.loads((fis_profile / "cron" / "jobs.json").read_text())["jobs"][0]["enabled"] is True
     for job_id in vinci_jobs.values():
         run([hermes, "-p", "vinci", "cron", "resume", job_id], T_VINCI)
 

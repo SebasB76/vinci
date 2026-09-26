@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Instala o actualiza Vinci y tus bots de materia. Puedes correrlo las veces que quieras.
 #
-#   ./setup.sh              instala dependencias, los comandos `aula` y `vinci-equipo`, la skill
-#                           de Claude Code y los perfiles de Hermes; luego prueba Canvas y Telegram
+#   ./setup.sh              instala dependencias, el comando `aula`, la skill de Claude Code
+#                           y los perfiles de Hermes; luego prueba Canvas y Telegram
 #   ./setup.sh --skip-deps  no toca el entorno de Python (.venv ya listo)
 #   ./setup.sh --sin-pruebas  no consulta Canvas ni envía el mensaje de prueba
 #
@@ -11,7 +11,6 @@
 #   ~/.hermes/profiles/vinci-<código>/ un perfil por cada bot de materia ya registrado
 #   ~/.local/bin/vinci                 el alias que Hermes crea para el perfil de Vinci
 #   ~/.local/bin/aula                  el comando `aula`
-#   ~/.local/bin/vinci-equipo          el comando para ver o archivar el equipo desde la terminal
 #   ~/.claude/skills/aula/             la skill para Claude Code
 # Y, solo si le falta, el conector de Telegram de Hermes (`hermes pm install --extra telegram`).
 set -euo pipefail
@@ -23,7 +22,7 @@ for arg in "$@"; do
   case "$arg" in
     --skip-deps) SKIP_DEPS=1 ;;
     --sin-pruebas) RUN_CHECKS=0 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "Opción desconocida: $arg" >&2; exit 2 ;;
   esac
 done
@@ -51,7 +50,7 @@ if [ "$SKIP_DEPS" = 0 ]; then
     "$VENV/bin/pip" install --quiet -e "$REPO"
   fi
 fi
-[ -x "$VENV/bin/aula" ] && [ -x "$VENV/bin/espol-bot" ] && [ -x "$VENV/bin/vinci-equipo" ] \
+[ -x "$VENV/bin/aula" ] && [ -x "$VENV/bin/espol-bot" ] \
   || { echo "Falta el entorno .venv; corre ./setup.sh sin --skip-deps" >&2; exit 1; }
 
 say "Revisando el conector de Telegram de Hermes"
@@ -112,11 +111,10 @@ EOF
   fi
 }
 
-say "Instalando los comandos aula y vinci-equipo en ~/.local/bin"
+say "Instalando el comando aula en ~/.local/bin"
 mkdir -p "$HOME/.local/bin"
 install_wrapper aula
-install_wrapper vinci-equipo
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "⚠ Agrega ~/.local/bin a tu PATH para usar 'aula' y 'vinci-equipo'.";; esac
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "⚠ Agrega ~/.local/bin a tu PATH para usar 'aula'.";; esac
 
 say "Instalando la skill de Claude Code en ~/.claude/skills/aula"
 SKILL_DIR="$HOME/.claude/skills/aula"

@@ -29,7 +29,7 @@ from aula_core.queries import fold
 from espol_bot import tomlfile
 from espol_bot.materias import CODE_RE, Subject
 
-DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
 MAX_CLASSES = 60
 
 HEADER = """\
@@ -73,19 +73,12 @@ def path(cfg: CoreConfig) -> Path:
 
 
 def _day(value) -> int | None:
-    if isinstance(value, int) and 1 <= value <= 7:
-        return value - 1
     text = fold(str(value)).strip()
-    for i, name in enumerate(DAYS):
-        if text and fold(name).startswith(text[:3]) and fold(name).startswith(text):
-            return i
-    return None
+    return next((i for i, name in enumerate(DAYS) if fold(name) == text), None)
 
 
 def _time(value) -> time | None:
-    if isinstance(value, time):
-        return value
-    match = re.fullmatch(r"\s*(\d{1,2})[:h.](\d{2})\s*", str(value))
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", str(value).strip())
     if not match or int(match[1]) > 23 or int(match[2]) > 59:
         return None
     return time(int(match[1]), int(match[2]))
@@ -113,9 +106,10 @@ def validate(rows: list[dict], subjects: list[Subject] | None = None) -> tuple[l
         elif known and code not in known:
             warnings.append(f"{label}: {code} no está en tus bots de materia.")
         if day is None:
-            errors.append(f"{label}: día inválido {row.get('dia')!r} (usa lunes … sábado).")
-        if start is None or end is None:
-            errors.append(f"{label}: «inicio» y «fin» deben ser horas HH:MM.")
+            errors.append(f"{label}: día inválido {row.get('dia')!r} (usa el nombre completo: {', '.join(DAYS)}).")
+        bad = [f"«{key}» {row.get(key)!r}" for key, value in (("inicio", start), ("fin", end)) if value is None]
+        if bad:
+            errors.append(f"{label}: hora inválida {' y '.join(bad)} (usa HH:MM en 24 h, ej. 14:30).")
         elif end <= start:
             errors.append(f"{label}: termina ({end:%H:%M}) antes de empezar ({start:%H:%M}).")
         elif datetime.combine(date.min, end) - datetime.combine(date.min, start) > timedelta(hours=6):
@@ -199,7 +193,7 @@ def render(classes: list[Clase], subjects: list[Subject], *, html: bool = True) 
 
     label = names(subjects)
     blocks = []
-    for day in range(7):
+    for day in range(len(DAYS)):
         todays = [c for c in classes if c.dia == day]
         if not todays:
             continue

@@ -42,7 +42,7 @@ Es la memoria de la materia; Vinci lo lee para ver cómo va en todo. Llévalo co
 - **Notas de voz**: te llegan ya transcritas (el texto entre comillas). Llama a `guardar_adjunto` con
   `tipo: audio`, `transcripcion: <el texto>`, `resumen` de lo importante y `ruta` si aparece
   `the audio is available at: <ruta>` (si no, déjala vacía: se toma el último audio recibido).
-- **Documentos / PDF**: llegan como `It is saved at: <ruta>`. `guardar_adjunto` con `tipo: documento`.
+- **Documentos / PDF**: llegan como `It is saved at: <ruta>`. `guardar_adjunto` con `tipo: documento`, `ruta: <ruta>`.
 
 Después de guardar, confírmale en una línea qué guardaste y el resumen. No guardes dos veces lo mismo.
 

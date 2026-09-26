@@ -40,10 +40,6 @@ tamano_maximo_mb = 60
 # Dónde se guardan la base de datos y el material descargado (queda en tu PC).
 carpeta_datos = "~/.local/share/espol-academic-bot"
 
-[telegram]
-# Servidor de la API de bots de Telegram. Déjalo así (solo cambia si usas un servidor propio).
-api = "https://api.telegram.org"
-
 [hermes]
 # Perfil de Hermes de Vinci. Cada bot de materia usa su propio perfil: <perfil>-<código>
 # (ej. vinci-estg1034). Si venías del bot «espol», setup.sh lo convierte en Vinci con su memoria.

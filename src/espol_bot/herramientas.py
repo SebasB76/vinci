@@ -68,7 +68,10 @@ class Ctx:
         return self.aula.now()
 
     def subjects(self) -> list[materias.Subject]:
-        return materias.load(self.cfg.core)
+        try:
+            return materias.load(self.cfg.core)
+        except ConfigError as exc:
+            raise ToolError(str(exc)) from None
 
     def subject(self) -> materias.Subject:
         subject = materias.by_code(self.subjects(), self.code or "")
@@ -211,8 +214,8 @@ def _kind_of(path: Path) -> str:
     return next((kind for kind, exts in MEDIA_EXT.items() if ext in exts), "documento")
 
 
-def _newest_media(ctx: Ctx, kind: str) -> Path | None:
-    """The latest file of `kind` in the media cache from the last 30 minutes (for voice notes,
+def _newest_audio(ctx: Ctx) -> Path | None:
+    """The latest audio file in the media cache from the last 30 minutes (for voice notes,
     which Hermes turns into text without telling the agent where the audio is)."""
     if ctx.hermes_home is None:
         return None
@@ -221,7 +224,7 @@ def _newest_media(ctx: Ctx, kind: str) -> Path | None:
     for d in MEDIA_DIRS:
         base = ctx.hermes_home / d
         if base.is_dir():
-            found += [p for p in base.rglob("*") if p.is_file() and p.suffix.lower() in MEDIA_EXT.get(kind, set())
+            found += [p for p in base.rglob("*") if p.is_file() and p.suffix.lower() in MEDIA_EXT["audio"]
                       and p.stat().st_mtime >= cutoff]
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
@@ -531,10 +534,10 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
             raise ToolError(f"«tipo» debe ser uno de: {', '.join(FILE_KINDS)}.")
         if args.get("ruta"):
             source = _media_file(ctx, str(args["ruta"]))
+        elif kind == "audio":
+            source = _newest_audio(ctx)
         else:
-            source = _newest_media(ctx, kind)
-            if source is None and kind != "audio":
-                raise ToolError("Dime la ruta del archivo (aparece como «Image attached at: …» o «saved at: …»).")
+            raise ToolError("Dime la ruta del archivo (aparece como «Image attached at: …» o «saved at: …»).")
         nb = notebook()
         try:
             entry = nb.add(kind, str(args["resumen"]), ctx.now(), class_date=args.get("fecha_clase") or None,

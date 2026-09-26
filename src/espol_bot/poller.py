@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 from aula_core import Aula, queries, timefmt
 from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
+from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
 from espol_bot import materias, messages, store
 from espol_bot.config import BotConfig
@@ -53,7 +54,12 @@ class Bot:
         self.telegram = telegram
         self.aula = aula or Aula(cfg.core)
         store.ensure(self.conn)
-        self.subjects = [s for s in materias.load(cfg.core) if s.active]
+        try:
+            self.subjects = [s for s in materias.load(cfg.core) if s.active]
+            self.team_error = None
+        except ConfigError as exc:
+            log.error("%s", exc)
+            self.subjects, self.team_error = [], str(exc)
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -103,6 +109,10 @@ class Bot:
 
     def poll(self) -> PollResult:
         result = PollResult()
+        if self.team_error:
+            self._fail("materias", f"No puedo leer tu equipo de bots: {self.team_error}. Te sigo mandando los "
+                       "avisos del aula, pero sin los botones de cada materia; los bots de materia no mandan briefs "
+                       "ni reciben lo que les pases hasta que corrijas ese archivo.", threshold=1)
         try:
             report = self.aula.sync(materials=True)
         except InvalidTokenError:

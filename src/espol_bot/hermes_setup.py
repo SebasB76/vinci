@@ -181,9 +181,11 @@ class Setup:
             "stt": {"language": "es"},
         }
         if self.cfg.telegram_api != DEFAULT_TELEGRAM_API:
-            # A local Bot API server (or the E2E test's stand-in) for Hermes' own Telegram client too.
+            # A local Bot API server (or the E2E test's stand-in) for Hermes' own Telegram client and
+            # the MCP server too.
             managed["platforms"] = {"telegram": {"extra": {"base_url": f"{self.cfg.telegram_api}/bot",
                                                            "base_file_url": f"{self.cfg.telegram_api}/file/bot"}}}
+            managed["mcp_servers"][mcp_name]["env"]["ESPOL_TELEGRAM_API_BASE"] = self.cfg.telegram_api
         return managed
 
     def telegram_env(self, profile: Path, token: str) -> bool:
@@ -237,7 +239,7 @@ class Setup:
     def set_parked(self, name: str, parked: bool) -> bool:
         marker = self.profile_dir(name) / "gateway.parked"
         if parked and not marker.exists():
-            marker.write_text(f"{MARKER}: materia archivada (vinci-equipo reactivar para volver)\n", encoding="utf-8")
+            marker.write_text(f"{MARKER}: materia archivada (pídele a Vinci reactivarla)\n", encoding="utf-8")
             return True
         if not parked and marker.exists() and MARKER in marker.read_text(encoding="utf-8", errors="replace"):
             marker.unlink()

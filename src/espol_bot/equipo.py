@@ -19,29 +19,24 @@ buttons; the captain's press, handled without the model by the `vinci-botones` p
      profile by itself within a minute.
   4. «🗄️ Archivar» / «♻️ Reactivar» park or unpark the subject's gateway and pause or resume
      its agenda; memory and notebook stay.
-
-`vinci-equipo` covers the same from the terminal: estado, archivar, reactivar, horario.
 """
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import re
 import sys
 import zlib
 from dataclasses import replace
 
-from aula_core import Aula, queries
-from aula_core.canvas import CanvasError
-from aula_core.config import ConfigError, load_config, load_secret_values, secrets_path
+from aula_core import queries
+from aula_core.config import load_secret_values, secrets_path
 from aula_core.queries import fold
 from aula_core.store import file_lock
-from espol_bot import botones, horario, materias, store
-from espol_bot.config import BotConfig, TelegramSecrets, captain_id, load_bot_config, load_telegram_secrets, token_key
-from espol_bot.cuaderno import Notebook
+from espol_bot import materias
+from espol_bot.config import BotConfig, TelegramSecrets, captain_id, load_telegram_secrets, token_key
 from espol_bot.hermes_setup import Setup, upsert_env
-from espol_bot.messages import e, plain
+from espol_bot.messages import e
 from espol_bot.telegram import Telegram, TelegramError
 
 TOKEN_RE = re.compile(r"\d{5,}:[A-Za-z0-9_-]{30,}")
@@ -193,7 +188,7 @@ def managed_bot_created(cfg: BotConfig, bot_id: int, *, hermes_bin: str | None =
     return register_token(cfg, token, quiet_if_known=True, hermes_bin=hermes_bin)
 
 
-def set_archived(cfg: BotConfig, code: str, archive: bool, *, hermes_bin: str | None = None) -> str:
+def set_archived(cfg: BotConfig, code: str, archive: bool) -> str:
     """Archive (park the gateway, pause the agenda) or reactivate a subject bot. Returns HTML."""
     with file_lock(cfg.core.data_dir, "equipo.lock"):
         subject = materias.by_code(materias.load(cfg.core), code)
@@ -203,83 +198,8 @@ def set_archived(cfg: BotConfig, code: str, archive: bool, *, hermes_bin: str | 
             return f"ℹ️ <b>{e(subject.display)}</b> todavía no tiene bot."
         subject = materias.update(cfg.core, subject.code, state="archivada" if archive else "activa")
         with contextlib.redirect_stdout(sys.stderr):
-            Setup(cfg, hermes_bin=hermes_bin).subject(subject)
+            Setup(cfg).subject(subject)
     if archive:
         return (f"🗄️ <b>{e(subject.display)}</b> quedó archivado: ya no manda briefs ni responde. Su memoria y su "
                 "cuaderno siguen guardados; si lo necesitas otra vez, pídeme reactivarlo.")
     return f"♻️ <b>{e(subject.display)}</b> está activo otra vez; en un minuto vuelve a responder."
-
-
-# -- `vinci-equipo` -----------------------------------------------------------------------
-
-
-def cmd_estado(cfg: BotConfig) -> int:
-    team = materias.load(cfg.core)
-    secrets = load_secret_values()
-    try:
-        classes = horario.load(cfg.core)
-    except ConfigError as exc:
-        classes = []
-        print(f"⚠ {exc}")
-    print(f"Vinci: perfil {cfg.hermes_profile} · token {'✓' if secrets.get(token_key()) else '✗ falta'}")
-    if not team:
-        print("Sin bots de materia todavía: pídele a Vinci «arma mi equipo».")
-    for s in team:
-        nb = Notebook(cfg.core, s.code, read_only=True)
-        info = nb.overview()
-        nb.close()
-        count = len(horario.for_subject(classes, s.code))
-        token = "token ✓" if secrets.get(token_key(s.code)) else "sin token"
-        print(f"  • {s.display:<48} {STATE_LABEL[s.state]:<20} {token} · {count} clases/semana"
-              f" · cuaderno: {info['entradas']} entradas{' · ' + s.handle() if s.username else ''}")
-    print(f"Horario: {len(classes)} clases en {horario.path(cfg.core)}" if classes else
-          "Horario: todavía no hay. Mándale a Vinci una captura de tu horario (con la columna de horas).")
-    return 0
-
-
-def cmd_horario(cfg: BotConfig, confirm: int | None) -> int:
-    if confirm is not None:
-        aula = Aula(cfg.core)
-        try:
-            result = botones.save_schedule(cfg, store.ensure(aula.conn), confirm, aula.now())
-        finally:
-            aula.close()
-        print(plain(result["respuesta"] or result["aviso"]))
-        return 0 if result["respuesta"] and result["respuesta"].startswith("✅") else 1
-    classes = horario.load(cfg.core)
-    print(horario.render(classes, materias.load(cfg.core), html=False) if classes else "Todavía no hay horario.")
-    print(f"\n(archivo: {horario.path(cfg.core)})")
-    return 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="vinci-equipo", description="Tu equipo de bots de materia (Vinci), "
-                                     "desde la terminal. Para crear bots, pídeselo a Vinci en Telegram.")
-    parser.add_argument("--hermes", default=None, help="ruta al comando hermes")
-    sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
-    sub.add_parser("estado", help="ver el equipo, el horario y los cuadernos")
-    p = sub.add_parser("archivar", help="archivar un bot al final del semestre (conserva memoria y cuaderno)")
-    p.add_argument("codigo")
-    p = sub.add_parser("reactivar", help="reactivar un bot archivado")
-    p.add_argument("codigo")
-    p = sub.add_parser("horario", help="ver el horario guardado (o confirmar una propuesta)")
-    p.add_argument("accion", nargs="?", choices=["confirmar"])
-    p.add_argument("propuesta", nargs="?", type=int)
-    args = parser.parse_args(argv)
-    try:
-        cfg = load_bot_config(load_config())
-        if args.cmd == "estado":
-            return cmd_estado(cfg)
-        if args.cmd in ("archivar", "reactivar"):
-            print(plain(set_archived(cfg, args.codigo.upper(), args.cmd == "archivar", hermes_bin=args.hermes)))
-            return 0
-        if args.accion == "confirmar" and args.propuesta is None:
-            parser.error("uso: vinci-equipo horario confirmar <número de propuesta>")
-        return cmd_horario(cfg, args.propuesta if args.accion == "confirmar" else None)
-    except (ConfigError, CanvasError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -74,8 +74,7 @@ Los bots de materia usan el horario para mandar el brief {{MINUTOS}} minutos ant
    Guardar. Dile que lo revise, sobre todo días y horas.
 4. Si te dice qué corregir, arma la lista completa corregida y vuelve a llamar a `proponer_horario`.
 
-Si no puede usar los botones, puede guardarlo desde su PC con `vinci-equipo horario confirmar <N>`
-(N es el número de la propuesta), o editar a mano el archivo que indica `horario`.
+Si no puede usar los botones, puede editar a mano el archivo que indica `horario`.
 
 ## Vista general y planes de estudio
 

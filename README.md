@@ -102,8 +102,7 @@ Puedes correrlo las veces que quieras (por ejemplo, después de cambiar `config.
 
 - instala las dependencias de Python en `.venv/`;
 - si a Hermes le falta su conector de Telegram, lo instala (`hermes pm install --extra telegram`);
-- instala los comandos `aula` y `vinci-equipo` en `~/.local/bin/` y la skill de Claude Code en
-  `~/.claude/skills/aula/`;
+- instala el comando `aula` en `~/.local/bin/` y la skill de Claude Code en `~/.claude/skills/aula/`;
 - crea o actualiza el perfil de Hermes `vinci` (modelo, zona horaria, Telegram solo para tu ID, sus herramientas
   y los cron del sondeo cada 30 min y el resumen de las 7:00), y el perfil de cada bot de materia que ya exista;
 - prueba que Canvas responde y Vinci te manda un mensaje de prueba por Telegram (y te dice si todavía falta
@@ -162,7 +161,6 @@ hermes gateway start       # encender
 hermes gateway stop        # apagar (apaga también tu Hermes personal en Telegram, si lo usas)
 hermes gateway status      # ¿está corriendo?
 vinci cron list            # los trabajos de Vinci: sondeo y resumen
-vinci-equipo estado        # tu equipo, el horario y cuánto hay en cada cuaderno
 tail -f ~/.hermes/logs/gateway.log                    # registro del gateway de Hermes
 tail -f ~/.local/share/espol-academic-bot/bot.log     # registro del sondeo, la agenda y los botones
 ```
@@ -220,9 +218,9 @@ comando.
 
 ## Fin de semestre: archivar los bots
 
-Pídele a Vinci «archiva el bot de Estadística» y confirma con el botón (o, desde la terminal,
-`vinci-equipo archivar ESTG1034`). Un bot archivado deja de responder y de mandar briefs, pero **conserva su
-memoria y su cuaderno**. Para volver a usarlo: «reactiva el bot de Estadística» o `vinci-equipo reactivar ESTG1034`.
+Pídele a Vinci «archiva el bot de Estadística» y confirma con el botón. Un bot archivado deja de responder y de
+mandar briefs, pero **conserva su memoria y su cuaderno**. Para volver a usarlo: «reactiva el bot de Estadística»
+y confirma con el botón.
 El semestre siguiente, «arma mi equipo» te propone las materias nuevas.
 
 ## Configuración
@@ -251,7 +249,8 @@ Todo queda en tu PC, en `~/.local/share/espol-academic-bot/`:
 - `espol.db`: tus materias, tareas, anuncios, notas, archivos y el índice del material;
 - `materiales/<código de la materia>/`: los archivos descargados;
 - `materias.toml`: tu equipo de bots (puedes cambiar el `nombre` de una materia a mano);
-- `horario.toml`: tu horario guardado (y una copia del anterior cada vez que lo cambias);
+- `horario.toml`: tu horario guardado (puedes editarlo a mano; Vinci guarda una copia del anterior cada vez que
+  lo cambia);
 - `cuadernos/<CÓDIGO>/`: el cuaderno de cada materia (`cuaderno.db`) y sus fotos, audios y documentos;
 - `bot.log`: registro del sondeo, la agenda y los botones.
 
@@ -282,7 +281,7 @@ flujo con los comandos reales y el gateway real de Hermes (si está instalado), 
 `~/.hermes`. Cubre crear el equipo desde el chat (con un toque y reenviando a BotFather), repartir a un bot de
 materia, el botón de un aviso, guardar el horario solo tras confirmar, el brief 30 min antes de una clase sin
 repetirse tras reiniciar, el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin poder
-escribirlos ni usar una terminal, y archivar. Deja el resultado en **`artifacts/e2e/`**: `REPORTE.md`,
+escribirlos ni usar una terminal, y archivar y reactivar un bot. Deja el resultado en **`artifacts/e2e/`**: `REPORTE.md`,
 `notificaciones.md` (todos los mensajes), `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`,
 `hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log` y
 `setup.log`.
@@ -293,7 +292,7 @@ escribirlos ni usar una terminal, y archivar. Deja el resultado en **`artifacts/
 hermes gateway stop                              # si solo lo usabas para Vinci: hermes gateway uninstall
 hermes profile list                              # vinci y un vinci-<código> por materia
 hermes profile delete vinci                      # y lo mismo con cada vinci-<código>
-rm ~/.local/bin/aula ~/.local/bin/vinci-equipo && rm -r ~/.claude/skills/aula
+rm ~/.local/bin/aula && rm -r ~/.claude/skills/aula
 rm -r ~/.local/share/espol-academic-bot          # borra también el material y los cuadernos
 ```
 

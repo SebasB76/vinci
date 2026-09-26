@@ -1,9 +1,17 @@
-"""`espol-bot`: the Telegram side of the academic bot.
+"""`espol-bot`: the plumbing behind Vinci and the subject bots (Hermes calls it; you rarely do).
 
-    espol-bot sondeo              poll + notify (Hermes no-agent cron, every N minutes)
-    espol-bot resumen             daily week summary (Hermes no-agent cron, at resumen_diario)
-    espol-bot probar              send a test message to your Telegram
-    espol-bot hermes-perfil       create/update the Hermes profile (called by setup.sh)
+    espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes)
+    espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
+    espol-bot probar                 send a test message from Vinci to your Telegram
+    espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
+    espol-bot agenda --curso CÓDIGO  a subject bot's cron gate: prints {"wakeAgent": false} unless a
+                                     class brief is due or Vinci handed something over
+    espol-bot mcp vinci|materia      the tools of Vinci or of one subject bot (stdio MCP server)
+    espol-bot boton <datos>          what one of Vinci's inline buttons does (the plugin calls it)
+    espol-bot bot-creado <id>        a bot the captain created for Vinci to manage: fetch its token,
+                                     store it and provision its profile (the plugin calls it)
+    espol-bot token                  the same for a token read from stdin (BotFather's reply that
+                                     the captain forwarded; the plugin deleted it from the chat)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -13,13 +21,14 @@ Hermes forwards the error to the captain's Telegram.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+from pathlib import Path
 
-from aula_core.config import ConfigError, load_config
+from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import file_lock
 from espol_bot.config import load_bot_config, load_telegram_secrets
-from espol_bot.poller import Bot
 from espol_bot.telegram import Telegram, TelegramError
 
 
@@ -31,14 +40,52 @@ def _logging(cfg) -> None:
     )
 
 
+def _agenda(cfg, code: str) -> int:
+    from espol_bot import agenda
+    try:
+        print(agenda.run(cfg, code.upper(), now_utc()))
+    except Exception:  # a broken gate must never wake the model or spam the chat
+        logging.exception("agenda %s", code)
+        print(agenda.SKIP)
+    return 0
+
+
+def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
+    from espol_bot import herramientas
+    from espol_bot.mcp_server import Server
+    ctx = herramientas.Ctx(cfg, Path(hermes_home) if hermes_home else None, code.upper() if code else None)
+    if which == "vinci":
+        server = Server("vinci", "1.0", herramientas.vinci_tools(ctx),
+                        "Herramientas de Vinci: aula virtual (solo lectura) de todas las materias, cuadernos "
+                        "(solo lectura), horario y traspasos a los bots de materia.")
+    else:
+        if not code:
+            raise ConfigError("mcp materia necesita --curso CÓDIGO")
+        server = Server("materia", "1.0", herramientas.subject_tools(ctx),
+                        f"Herramientas del bot de {code.upper()}: solo esa materia y su cuaderno.")
+    logging.info("mcp %s%s: iniciado", which, f" {code}" if code else "")
+    return server.serve()
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="espol-bot", description="Bot académico de ESPOL para Telegram.")
+    parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
     sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
     sub.add_parser("resumen", help="enviar el resumen de la semana")
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu Telegram")
-    p = sub.add_parser("hermes-perfil", help="crear o actualizar el perfil de Hermes (lo usa setup.sh)")
+    p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
+    p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia")
+    p.add_argument("--curso", required=True, help="código de la materia, ej. ESTG1034")
+    p = sub.add_parser("mcp", help="servidor MCP con las herramientas de Vinci o de un bot de materia")
+    p.add_argument("bot", choices=["vinci", "materia"])
+    p.add_argument("--curso", default=None, help="código de la materia (para «materia»)")
+    p.add_argument("--hermes-home", default=None, help="carpeta del perfil de Hermes del bot")
+    p = sub.add_parser("boton", help="procesar un botón de Vinci (lo usa el plugin vinci-botones)")
+    p.add_argument("datos")
+    p = sub.add_parser("bot-creado", help="configurar un bot creado para Vinci (lo usa el plugin vinci-botones)")
+    p.add_argument("bot_id", type=int)
+    sub.add_parser("token", help="configurar el bot de un token leído por stdin (lo usa el plugin vinci-botones)")
     args = parser.parse_args(argv)
 
     try:
@@ -47,10 +94,30 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import hermes_setup
             return hermes_setup.provision(cfg, hermes_bin=args.hermes)
         _logging(cfg)
-        telegram = Telegram(load_telegram_secrets())
+        if args.cmd == "agenda":
+            return _agenda(cfg, args.curso)
+        if args.cmd == "mcp":
+            return _mcp(cfg, args.bot, args.curso, args.hermes_home)
+        if args.cmd == "boton":
+            from espol_bot import botones
+            print(json.dumps(botones.handle(cfg, args.datos, now_utc()), ensure_ascii=False))
+            return 0
+        if args.cmd in ("bot-creado", "token"):
+            from espol_bot import equipo
+            result = (equipo.managed_bot_created(cfg, args.bot_id) if args.cmd == "bot-creado"
+                      else equipo.register_token(cfg, sys.stdin.read()))
+            logging.info("%s: materia=%s", args.cmd, result.get("materia"))
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        from espol_bot.poller import Bot
+        telegram = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
         if args.cmd == "probar":
-            telegram.send("✅ <b>Prueba</b>: el bot académico puede escribirte por Telegram.")
+            telegram.send("✅ <b>Prueba</b>: Vinci puede escribirte por Telegram.")
             print("Mensaje de prueba enviado.")
+            if not telegram.get_me().get("can_manage_bots"):
+                print("💡 Para que Vinci cree los bots de materia con un toque: en @BotFather abre la Mini App, "
+                      "elige a Vinci y activa la opción para que gestione otros bots. (Sin eso, Vinci te guía "
+                      "paso a paso con /newbot.)")
             return 0
         with file_lock(cfg.core.data_dir, "bot.lock"):
             bot = Bot(cfg, telegram)
@@ -59,8 +126,10 @@ def main(argv: list[str] | None = None) -> int:
                      args.cmd, len(result.sent), result.events, result.reminders, result.error)
         return 0
     except (ConfigError, TelegramError) as exc:
-        print(f"Bot académico: {exc}", file=sys.stderr)
-        return 1
+        if args.cmd == "agenda":  # never wake the model over a config problem
+            print('{"wakeAgent": false}')
+        print(f"Vinci: {exc}", file=sys.stderr)
+        return 0 if args.cmd == "agenda" else 1
 
 
 if __name__ == "__main__":

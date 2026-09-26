@@ -1,0 +1,8 @@
+# {{MARKER}}. Se sobrescribe cada vez que corres setup.sh.
+name: vinci-botones
+version: 1.0.0
+description: "Botones y filtros de Vinci en Telegram, sin el modelo: «Consultar con…» bajo los avisos, «Guardar horario», «Crear» / «Archivar» bots de materia, el bot nuevo que Telegram le comparte a Vinci y cualquier mensaje con un token (lo borra y lo guarda sin que Hermes lo vea). Solo atiende al ID de Telegram del estudiante."
+author: espol-academic-bot
+kind: standalone
+platforms:
+  - linux

@@ -1,0 +1,205 @@
+"""A subject bot's agenda: the pre-run gate of its Hermes cron job (every minute).
+
+Deterministic and model-free. Each run prints one of:
+  - {"wakeAgent": false}  nothing to do; Hermes skips the agent, so the tick costs no tokens;
+  - a pre-class brief task, with every fact the brief needs (last class from the
+    notebook, what is due, new material, open doubts), when a class of this subject
+    starts within `brief_minutos_antes`;
+  - a handoff task with everything Vinci (or an alert button) queued for this subject.
+
+Only the agent run that follows writes anything with the model, and its answer is
+delivered by Hermes to the subject bot's own chat. Each class start is claimed in
+`briefs` before waking the agent, so a restart or a second tick never repeats a
+brief; a class that is not in horario.toml never gets one.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from aula_core import Aula, queries, timefmt
+from aula_core.config import ConfigError
+from espol_bot import horario, materias, store
+from espol_bot.config import BotConfig
+from espol_bot.cuaderno import FILE_KINDS, Notebook
+
+log = logging.getLogger(__name__)
+
+SKIP = json.dumps({"wakeAgent": False})
+
+
+def _day_label(moment: datetime, now: datetime, tz) -> str:
+    local, today = moment.astimezone(tz), now.astimezone(tz).date()
+    prefix = {today: "hoy ", today - timedelta(days=1): "ayer "}.get(local.date(), "")
+    return f"{prefix}{timefmt.DAYS_LONG[local.weekday()]} {local.day} {timefmt.MONTHS[local.month - 1]}"
+
+
+def course_id_for(conn, subject: materias.Subject) -> int | None:
+    if subject.course_id is not None:
+        return subject.course_id
+    for row in conn.execute("SELECT id, course_code FROM courses WHERE active = 1").fetchall():
+        if materias.base_code(row["course_code"]) == subject.code:
+            return row["id"]
+    return None
+
+
+def _entry_line(e: dict) -> str:
+    when = e["fecha_clase"] or e["creado"][:10]
+    extra = f" (archivo: {e['archivo']})" if e["archivo"] else ""
+    heard = f"\n    transcripción: {e['transcripcion'][:400]}" if e.get("transcripcion") else ""
+    return f"  - [{e['tipo']} #{e['id']} · {when}] {e['texto'][:600]}{extra}{heard}"
+
+
+def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, clase: horario.Clase,
+               classes: list[horario.Clase], now: datetime) -> str:
+    tz = cfg.core.tz
+    aula = Aula(cfg.core)
+    try:
+        conn = aula.conn
+        course_id = course_id_for(conn, subject)
+        previous = horario.previous(classes, subject.code, start, tz)
+        since = previous[0] if previous else now - timedelta(days=7)
+        notebook = Notebook(cfg.core, subject.code)
+        recent = notebook.entries(since=since, limit=12)
+        if not recent:
+            recent = notebook.entries(kind="clase", limit=3)
+        doubts = notebook.entries(kind="duda", open_only=True, limit=8)
+        weak = notebook.entries(kind="tema_debil", open_only=True, limit=8)
+        notebook.close()
+
+        due = queries.pending(conn, now, [course_id], days=7, overdue_days=0) if course_id else []
+        events = conn.execute(
+            "SELECT kind, payload, created_at FROM events WHERE course_id = ? AND created_at >= ?"
+            " AND kind IN ('new_file', 'file_updated', 'new_announcement', 'due_changed', 'new_assignment')"
+            " ORDER BY id", (course_id, timefmt.iso(since))).fetchall() if course_id else []
+    finally:
+        aula.close()
+
+    room = f" en {clase.aula}" if clase.aula else ""
+    paralelo = f" · paralelo {clase.paralelo}" if clase.paralelo else ""
+    minutes = max(0, round((start - now).total_seconds() / 60))
+    lines = [
+        "TAREA: brief_de_clase",
+        f"Materia: {subject.name} ({subject.code}){paralelo}",
+        f"Clase: {_day_label(start, now, tz)}, {clase.inicio:%H:%M}–{clase.fin:%H:%M}{room} (empieza en {minutes} min)",
+        "",
+    ]
+    if previous:
+        lines.append(f"Clase anterior: {_day_label(previous[0], now, tz)}, {previous[1].inicio:%H:%M}.")
+    else:
+        lines.append("Clase anterior: no está en el horario (revisa los últimos 7 días del cuaderno).")
+    lines.append("Tu cuaderno desde entonces (lo más reciente primero):" if recent else
+                 "Tu cuaderno: no tiene nada de la clase anterior.")
+    lines += [_entry_line(e) for e in recent]
+    if doubts:
+        lines.append("Dudas abiertas del estudiante:")
+        lines += [_entry_line(e) for e in doubts]
+    if weak:
+        lines.append("Temas donde se le complica:")
+        lines += [_entry_line(e) for e in weak]
+    lines.append("")
+    lines.append("Por entregar en los próximos 7 días:" if due else "Por entregar en los próximos 7 días: nada.")
+    for t in due:
+        flag = " (sin entrega en línea: examen/lección presencial)" if t["sin_entrega_en_linea"] else ""
+        lines.append(f"  - {t['tarea']} — vence {timefmt.human(t['vence'], tz)} ({timefmt.until(t['vence'], now)})"
+                     f"{flag} · {t['url']}")
+    changes = [json.loads(r["payload"]) | {"kind": r["kind"]} for r in events]
+    new_material = [c for c in changes if c["kind"] in ("new_file", "file_updated")]
+    news = [c for c in changes if c["kind"] not in ("new_file", "file_updated")]
+    lines.append("Material nuevo desde la clase anterior:" if new_material else
+                 "Material nuevo desde la clase anterior: ninguno.")
+    for m in new_material:
+        module = f" [{m['modulo']}]" if m.get("modulo") else ""
+        lines.append(f"  - {m['archivo']}{module} · {m.get('url', '')}")
+    if news:
+        lines.append("Novedades del aula desde la clase anterior:")
+        for n in news:
+            what = n.get("titulo") or n.get("tarea") or ""
+            lines.append(f"  - {n['kind']}: {what}")
+    lines += [
+        "",
+        "Qué hacer: escribe el brief de esta clase para Telegram, en español, breve (máx. ~250 palabras):",
+        "1) Repaso de la clase anterior (desde tu cuaderno; si no hay nada, dilo en una línea).",
+        "2) Qué hay por entregar (con fecha) y si algo es para pronto.",
+        "3) Material nuevo desde la clase anterior.",
+        "4) 3 a 5 conceptos clave para esta clase (usa buscar_material / leer_archivo sobre el material del curso "
+        "y cita archivo y página).",
+        "5) Una pregunta concreta para hacerle al profesor en clase.",
+        "Empieza con «📚 Brief de " + subject.name + "» y la hora. No inventes fechas ni material.",
+    ]
+    return "\n".join(lines)
+
+
+def handoff_task(cfg: BotConfig, subject: materias.Subject, items: list[dict], now: datetime) -> str:
+    """The subject bot's task for the handoffs claimed this tick. Their attachments move into
+    its notebook first, together with a «de_vinci» entry per handoff."""
+    notebook = Notebook(cfg.core, subject.code)
+    lines = ["TAREA: entrega_de_vinci",
+             f"{len(items)} cosa(s) para {subject.display} que llegaron por Vinci. Ya quedaron en tu cuaderno."]
+    try:
+        for item in items:
+            saved = []
+            for att in item["adjuntos"]:
+                source = Path(att["archivo"])
+                if not source.is_file():
+                    continue
+                kind = att.get("tipo") if att.get("tipo") in FILE_KINDS else "documento"
+                saved.append(notebook.add(kind, att.get("descripcion") or f"Recibido de Vinci: "
+                                          f"{att.get('nombre', source.name)}", now,
+                                          source_file=source, move=True, name=att.get("nombre"),
+                                          origin="vinci"))
+            origin = "aviso" if item["origen"] == "aviso" else "vinci"
+            note = notebook.add("de_vinci", item["texto"], now, origin=origin)
+            how = (f"el estudiante pulsó «Consultar con {subject.display}» en un aviso del aula virtual"
+                   if origin == "aviso" else "Vinci te lo pasó de parte del estudiante")
+            lines += ["", f"Entrega #{item['id']} ({how}); en tu cuaderno como entrada #{note['id']}:", item["texto"]]
+            if saved:
+                lines.append("Adjuntos (ya guardados en tu cuaderno):")
+                lines += [f"  - {e['tipo']} #{e['id']}: {e['archivo']} — {e['texto']}" for e in saved]
+    finally:
+        notebook.close()
+    lines += [
+        "",
+        "Qué hacer: respóndele directamente al estudiante en un solo mensaje (le llega a tu chat).",
+        "- Si es un aviso del aula: explica qué implica en esta materia y qué debería hacer, "
+        "usando tu material y tu cuaderno.",
+        "- Si son apuntes, fotos o audio de clase: di en 2-4 viñetas qué contienen y confirma que los guardaste "
+        "en tu cuaderno; si corresponden a una clase, registra lo visto con anotar (tipo «clase»).",
+        "- Si es una pregunta: respóndela citando el material del curso.",
+        "Empieza con «📨 De parte de Vinci:». Sé breve.",
+    ]
+    return "\n".join(lines)
+
+
+def run(cfg: BotConfig, code: str, now: datetime) -> str:
+    """The gate's stdout for one tick of the subject `code`."""
+    subject = materias.by_code(materias.load(cfg.core), code)
+    if subject is None or not subject.active:
+        return SKIP
+    tz = cfg.core.tz
+    try:
+        classes = horario.for_subject(horario.load(cfg.core), subject.code)
+    except ConfigError as exc:
+        log.error("agenda %s: %s", code, exc)
+        classes = []
+    upcoming = [(start, c) for start, c in horario.occurrences(
+        classes, now, now + timedelta(minutes=cfg.brief_minutes, seconds=1), tz, subject.code)
+        if now < start <= now + timedelta(minutes=cfg.brief_minutes)]
+
+    aula = Aula(cfg.core)
+    try:
+        conn = store.ensure(aula.conn)
+        for start, clase in upcoming:
+            if store.claim_brief(conn, subject.code, start, now):
+                log.info("agenda %s: brief de la clase %s", code, start.isoformat())
+                return brief_task(cfg, subject, start, clase, classes, now)
+        items = store.claim_handoffs(conn, subject.code, now)
+    finally:
+        aula.close()
+    if items:
+        log.info("agenda %s: entregas %s", code, ", ".join(f"#{i['id']}" for i in items))
+        return handoff_task(cfg, subject, items, now)
+    return SKIP

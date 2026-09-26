@@ -1,7 +1,7 @@
 [project]
 name = "espol-academic-bot"
 version = "0.1.0"
-description = "Bot académico de Telegram para las materias de ESPOL en Canvas (aulavirtual)"
+description = "Vinci: bots académicos de Telegram por materia para ESPOL sobre Canvas (aulavirtual) y Hermes Agent"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 aula = "aula.cli:main"
 espol-bot = "espol_bot.cli:main"
+vinci-equipo = "espol_bot.equipo:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

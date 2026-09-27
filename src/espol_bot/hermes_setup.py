@@ -1,23 +1,30 @@
-"""Creates or updates this bot's own Hermes profile. Idempotent.
+"""Creates or updates the Hermes profiles of Vinci and of every subject bot. Idempotent.
 
-Only touches `~/.hermes/profiles/<perfil>/` (plus the `~/.local/bin/<perfil>` alias
-Hermes itself creates for a new profile). It never reads or writes the default
-profile's config, `.env`, skills, or cron jobs, and it does not depend on any other
-profile such as the X-feed bot's.
+Only touches `~/.hermes/profiles/<vinci>/` and `~/.hermes/profiles/<vinci>-<código>/`
+(plus the `~/.local/bin/<vinci>` alias Hermes creates for Vinci's profile). It never
+reads or writes the default profile's config, `.env`, skills, or cron jobs.
 
-Mechanics, checked against Hermes Agent v0.21 docs and source:
-- `hermes profile create <name> --no-skills` makes `~/.hermes/profiles/<name>`.
-- `hermes -p <name> ...` scopes every command (config, cron, gateway) to that home.
-- The Anthropic Claude Code login is read from ~/.claude/.credentials.json, which
-  every host profile shares, so the profile only needs `model.provider: anthropic`.
-- Telegram: TELEGRAM_BOT_TOKEN + TELEGRAM_ALLOWED_USERS in the profile's `.env`.
-- No-agent cron jobs run a script from `<profile>/scripts/` with zero model calls;
-  empty stdout means nothing is delivered. `timezone` in config.yaml sets the zone
-  cron expressions are evaluated in.
+Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agent/website/docs):
+- `hermes profile create <name> --no-skills` makes `~/.hermes/profiles/<name>`; `hermes -p
+  <name> ...` scopes config, cron and gateway commands to it. `profile rename` keeps memory.
+- One host gateway (the default profile's) serves every profile, each with its own
+  Telegram token; a `gateway.parked` file in a profile takes it offline and excludes
+  its cron jobs from the ticks.
+- Tools: `platform_toolsets.<platform>` lists what each platform may use and
+  `agent.disabled_toolsets` removes toolsets everywhere, after everything else; a
+  stdio MCP server in `mcp_servers:` becomes the `mcp-<server>` toolset (tools
+  `mcp__<server>__<tool>`). Tool Search is turned off so the model sees exactly that list.
+  `skills.auto_load` pins a skill fully loaded in every session (chat and cron), so no
+  bot needs the skills toolset (whose skill_manage writes files).
+- Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
+  `--script` runs the script first and skips the model when its last line is
+  `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use.
+- Plugins in a profile's `plugins/` load only when named in `plugins.enabled`.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import shutil
@@ -27,11 +34,26 @@ from pathlib import Path
 
 import yaml
 
-from aula_core.config import REPO_ROOT, ConfigError, config_path, secrets_path
-from espol_bot.config import BotConfig, load_telegram_secrets
+from aula_core.config import REPO_ROOT, ConfigError, config_path, load_secret_values, secrets_path
+from espol_bot import materias
+from espol_bot.config import DEFAULT_TELEGRAM_API, BotConfig, captain_id, token_key
 
 MARKER = "Generado por setup.sh de espol-academic-bot"
-MANAGED_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
+LEGACY_PROFILE = "espol"
+PLUGIN = "vinci-botones"
+SKILLS_CATEGORY = "vinci"
+TEMPLATES = REPO_ROOT / "hermes"
+
+VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "mcp-vinci"]
+SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "mcp-materia"]
+# Removed everywhere, whatever a platform list says (Hermes applies this last). `skills` goes
+# too: its skill_manage tool writes files; each bot's own skill is pinned with skills.auto_load.
+BLOCKED_TOOLSETS = [
+    "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
+    "skills", "vision", "video", "image_gen", "video_gen", "tts", "todo", "connections", "homeassistant",
+    "spotify", "x_search", "a2a",
+]
+APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -40,14 +62,6 @@ def find_hermes(explicit: str | None) -> str:
         if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK):
             return candidate
     raise ConfigError("No encuentro el comando hermes. ¿Está instalado Hermes Agent en ~/.local/bin/hermes?")
-
-
-def _run(hermes: str, *args: str) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if k != "HERMES_HOME"}
-    proc = subprocess.run([hermes, *args], env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    if proc.returncode != 0:
-        raise ConfigError(f"`hermes {' '.join(args)}` falló:\n{proc.stdout}\n{proc.stderr}".strip())
-    return proc
 
 
 def _deep_merge(base: dict, extra: dict) -> dict:
@@ -93,79 +107,260 @@ def upsert_env(path: Path, values: dict[str, str]) -> bool:
     return _write_if_changed(path, "\n".join(out) + "\n", 0o600)
 
 
-def provision(cfg: BotConfig, *, hermes_bin: str | None = None) -> int:
-    hermes = find_hermes(hermes_bin)
-    tg = load_telegram_secrets()
-    name = cfg.hermes_profile
-    profile = Path.home() / ".hermes" / "profiles" / name
-    bin_dir = Path(sys.prefix) / "bin"
-    aula_bin, bot_bin = bin_dir / "aula", bin_dir / "espol-bot"
-    for needed in (aula_bin, bot_bin):
-        if not needed.exists():
-            raise ConfigError(f"Falta {needed}; corre ./setup.sh para instalar las dependencias.")
+class Setup:
+    """One provisioning run: the shared facts (hermes binary, paths, captain) plus the steps."""
 
-    if profile.is_dir():
-        print(f"• Perfil de Hermes «{name}» ya existe: lo actualizo.")
-    else:
-        _run(hermes, "profile", "create", name, "--no-skills",
-             "--description", "Bot académico de ESPOL: avisos del aula virtual y preguntas sobre el material.")
-        print(f"• Perfil de Hermes «{name}» creado en {profile}")
+    def __init__(self, cfg: BotConfig, *, hermes_bin: str | None = None):
+        self.cfg = cfg
+        self.hermes = find_hermes(hermes_bin)
+        self.root = Path.home() / ".hermes"
+        self.bin_dir = Path(sys.prefix) / "bin"
+        self.bot_bin = self.bin_dir / "espol-bot"
+        if not self.bot_bin.exists():
+            raise ConfigError(f"Falta {self.bot_bin}; corre ./setup.sh para instalar las dependencias.")
+        self.secrets = load_secret_values()
+        self.captain = captain_id(self.secrets)
+        self.values = {"BOT": str(self.bot_bin), "CONFIG": str(config_path()), "SECRETS": str(secrets_path()),
+                       "MARKER": MARKER, "USER_ID": self.captain, "MINUTOS": str(cfg.brief_minutes),
+                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes}
 
-    # config.yaml: merge only the keys this bot owns.
-    config_file = profile / "config.yaml"
-    current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
-    current = current if isinstance(current, dict) else {}
-    managed = {
-        "model": {"provider": cfg.hermes_provider, "default": cfg.hermes_model},
-        "timezone": str(cfg.core.tz),
-        "terminal": {"cwd": str(cfg.core.data_dir)},
-        "approvals": {"deny": ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]},
-    }
-    merged = _deep_merge(current, managed)
-    changed = _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
-    print(f"• config.yaml {'actualizado' if changed else 'sin cambios'} (modelo {cfg.hermes_model}, zona {cfg.core.tz})")
+    # -- plumbing -------------------------------------------------------------------------
 
-    changed = upsert_env(profile / ".env", {
-        "TELEGRAM_BOT_TOKEN": tg.bot_token,
-        "TELEGRAM_ALLOWED_USERS": tg.user_id,
-        "TELEGRAM_HOME_CHANNEL": tg.user_id,
-    })
-    print(f"• .env del perfil {'actualizado' if changed else 'sin cambios'} (Telegram solo para tu ID)")
+    def profile_dir(self, name: str) -> Path:
+        return self.root / "profiles" / name
 
-    values = {"AULA": str(aula_bin), "BOT": str(bot_bin), "CONFIG": str(config_path()),
-              "SECRETS": str(secrets_path()), "REPO": str(REPO_ROOT), "MARKER": MARKER}
-    hermes_dir = REPO_ROOT / "hermes"
-    changed = _write_if_changed(profile / "SOUL.md", _render(hermes_dir / "SOUL.md", values))
-    changed |= _write_if_changed(profile / "skills" / "espol" / "espol-academico" / "SKILL.md",
-                                 _render(hermes_dir / "skills" / "espol-academico" / "SKILL.md", values))
-    scripts = {"espol-sondeo.sh": "sondeo", "espol-resumen.sh": "resumen"}
-    for script, command in scripts.items():
-        changed |= _write_if_changed(profile / "scripts" / script,
-                                     _render(hermes_dir / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
-    print(f"• SOUL.md, skill espol-academico y scripts de cron {'instalados' if changed else 'sin cambios'}")
+    def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+        env = {k: v for k, v in os.environ.items() if k != "HERMES_HOME"}
+        proc = subprocess.run([self.hermes, *args], env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if check and proc.returncode != 0:
+            raise ConfigError(f"`hermes {' '.join(args)}` falló:\n{proc.stdout}\n{proc.stderr}".strip())
+        return proc
 
-    deliver = f"telegram:{tg.user_id}"
-    wanted = {
-        "espol-sondeo": (f"every {cfg.poll_minutes}m", "espol-sondeo.sh"),
-        "espol-resumen": (f"{cfg.summary_time.minute} {cfg.summary_time.hour} * * *", "espol-resumen.sh"),
-    }
-    jobs_file = profile / "cron" / "jobs.json"
-    jobs = json.loads(jobs_file.read_text(encoding="utf-8")).get("jobs", []) if jobs_file.exists() else []
-    for job_name, (schedule, script) in wanted.items():
-        existing = [j for j in jobs if j.get("name") == job_name]
+    def ensure_profile(self, name: str, description: str, *, alias: bool) -> Path:
+        profile = self.profile_dir(name)
+        if profile.is_dir():
+            print(f"• Perfil de Hermes «{name}» ya existe: lo actualizo.")
+        else:
+            self.run("profile", "create", name, "--no-skills", *([] if alias else ["--no-alias"]),
+                     "--description", description)
+            print(f"• Perfil de Hermes «{name}» creado en {profile}")
+        return profile
+
+    def managed_config(self, profile: Path, managed: dict, *, plugins: list[str] | None = None) -> bool:
+        config_file = profile / "config.yaml"
+        current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
+        current = current if isinstance(current, dict) else {}
+        merged = _deep_merge(copy.deepcopy(current), managed)
+        if plugins:
+            section = merged.setdefault("plugins", {})
+            enabled = section.get("enabled") if isinstance(section.get("enabled"), list) else []
+            section["enabled"] = enabled + [p for p in plugins if p not in enabled]
+        if merged == current and config_file.exists():  # Hermes may re-serialize the file: compare values
+            return False
+        return _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
+
+    def base_config(self, toolsets: list[str], blocked: list[str], mcp_name: str, mcp_args: list[str],
+                    skill: str) -> dict:
+        managed = {
+            "model": {"provider": self.cfg.hermes_provider, "default": self.cfg.hermes_model},
+            "timezone": str(self.cfg.core.tz),
+            "platform_toolsets": {"telegram": toolsets, "cli": toolsets,
+                                  "cron": [t for t in toolsets if t not in ("clarify", "session_search")]},
+            "agent": {"disabled_toolsets": blocked},
+            "tools": {"tool_search": {"enabled": "off"}},
+            "skills": {"auto_load": [skill], "project_discovery": False},
+            "mcp_servers": {mcp_name: {
+                "command": str(self.bot_bin), "args": ["mcp", *mcp_args],
+                "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"]},
+                "timeout": 180, "tools": {"resources": False, "prompts": False},
+            }},
+            "approvals": {"deny": APPROVALS_DENY},
+            # Only the captain (TELEGRAM_ALLOWED_USERS): anyone else gets silence, not a pairing code.
+            "unauthorized_dm_behavior": "ignore",
+            # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
+            "stt": {"language": "es"},
+        }
+        if self.cfg.telegram_api != DEFAULT_TELEGRAM_API:
+            # A local Bot API server (or the E2E test's stand-in) for Hermes' own Telegram client and
+            # the MCP server too.
+            managed["platforms"] = {"telegram": {"extra": {"base_url": f"{self.cfg.telegram_api}/bot",
+                                                           "base_file_url": f"{self.cfg.telegram_api}/file/bot"}}}
+            managed["mcp_servers"][mcp_name]["env"]["ESPOL_TELEGRAM_API_BASE"] = self.cfg.telegram_api
+        return managed
+
+    def telegram_env(self, profile: Path, token: str) -> bool:
+        return upsert_env(profile / ".env", {"TELEGRAM_BOT_TOKEN": token, "TELEGRAM_ALLOWED_USERS": self.captain,
+                                             "TELEGRAM_HOME_CHANNEL": self.captain})
+
+    def jobs(self, name: str) -> list[dict]:
+        jobs_file = self.profile_dir(name) / "cron" / "jobs.json"
+        return json.loads(jobs_file.read_text(encoding="utf-8")).get("jobs", []) if jobs_file.exists() else []
+
+    def reconcile_job(self, name: str, job_name: str, schedule: str, script: str, *, no_agent: bool,
+                      prompt: str | None = None, skills: tuple[str, ...] = (), enabled: bool = True) -> None:
+        deliver = f"telegram:{self.captain}"
+        existing = [j for j in self.jobs(name) if j.get("name") == job_name]
         if not existing:
-            _run(hermes, "-p", name, "cron", "create", schedule, "--no-agent", "--script", script,
-                 "--deliver", deliver, "--name", job_name)
+            self.run("-p", name, "cron", "create", schedule, *([prompt] if prompt else []), "--script", script,
+                     "--deliver", deliver, "--name", job_name, *(["--no-agent"] if no_agent else []),
+                     *[arg for skill in skills for arg in ("--skill", skill)],
+                     *([] if enabled else ["--paused", "--paused-reason", "materia archivada"]))
             print(f"• cron «{job_name}» creado ({schedule})")
-            continue
+            return
         job = existing[0]
         current_schedule = (job.get("schedule") or {}).get("display") or job.get("schedule_display")
-        if (current_schedule, job.get("script"), job.get("deliver"), job.get("no_agent")) != (schedule, script, deliver, True):
-            _run(hermes, "-p", name, "cron", "edit", job["id"], "--schedule", schedule, "--script", script,
-                 "--deliver", deliver, "--no-agent")
-            print(f"• cron «{job_name}» actualizado ({schedule})")
-        else:
-            print(f"• cron «{job_name}» sin cambios ({schedule})")
-        if len(existing) > 1:
-            print(f"  ⚠ hay {len(existing)} jobs llamados «{job_name}»; revisa con: {name} cron list")
+        wanted = (schedule, script, deliver, no_agent, prompt or "", list(skills))
+        have = (current_schedule, job.get("script"), job.get("deliver"), bool(job.get("no_agent")),
+                job.get("prompt") or "", list(job.get("skills") or []))
+        changes = []
+        if have != wanted:
+            self.run("-p", name, "cron", "edit", job["id"], "--schedule", schedule, "--script", script,
+                     "--deliver", deliver, "--no-agent" if no_agent else "--agent",
+                     *(["--prompt", prompt] if prompt else []),
+                     *([arg for skill in skills for arg in ("--skill", skill)] if skills else ["--clear-skills"]))
+            changes.append("actualizado")
+        if enabled and job.get("enabled") is False:
+            self.run("-p", name, "cron", "resume", job["id"])
+            changes.append("reanudado")
+        elif not enabled and job.get("enabled") is not False:
+            self.run("-p", name, "cron", "pause", job["id"])
+            changes.append("pausado")
+        print(f"• cron «{job_name}» {' y '.join(changes) or 'sin cambios'} ({schedule})")
+        for extra in existing[1:]:
+            self.run("-p", name, "cron", "remove", extra["id"])
+            print(f"  · quité un «{job_name}» duplicado")
+
+    def remove_jobs(self, name: str, job_names: tuple[str, ...]) -> None:
+        for job in self.jobs(name):
+            if job.get("name") in job_names:
+                self.run("-p", name, "cron", "remove", job["id"])
+                print(f"• cron viejo «{job['name']}» quitado")
+
+    def set_parked(self, name: str, parked: bool) -> bool:
+        marker = self.profile_dir(name) / "gateway.parked"
+        if parked and not marker.exists():
+            marker.write_text(f"{MARKER}: materia archivada (pídele a Vinci reactivarla)\n", encoding="utf-8")
+            return True
+        if not parked and marker.exists() and MARKER in marker.read_text(encoding="utf-8", errors="replace"):
+            marker.unlink()
+            return True
+        return False
+
+    # -- Vinci --------------------------------------------------------------------------
+
+    def migrate_legacy(self) -> None:
+        """The pre-Vinci bot lived in the `espol` profile: rename it so Vinci keeps its memory."""
+        name, legacy = self.cfg.hermes_profile, self.profile_dir(LEGACY_PROFILE)
+        if name == LEGACY_PROFILE or not legacy.is_dir() or self.profile_dir(name).exists():
+            return
+        soul = legacy / "SOUL.md"
+        if not soul.exists() or MARKER not in soul.read_text(encoding="utf-8", errors="replace"):
+            return  # somebody else's profile called espol: leave it alone
+        config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        unit = config_home / "systemd" / "user" / f"hermes-gateway-{LEGACY_PROFILE}.service"
+        if unit.exists():
+            raise ConfigError(
+                f"Antes de convertir el bot «{LEGACY_PROFILE}» en Vinci, apaga su servicio viejo:\n"
+                f"  {LEGACY_PROFILE} gateway stop && {LEGACY_PROFILE} gateway uninstall\n"
+                "y vuelve a correr ./setup.sh (desde ahora un solo gateway de Hermes atiende a todos tus bots).")
+        self.run("profile", "rename", LEGACY_PROFILE, name)
+        print(f"• Perfil «{LEGACY_PROFILE}» renombrado a «{name}»: Vinci conserva la memoria y las conversaciones "
+              "del bot académico.")
+
+    def vinci(self) -> None:
+        name = self.cfg.hermes_profile
+        token = self.secrets.get(token_key(), "")
+        if not token:
+            raise ConfigError("Falta TELEGRAM_BOT_TOKEN (el bot de Vinci) en secrets.env")
+        self.migrate_legacy()
+        profile = self.ensure_profile(name, "Vinci: tu bot principal de ESPOL (avisos del aula, consultas generales, "
+                                            "reparte cosas a los bots de cada materia).", alias=True)
+        managed = self.base_config(VINCI_TOOLSETS, BLOCKED_TOOLSETS, "vinci", ["vinci", "--hermes-home", str(profile)],
+                                   "vinci")
+        changed = self.managed_config(profile, managed, plugins=[PLUGIN])
+        print(f"• config.yaml {'actualizado' if changed else 'sin cambios'} (modelo {self.cfg.hermes_model}, "
+              f"zona {self.cfg.core.tz}; herramientas: búsqueda web, memoria y las de Vinci; sin terminal ni archivos)")
+        changed = self.telegram_env(profile, token)
+        print(f"• .env de Vinci {'actualizado' if changed else 'sin cambios'} (Telegram solo para tu ID)")
+
+        values = {**self.values, "PROFILE_HOME": str(profile)}
+        changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
+        changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
+                                     _render(TEMPLATES / "vinci" / "SKILL.md", values))
+        for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen"}.items():
+            changed |= _write_if_changed(profile / "scripts" / script,
+                                         _render(TEMPLATES / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
+        changed |= self._install_plugin(profile, values)
+        changed |= self._drop_legacy_files(profile)
+        print(f"• SOUL.md, skill vinci, plugin de botones y scripts de cron {'instalados' if changed else 'sin cambios'}")
+
+        self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
+        self.reconcile_job(name, "vinci-sondeo", f"every {self.cfg.poll_minutes}m", "vinci-sondeo.sh", no_agent=True)
+        self.reconcile_job(name, "vinci-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
+                           "vinci-resumen.sh", no_agent=True)
+
+    @staticmethod
+    def _install_plugin(profile: Path, values: dict[str, str]) -> bool:
+        changed = False
+        for plugin_file in sorted((TEMPLATES / "plugins" / PLUGIN).glob("*.*")):
+            changed |= _write_if_changed(profile / "plugins" / PLUGIN / plugin_file.name, _render(plugin_file, values))
+        return changed
+
+    @staticmethod
+    def _drop_legacy_files(profile: Path) -> bool:
+        changed = False
+        old_skill = profile / "skills" / "espol" / "espol-academico" / "SKILL.md"
+        if old_skill.exists() and MARKER in old_skill.read_text(encoding="utf-8", errors="replace"):
+            shutil.rmtree(old_skill.parent)
+            changed = True
+        for script in ("espol-sondeo.sh", "espol-resumen.sh"):
+            path = profile / "scripts" / script
+            if path.exists() and MARKER in path.read_text(encoding="utf-8", errors="replace"):
+                path.unlink()
+                changed = True
+        return changed
+
+    # -- subject bots ---------------------------------------------------------------------
+
+    def subject(self, subject: materias.Subject) -> None:
+        name = self.cfg.subject_profile(subject.code)
+        token = self.secrets.get(token_key(subject.code), "")
+        if not token:
+            print(f"• {subject.display}: falta su token ({token_key(subject.code)}); créalo desde Vinci (pídele «arma mi equipo»).")
+            return
+        if token == self.secrets.get(token_key()):
+            raise ConfigError(f"{subject.display} usa el mismo token que Vinci; cada bot necesita el suyo.")
+        profile = self.ensure_profile(name, f"{subject.display}: el bot de la materia {subject.name} ({subject.code}).",
+                                      alias=False)
+        managed = self.base_config(SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"], "materia",
+                                   ["materia", "--curso", subject.code, "--hermes-home", str(profile)], "vinci-materia")
+        managed["cron"] = {"wrap_response": False}
+        changed = self.managed_config(profile, managed, plugins=[PLUGIN])
+        changed |= self.telegram_env(profile, token)
+        values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,
+                  "PROFILE_HOME": str(profile)}
+        changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "materia" / "SOUL.md", values))
+        changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci-materia" / "SKILL.md",
+                                     _render(TEMPLATES / "materia" / "SKILL.md", values))
+        changed |= self._install_plugin(profile, values)
+        changed |= _write_if_changed(profile / "scripts" / "vinci-agenda.sh", _render(
+            TEMPLATES / "cron-script.sh", {**values, "COMMAND": f"agenda --curso {subject.code}"}), 0o755)
+        print(f"• {subject.display}: config, .env, SOUL.md, skill, plugin y agenda {'instalados' if changed else 'sin cambios'}"
+              f" (solo su materia y su cuaderno; sin web, terminal ni archivos)")
+        prompt = (f"Eres {subject.display}, el bot de la materia {subject.name} ({subject.code}). El script de tu "
+                  "agenda (arriba) te dice qué hacer ahora: el brief antes de una clase o algo que Vinci te pasó. "
+                  "Sigue sus instrucciones; tu respuesta final le llega al estudiante en tu chat de Telegram.")
+        active = subject.state == "activa"
+        self.reconcile_job(name, "vinci-agenda", "every 1m", "vinci-agenda.sh", no_agent=False, prompt=prompt,
+                           enabled=active)
+        if self.set_parked(name, not active):
+            print(f"• {subject.display}: {'archivada (gateway.parked)' if not active else 'reactivada'}")
+
+
+def provision(cfg: BotConfig, *, hermes_bin: str | None = None) -> int:
+    setup = Setup(cfg, hermes_bin=hermes_bin)
+    setup.vinci()
+    for subject in materias.load(cfg.core):
+        if subject.state != "pendiente":
+            setup.subject(subject)
     return 0

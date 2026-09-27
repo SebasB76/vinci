@@ -1,5 +1,6 @@
-# Configuración del bot académico de ESPOL y de la herramienta `aula`.
+# Configuración de Vinci, tus bots de materia y la herramienta `aula`.
 # Este es el único archivo que necesitas tocar para cambiar horarios y recordatorios.
+# (Tu horario de clases y tu equipo de bots viven en la carpeta de datos: horario.toml y materias.toml.)
 # Después de editarlo, vuelve a correr ./setup.sh para que Hermes tome los cambios
 # (la frecuencia del sondeo y la hora del resumen viven en los cron jobs de Hermes).
 
@@ -24,6 +25,11 @@ resumen_diario = "07:00"
 # Si en un mismo sondeo hay más avisos que este número, se agrupan en un solo mensaje.
 max_mensajes_por_sondeo = 8
 
+[clases]
+# Cada bot de materia te manda su brief (repaso, entregas, material nuevo, conceptos clave y una
+# pregunta para la clase) estos minutos antes de cada clase de tu horario.
+brief_minutos_antes = 30
+
 [material]
 # Tipos de archivo que se descargan e indexan para poder preguntar sobre ellos.
 extensiones = ["pdf", "pptx", "docx"]
@@ -35,8 +41,10 @@ tamano_maximo_mb = 60
 carpeta_datos = "~/.local/share/espol-academic-bot"
 
 [hermes]
-# Perfil de Hermes propio de este bot (separado del perfil por defecto y de otros bots).
-perfil = "espol"
-# Modelo para las preguntas sobre el material (las notificaciones no gastan tokens).
+# Perfil de Hermes de Vinci. Cada bot de materia usa su propio perfil: <perfil>-<código>
+# (ej. vinci-estg1034). Si venías del bot «espol», setup.sh lo convierte en Vinci con su memoria.
+perfil = "vinci"
+# Modelo de Vinci y de los bots de materia (los avisos del aula y la agenda no gastan tokens;
+# solo las respuestas, los briefs y lo que les pases).
 proveedor = "anthropic"
 modelo = "claude-sonnet-5"

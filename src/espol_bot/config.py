@@ -1,5 +1,5 @@
-"""Bot-specific settings: [notificaciones] and [hermes] from config.toml, plus the
-Telegram secrets. The core settings come from aula_core.config."""
+"""Bot-specific settings: [notificaciones], [clases] and [hermes] from config.toml, plus
+the Telegram secrets. The core settings come from aula_core.config."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ from datetime import time
 
 from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_values, section
 
+PROFILE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
+DEFAULT_TELEGRAM_API = "https://api.telegram.org"
+
 
 @dataclass(frozen=True)
 class BotConfig:
@@ -18,9 +21,15 @@ class BotConfig:
     reminder_hours: tuple[int, ...]
     summary_time: time
     max_messages_per_poll: int
+    brief_minutes: int
     hermes_profile: str
     hermes_provider: str
     hermes_model: str
+    telegram_api: str
+
+    def subject_profile(self, code: str) -> str:
+        """Hermes profile of a subject bot: `vinci-estg1034` for Vinci's ESTG1034."""
+        return f"{self.hermes_profile}-{code.lower()}"
 
 
 @dataclass(frozen=True)
@@ -32,6 +41,7 @@ class TelegramSecrets:
 def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     core = core or load_config()
     notif = section(core.raw, "notificaciones")
+    clases = section(core.raw, "clases")
     hermes = section(core.raw, "hermes")
 
     summary_raw = str(notif.get("resumen_diario", "07:00"))
@@ -47,9 +57,17 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if any(h <= 0 for h in reminder_hours):
         raise ConfigError("recordatorios_horas solo admite números positivos")
 
-    profile = str(hermes.get("perfil", "espol"))
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", profile) or profile == "default":
+    brief_minutes = int(clases.get("brief_minutos_antes", 30))
+    if not 5 <= brief_minutes <= 180:
+        raise ConfigError("brief_minutos_antes debe estar entre 5 y 180")
+
+    profile = str(hermes.get("perfil", "vinci"))
+    if not PROFILE_RE.fullmatch(profile) or profile == "default":
         raise ConfigError(f"perfil de Hermes inválido: {profile!r}")
+
+    api = os.environ.get("ESPOL_TELEGRAM_API_BASE") or DEFAULT_TELEGRAM_API
+    if not api.startswith(("https://", "http://")):
+        raise ConfigError("ESPOL_TELEGRAM_API_BASE debe empezar con https://")
 
     return BotConfig(
         core=core,
@@ -57,24 +75,34 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         reminder_hours=reminder_hours,
         summary_time=time(int(match[1]), int(match[2])),
         max_messages_per_poll=max(1, int(notif.get("max_mensajes_por_sondeo", 8))),
+        brief_minutes=brief_minutes,
         hermes_profile=profile,
         hermes_provider=str(hermes.get("proveedor", "anthropic")),
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5")),
+        telegram_api=api.rstrip("/"),
     )
 
 
-def load_telegram_secrets() -> TelegramSecrets:
-    values = load_secret_values()
-    token = values.get("TELEGRAM_BOT_TOKEN", "")
+def captain_id(values: dict[str, str] | None = None) -> str:
+    values = load_secret_values() if values is None else values
     user_id = values.get("TELEGRAM_USER_ID", "")
-    missing = [k for k, v in (("TELEGRAM_BOT_TOKEN", token), ("TELEGRAM_USER_ID", user_id)) if not v]
-    if missing:
-        raise ConfigError(f"Faltan valores en secrets.env: {', '.join(missing)}")
+    if not user_id:
+        raise ConfigError("Falta TELEGRAM_USER_ID en secrets.env")
     if not re.fullmatch(r"\d+", user_id):
         raise ConfigError("TELEGRAM_USER_ID debe ser tu ID numérico de Telegram (pídeselo a @userinfobot)")
-    return TelegramSecrets(token, user_id)
+    return user_id
 
 
-def telegram_api_base() -> str:
-    """Telegram Bot API base URL; the E2E test points it at a local stub."""
-    return os.environ.get("ESPOL_TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+def token_key(code: str | None = None) -> str:
+    """secrets.env key of a bot token: Vinci's own, or one subject bot's."""
+    return f"TELEGRAM_BOT_TOKEN_{code.upper()}" if code else "TELEGRAM_BOT_TOKEN"
+
+
+def load_telegram_secrets(code: str | None = None) -> TelegramSecrets:
+    """Vinci's bot token (or a subject bot's) plus the captain's user ID."""
+    values = load_secret_values()
+    key = token_key(code)
+    token = values.get(key, "")
+    if not token:
+        raise ConfigError(f"Falta {key} en secrets.env")
+    return TelegramSecrets(token, captain_id(values))

@@ -106,8 +106,9 @@ def announcements(conn: sqlite3.Connection, ids: list[int] | None = None, *, lim
             WHERE c.active = 1{extra} ORDER BY n.posted_at DESC LIMIT ?""",
         [*params, limit],
     ).fetchall()
-    return [{"id": r["id"], "curso": r["course_name"], "titulo": r["title"], "autor": r["author"],
-             "publicado": r["posted_at"], "texto": r["message_text"], "url": r["html_url"]} for r in rows]
+    return [{"id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "titulo": r["title"],
+             "autor": r["author"], "publicado": r["posted_at"], "texto": r["message_text"], "url": r["html_url"]}
+            for r in rows]
 
 
 def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]:

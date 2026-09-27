@@ -9,6 +9,10 @@
 
 Events stay undelivered, and reminders unmarked, until Telegram accepts the
 message, so a failed send is retried on the next poll.
+
+Everything goes out through Vinci's chat. A message about a course that has an
+active subject bot carries a «Consultar con Vinci · <materia>» button per course;
+the alert is recorded in `avisos` so the button can hand it to that bot.
 """
 
 from __future__ import annotations
@@ -21,22 +25,15 @@ from datetime import datetime, timedelta
 from aula_core import Aula, queries, timefmt
 from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
+from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import messages
+from espol_bot import materias, messages, store
 from espol_bot.config import BotConfig
 from espol_bot.telegram import Telegram, TelegramError
 
 log = logging.getLogger(__name__)
 
-BOT_SCHEMA = """
-CREATE TABLE IF NOT EXISTS bot_reminders (
-    assignment_id INTEGER NOT NULL,
-    hours INTEGER NOT NULL,
-    due_at TEXT NOT NULL,
-    sent_at TEXT NOT NULL,
-    PRIMARY KEY (assignment_id, hours, due_at)
-);
-"""
+MAX_BUTTONS = 6
 
 ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
@@ -56,11 +53,37 @@ class Bot:
         self.tz = cfg.core.tz
         self.telegram = telegram
         self.aula = aula or Aula(cfg.core)
-        self.conn.executescript(BOT_SCHEMA)
+        store.ensure(self.conn)
+        try:
+            self.subjects = [s for s in materias.load(cfg.core) if s.active]
+            self.team_error = None
+        except ConfigError as exc:
+            log.error("%s", exc)
+            self.subjects, self.team_error = [], str(exc)
 
     @property
     def conn(self) -> sqlite3.Connection:
         return self.aula.conn
+
+    # -- sending ---------------------------------------------------------------------
+
+    def _subjects_for(self, course_ids) -> list[materias.Subject]:
+        found: list[materias.Subject] = []
+        for course_id in course_ids:
+            row = self.conn.execute("SELECT course_code FROM courses WHERE id = ?", (course_id,)).fetchone()
+            subject = materias.for_course(self.subjects, course_id, row["course_code"] if row else None)
+            if subject and subject not in found:
+                found.append(subject)
+        return found[:MAX_BUTTONS]
+
+    def _send(self, text: str, course_ids=()) -> None:
+        """Send to the captain; offer a handoff button per course that has an active subject bot."""
+        subjects = self._subjects_for(dict.fromkeys(c for c in course_ids if c is not None))
+        buttons = []
+        if subjects:
+            alert_id = store.new_alert(self.conn, messages.plain(text), [s.code for s in subjects], self.aula.now())
+            buttons = [(messages.handoff_button(s.display), f"v1:a:{alert_id}:{s.code}") for s in subjects]
+        self.telegram.send(text, buttons)
 
     # -- failure handling ------------------------------------------------------------
 
@@ -86,6 +109,10 @@ class Bot:
 
     def poll(self) -> PollResult:
         result = PollResult()
+        if self.team_error:
+            self._fail("materias", f"No puedo leer tu equipo de bots: {self.team_error}. Te sigo mandando los "
+                       "avisos del aula, pero sin los botones de cada materia; los bots de materia no mandan briefs "
+                       "ni reciben lo que les pases hasta que corrijas ese archivo.", threshold=1)
         try:
             report = self.aula.sync(materials=True)
         except InvalidTokenError:
@@ -131,7 +158,7 @@ class Bot:
             return
         if len(events) > self.cfg.max_messages_per_poll:
             text = messages.digest(events, self.tz)
-            self.telegram.send(text)
+            self._send(text, [ev["course_id"] for ev in events])
             result.sent.append(text)
             core_sync.mark_delivered(self.conn, [ev["id"] for ev in events], now)
             return
@@ -141,7 +168,7 @@ class Bot:
                 row = self.conn.execute("SELECT index_status FROM files WHERE id = ?", (ev["ref_id"],)).fetchone()
                 status = row["index_status"] if row else None
             text = messages.event_message(ev, self.tz, now, status)
-            self.telegram.send(text)
+            self._send(text, [ev["course_id"]])
             result.sent.append(text)
             core_sync.mark_delivered(self.conn, [ev["id"]], now)
 
@@ -164,7 +191,7 @@ class Bot:
             if already:
                 continue
             text = messages.reminder_message(task, smallest, self.tz, now)
-            self.telegram.send(text)
+            self._send(text, [task["curso_id"]])
             result.sent.append(text)
             result.reminders += 1
             # Mark every larger offset too, so a late-created task gets one reminder, not two.
@@ -176,13 +203,15 @@ class Bot:
 
     # -- daily summary ---------------------------------------------------------------
 
-    def summary_text(self, now: datetime) -> str:
+    def summary_text(self, now: datetime) -> tuple[str, list[int]]:
         local_midnight = now.astimezone(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
         week = queries.assignments_between(self.conn, now, now, local_midnight + timedelta(days=7))
         overdue = [t for t in queries.pending(self.conn, now, overdue_days=7) if t["atrasada"]]
         since = timefmt.iso(now - timedelta(hours=24))
         recent = [a for a in queries.announcements(self.conn, limit=50) if (a["publicado"] or "") >= since]
-        return messages.weekly_summary(week, overdue, recent, self.tz, now)
+        courses = [t["curso_id"] for t in week if not t["entregada"]] + [t["curso_id"] for t in overdue]
+        courses += [a["curso_id"] for a in recent]
+        return messages.weekly_summary(week, overdue, recent, self.tz, now), courses
 
     def summary(self, *, sync_first: bool = True) -> PollResult:
         result = PollResult()
@@ -192,9 +221,9 @@ class Bot:
         today = now.astimezone(self.tz).date().isoformat()
         if get_meta(self.conn, "bot_last_summary") == today:
             return result
-        text = self.summary_text(now)
+        text, courses = self.summary_text(now)
         try:
-            self.telegram.send(text)
+            self._send(text, courses)
         except TelegramError as exc:
             result.error = str(exc)
             return result

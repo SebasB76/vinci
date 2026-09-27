@@ -7,16 +7,29 @@ a course whose Files tab is hidden (401 unauthorized), and file downloads.
 API paths added to `failing` answer 503 until removed (a resource that keeps failing).
 It answers 405 to anything but GET and records every request.
 
-TelegramStub records each sendMessage call instead of delivering it.
+FakeTelegram stands in for the Bot API of several bots at once (Vinci and each subject
+bot, one token each): it records every call, answers getMe, keeps inline buttons, hands
+queued updates (text, photo, voice, document, button presses) to getUpdates long polls,
+serves the files behind getFile, and plays Telegram's part in managed bots (Bot API 9.6): a
+bot marked as a manager reports can_manage_bots, the captain can "create" a bot from its
+request_managed_bot button, and getManagedBotToken hands the manager that bot's token.
+Every chat message a bot sends is kept in order.
+
+ScriptedLLM is an OpenAI-compatible chat-completions endpoint whose answers come from a
+Python function (the test's script): it sees the whole request, so it can pick a tool
+the request offers, and it records each request (including the tools offered).
 """
 
 from __future__ import annotations
 
 import json
 import threading
+import time
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
 
 FIXTURES = Path(__file__).parent / "fixtures"
 PAGE_SIZE = 2
@@ -63,13 +76,16 @@ class _Quiet(BaseHTTPRequestHandler):
         pass
 
     def _send(self, status: int, body: bytes, content_type="application/json; charset=utf-8", headers=None):
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        for key, value in (headers or {}).items():
-            self.send_header(key, value)
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            for key, value in (headers or {}).items():
+                self.send_header(key, value)
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):  # the client went away (e.g. a stopped long poll)
+            pass
 
     def _json(self, status: int, data, headers=None):
         self._send(status, json.dumps(data, ensure_ascii=False).encode(), headers=headers)
@@ -136,22 +152,298 @@ class _CanvasHandler(_Quiet):
         return self._json(200, chunk, {**quota, "Link": ",".join(links)})
 
 
-class TelegramStub(_Server):
-    def __init__(self, token: str):
+class FakeTelegram(_Server):
+    """bots: {token: username}. Chat ids are the captain's user id (private chats)."""
+
+    def __init__(self, bots: dict[str, str]):
         super().__init__(_TelegramHandler)
-        self.token = token
-        self.messages: list[dict] = []
-        self.lock = threading.Lock()
+        self.bots = dict(bots)
+        self.calls: list[dict] = []          # every API call: {"bot", "method", "params"}
+        self.messages: list[dict] = []       # outgoing chat messages, in order: {"bot", "method", **params}
+        self.files: dict[str, tuple[str, bytes]] = {}
+        self.updates: dict[str, list[dict]] = {}
+        self.pushed: dict[int, dict] = {}       # every update handed out, by update_id
+        self.managers: set[str] = set()         # tokens of bots that may manage other bots
+        self.managed: dict[int, tuple[str, str]] = {}  # managed bot id -> (manager token, bot token)
+        self.cond = threading.Condition()
+        self.lock = self.cond
+        # Hermes remembers the update ids it already handled, even across restarts: start from the clock.
+        self._next_update = int(time.time()) * 10
+        self._next_message = 1
+
+    def add_bot(self, token: str, username: str) -> None:
+        with self.cond:
+            self.bots[token] = username
+
+    def bot_id(self, token: str) -> int:
+        return int(token.split(":", 1)[0])
+
+    # -- what the captain does -------------------------------------------------------------
+
+    def _push(self, token: str, update: dict) -> int:
+        with self.cond:
+            self._next_update += 1
+            update["update_id"] = self._next_update
+            self.updates.setdefault(token, []).append(update)
+            self.pushed[self._next_update] = update
+            self.cond.notify_all()
+            return self._next_update
+
+    def _message(self, user_id: int, **fields) -> dict:
+        with self.cond:
+            self._next_message += 1
+            message_id = self._next_message
+        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
+        return {"message_id": message_id, "date": int(time.time()), "chat": {"id": user_id, "type": "private",
+                "first_name": "Capitán"}, "from": user, **fields}
+
+    def _file(self, name: str, data: bytes) -> dict:
+        with self.cond:
+            file_id = f"file{len(self.files) + 1}"
+            self.files[file_id] = (name, data)
+        return {"file_id": file_id, "file_unique_id": f"u{file_id}", "file_size": len(data)}
+
+    def send_text(self, token: str, user_id: int, text: str, reply_to: dict | None = None) -> int:
+        extra = {"reply_to_message": reply_to} if reply_to else {}
+        return self._push(token, {"message": self._message(user_id, text=text, **extra)})
+
+    def send_photo(self, token: str, user_id: int, data: bytes, caption: str = "") -> int:
+        photo = [{**self._file("photo.jpg", data), "width": 800, "height": 600}]
+        return self._push(token, {"message": self._message(user_id, photo=photo, caption=caption)})
+
+    def send_voice(self, token: str, user_id: int, data: bytes, duration: int = 4) -> int:
+        voice = {**self._file("voice.ogg", data), "duration": duration, "mime_type": "audio/ogg"}
+        return self._push(token, {"message": self._message(user_id, voice=voice)})
+
+    def send_document(self, token: str, user_id: int, name: str, data: bytes, caption: str = "",
+                      mime: str = "application/pdf") -> int:
+        document = {**self._file(name, data), "file_name": name, "mime_type": mime}
+        return self._push(token, {"message": self._message(user_id, document=document, caption=caption)})
+
+    def as_incoming(self, token: str, record: dict, text: str) -> dict:
+        """A message this bot sent, as Telegram shows it inside an update (e.g. reply_to_message)."""
+        bot = {"id": self.bot_id(token), "is_bot": True, "first_name": self.bots[token], "username": self.bots[token]}
+        return {"message_id": record["message_id"], "date": int(time.time()), "from": bot, "text": text,
+                "chat": {"id": int(record["chat_id"]), "type": "private"}}
+
+    def create_managed_bot(self, manager: str, user_id: int, token: str, username: str, name: str) -> int:
+        """The captain pressed the manager's request_managed_bot button and confirmed the new bot."""
+        self.add_bot(token, username)
+        bot = {"id": self.bot_id(token), "is_bot": True, "first_name": name, "username": username}
+        with self.cond:
+            self.managed[bot["id"]] = (manager, token)
+        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
+        self._push(manager, {"managed_bot": {"user": user, "bot": bot}})
+        return self._push(manager, {"message": self._message(user_id, managed_bot_created={"bot": bot})})
+
+    def press(self, token: str, user_id: int, message: dict, data: str) -> int:
+        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
+        bot = {"id": self.bot_id(token), "is_bot": True, "first_name": self.bots[token], "username": self.bots[token]}
+        msg = {"message_id": message["message_id"], "date": int(time.time()), "chat": {"id": user_id, "type": "private"},
+               "from": bot, "text": message.get("text", "")}
+        return self._push(token, {"callback_query": {"id": f"cb{time.time_ns()}", "from": user,
+                                                     "chat_instance": "1", "data": data, "message": msg}})
+
+    def pending(self, token: str) -> int:
+        with self.cond:
+            return len(self.updates.get(token, []))
+
+    def wait_for(self, predicate, timeout: float = 60.0, interval: float = 0.2):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self.cond:
+                found = predicate(self)
+            if found:
+                return found
+            time.sleep(interval)
+        return None
+
+    def messages_of(self, username: str) -> list[dict]:
+        with self.cond:
+            return [m for m in self.messages if m["bot"] == username]
 
 
 class _TelegramHandler(_Quiet):
-    def do_POST(self):
-        stub: TelegramStub = self.server.owner
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-        if self.path != f"/bot{stub.token}/sendMessage":
+    def _params(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b""
+        ctype = self.headers.get("Content-Type", "")
+        if ctype.startswith("application/json"):
+            return json.loads(raw or b"{}")
+        if ctype.startswith("multipart/form-data"):
+            message = BytesParser(policy=email_policy).parsebytes(
+                b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + raw)
+            out = {}
+            for part in message.iter_parts():
+                name = part.get_param("name", header="content-disposition")
+                payload = part.get_payload(decode=True) or b""
+                filename = part.get_filename()
+                out[name] = {"filename": filename, "size": len(payload)} if filename else payload.decode()
+            return out
+        return dict(parse_qsl(raw.decode(), keep_blank_values=True)) if raw else dict(parse_qsl(urlsplit(self.path).query))
+
+    @staticmethod
+    def _decode(params: dict) -> dict:
+        out = {}
+        for key, value in params.items():
+            if isinstance(value, str) and value[:1] in "[{":
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    pass
+            out[key] = value
+        return out
+
+    def do_GET(self):
+        stub: FakeTelegram = self.server.owner
+        parts = unquote(urlsplit(self.path).path).split("/")  # httpx sends the token's ":" as %3A
+        if len(parts) >= 4 and parts[1] == "file" and parts[2].startswith("bot"):
+            token = parts[2][3:]
+            file_id = parts[3]  # file_path is "<file_id>/<name>"
+            if token in stub.bots and file_id in stub.files:
+                return self._send(200, stub.files[file_id][1], "application/octet-stream")
             return self._json(404, {"ok": False, "error_code": 404, "description": "Not Found"})
-        with stub.lock:
-            stub.messages.append(body)
-            message_id = len(stub.messages)
-        self._json(200, {"ok": True, "result": {"message_id": message_id, "chat": {"id": int(body["chat_id"]),
-                                                                                   "type": "private"}}})
+        return self._api(self._params())
+
+    def do_POST(self):
+        return self._api(self._params())
+
+    def _api(self, params: dict):
+        stub: FakeTelegram = self.server.owner
+        parts = unquote(urlsplit(self.path).path).strip("/").split("/")
+        if len(parts) != 2 or not parts[0].startswith("bot"):
+            return self._json(404, {"ok": False, "error_code": 404, "description": "Not Found"})
+        token, method = parts[0][3:], parts[1]
+        if token not in stub.bots:
+            return self._json(401, {"ok": False, "error_code": 401, "description": "Unauthorized"})
+        username = stub.bots[token]
+        params = self._decode(params)
+        with stub.cond:
+            stub.calls.append({"bot": username, "method": method, "params": params})
+        me = {"id": stub.bot_id(token), "is_bot": True, "first_name": username, "username": username,
+              "can_join_groups": False, "can_read_all_group_messages": False, "supports_inline_queries": False}
+        if method == "getMe":
+            return self._ok({**me, "can_manage_bots": token in stub.managers})
+        if method == "getManagedBotToken":
+            owner, managed_token = stub.managed.get(int(params.get("user_id", 0) or 0), (None, None))
+            if owner != token:
+                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: bot not found"})
+            return self._ok(managed_token)
+        if method == "getUpdates":
+            return self._ok(self._updates(stub, token, params))
+        if method == "getFile":
+            file_id = params.get("file_id")
+            if file_id not in stub.files:
+                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: invalid file_id"})
+            name, data = stub.files[file_id]
+            return self._ok({"file_id": file_id, "file_unique_id": f"u{file_id}", "file_size": len(data),
+                             "file_path": f"{file_id}/{name}"})
+        if method in ("sendMessage", "sendPhoto", "sendDocument", "sendVoice", "sendAudio", "sendVideo"):
+            with stub.cond:
+                stub._next_message += 1
+                message_id = stub._next_message
+                record = {"bot": username, "method": method, "message_id": message_id, **params}
+                stub.messages.append(record)
+                stub.cond.notify_all()
+            chat = {"id": int(params.get("chat_id", 0)), "type": "private"}
+            result = {"message_id": message_id, "date": int(time.time()), "chat": chat, "from": me}
+            if "text" in params:
+                result["text"] = params["text"]
+            markup = params.get("reply_markup")
+            if isinstance(markup, dict) and "inline_keyboard" in markup:  # a Message only carries inline ones
+                result["reply_markup"] = markup
+            return self._ok(result)
+        if method in ("editMessageText", "editMessageReplyMarkup"):
+            message_id = int(params.get("message_id", 0) or 0)
+            with stub.cond:
+                for record in stub.messages:
+                    if record["bot"] == username and record["message_id"] == message_id:
+                        if method == "editMessageText":
+                            record["text"] = params.get("text", record.get("text"))
+                            record["edited"] = record.get("edited", 0) + 1
+                        else:
+                            record["reply_markup"] = params.get("reply_markup")
+                stub.cond.notify_all()
+            chat = {"id": int(params.get("chat_id", 0) or 0), "type": "private"}
+            return self._ok({"message_id": int(params.get("message_id", 0) or 0), "date": int(time.time()),
+                             "chat": chat, "from": me, "text": params.get("text", "")})
+        if method == "getWebhookInfo":
+            return self._ok({"url": "", "has_custom_certificate": False, "pending_update_count": 0})
+        if method in ("getMyCommands",):
+            return self._ok([])
+        if method == "getChat":
+            return self._ok({"id": int(params.get("chat_id", 0) or 0), "type": "private"})
+        return self._ok(True)  # setMyCommands, deleteWebhook, answerCallbackQuery, sendChatAction, ...
+
+    def _ok(self, result):
+        self._json(200, {"ok": True, "result": result})
+
+    @staticmethod
+    def _updates(stub: FakeTelegram, token: str, params: dict) -> list[dict]:
+        offset = int(params.get("offset", 0) or 0)
+        wait = min(float(params.get("timeout", 0) or 0), 2.0)
+        deadline = time.time() + wait
+        with stub.cond:
+            while True:
+                queue = stub.updates.setdefault(token, [])
+                queue[:] = [u for u in queue if u["update_id"] >= offset]
+                if queue or time.time() >= deadline:
+                    return list(queue)
+                stub.cond.wait(max(0.05, deadline - time.time()))
+
+
+class ScriptedLLM(_Server):
+    """script(request) -> {"content": str} or {"tool_calls": [(name, args), ...]}"""
+
+    def __init__(self, script):
+        super().__init__(_LLMHandler)
+        self.script = script
+        self.requests: list[dict] = []
+        self.lock = threading.Lock()
+
+
+class _LLMHandler(_Quiet):
+    def do_GET(self):
+        self._json(200, {"object": "list", "data": [{"id": "fake", "object": "model", "owned_by": "e2e"}]})
+
+    def do_POST(self):
+        llm: ScriptedLLM = self.server.owner
+        req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if not self.path.rstrip("/").endswith("/chat/completions"):
+            return self._json(404, {"error": {"message": "not found"}})
+        with llm.lock:
+            llm.requests.append(req)
+        try:
+            answer = llm.script(req) or {"content": "ok"}
+        except Exception as exc:  # a bug in the script shows up in the chat, not as a hang
+            answer = {"content": f"[script error: {type(exc).__name__}: {exc}]"}
+        calls = [{"id": f"call_{time.time_ns()}_{i}", "type": "function",
+                  "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}}
+                 for i, (name, args) in enumerate(answer.get("tool_calls") or [])]
+        content = answer.get("content") if not calls else answer.get("content", "")
+        finish = "tool_calls" if calls else "stop"
+        usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        created = int(time.time())
+        if not req.get("stream"):
+            message = {"role": "assistant", "content": content or ("" if calls else "ok")}
+            if calls:
+                message["tool_calls"] = calls
+            return self._json(200, {"id": "cmpl", "object": "chat.completion", "created": created, "model": "fake",
+                                    "choices": [{"index": 0, "message": message, "finish_reason": finish}],
+                                    "usage": usage})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def chunk(delta, finish_reason=None, **extra):
+            data = {"id": "cmpl", "object": "chat.completion.chunk", "created": created, "model": "fake",
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}], **extra}
+            self.wfile.write(f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode())
+
+        chunk({"role": "assistant", "content": content or ""})
+        for i, call in enumerate(calls):
+            chunk({"tool_calls": [{"index": i, **call}]})
+        chunk({}, finish, usage=usage)
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()

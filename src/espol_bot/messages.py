@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from html import escape
+from html import escape, unescape
 from zoneinfo import ZoneInfo
 
 from aula_core import timefmt
@@ -155,3 +156,29 @@ def welcome(courses: list[dict], pending_week: int, poll_minutes: int) -> str:
 
 def alert(text: str) -> str:
     return f"⚠️ {e(text)}"
+
+
+def plain(html_text: str) -> str:
+    """Telegram HTML → plain text (links keep their URL), for storing and handing off."""
+    text = re.sub(r'<a href="([^"]*)">(.*?)</a>', lambda m: f"{m[2]} ({unescape(m[1])})", html_text, flags=re.S)
+    return unescape(re.sub(r"<[^>]+>", "", text)).strip()
+
+
+def handoff_button(display: str) -> str:
+    return f"🎓 Consultar con {display}"
+
+
+def handoff_queued(display: str, handle: str, *, again: bool = False) -> str:
+    chat = f"su chat ({e(handle)})" if handle != display else "su chat"
+    if again:
+        return f"📨 Ya le había pasado ese aviso a <b>{e(display)}</b>. Revisa {chat}."
+    return f"📨 Le pasé el aviso a <b>{e(display)}</b>. Te responde en {chat} en un momento."
+
+
+def schedule_card(rendered_html: str, count: int, warnings: list[str]) -> str:
+    parts = [f"🗓️ <b>Esto es lo que leí de tu horario</b> ({count} clases)", rendered_html]
+    if warnings:
+        parts.append("\n".join(f"⚠️ {e(w)}" for w in warnings))
+    parts.append("¿Está bien? Pulsa <b>Guardar horario</b> y cada bot de materia te mandará su brief antes de "
+                 "cada clase. Si algo está mal, pulsa <b>Corregir</b> y dime qué cambiar.")
+    return "\n\n".join(parts)

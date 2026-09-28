@@ -18,7 +18,10 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   bot needs the skills toolset (whose skill_manage writes files).
 - Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
   `--script` runs the script first and skips the model when its last line is
-  `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use.
+  `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use. The ticker checks
+  once a minute and plans a job's next run from when its last run ended, so `every 1m` misses
+  the next check and runs every 2 minutes (`every 30m`, every 31); a cron expression keeps the
+  clock, and its optional sixth field is seconds.
 - Plugins in a profile's `plugins/` load only when named in `plugins.enabled`. A running gateway
   looks for a profile's plugins once, as soon as `profile create` announces it (before setup
   installs any), and again only on its `reload-plugins` control-socket verb, which `hermes plugins
@@ -101,6 +104,15 @@ def _write_if_changed(path: Path, text: str, mode: int | None = None) -> bool:
     if mode is not None:
         os.chmod(path, mode)
     return changed
+
+
+def poll_schedule(minutes: int, summary_minute: int) -> str:
+    """Every `minutes` on the clock, half a period away from the daily summary, which polls Canvas itself.
+    A period that does not divide the hour stays a Hermes interval (a minute late each run)."""
+    if 60 % minutes:
+        return f"every {minutes}m"
+    first = (summary_minute + minutes // 2) % minutes
+    return ",".join(map(str, range(first, 60, minutes))) + " * * * *"
 
 
 def _render(template: Path, values: dict[str, str]) -> str:
@@ -202,12 +214,15 @@ class Setup:
             "stt": {"language": "es"},
             # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
             "onboarding": {"profile_build": "off"},
+            # By default the gateway drops what a bot got while it was not serving it: whatever the captain sent
+            # during a restart, or a new bot's first /start (it serves a new bot a minute after it is created).
+            "platforms": {"telegram": {"extra": {"drop_pending_on_cold_boot": False}}},
         }
         if self.cfg.telegram_api != DEFAULT_TELEGRAM_API:
             # A local Bot API server (or the E2E test's stand-in) for Hermes' own Telegram client and
             # the MCP server too.
-            managed["platforms"] = {"telegram": {"extra": {"base_url": f"{self.cfg.telegram_api}/bot",
-                                                           "base_file_url": f"{self.cfg.telegram_api}/file/bot"}}}
+            managed["platforms"]["telegram"]["extra"].update(base_url=f"{self.cfg.telegram_api}/bot",
+                                                             base_file_url=f"{self.cfg.telegram_api}/file/bot")
             managed["mcp_servers"][mcp_name]["env"]["ESPOL_TELEGRAM_API_BASE"] = self.cfg.telegram_api
         return managed
 
@@ -366,7 +381,8 @@ class Setup:
         self.telegram_profile(profile, token, characters.vinci(), "Vinci")
 
         self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
-        self.reconcile_job(name, "vinci-sondeo", f"every {self.cfg.poll_minutes}m", "vinci-sondeo.sh", no_agent=True)
+        self.reconcile_job(name, "vinci-sondeo", poll_schedule(self.cfg.poll_minutes, self.cfg.summary_time.minute),
+                           "vinci-sondeo.sh", no_agent=True)
         self.reconcile_job(name, "vinci-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
                            "vinci-resumen.sh", no_agent=True)
 
@@ -427,9 +443,6 @@ class Setup:
         managed = self.base_config(SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"], "materia",
                                    ["materia", "--curso", subject.code, "--hermes-home", str(profile)], "vinci-materia")
         managed["cron"] = {"wrap_response": False}
-        # The gateway serves a new bot a minute after it is created; by default it then drops what the bot got
-        # meanwhile, such as the captain's first /start.
-        _deep_merge(managed, {"platforms": {"telegram": {"extra": {"drop_pending_on_cold_boot": False}}}})
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,
                   "PROFILE_HOME": str(profile)}
@@ -452,8 +465,11 @@ class Setup:
                   "agenda (arriba) te dice qué hacer ahora: el brief antes de una clase o algo que Vinci te pasó. "
                   "Sigue sus instrucciones; tu respuesta final le llega al estudiante en tu chat de Telegram.")
         active = subject.state == "activa"
-        self.reconcile_job(name, "vinci-agenda", "every 1m", "vinci-agenda.sh", no_agent=False, prompt=prompt,
-                           enabled=active)
+        # Due every half minute (a sixth field is seconds) and run at each once-a-minute check. `* * * * *` would
+        # skip a minute whenever a run ends just past the mark, and every other minute for good if the gateway's
+        # check falls in a minute's last second.
+        self.reconcile_job(name, "vinci-agenda", "* * * * * */30", "vinci-agenda.sh", no_agent=False,
+                           prompt=prompt, enabled=active)
         if self.set_parked(name, not active):
             print(f"• {subject.display}: {'archivada (gateway.parked)' if not active else 'reactivada'}")
 

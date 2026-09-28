@@ -348,7 +348,9 @@ confirmar, el brief 30 min antes de una clase sin repetirse tras reiniciar (y un
 seguidos, nunca en plena clase), el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin
 poder escribirlos ni usar una terminal, archivar y reactivar un bot, que cada botón contesta al instante (aunque
 su trabajo tarde) y un segundo «Crear» no reenvía, que un bot nuevo responde a `/start` aunque se lo mandes antes
-de que el gateway lo tome, que las imágenes de la página del aula no cuentan como material, que el sondeo espacia
+de que el gateway lo tome, que Vinci contesta lo que le escribiste mientras el gateway se reiniciaba, que la
+agenda de cada bot de materia corre cada minuto de verdad (y al actualizar, los cron de antes se corrigen sin
+duplicarse), que las imágenes de la página del aula no cuentan como material, que el sondeo espacia
 sus consultas y baja el material de a poco, que Telegram con el IPv6 roto no demora nada, que una descarga larga
 no frena a quien refresca el aula, que un token rechazado se avisa una vez y no se vuelve a usar, que setup.sh
 no dice «✓ Canvas responde» si Canvas rechazó el token, y que cada bot de materia se llame solo como su

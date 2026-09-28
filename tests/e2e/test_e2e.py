@@ -37,6 +37,7 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      the character name, photo and stamp PR #4 gave them («El Analítico · Estadística»). The
      update (setup.sh) renames all four in place to just their subject (setMyName), with no new
      or duplicate bot and the same usernames; the photos already set are not uploaded again.
+     Every bot summarizes its chat at 80K tokens, set in existing profiles without touching the rest.
      The fifth, Sistemas Distribuidos, is created from Vinci's «Crear» button: Telegram's
      creation screen takes its suggested name and username (the one Telegram Web once refused
      as too long). Every suggested username fits Telegram's rules. setup.sh once more asks
@@ -534,6 +535,7 @@ def test_e2e(tmp_path):
                 set(vcfg["agent"]["disabled_toolsets"])
             assert vcfg["tools"]["tool_search"]["enabled"] == "off"
             assert vcfg["skills"]["auto_load"] == ["vinci"]
+            assert vcfg["compression"]["threshold_tokens"] == 80_000, "Vinci resume su chat a los 80 mil tokens"
             assert vcfg["mcp_servers"]["vinci"]["command"] == str(VENV_BIN / "espol-bot")
             assert vcfg["mcp_servers"]["vinci"]["args"][:1] == ["mcp"]
             assert "vinci-botones" in vcfg["plugins"]["enabled"]
@@ -949,6 +951,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
         assert scfg["mcp_servers"]["materia"]["args"][:4] == ["mcp", "materia", "--curso", code]
         assert scfg["unauthorized_dm_behavior"] == "ignore" and scfg["skills"]["auto_load"] == ["vinci-materia"]
         assert "vinci-botones" in scfg["plugins"]["enabled"]
+        assert scfg["compression"]["threshold_tokens"] == 80_000
         jobs = json.loads((sp / "cron" / "jobs.json").read_text())["jobs"]
         assert [(j["name"], j["schedule_display"], j["no_agent"], j["script"], j["enabled"]) for j in jobs] == [
             ("vinci-agenda", "every 1m", False, "vinci-agenda.sh", True)], jobs
@@ -1297,6 +1300,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
             profile, avatar = f"vinci-{code.lower()}", (AVATARS / PARTY[code][2]).read_bytes()
             run([hermes, "profile", "create", profile, "--no-skills", "--no-alias", "--description", old_name], T_VINCI)
             (profiles / profile / "SOUL.md").write_text(f"Tu personaje es **{old_name.split(' · ')[0]}**.\n")
+            cfg_file = profiles / profile / "config.yaml"  # PR #4 set no summary trigger; a hand-set key must stay
+            cfg = yaml.safe_load(cfg_file.read_text()) if cfg_file.exists() else None
+            cfg = cfg if isinstance(cfg, dict) else {}
+            cfg.setdefault("compression", {})["protect_last_n"] = 30
+            cfg_file.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
             (profiles / profile / "telegram-profile.json").write_text(json.dumps(
                 {"bot": PARTY_TOKENS[code].split(":")[0], "name": old_name,
                  "photo": hashlib.sha256(avatar).hexdigest()}, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -1418,10 +1426,16 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
         scfg = yaml.safe_load((profile / "config.yaml").read_text())
         assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia"}
         assert {"web", "terminal", "file", "skills"} <= set(scfg["agent"]["disabled_toolsets"])
+        assert scfg["compression"]["threshold_tokens"] == 80_000, f"{bot_name} resume su chat a los 80 mil tokens"
+        if code in EXISTING and not EXISTING[code][1].startswith("Vinci · "):
+            assert scfg["compression"]["protect_last_n"] == 30, "setup.sh no toca lo demás de un perfil que ya existía"
         assert parse_env_file(profile / ".env")["TELEGRAM_ALLOWED_USERS"] == CAPTAIN_ID
     for token in PARTY_TOKENS.values():  # a token lives only in secrets.env and its own profile's .env
         holders = {str(f.relative_to(home)) for f in home.rglob("*") if f.is_file() and token.encode() in f.read_bytes()}
         assert len(holders) == 1 and holders <= {f".hermes/profiles/vinci-{c.lower()}/.env" for c in PARTY}, holders
+    report.append("Memoria de conversación corta: Vinci y cada bot de materia resumen su chat a los 80 000 tokens "
+                  "(compression.threshold_tokens; Hermes por defecto espera a 256 000); en los perfiles que ya "
+                  "existían setup.sh puso ese valor sin tocar lo demás (un ajuste de compression hecho a mano siguió)")
 
     mark_calls = len(telegram.calls)
     again = setup_again()

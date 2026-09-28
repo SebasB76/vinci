@@ -85,8 +85,9 @@ No es tu @usuario. Va en `TELEGRAM_USER_ID` y es el único usuario al que respon
    Va en `CANVAS_TOKEN`.
 
 Ese token puede hacer lo mismo que tú en el aula virtual, así que trátalo como una contraseña: no lo
-compartas ni lo subas a ningún lado. Los bots solo lo usan para leer. Cuando venza, Vinci te avisa por Telegram;
-crea otro, cámbialo en `secrets.env` y listo (no hace falta reiniciar nada).
+compartas ni lo subas a ningún lado. Los bots solo lo usan para leer. Cuando venza (o el aula virtual lo
+revoque), Vinci te avisa una vez por Telegram y no vuelve a consultar el aula hasta que lo cambies: crea otro,
+cámbialo en `secrets.env` y listo (no hace falta reiniciar nada).
 
 ### 4. Completa `secrets.env`
 
@@ -114,8 +115,8 @@ Puedes correrlo las veces que quieras (por ejemplo, después de cambiar `config.
   y los cron del sondeo cada 30 min y el resumen de las 7:00), y el perfil de cada bot de materia que ya exista;
 - le pone a cada bot su foto de tu party en Telegram, y a cada bot de materia su nombre (una sola vez; mira
   [Tu party](#tu-party-el-nombre-y-la-foto-de-cada-bot));
-- prueba que Canvas responde y Vinci te manda un mensaje de prueba por Telegram (y te dice si todavía falta
-  activar lo de gestionar otros bots del paso 1).
+- prueba que Canvas responde (si rechaza tu token, te lo dice) y Vinci te manda un mensaje de prueba por
+  Telegram (y te dice si todavía falta activar lo de gestionar otros bots del paso 1).
 
 Si venías del bot anterior (el perfil `espol`), lo convierte en Vinci conservando su memoria.
 No modifica tu perfil por defecto de Hermes (`~/.hermes/config.yaml`, `~/.hermes/.env`) ni otros perfiles.
@@ -147,9 +148,10 @@ anuncios, archivos, notas y clases). Un bot se crea solo cuando tú pulsas su bo
   mensaje del chat** y configura el bot.
 
 En los dos casos, Vinci te confirma «✅ <bot> quedó creado y activo», y el bot ya tiene el nombre de su materia
-y su foto. Abre el bot nuevo y mándale
-`/start`. Repite con cada materia (5 en total). Si el gateway ya estaba encendido, toma cada bot nuevo en
-unos 30 segundos; no hace falta reiniciar nada.
+y su foto. Abre el bot nuevo y mándale `/start`: te saluda y te dice cuándo llega su próximo brief (si se lo
+mandas apenas lo creas, te responde en cuanto el gateway lo tome). Repite con cada materia (5 en total). Si el
+gateway ya estaba encendido, toma cada bot nuevo en unos 30 segundos; no hace falta reiniciar nada. Telegram deja
+crear pocos bots seguidos: si te pide esperar, vuelve a pulsar «➕ Crear» cuando pase ese tiempo.
 
 Vinci nunca ve los tokens: un filtro los atrapa antes de que lleguen al modelo, los guarda en `secrets.env`
 (permisos 600) y borra el mensaje. No le pegues tokens en otros lados.
@@ -163,8 +165,9 @@ hora empieza cada clase) y mándasela a Vinci. Te muestra cómo lo entendió, cl
 - **✏️ Corregir**: dile qué está mal («Estadística el jueves es de 9:00») y te muestra otra propuesta.
 
 No se guarda nada hasta que pulses Guardar. Desde ahí, cada bot de materia te manda su brief 30 minutos antes de
-cada clase (hora de Ecuador). Una clase que no está en el horario no recibe brief. Si tu horario cambia, mándale
-otra captura.
+cada clase (hora de Ecuador). Dos bloques seguidos de la misma materia (el teórico y justo después el práctico)
+reciben un solo brief, antes del primero: nunca te llega uno en plena clase. Una clase que no está en el horario
+no recibe brief. Si tu horario cambia, mándale otra captura.
 
 ## Encender y apagar
 
@@ -184,6 +187,12 @@ algo nuevo o algo falla. Si una parte de una materia (sus tareas, anuncios o arc
 seguidas, te avisa una sola vez nombrando la materia y la parte, sigue reintentando y el resto funciona normal;
 si vuelve a fallar después de recuperarse, te avisa de nuevo. Para forzar una revisión ahora:
 `vinci cron run vinci-sondeo`.
+
+El sondeo trata al aula virtual con calma, para que su tráfico nunca parezca abuso: espacia sus consultas (una
+por segundo) y baja el material nuevo de a poco (hasta 50 MB por sondeo; la primera vez se reparte en varios
+sondeos). Si el aula pide bajar el ritmo, no la vuelve a leer durante una hora. Lo que le preguntas a un bot
+en Telegram no espera esa pausa. Lo que le escribas a un bot de materia con el gateway apagado te lo responde
+al encenderlo.
 
 ## Uso
 
@@ -223,7 +232,8 @@ aula sincronizar --material       # leer todo ahora y bajar el material nuevo
 ```
 
 `--curso` acepta cualquier parte del nombre o del código, sin tildes. `aula` reutiliza los datos guardados si
-tienen menos de 10 minutos; si no, vuelve a leer el aula virtual.
+tienen menos de 10 minutos; si no, vuelve a leer el aula virtual (y si no puede, te muestra lo guardado).
+Con `--actualizar` la lee siempre, y si no puede (por ejemplo, con un token vencido) termina con error.
 
 **Con Claude Code**: en cualquier sesión de Claude Code en tu PC puedes pedir
 «bájate el PDF de la semana 3 de Estadística y explícame el ejercicio 4»; la skill `aula` le enseña a usar el
@@ -286,6 +296,8 @@ Todo lo ajustable está en [`config.toml`](config.toml):
 | `general.zona_horaria` | `America/Guayaquil` | zona para fechas, horarios y briefs |
 | `material.extensiones` | `pdf, pptx, docx` | qué archivos se descargan e indexan |
 | `material.tamano_maximo_mb` | `60` | archivos más grandes no se descargan |
+| `material.max_mb_per_sync` | `50` | cuánto material baja como máximo cada sondeo (lo demás, en los siguientes) |
+| `canvas.request_interval_seconds` | `1.0` | pausa mínima entre dos consultas del sondeo al aula virtual |
 | `almacenamiento.carpeta_datos` | `~/.local/share/espol-academic-bot` | base de datos, material y cuadernos |
 | `hermes.perfil` | `vinci` | perfil de Vinci; cada materia usa `<perfil>-<código>` |
 | `hermes.modelo` | `claude-sonnet-5` | modelo de Vinci y de los bots de materia |
@@ -332,8 +344,14 @@ flujo con los comandos reales y el gateway real de Hermes (si está instalado), 
 `~/.hermes`. El aula falsa usa los códigos y nombres reales de ESPOL, con una materia que tiene teórico y
 práctico (un solo bot recibe los avisos y las entregas de los dos). Cubre crear el equipo desde el chat (con un
 toque y reenviando a BotFather), repartir a un bot de materia, el botón de un aviso, guardar el horario solo tras
-confirmar, el brief 30 min antes de una clase sin repetirse tras reiniciar, el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin poder
-escribirlos ni usar una terminal, archivar y reactivar un bot, y que cada bot de materia se llame solo como su
+confirmar, el brief 30 min antes de una clase sin repetirse tras reiniciar (y uno solo para dos bloques
+seguidos, nunca en plena clase), el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin
+poder escribirlos ni usar una terminal, archivar y reactivar un bot, que cada botón contesta al instante (aunque
+su trabajo tarde) y un segundo «Crear» no reenvía, que un bot nuevo responde a `/start` aunque se lo mandes antes
+de que el gateway lo tome, que las imágenes de la página del aula no cuentan como material, que el sondeo espacia
+sus consultas y baja el material de a poco, que Telegram con el IPv6 roto no demora nada, que una descarga larga
+no frena a quien refresca el aula, que un token rechazado se avisa una vez y no se vuelve a usar, que setup.sh
+no dice «✓ Canvas responde» si Canvas rechazó el token, y que cada bot de materia se llame solo como su
 materia (los que ya se llamaban «Vinci · …» o como su personaje se renombran ahí mismo al actualizar, sin crear
 ninguno nuevo, y un cambio de nombre que Telegram frena se reintenta en la siguiente corrida), con la foto que sube
 a Telegram, sin personaje y sin cambiar sus reglas, y que cada usuario sugerido quepa en la pantalla de Telegram

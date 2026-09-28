@@ -19,9 +19,16 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
 - Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
   `--script` runs the script first and skips the model when its last line is
   `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use.
-- Plugins in a profile's `plugins/` load only when named in `plugins.enabled`.
+- Plugins in a profile's `plugins/` load only when named in `plugins.enabled`. A running gateway
+  looks for a profile's plugins once, as soon as `profile create` announces it (before setup
+  installs any), and again only on its `reload-plugins` control-socket verb, which `hermes plugins
+  enable` sends; setup sends it itself after installing the plugin, before the bot's token.
 - `compression.threshold_tokens` caps when a chat gets summarized (default 256K); a running
   gateway rebuilds its cached agent when it changes, so it applies at the next message.
+- A profile's first message ever gets an onboarding note; `onboarding.profile_build: off` makes it a
+  plain introduction instead of an offer to build a profile of the user.
+- Telegram updates that arrive while a bot is not served yet are dropped when the gateway starts
+  serving it, unless `platforms.telegram.extra.drop_pending_on_cold_boot` is false.
 
 Each bot sets its own Telegram profile photo from the party (characters.py; setMyProfilePhoto,
 Bot API 9.4) and a subject bot its name, just its subject («Estadística», setMyName), with its
@@ -36,6 +43,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -192,6 +200,8 @@ class Setup:
             "unauthorized_dm_behavior": "ignore",
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
+            # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
+            "onboarding": {"profile_build": "off"},
         }
         if self.cfg.telegram_api != DEFAULT_TELEGRAM_API:
             # A local Bot API server (or the E2E test's stand-in) for Hermes' own Telegram client and
@@ -341,15 +351,17 @@ class Setup:
 
         party = "\n".join(f"- «{characters.bot_name(code, c.subject or code)}»: {c.subject} ({code})"
                           for code, c in characters.party().items())
-        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party}
+        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": ""}
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
         for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen"}.items():
             changed |= _write_if_changed(profile / "scripts" / script,
                                          _render(TEMPLATES / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
-        changed |= self._install_plugin(profile, values)
-        changed |= self._drop_legacy_files(profile)
+        plugin_changed = self._install_plugin(profile, values)
+        if plugin_changed:
+            self._reload_gateway_plugins(profile)
+        changed |= plugin_changed | self._drop_legacy_files(profile)
         print(f"• SOUL.md, skill vinci, plugin de botones y scripts de cron {'instalados' if changed else 'sin cambios'}")
         self.telegram_profile(profile, token, characters.vinci(), "Vinci")
 
@@ -364,6 +376,28 @@ class Setup:
         for plugin_file in sorted((TEMPLATES / "plugins" / PLUGIN).glob("*.*")):
             changed |= _write_if_changed(profile / "plugins" / PLUGIN / plugin_file.name, _render(plugin_file, values))
         return changed
+
+    def _reload_gateway_plugins(self, profile: Path) -> None:
+        """Has a running gateway load the profile's plugins now, like `hermes plugins enable` does (that command
+        also runs Hermes' package-manager admission, which can refuse on an install without its lock file)."""
+        sock = self.root / "gateway.sock"
+        pointer = self.root / "gateway.sock.path"  # where Hermes puts it when the path is too long for a socket
+        if not sock.exists() and pointer.is_file():
+            sock = Path(pointer.read_text(encoding="utf-8-sig").strip())
+        if not sock.exists():
+            return  # no gateway running: it finds the plugin when it starts
+        request = {"verb": "reload-plugins", "id": 1, "protocol": 1, "params": {"home": str(profile)}}
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+                conn.settimeout(30)
+                conn.connect(str(sock))
+                conn.sendall(json.dumps(request).encode() + b"\n")
+                answer = json.loads(conn.makefile("rb").readline() or b"{}")
+        except (OSError, ValueError) as exc:
+            answer = {"error": str(exc)}
+        if not (answer.get("ok") and (answer.get("result") or {}).get("reloaded")):
+            print(f"⚠ El gateway de Hermes no cargó el plugin de {profile.name} ({answer.get('error') or answer}); "
+                  "reinícialo: hermes gateway stop && hermes gateway start")
 
     @staticmethod
     def _drop_legacy_files(profile: Path) -> bool:
@@ -393,14 +427,21 @@ class Setup:
         managed = self.base_config(SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"], "materia",
                                    ["materia", "--curso", subject.code, "--hermes-home", str(profile)], "vinci-materia")
         managed["cron"] = {"wrap_response": False}
+        # The gateway serves a new bot a minute after it is created; by default it then drops what the bot got
+        # meanwhile, such as the captain's first /start.
+        _deep_merge(managed, {"platforms": {"telegram": {"extra": {"drop_pending_on_cold_boot": False}}}})
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
-        changed |= self.telegram_env(profile, token)
         values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,
                   "PROFILE_HOME": str(profile)}
         changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "materia" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci-materia" / "SKILL.md",
                                      _render(TEMPLATES / "materia" / "SKILL.md", values))
-        changed |= self._install_plugin(profile, values)
+        if self._install_plugin(profile, values):
+            changed = True
+            self._reload_gateway_plugins(profile)
+        # The token last: the gateway connects the bot once its .env has one, and the /start the captain may
+        # have sent already must find the plugin loaded.
+        changed |= self.telegram_env(profile, token)
         changed |= _write_if_changed(profile / "scripts" / "vinci-agenda.sh", _render(
             TEMPLATES / "cron-script.sh", {**values, "COMMAND": f"agenda --curso {subject.code}"}), 0o755)
         print(f"• {subject.display}: config, .env, SOUL.md, skill, plugin y agenda {'instalados' if changed else 'sin cambios'}"

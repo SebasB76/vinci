@@ -154,6 +154,35 @@ def welcome(courses: list[dict], pending_week: int, poll_minutes: int) -> str:
             f"notas y material. Pregúntame «¿qué tengo pendiente?» o cualquier duda sobre el material.")
 
 
+def vinci_greeting() -> str:
+    return ("👋 <b>¡Hola! Soy Vinci</b>, tu guía académico de ESPOL.\n"
+            "• Pregúntame lo que quieras de tus materias: pendientes, anuncios, notas o el material.\n"
+            "• Pásame lo de una materia (texto, foto, PDF o nota de voz) y se lo doy a su bot.\n"
+            "• Te aviso de lo nuevo en tu aula virtual.\n"
+            "Si todavía no tienes tus bots de materia, dime «arma mi equipo».")
+
+
+def subject_greeting(display: str, name: str, code: str, brief_minutes: int, has_schedule: bool,
+                     next_class: datetime | None, tz: ZoneInfo, now: datetime) -> str:
+    who = f"el bot de {e(name)}" if display == name else f"{e(display)}, el bot de {e(name)}"
+    lines = [f"👋 <b>¡Hola! Soy {who}</b> ({e(code)}).",
+             (f"• {brief_minutes} minutos antes de cada clase te mando un brief: repaso, lo que vence, material "
+              "nuevo y los conceptos clave."),
+             ("• Cuéntame lo que vieron en clase o mándame fotos de la pizarra y notas de voz: lo guardo en mi "
+              "cuaderno."),
+             "• Pregúntame del material del curso o pídeme preguntas tipo examen."]
+    if next_class:
+        start = next_class.astimezone(tz)
+        brief = start - timedelta(minutes=brief_minutes)
+        day = _day_label(start.date(), now.astimezone(tz).date()).lower()
+        lines.append(f"📅 Tu próxima clase: {day}, {start:%H:%M}. El brief te llega a las {brief:%H:%M}.")
+    elif has_schedule:
+        lines.append("📅 Tu horario no tiene clases de esta materia; si falta alguna, mándale a Vinci otra captura.")
+    else:
+        lines.append("📅 Todavía no tengo tu horario: mándale a Vinci una captura y te aviso antes de cada clase.")
+    return "\n".join(lines)
+
+
 def alert(text: str) -> str:
     return f"⚠️ {e(text)}"
 

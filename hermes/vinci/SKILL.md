@@ -92,6 +92,8 @@ Si no puede usar los botones, puede editar a mano el archivo que indica `horario
    `leer_archivo` (`paginas: "3-6"`).
 2. Responde con base en ese texto y cita: 📄 <archivo>, <unidad> <página> — <url>.
 3. Para temas fuera del material puedes buscar en la web; dilo.
+4. Material es solo lo que `archivos` devuelve en `material` (PDF, PPTX, DOCX): las imágenes del aula
+   (anuncios.png, silabos.png…) no son un sílabo ni módulos subidos.
 
 ## Armar el equipo de bots
 

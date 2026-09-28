@@ -12,6 +12,8 @@
                                      store it and provision its profile (the plugin calls it)
     espol-bot token                  the same for a token read from stdin (BotFather's reply that
                                      the captain forwarded; the plugin deleted it from the chat)
+    espol-bot saludo [--curso CÓDIGO]
+                                     a bot's answer to /start, which Hermes ignores (the plugin calls it)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -29,7 +31,7 @@ from pathlib import Path
 from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import file_lock
 from espol_bot.config import load_bot_config, load_telegram_secrets
-from espol_bot.telegram import Telegram, TelegramError
+from espol_bot.telegram import Telegram, TelegramError, prefer_ipv4
 
 
 def _logging(cfg) -> None:
@@ -48,6 +50,19 @@ def _agenda(cfg, code: str) -> int:
         logging.exception("agenda %s", code)
         print(agenda.SKIP)
     return 0
+
+
+def _greeting(cfg, code: str | None) -> dict:
+    from espol_bot import agenda, horario, materias, messages
+    if not code:
+        return {"respuesta": messages.vinci_greeting()}
+    subject = materias.by_code(materias.load(cfg.core), code)
+    if subject is None:
+        return {"respuesta": None}
+    now = now_utc()
+    return {"respuesta": messages.subject_greeting(
+        subject.display, subject.name, subject.code, cfg.brief_minutes, horario.path(cfg.core).exists(),
+        agenda.next_session(cfg, subject, now), cfg.core.tz, now)}
 
 
 def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
@@ -86,8 +101,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("bot-creado", help="configurar un bot creado para Vinci (lo usa el plugin vinci-botones)")
     p.add_argument("bot_id", type=int)
     sub.add_parser("token", help="configurar el bot de un token leído por stdin (lo usa el plugin vinci-botones)")
+    p = sub.add_parser("saludo", help="la respuesta de un bot a /start (la usa el plugin vinci-botones)")
+    p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
     args = parser.parse_args(argv)
 
+    prefer_ipv4()
     try:
         cfg = load_bot_config(load_config())
         if args.cmd == "hermes-perfil":
@@ -101,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "boton":
             from espol_bot import botones
             print(json.dumps(botones.handle(cfg, args.datos, now_utc()), ensure_ascii=False))
+            return 0
+        if args.cmd == "saludo":
+            print(json.dumps(_greeting(cfg, args.curso), ensure_ascii=False))
             return 0
         if args.cmd in ("bot-creado", "token"):
             from espol_bot import equipo

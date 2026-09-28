@@ -137,6 +137,25 @@ def _read(conn, file_id: int, pages) -> dict:
     return data
 
 
+def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None) -> dict:
+    """The course's material: only files the bot can read count (a Canvas course page also holds images
+    like anuncios.png or silabos.png, which a model reads as «the syllabus is uploaded»)."""
+    kinds = ctx.cfg.core.material_extensions
+    found = [{k: v for k, v in f.items() if k != "descargado"} for f in queries.files(ctx.conn, course_ids, name)]
+    readable = [f for f in found if f["extension"] in kinds]
+    result: dict = {"material": readable}
+    others = len(found) - len(readable)
+    if not readable:
+        result["nota"] = (f"No hay material del curso que puedas leer ({', '.join(k.upper() for k in kinds)})"
+                          + (" con ese nombre." if name else " en el aula virtual todavía."))
+    if others:
+        result["otros_archivos"] = others
+        result["nota"] = (result.get("nota", "") + f" Hay {others} archivo(s) más que no son material que puedas leer "
+                          "(imágenes u otros formatos, casi siempre adornos de la página del aula): no hables de "
+                          "ellos como sílabo, módulos, temas o contenido del curso.").strip()
+    return result
+
+
 def _schedule_json(ctx: Ctx, code: str | None = None) -> dict:
     try:
         classes = horario.load(ctx.cfg.core)
@@ -265,8 +284,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         return queries.grades(ctx.conn, _vinci_course_ids(ctx, args.get("materia")))
 
     def archivos(args):
-        return [{k: v for k, v in f.items() if k != "descargado"}
-                for f in queries.files(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), args.get("nombre"))]
+        return _material(ctx, _vinci_course_ids(ctx, args.get("materia")), args.get("nombre"))
 
     def buscar(args):
         return _trim_hits(search.search(ctx.conn, str(args["pregunta"]),
@@ -387,7 +405,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("anuncios", "Anuncios recientes de los profesores.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
         Tool("notas", "Notas publicadas por materia.", notas, dict(materia)),
-        Tool("archivos", "Archivos (material) de las materias, con su ID.", archivos,
+        Tool("archivos", "Material de las materias que puedes leer (PDF, PPTX, DOCX), con su ID.", archivos,
              {**materia, "nombre": {"type": "string", "description": "parte del nombre o del módulo (ej. 'semana 3')"}}),
         Tool("buscar_material", "Busca en el texto del material descargado; devuelve archivo, página y fragmento.",
              buscar, {"pregunta": {"type": "string"}, **materia, "n": {"type": "integer"}}, ["pregunta"]),
@@ -475,8 +493,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         return queries.grades(ctx.conn, course_ids())
 
     def archivos(args):
-        return [{k: v for k, v in f.items() if k != "descargado"}
-                for f in queries.files(ctx.conn, course_ids(), args.get("nombre"))]
+        return _material(ctx, course_ids(), args.get("nombre"))
 
     def buscar(args):
         return _trim_hits(search.search(ctx.conn, str(args["pregunta"]), course_ids=course_ids(),
@@ -556,7 +573,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
         Tool("anuncios", "Anuncios recientes de tu materia.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia.", notas),
-        Tool("archivos", "Material de tu materia, con su ID.", archivos,
+        Tool("archivos", "Material de tu materia que puedes leer (PDF, PPTX, DOCX), con su ID.", archivos,
              {"nombre": {"type": "string", "description": "parte del nombre o módulo"}}),
         Tool("buscar_material", "Busca en el texto del material de tu materia (archivo, página, fragmento).",
              buscar, {"pregunta": {"type": "string"}, "n": {"type": "integer"}}, ["pregunta"]),

@@ -8,7 +8,8 @@ plugin should show:
   v1:h:<propuesta>:ok     «Guardar horario»: validates the proposal again and saves horario.toml
   v1:h:<propuesta>:no     «Corregir»: discards the proposal
   v1:c:0:<CÓDIGO>         «➕ Crear <bot>»: the subject waits for its bot and Vinci
-                          sends the button that creates it (or the @BotFather steps)
+                          sends the button that creates it (or the @BotFather steps); pressed
+                          again within minutes, it points at what it already sent
   v1:x:0:<CÓDIGO>         «🗄️ Archivar»: parks the subject bot and pauses its agenda
   v1:r:0:<CÓDIGO>         «♻️ Reactivar»: undoes it
   v1:n:0:<CÓDIGO>         «Cancelar»: does nothing
@@ -19,15 +20,20 @@ captain's own press.
 
 from __future__ import annotations
 
+import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from aula_core import Aula
+from aula_core import Aula, timefmt
+from aula_core.store import file_lock, get_meta, set_meta
 from espol_bot import equipo, horario, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
 PATTERN = re.compile(r"v1:([ahcxrn]):(\d{1,12}):([A-Za-z0-9]{2,12})")
+OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
+# A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
+OFFER_AGAIN = timedelta(minutes=5)
 
 
 def _answer(toast: str, reply: str | None = None, remove_buttons: bool = False) -> dict:
@@ -40,7 +46,7 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
         return _answer("Botón desconocido.")
     kind, ref, arg = match[1], int(match[2]), match[3]
     if kind in "cxrn":
-        return _team(cfg, kind, arg.upper())
+        return _team(cfg, kind, arg.upper(), now)
     aula = Aula(cfg.core)
     try:
         conn = store.ensure(aula.conn)
@@ -63,7 +69,7 @@ def _handoff(cfg: BotConfig, conn, alert_id: int, code: str, now: datetime) -> d
     return _answer(toast, messages.handoff_queued(subject.display, subject.handle(), again=not created))
 
 
-def _team(cfg: BotConfig, kind: str, code: str) -> dict:
+def _team(cfg: BotConfig, kind: str, code: str, now: datetime) -> dict:
     subject = materias.by_code(materias.load(cfg.core), code)
     if subject is None:
         return _answer("Esa materia ya no está en tu equipo.")
@@ -73,14 +79,28 @@ def _team(cfg: BotConfig, kind: str, code: str) -> dict:
         return _answer("Hecho", equipo.set_archived(cfg, code, kind == "x"), remove_buttons=True)
     if subject.state in ("activa", "archivada"):
         return _answer(f"{subject.display} ya tiene bot ({subject.state}).")
-    materias.update(cfg.core, code, state=equipo.WAITING)
-    vinci = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
-    try:
-        can_manage = bool(vinci.get_me().get("can_manage_bots"))
-    except TelegramError:
-        can_manage = False
-    text, markup = equipo.creation_message(subject, can_manage)
-    vinci.send(text, reply_markup=markup)
+    with file_lock(cfg.core.data_dir, "equipo.lock"):  # two quick presses: only one sends
+        aula = Aula(cfg.core)
+        try:
+            last = json.loads(get_meta(aula.conn, OFFER_KEY) or "{}")
+            sent = timefmt.parse(last.get("sent_at"))
+            if subject.state == equipo.WAITING and last.get("code") == code and sent and now - sent < OFFER_AGAIN:
+                return _answer(f"Ya te mandé el botón «🤖 Crear {subject.display}»: está en el teclado de abajo."
+                               if last.get("keyboard") else
+                               f"Ya te mandé los pasos para crear {subject.display}: están justo arriba.")
+            materias.update(cfg.core, code, state=equipo.WAITING)
+            vinci = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
+            try:
+                can_manage = bool(vinci.get_me().get("can_manage_bots"))
+            except TelegramError:
+                can_manage = False
+            text, markup = equipo.creation_message(subject, can_manage)
+            vinci.send(text, reply_markup=markup)
+            set_meta(aula.conn, OFFER_KEY, json.dumps({"code": code, "sent_at": timefmt.iso(now),
+                                                       "keyboard": markup is not None}))
+            aula.conn.commit()
+        finally:
+            aula.close()
     return _answer(f"Creemos {subject.display}")
 
 

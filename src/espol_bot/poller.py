@@ -1,7 +1,9 @@
 """Deterministic poller: sync, then notify. No model call anywhere in this file.
 
 `poll()` runs every `intervalo_minutos` from a Hermes no-agent cron job:
-  1. sync the aula virtual (plus material download/indexing) through aula_core;
+  1. sync the aula virtual (plus material download/indexing) through aula_core, gently: it is
+     background work, so its requests are spaced and its material comes a slice per poll;
+     a token Canvas refused is not tried again (the captain hears once) until it changes;
   2. report, once per failure episode, each course resource that keeps failing;
   3. send one Telegram message per undelivered event (grouped when there are many);
   4. send the 24 h / 3 h reminders for unsubmitted deliverables.
@@ -52,7 +54,7 @@ class Bot:
         self.cfg = cfg
         self.tz = cfg.core.tz
         self.telegram = telegram
-        self.aula = aula or Aula(cfg.core)
+        self.aula = aula or Aula(cfg.core, background=True)
         store.ensure(self.conn)
         try:
             self.subjects = [s for s in materias.load(cfg.core) if s.active]
@@ -101,8 +103,22 @@ class Bot:
         self.conn.commit()
         return text
 
+    def _token_refused(self) -> str:
+        """Tells the captain once per refused token (the polls leave Canvas alone until it changes)."""
+        text = ("Tu token de Canvas ya no funciona (¿expiró o lo revocaron?). Crea uno nuevo en el aula virtual y "
+                "ponlo en secrets.env; hasta entonces no vuelvo a consultar el aula virtual.")
+        refused = self.aula.refused_token()
+        if refused and get_meta(self.conn, "bot_alert_token") != refused:
+            try:
+                self.telegram.send(messages.alert(text))
+                set_meta(self.conn, "bot_alert_token", refused)
+                self.conn.commit()
+            except TelegramError as exc:
+                log.error("No pude avisar por Telegram: %s", exc)
+        return text
+
     def _ok(self) -> None:
-        delete_meta(self.conn, "bot_fail_count_token", "bot_fail_count_red")
+        delete_meta(self.conn, "bot_fail_count_token", "bot_fail_count_red", "bot_alert_token")
         self.conn.commit()
 
     # -- poll ------------------------------------------------------------------------
@@ -116,9 +132,7 @@ class Bot:
         try:
             report = self.aula.sync(materials=True)
         except InvalidTokenError:
-            result.error = self._fail(
-                "token", "Tu token de Canvas ya no funciona (¿expiró?). Crea uno nuevo en el aula virtual "
-                "y ponlo en secrets.env; mientras tanto no puedo revisar tus materias.", threshold=1)
+            result.error = self._token_refused()
             return result
         except CanvasError as exc:
             result.error = self._fail(

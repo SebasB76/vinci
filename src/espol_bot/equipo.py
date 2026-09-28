@@ -48,6 +48,9 @@ TO_CREATE = ("pendiente", WAITING)
 USERNAME_MAX = 32  # Telegram's cap on a bot's username, «bot» included
 STATE_LABEL = {"pendiente": "➕ por crear", WAITING: "⏳ esperando su bot", "activa": "✅ activo",
                "archivada": "🗄️ archivado"}
+# Telegram refuses a new bot inside its own screen when an account made many in a row, and never tells Vinci.
+LIMIT_NOTE = ("⏳ Si Telegram te pide esperar porque creaste muchos bots seguidos, vuelve a pulsar «➕ Crear» "
+              "cuando pase ese tiempo.")
 
 
 def suggested_username(subject: materias.Subject) -> str:
@@ -111,7 +114,8 @@ def creation_message(subject: materias.Subject, can_manage: bool) -> tuple[str, 
         text = (f"🤖 <b>Creemos {e(subject.display)}</b>\n"
                 f"Pulsa el botón de abajo. Telegram te muestra el bot nuevo con el nombre «{e(subject.display)}» y el "
                 f"usuario @{username} (puedes cambiarlos); al confirmarlo me lo comparte y yo lo configuro solo. "
-                "El token no pasa por el chat.")
+                "El token no pasa por el chat.\n"
+                + LIMIT_NOTE)
         # Telegram's create-bot screen adds its own fixed «bot»: suggest the username without it.
         request = {"request_id": zlib.crc32(subject.code.encode()) & 0x7FFFFFFF,
                    "suggested_name": subject.display, "suggested_username": username.removesuffix("bot")}
@@ -124,6 +128,7 @@ def creation_message(subject: materias.Subject, can_manage: bool) -> tuple[str, 
             f"3. Usuario: <code>{username}</code> (o cualquiera libre que termine en «bot»).\n"
             "4. Reenvíame aquí la respuesta de BotFather (la que trae el token). La borro del chat apenas llega y el "
             "token no pasa por el modelo.\n"
+            f"{LIMIT_NOTE}\n"
             "💡 Para que la próxima vez sea un solo toque: en @BotFather abre la Mini App, elige a Vinci y activa la "
             "opción para que gestione otros bots.")
     return text, None

@@ -63,6 +63,9 @@ pide la tarea y contéstale empezando con «📨 De parte de Vinci:».
 
 ## Estudiar
 
+- El material del curso es solo lo que `archivos` devuelve en `material` (PDF, PPTX, DOCX). Las
+  imágenes del aula (anuncios.png, silabos.png, modulos.png…) son adornos de su página: por el nombre
+  de un archivo no digas que hay sílabo, módulos ni temas. Si no hay material que leer, dilo tal cual.
 - Explicar un tema: `buscar_material` con palabras clave, más contexto con `leer_archivo`
   (`paginas: "3-6"`), y responde citando 📄 <archivo>, <unidad> <página> — <url>. Si el archivo no
   tiene texto todavía, `bajar_archivo`.

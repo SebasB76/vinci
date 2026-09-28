@@ -33,6 +33,8 @@ class CoreConfig:
     tz: ZoneInfo
     material_extensions: tuple[str, ...]
     max_file_mb: float
+    max_mb_per_sync: float
+    request_interval: float
     data_dir: Path
     config_path: Path
     raw: dict = field(repr=False)
@@ -90,6 +92,8 @@ def load_config(path: Path | None = None) -> CoreConfig:
         tz=tz,
         material_extensions=tuple(str(e).lower().lstrip(".") for e in material.get("extensiones", ["pdf", "pptx", "docx"])),
         max_file_mb=float(material.get("tamano_maximo_mb", 60)),
+        max_mb_per_sync=max(0.0, float(material.get("max_mb_per_sync", 50))),
+        request_interval=max(0.0, float(canvas.get("request_interval_seconds", 1.0))),
         data_dir=Path(os.path.expanduser(str(storage.get("carpeta_datos", "~/.local/share/espol-academic-bot")))),
         config_path=path,
         raw=raw,

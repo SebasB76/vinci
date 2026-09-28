@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import time
 
 import requests
@@ -16,6 +17,22 @@ log = logging.getLogger(__name__)
 LIMIT = 4000  # Telegram caps a message at 4096 characters
 # setMyName and friends answer 429 with waits of up to hours: past this, give up and try on the next setup.
 PROFILE_MAX_WAIT = 30
+TIMEOUT = (10, 30)  # (connect, read) seconds
+
+
+def prefer_ipv4() -> None:
+    """Try IPv4 addresses before IPv6 ones in this process. Where IPv6 to Telegram is broken but IPv4
+    works (the captain's network), every Bot API call stalled on IPv6 until its connect timeout; an
+    IPv6-only network still works, since IPv6 stays as the fallback."""
+    original = socket.getaddrinfo
+    if getattr(original, "prefers_ipv4", False):
+        return
+
+    def getaddrinfo(*args, **kwargs):
+        return sorted(original(*args, **kwargs), key=lambda info: info[0] != socket.AF_INET)
+
+    getaddrinfo.prefers_ipv4 = True
+    socket.getaddrinfo = getaddrinfo
 
 
 class TelegramError(Exception):
@@ -103,8 +120,8 @@ class Telegram:
         url = f"{self._base}/{method}"
         for attempt in range(4):
             try:
-                resp = (requests.post(url, data=payload, files=files, timeout=30) if files
-                        else requests.post(url, json=payload, timeout=30))
+                resp = (requests.post(url, data=payload, files=files, timeout=TIMEOUT) if files
+                        else requests.post(url, json=payload, timeout=TIMEOUT))
             except requests.RequestException as exc:
                 if attempt == 3:
                     raise TelegramError(f"No pude conectar con Telegram ({type(exc).__name__})") from None

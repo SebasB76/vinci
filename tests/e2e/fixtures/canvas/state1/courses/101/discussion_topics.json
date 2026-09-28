@@ -32,7 +32,25 @@
     "read_state": "unread",
     "unread_count": 0,
     "subscribed": false,
-    "attachments": [],
+    "attachments": [
+      {
+        "id": 5007,
+        "uuid": "u5007",
+        "folder_id": 9004,
+        "display_name": "Formulario de derivadas.pdf",
+        "filename": "formulario-derivadas.pdf",
+        "content-type": "application/pdf",
+        "url": "{{BASE}}/files/5007/download?download_frd=1&verifier=v5007",
+        "size": 2006,
+        "created_at": "2026-09-01T13:00:00Z",
+        "updated_at": "2026-09-01T13:00:00Z",
+        "locked": false,
+        "hidden": false,
+        "locked_for_user": false,
+        "hidden_for_user": false,
+        "mime_class": "pdf"
+      }
+    ],
     "published": true,
     "can_unpublish": false,
     "locked": false,

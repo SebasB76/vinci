@@ -21,7 +21,8 @@ Todas leen datos locales ya sincronizados con el aula virtual (solo lectura); ni
 | Los bots de materia (nombre, código, @usuario, estado) | `materias` |
 | Vista general: clases próximas, pendientes y cuadernos | `semana` (`dias`) |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
-| Material: listar, buscar, leer | `archivos`, `buscar_material`, `leer_archivo` |
+| Material: catálogo, buscar, leer | `archivos`, `buscar_material`, `leer_archivo` |
+| El libro principal de una materia (y guardar cuál es) | `libro_principal` (`materia`, `titulo`) |
 | Qué hay en el cuaderno de una materia (solo lectura) | `cuaderno` (`materia`, `tipo`) |
 | Horario guardado | `horario` |
 | Mostrar un horario para que lo confirme | `proponer_horario` |
@@ -88,12 +89,17 @@ Si no puede usar los botones, puede editar a mano el archivo que indica `horario
 
 ## Preguntas sobre el material
 
-1. `buscar_material` con palabras clave (y `materia` si la menciona); lee más contexto con
-   `leer_archivo` (`paginas: "3-6"`).
+1. `buscar_material` con palabras clave (y `materia` si la menciona), y en `traduccion` las mismas en
+   inglés: mucho material está en inglés. Lee más contexto con `leer_archivo` (`paginas: "3-6"`).
 2. Responde con base en ese texto y cita: 📄 <archivo>, <unidad> <página> — <url>.
-3. Para temas fuera del material puedes buscar en la web; dilo.
-4. Material es solo lo que `archivos` devuelve en `material` (PDF, PPTX, DOCX): las imágenes del aula
-   (anuncios.png, silabos.png…) no son un sílabo ni módulos subidos.
+3. Solo se busca en lo ya leído. Un documento `sin bajar` o `escaneado` lo baja y lo mira el bot de la
+   materia: para estudiar a fondo, sugiérele hablar con él (o pásale la pregunta con `entregar_a_materia`).
+4. Para temas fuera del material puedes buscar en la web; dilo.
+5. Material es solo lo que `archivos` devuelve en `material`: las imágenes del aula (anuncios.png,
+   silabos.png…) no son un sílabo ni módulos subidos.
+6. Si te dice cuál es el libro de una materia («el libro de Estadística es Zurita»), guárdalo con
+   `libro_principal` (`materia`, `titulo`): su bot lo usa primero. Si te manda el PDF de ese libro,
+   pásaselo al bot de la materia con `entregar_a_materia` (lo agrega a su material).
 
 ## Armar el equipo de bots
 

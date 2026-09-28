@@ -8,12 +8,15 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
   1. setup.sh twice: a legacy «espol» profile becomes Vinci with its memory; the second
      run changes nothing. Then, with IPv6 to Telegram broken and IPv4 working (the captain's
      network), Vinci's own Bot API calls must not stall.
-  2. `aula` CLI commands against the first fixture state.
+  2. `aula` CLI commands against the first fixture state: the material catalog (a module's
+     subheader, folders, a copy from 2025, a big book, a guide only an assignment links to, an
+     announcement's attachment) and its outside links; a file and its copy downloaded on demand.
   3. Vinci's polls, then the fixtures change (new assignment, due-date change, new
-     announcement, posted grade, new material, a submission), then polls 2-4 and the 07:00
-     summary (twice: the second must not resend). While poll 2 slowly downloads the new
-     material, `aula cursos --actualizar` (what setup.sh runs) must not wait for it.
-  4. retrieval: sample questions must hit the right file and page.
+     announcement, posted grade, new material, the syllabus, a new module link, a submission),
+     then polls 2-4 and the 07:00 summary (twice: the second must not resend). Only syllabi
+     download on their own; while poll 2 slowly downloads the new one, `aula cursos --actualizar`
+     (what setup.sh runs) must not wait for it.
+  4. retrieval: sample questions must hit the right file and page, never two copies of one page.
   5. a fresh install where two resources fail at different polls: the rest keeps working,
      one alert per failure episode and resource.
   6-7. the real Hermes gateway serving Vinci over the fake Telegram. The aula uses ESPOL's
@@ -32,7 +35,12 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      the brief 30 minutes before Wednesday's class, with what is due in both courses (and on
      Monday, theory then práctico back to back, one brief before the first block, none mid-class);
      notebook capture of a photo, a voice note and a doubt (and no arbitrary files); the course
-     material, without the aula's template images;
+     material, without the aula's template images. The material of each subject: the catalog as
+     the bot sees it; the main book read from the syllabus, asked for once from the subject bot's
+     chat (it is only a SharePoint link) and then sent as a PDF; the one Física's captain names
+     in Vinci's chat, asked for once, never again, and picked up from the libros/ folder; search
+     with the main book first and in two languages; a scanned reading seen as an image (the image
+     reaches the model); a professor's public page opened and a SharePoint link refused;
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
@@ -59,6 +67,7 @@ temporary paths are normalized, so reruns produce comparable files.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import itertools
@@ -83,7 +92,7 @@ HERE = Path(__file__).parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
-from fake_servers import BrokenIPv6, FakeCanvas, FakeTelegram, ScriptedLLM  # noqa: E402
+from fake_servers import BrokenIPv6, FakeCanvas, FakeTelegram, FakeWeb, ScriptedLLM  # noqa: E402
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -156,11 +165,12 @@ SCHEDULE_V1 = [
 SCHEDULE_V2 = [dict(c, inicio="09:00", fin="11:00") if c["dia"] == "miércoles" else c for c in SCHEDULE_V1]
 
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"}
-SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify"}
+SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina"}
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
 VOICE_RE = re.compile(r"(?:voice message: |audio is available at: )([^\s\]]+)")
 REPLY_RE = re.compile(r'\[Replying to[^:]*: "(.+?)"\]', re.S)
+DOC_RE = re.compile(r"saved at:?\s*([^\s\]'\"]+\.pdf)", re.I)
 
 
 # -- the model's side ------------------------------------------------------------------------
@@ -277,6 +287,8 @@ class Script:
             return _call("mcp__vinci__cuaderno", materia="cálculo")
         if "arma mi equipo" in text:
             return _call("mcp__vinci__proponer_equipo")
+        if "el libro de Física es" in text:
+            return _call("mcp__vinci__libro_principal", materia="física", titulo="Serway")
         if "archiva el bot de física" in text:
             return _call("mcp__vinci__archivar_materia", materia="física")
         if "reactiva el bot de física" in text:
@@ -300,6 +312,9 @@ class Script:
             elif isinstance(data, dict) and "entradas" in data:
                 parts.append("Esto hay en el cuaderno:\n" + "\n".join(
                     f"- {e['tipo']}: {e['texto']}" for e in data["entradas"][:8]))
+            elif isinstance(data, dict) and data.get("titulo") and data.get("materia"):
+                parts.append(f"📘 Anotado: el libro principal de {data['materia']} es «{data['titulo']}». "
+                             f"{data.get('nota', '')}")
             else:
                 parts.append(_problem(raw))
         return "\n".join(parts)
@@ -309,7 +324,7 @@ class Script:
             if not called:
                 return _call("mcp__materia__buscar_material", pregunta="regla de la cadena")
             hits = _json(results[-1]) if results else None
-            hits = hits.get("result") if isinstance(hits, dict) else hits
+            hits = hits.get("resultados") if isinstance(hits, dict) else hits
             top = hits[0] if isinstance(hits, list) and hits and isinstance(hits[0], dict) else {}
             source = f"{top['archivo']}, {top.get('unidad') or 'página'} {top.get('pagina')}" if top else None
             due = re.findall(r"^  - (.+?) — vence", text, re.M)
@@ -329,6 +344,9 @@ class Script:
             extra = f", con {photos} foto(s) ya guardada(s) en tu cuaderno" if photos else ""
             return {"content": f"📨 De parte de Vinci: recibí {count} cosa(s){extra}. "
                                "Empieza por repasar la regla de la cadena."}
+        flow = self.material(text, called, results)
+        if flow is not None:
+            return flow
         if results:
             return {"content": self.subject_answer(results)}
         voice = VOICE_RE.search(text)
@@ -351,9 +369,66 @@ class Script:
             return _call("mcp__materia__archivos")
         return {"content": f"Hola, soy el bot de {name}."}
 
+    def material(self, text: str, called: list[str], results: list[str]) -> dict | None:
+        """The material requests that take several tools: the next call, or the answer."""
+        last = _json(results[-1]) if results else None
+        refused = isinstance(last, dict) and "error" in last  # ver_pagina answers text, or {"error": …}
+        failed = refused or bool(results) and not isinstance(last, dict)
+        doc = DOC_RE.search(text)
+        if doc and "libro principal" in text:
+            if not called:
+                return _call("mcp__materia__agregar_material", ruta=doc[1], libro_principal=True)
+            return {"content": self.subject_answer(results)}
+        for trigger, question, english in (("regla de la cadena con tu libro", "regla de la cadena", "chain rule"),
+                                           ("tiro parabólico", "tiro parabólico alcance máximo",
+                                            "projectile motion maximum range")):
+            if trigger in text:
+                if not called:
+                    return _call("mcp__materia__buscar_material", pregunta=question, traduccion=english)
+                return {"content": _problem(results[-1]) if failed else self.search_answer(last)}
+        for trigger, pick in (("guía de optimización", lambda link: "optimización" in link["titulo"]),
+                              ("SharePoint", lambda link: "SharePoint" in link["tipo"])):
+            if trigger in text:
+                if not called:
+                    return _call("mcp__materia__archivos")
+                if called == ["mcp__materia__archivos"] and not failed:
+                    link = next(link for link in last.get("enlaces", []) if pick(link))
+                    return _call("mcp__materia__bajar_archivo", enlace_id=link["enlace_id"])
+                return {"content": self.subject_answer(results)}
+        if "como imagen" in text:
+            if not called:
+                return _call("ver_pagina", archivo_id=5001, pagina=2)
+            return {"content": ("🖼️ " + str(results[-1])[:300]) if not refused else _problem(results[-1])}
+        if "lectura de vectores" in text:
+            if not called:
+                return _call("mcp__materia__archivos", nombre="lectura")
+            if refused or called[-1] != "ver_pagina" and failed:
+                return {"content": _problem(results[-1])}
+            if called[-1] == "mcp__materia__archivos":
+                entry = next(f for f in last["material"] if "Suma de vectores" in f["archivo"])
+                return _call("mcp__materia__bajar_archivo", archivo_id=entry["id"])
+            if called[-1] == "mcp__materia__bajar_archivo" and last.get("estado") == "escaneado":
+                return _call("ver_pagina", archivo_id=last["archivo_id"], pagina=1)
+            return {"content": "🖼️ La lectura es un escaneo, así que miré su página 1 como imagen: la suma de "
+                               "vectores por el método del paralelogramo. " + str(results[-1])[:200]}
+        return None
+
+    @staticmethod
+    def search_answer(data: dict) -> str:
+        hits = data.get("resultados") or []
+        if not hits:
+            return "No encontré eso en tu material. " + data.get("nota", "")
+        return "📚 Lo que dice tu material:\n" + "\n".join(
+            f"📄 {h['archivo']}, {h.get('unidad') or 'página'} {h['pagina']}"
+            + (f" ({h['prioridad']})" if h.get("prioridad") else "") + (f" [{h['idioma']}]" if h.get("idioma") else "")
+            for h in hits[:4])
+
     @staticmethod
     def subject_answer(results: list[str]) -> str:
         data = _json(results[-1])
+        if isinstance(data, dict) and "archivo_id" in data and "estado" in data:
+            book = " como tu libro principal" if data.get("libro_principal") else ""
+            return f"📥 Listo: «{data['archivo']}» quedó en tu material{book} ({data['estado']})."
         if isinstance(data, dict) and "material" in data:
             return "📚 Material del curso: " + "; ".join(f["archivo"] for f in data["material"]) + (
                 f"\n{data['nota']}" if data.get("nota") else "")
@@ -454,7 +529,9 @@ def test_e2e(tmp_path):
     data_dir = tmp_path / "datos"
     pwned = tmp_path / "pwned"
 
-    with FakeCanvas(CANVAS_TOKEN) as canvas, FakeTelegram({BOT_TOKEN: USERNAMES[BOT_TOKEN]}) as telegram:
+    with FakeCanvas(CANVAS_TOKEN) as canvas, FakeTelegram({BOT_TOKEN: USERNAMES[BOT_TOKEN]}) as telegram, \
+            FakeWeb() as web:
+        canvas.web = web.base
         config = REPO.joinpath("config.toml").read_text(encoding="utf-8")
         config = config.replace('url = "https://aulavirtual.espol.edu.ec"', f'url = "{canvas.base}"')
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
@@ -471,7 +548,7 @@ def test_e2e(tmp_path):
 
         def normalize(text: str) -> str:
             text = text.replace(canvas.base, "https://aulavirtual.test").replace(telegram.base, "https://telegram.test")
-            text = text.replace(llm.base, "https://llm.test")
+            text = text.replace(llm.base, "https://llm.test").replace(web.base, "https://profesor.test")
             text = text.replace(str(data_dir), "<datos>").replace(str(home), "<home>").replace(str(tmp_path), "<tmp>")
             text = text.replace(str(REPO), "<repo>").replace(str(VENV_BIN), "<repo>/.venv/bin")
             if hermes:
@@ -609,7 +686,10 @@ def test_e2e(tmp_path):
             ["anuncios", "--curso", "fisica"],
             ["notas"],
             ["archivos"],
+            ["archivos", "--json"],
+            ["enlaces"],
             ["archivos", "bajar", "5001", "--json"],
+            ["archivos", "bajar", "5005", "--json"],
             ["archivos", "leer", "5001", "--paginas", "2"],
         ]
         cli_md = ["# Salida del comando `aula` (estado 1 del aula virtual)\n"]
@@ -625,6 +705,15 @@ def test_e2e(tmp_path):
         bajado = cli_json["archivos bajar 5001 --json"][0]
         assert bajado["indexado"] == "ok" and Path(bajado["ruta_local"]).is_file()
         assert "Paralelo5_MATG1049" in bajado["ruta_local"]
+        catalog = {f["id"]: f for f in cli_json["archivos --json"]}
+        assert not any(f["descargado"] for f in cli_json["archivos --json"]), "nada se baja sin pedirlo"
+        stewart, guide, formulario = catalog[5002], catalog[5006], catalog[5007]
+        assert (stewart["modulo"], stewart["seccion"], stewart["carpeta"]) == (
+            "Semana 1: Límites", "ANTES de clase: lecturas", "Libros"), stewart
+        assert catalog[5005]["copia_de"] == 5001 and catalog[5005]["anterior"] and catalog[5001]["copia_de"] is None
+        assert guide["origen"] == "Tarea «Taller 3: Derivadas»" and formulario["origen"] == "Anuncio «Bienvenidos al curso»"
+        assert catalog[5301]["curso"].endswith("Práctico")
+        assert cli_json["archivos bajar 5005 --json"][0]["indexado"] == "ok"
         assert take("aula CLI") == [], "la CLI nunca envía mensajes"
 
         # 3. polls -----------------------------------------------------------------------
@@ -635,11 +724,11 @@ def test_e2e(tmp_path):
         assert "Listo" in poll1[0]["text"] and "Recordatorio" in poll1[1]["text"] and "Deber 2" in poll1[1]["text"]
 
         canvas.state = "state2"
-        canvas.slow_downloads[5101] = 8
+        canvas.slow_downloads[5010] = 8
         sondeo = subprocess.Popen([bot, "sondeo"], env={**base_env, "AULA_NOW": T_POLL2}, cwd=REPO, text=True,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        downloading = telegram.wait_for(lambda _: any("/files/5101/download" in p for _, p in list(canvas.requests)), 60)
-        assert downloading, "el sondeo 2 debía bajar el material nuevo de Física"
+        downloading = telegram.wait_for(lambda _: any("/files/5010/download" in p for _, p in list(canvas.requests)), 60)
+        assert downloading, "el sondeo 2 debía bajar el sílabo nuevo de Cálculo"
         started = time.monotonic()
         refresh = run([aula, "cursos", "--actualizar"], T_POLL2)
         took = time.monotonic() - started
@@ -649,17 +738,24 @@ def test_e2e(tmp_path):
         assert sondeo.returncode == 0, f"el sondeo 2 falló:\n{out}\n{err}"
         canvas.slow_downloads.clear()
         assert "FÍSICA I" in refresh.stdout
-        report.append("Mientras el sondeo bajaba material nuevo (una descarga de 8 s), `aula cursos --actualizar` "
+        report.append("Mientras el sondeo bajaba el sílabo nuevo (una descarga de 8 s), `aula cursos --actualizar` "
                       "(lo que corre setup.sh, y lo mismo que refresca una herramienta de un bot) leyó el aula en "
                       "menos de 5 s: la descarga ya no retiene el candado de la sincronización")
         poll2 = take("Sondeo 2 · mar 29 sep 00:30 (tras los cambios)")
         texts = "\n\n".join(m["text"] for m in poll2)
         for expected in ("Nueva tarea en FÍSICA I", "Taller 2: Movimiento parabólico", "Cambió la fecha de entrega",
                          "Nuevo anuncio en CÁLCULO", "Cambio de fecha del Taller 3", "Nota publicada",
-                         "Tarea 1: Vectores", "9/10", "Nuevo material en FÍSICA I", "Ya lo leí",
-                         "Recordatorio", "vence en 22 h"):
+                         "Tarea 1: Vectores", "9/10", "Nuevo material en FÍSICA I", "Recordatorio", "vence en 22 h",
+                         "Nuevo material en CÁLCULO DE UNA VARIABLE - II PAO 2026</b>\nSílabo MATG1049 2026-2T.pdf",
+                         "Enlace nuevo en CÁLCULO DE UNA VARIABLE - II PAO 2026</b> · Semana 4: Aplicaciones de la "
+                         "derivada · ANTES de clase en vivo"):
             assert expected in texts, f"falta «{expected}» en el sondeo 2:\n{texts}"
-        assert len(poll2) == 6, [m["text"][:40] for m in poll2]
+        by_title = {m["text"].split("\n")[1]: m["text"] for m in poll2 if "\n" in m["text"]}
+        assert "Ya lo leí" in by_title["Sílabo MATG1049 2026-2T.pdf"], "el sílabo se baja y se lee solo"
+        assert "Lo bajo y lo leo cuando haga falta" in by_title["Semana 2 - Cinemática.pptx"], \
+            "lo demás no se baja solo: queda en el catálogo"
+        assert "Es público" in texts, "el enlace de un módulo avisa si el bot lo puede abrir"
+        assert len(poll2) == 8, [m["text"][:40] for m in poll2]
         assert not any(buttons(m) for m in poll1 + poll2), "sin bots de materia todavía no hay botones"
 
         run([bot, "sondeo"], T_POLL3)
@@ -680,6 +776,7 @@ def test_e2e(tmp_path):
         assert len(poll4) == 1 and "Taller 2" in poll4[0]["text"] and "vence en 2 h" in poll4[0]["text"]
 
         # 5. retrieval -------------------------------------------------------------------
+        run([aula, "archivos", "bajar", "5101", "--json"], T_SUMMARY)  # material comes down when it is asked for
         retrieval = []
         for question, expected_file, expected_page in QUESTIONS:
             hits = json.loads(run([aula, "buscar", question, "--json"], T_SUMMARY).stdout)
@@ -691,6 +788,10 @@ def test_e2e(tmp_path):
                                          for h in hits[:3]],
             })
             assert ok, f"{question!r}: esperaba {expected_file} p.{expected_page}, obtuve {top}"
+        chain = json.loads(run([aula, "buscar", QUESTIONS[0][0], "--json", "-n", "8"], T_SUMMARY).stdout)
+        pages = [(h["archivo"], h["pagina"]) for h in chain]
+        assert len(pages) == len(set(pages)) and 5005 not in [h["archivo_id"] for h in chain], \
+            f"la copia de 2025 del capítulo 3 no se repite en la búsqueda: {pages}"
         run_cli_after = run([aula, "buscar", QUESTIONS[0][0]], T_SUMMARY)
         cli_md.append(f"## `aula buscar \"{QUESTIONS[0][0]}\"`\n\n```\n{normalize(run_cli_after.stdout).rstrip()}\n```\n")
         pend = run([aula, "tareas", "--dias", "7", "--sin-actualizar"], T_SUMMARY)
@@ -737,10 +838,10 @@ def test_e2e(tmp_path):
                                   T_RESILIENCE[-1], env_extra=fresh).stdout)
         assert len(anuncios) == 1, "al recuperarse, el anuncio existente queda guardado"
         canvas.failing = set()
-        assert downloads[:2] == [[5001], [5101]] and not any(downloads[2:]), downloads
+        assert downloads[:2] == [[5010], [5301]] and not any(downloads[2:]), downloads
         report.append("El sondeo trata el aula virtual con suavidad: espació cada consulta (con el ritmo de prueba de "
-                      "0,1 s) y bajó el material de a poco (con un tope de prueba de 1 KB por sondeo, un archivo en "
-                      "el primero y el otro en el segundo), en vez de todo de golpe")
+                      "0,1 s) y solo bajó los sílabos, de a poco (con un tope de prueba de 1 KB por sondeo, el del "
+                      "teórico en el primero y el del práctico en el segundo), en vez de todo el material de golpe")
 
         # 6b. Canvas refuses the token: one alert, then no more reads until secrets.env has another ---------
         canvas.token = NEW_CANVAS_TOKEN  # the aula virtual revoked the first one
@@ -761,6 +862,7 @@ def test_e2e(tmp_path):
                       "(y el resumen) no volvieron a consultarla; con el token nuevo en secrets.env volvió a leerla sola")
 
         equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
+        material_md = ["# El material de cada materia (lo que vio el modelo)\n"]
         horario_md = ["# Horario desde una captura (se guarda solo con el botón del capitán)\n"]
         briefs_md = ["# Brief antes de clase\n"]
         party_md = ["# Tu party: el nombre y la foto de cada bot\n",
@@ -788,6 +890,9 @@ def test_e2e(tmp_path):
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
         assert all(str(m["chat_id"]) == CAPTAIN_ID for _, m in sent_log), "solo se escribe al capitán"
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
+        downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
+        assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102} if vinci_section else set()), \
+            f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
         secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
@@ -817,6 +922,7 @@ def test_e2e(tmp_path):
     (artifact / "canvas_requests.log").write_text(requests_log + "\n", encoding="utf-8")
     if vinci_section:
         (artifact / "equipo.md").write_text(normalize("\n".join(equipo_md)), encoding="utf-8")
+        (artifact / "material.md").write_text(normalize("\n".join(material_md)), encoding="utf-8")
         (artifact / "horario.md").write_text(normalize("\n".join(horario_md)), encoding="utf-8")
         (artifact / "briefs.md").write_text(normalize("\n".join(briefs_md)), encoding="utf-8")
         (artifact / "party.md").write_text(normalize("\n".join(party_md)), encoding="utf-8")
@@ -852,15 +958,17 @@ def test_e2e(tmp_path):
         "- Ningún token (Canvas ni bots) apareció en mensajes de Telegram, en lo que vio el modelo ni en estos archivos.",
         "\n## Mensajes por etapa\n",
         *[f"- {label}: {n}" for label, n in counts.items()],
-        "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `party.md` (con "
-        "la foto de cada bot, `foto-<bot>.jpg`), `hermes_herramientas.json`, `resumen_diario.txt`, "
-        "`recuperacion.json`, `cli.md`, `canvas_requests.log`, `setup.log`.\n",
+        "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `material.md` (el "
+        "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
+        "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), "
+        "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
+        "`setup.log`.\n",
     ]
     (artifact / "REPORTE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, take, report, gateway, artifact,
-               equipo_md, horario_md, briefs_md, party_md, tools_seen, pwned, secrets, base_env, **_) -> None:
+def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
+               equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -873,6 +981,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
         data["providers"] = {"fakellm": {"api": f"{llm.base}/v1", "api_key": "e2e", "discover_models": False,
                                          "models": ["fake"]}}
         data.setdefault("agent", {})["image_input_mode"] = "native"
+        data.setdefault("model", {})["supports_vision"] = True  # the fake model: ver_pagina's image goes to it
         data.setdefault("stt", {})["enabled"] = False
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
@@ -1056,7 +1165,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
         env = parse_env_file(sp / ".env")
         assert env["TELEGRAM_BOT_TOKEN"] == token and env["TELEGRAM_ALLOWED_USERS"] == CAPTAIN_ID
         scfg = yaml.safe_load((sp / "config.yaml").read_text())
-        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia"}
+        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia",
+                                                              "vinci-paginas"}
         assert {"web", "terminal", "file", "skills"} <= set(scfg["agent"]["disabled_toolsets"])
         assert scfg["mcp_servers"]["materia"]["args"][:4] == ["mcp", "materia", "--curso", code]
         assert scfg["unauthorized_dm_behavior"] == "ignore" and scfg["skills"]["auto_load"] == ["vinci-materia"]
@@ -1180,8 +1290,19 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
 
     # 7d. alerts with a handoff button, and a reply to an alert
     run([bot, "sondeo"], T_VINCI)
-    reminders = take("Sondeo · mié 30 sep 08:30 (avisos con botón)")
+    polled = take("Sondeo · mié 30 sep 08:30 (avisos con botón, y Cálculo pide su libro)")
+    reminders = [m for m in polled if m["bot"] == "vinci_bot"]
+    asks = [m for m in polled if m["bot"] != "vinci_bot"]
     assert len(reminders) == 3, [m["text"][:60] for m in reminders]
+    assert [m["bot"] for m in asks] == ["vinci_calculo_bot"], [(m["bot"], m["text"][:60]) for m in asks]
+    calc_ask = plain(asks[0]["text"])
+    for expected in ("El libro principal de Cálculo de una Variable", "Según el sílabo es: Purcell, E., Varberg",
+                     "solo está como enlace (SharePoint de ESPOL)", "Hasta 20 MB: mándamelo aquí",
+                     f"{data_dir}/libros/MATG1049", "No te lo vuelvo a pedir"):
+        assert expected in calc_ask, f"falta «{expected}» en el pedido del libro:\n{calc_ask}"
+    assert (data_dir / "libros" / "MATG1049").is_dir() and (data_dir / "libros" / "FISG1002").is_dir()
+    material_md += ["## El bot de Cálculo pide su libro principal (una vez, desde su chat)\n",
+                    f"```\n{calc_ask}\n```\n"]
     calc_alert = next(m for m in reminders if "Taller 3" in m["text"])
     practico_alert = next(m for m in reminders if "Práctica 4" in m["text"])
     fis_alert = next(m for m in reminders if "Examen parcial" in m["text"])
@@ -1223,7 +1344,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     for expected in ("Materia: Cálculo de una Variable (MATG1049) · paralelo 5",
                      "Clase: hoy miércoles 30 sep, 09:00–11:00 en A105 (empieza en 30 min)",
                      "Clase anterior: lunes 28 sep, 09:00.", "Taller 3: Derivadas", "Práctica 4: Regla de la cadena",
-                     "3 a 5 conceptos clave", "Una pregunta concreta"):
+                     "3 a 5 conceptos clave", "Una pregunta concreta",
+                     "Libro principal: Purcell, E., Varberg, D. y Rigdon, S. (2007). Cálculo (9a ed.). Pearson — no tengo",
+                     "  - Sílabo MATG1049 2026-2T.pdf · archivo 5010, leído",
+                     "  - enlace: Guía de optimización (página del profesor) [Semana 4: Aplicaciones de la derivada · "
+                     "ANTES de clase en vivo]", "con «traduccion» si el material está en inglés"):
         assert expected in task, f"falta «{expected}» en la tarea del brief:\n{task}"
     assert "Taller 3: Derivadas" in readable(brief) and "📄 Capítulo 3 - Derivadas.pdf" in readable(brief), \
         "el brief cita el material del curso"
@@ -1292,6 +1417,145 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
                   "solo una nota de que hay 1 archivo más que no es material del curso")
     take("Material del curso, sin las imágenes del aula")
 
+    # 7f2. the material of each subject: catalog, main book, two languages, a scan, outside links
+    def tool_result(match) -> dict:
+        """The newest tool result the model got that `match` accepts."""
+        for req in reversed(llm.requests):
+            for m in reversed(req.get("messages") or []):
+                if m.get("role") == "tool" and isinstance(data := _json(flatten(m.get("content"))), dict) and match(data):
+                    return data
+        return {}
+
+    def db_rows(sql: str, *args) -> list[dict]:
+        conn = sqlite3.connect(f"file:{data_dir / 'espol.db'}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute(sql, args)]
+        finally:
+            conn.close()
+
+    def dump(title: str, data) -> None:
+        material_md.append(f"## {title}\n\n```json\n{json.dumps(data, ensure_ascii=False, indent=1)}\n```\n")
+
+    calc_catalog = tool_result(lambda d: "material" in d and "libro_principal" in d)
+    by_id = {f["id"]: f for f in calc_catalog.get("material", [])}
+    assert calc_catalog["libro_principal"]["titulo"].startswith("Purcell"), calc_catalog.get("libro_principal")
+    assert by_id[5002]["estado"] == "muy grande para bajar" and by_id[5002]["seccion"] == "ANTES de clase: lecturas"
+    assert 5005 not in by_id and by_id[5001]["copias"] == 1, "la copia de 2025 se lista una vez, en el original"
+    assert by_id[5010]["estado"] == by_id[5301]["estado"] == "leído" and by_id[5001]["estado"] == "leído"
+    assert by_id[5006]["estado"] == "sin bajar" and by_id[5006]["origen"] == "Tarea «Taller 3: Derivadas»"
+    assert by_id[5007]["origen"] == "Anuncio «Bienvenidos al curso»"
+    links = {link["tipo"]: link for link in calc_catalog["enlaces"]}
+    assert links["SharePoint de ESPOL"]["acceso"] == links["video"]["acceso"] == "solo enlace"
+    assert links["SharePoint de ESPOL"]["origen"] == "Programa del curso"
+    assert links["archivo de Dropbox"]["acceso"] == "se puede bajar"
+    web_links = [link for link in calc_catalog["enlaces"] if link["tipo"] == "página web"]
+    assert {link["titulo"] for link in web_links} == {"Guía de optimización (página del profesor)",
+                                                     "este applet de GeoGebra"}, web_links
+    dump("`archivos` de Cálculo: el catálogo que ve su bot", calc_catalog)
+    report.append("Catálogo del material (lo que recibe el bot de Cálculo): cada documento con su módulo, la sección "
+                  "del módulo («ANTES de clase: lecturas»), su carpeta («Libros») y de dónde salió (una guía que solo "
+                  "enlaza una tarea, el adjunto de un anuncio), la copia de 2025 del capítulo 3 una sola vez, el libro "
+                  "de 250 MB como «muy grande para bajar», y los enlaces de fuera: el Purcell del «Programa del curso» "
+                  "en SharePoint y el video como «solo enlace», el Dropbox y la página del profesor como «se puede "
+                  "bajar»; nada se bajó sin pedirlo salvo los sílabos")
+
+    purcell = (FILES / "purcell-calculo.pdf").read_bytes()
+    turn(lambda: telegram.send_document(MATG, CAPTAIN, "purcell-calculo-9a-ed.pdf", purcell,
+                                        caption="este es el libro principal de la materia, el Purcell"),
+         "vinci_calculo_bot", "quedó en tu material como tu libro principal")
+    sent = db_rows("SELECT * FROM files WHERE source = 'Lo mandó el estudiante'")
+    assert len(sent) == 1 and sent[0]["index_status"] == "ok" and sent[0]["id"] < 0
+    stored = db_rows("SELECT * FROM libros WHERE materia = 'MATG1049'")[0]
+    assert json.loads(stored["archivos"]) == [sent[0]["id"]] and stored["pedido"], stored
+    chain = turn(lambda: telegram.send_text(MATG, CAPTAIN, "explícame la regla de la cadena con tu libro"),
+                 "vinci_calculo_bot", "Lo que dice tu material")
+    hits = tool_result(lambda d: "resultados" in d)["resultados"]
+    assert hits[0]["archivo"] == "purcell-calculo-9a-ed.pdf" and hits[0]["prioridad"] == "libro principal", hits[0]
+    assert 5005 not in [h["archivo_id"] for h in hits], "la copia de 2025 no aparece junto al original"
+    assert len({(h["archivo"], h["pagina"]) for h in hits}) == len(hits)
+    dump("`buscar_material` en Cálculo: «regla de la cadena» (y «chain rule»)", hits)
+    report.append("Libro principal de Cálculo: el sílabo en PDF (BÁSICA y COMPLEMENTARIA lado a lado) dice que es el "
+                  "Purcell; como en el aula solo está como enlace de SharePoint, su bot se lo pidió al capitán una vez, "
+                  "desde su propio chat y sin el modelo, explicando cómo pasar un PDF de más de 20 MB (la carpeta "
+                  "libros/MATG1049). El capitán le mandó el PDF, que quedó en su material como libro principal, y al "
+                  "preguntar por la regla de la cadena el Purcell salió primero: «" + readable(chain)[:120] + "…»")
+
+    guide = turn(lambda: telegram.send_text(MATG, CAPTAIN, "abre la guía de optimización del profesor"),
+                 "vinci_calculo_bot", "quedó en tu material")
+    assert [p for _, p in web.requests] == ["/profesor/optimizacion.html"], web.requests
+    opened = db_rows("SELECT f.*, l.url FROM links l JOIN files f ON f.id = l.file_id")
+    assert len(opened) == 1 and opened[0]["index_status"] == "ok" and opened[0]["source"].startswith("Enlace «Guía")
+    refused = turn(lambda: telegram.send_text(MATG, CAPTAIN, "ábreme el Purcell del SharePoint"), "vinci_calculo_bot",
+                   "Ábrelo tú")
+    assert "pide tu cuenta de ESPOL" in readable(refused) and "sharepoint.com" in readable(refused)
+    assert len(web.requests) == 1, "un enlace de SharePoint no se intenta abrir"
+    report.append("Enlaces de fuera: el bot de Cálculo abrió la guía de optimización de la página pública del profesor "
+                  "cuando se la pidieron (un GET sin token, solo esa página) y quedó leída en su material; el Purcell de "
+                  "SharePoint no lo intentó abrir: «" + readable(refused)[:110].replace("\n", " ") + "…»")
+    material_md += ["## Enlaces: la guía del profesor se abre, el SharePoint no\n",
+                    f"```\n{readable(guide)}\n\n{readable(refused)}\n```\n"]
+
+    told = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "el libro de Física es el Serway"), "vinci_bot",
+                "Anotado")
+    assert db_rows("SELECT titulo FROM libros WHERE materia = 'FISG1002'")[0]["titulo"] == "Serway"
+    take("El material de Cálculo: catálogo, libro principal y enlaces")
+    run([bot, "sondeo"], T_VINCI)
+    asked = take("Sondeo: Física pide el libro que el capitán nombró")
+    assert [m["bot"] for m in asked] == ["vinci_fisica_bot"], [(m["bot"], m["text"][:60]) for m in asked]
+    fis_ask = plain(asked[0]["text"])
+    assert "Me dijiste que es: Serway" in fis_ask and f"{data_dir}/libros/FISG1002" in fis_ask, fis_ask
+    run([bot, "sondeo"], T_VINCI)
+    assert take("Sondeo: sin el PDF todavía") == [], "el libro se pide una sola vez"
+    shutil.copy(FILES / "serway-physics.pdf", data_dir / "libros" / "FISG1002" / "Serway - Physics for Scientists.pdf")
+    run([bot, "sondeo"], T_VINCI)
+    assert take("Sondeo: el PDF ya está en la carpeta") == []
+    dropped = db_rows("SELECT * FROM files WHERE source = 'Carpeta libros'")
+    assert len(dropped) == 1 and dropped[0]["index_status"] == "ok" and dropped[0]["language"] == "en", dropped
+    assert Path(dropped[0]["local_path"]).parent == data_dir / "libros" / "FISG1002", "se lee donde lo puso"
+    projectile = turn(lambda: telegram.send_text(FIS, CAPTAIN, "explícame el tiro parabólico y el alcance máximo"),
+                      "vinci_fisica_bot", "Lo que dice tu material")
+    fis_hits = tool_result(lambda d: "resultados" in d)["resultados"]
+    assert fis_hits[0]["archivo"] == "Serway - Physics for Scientists.pdf" and fis_hits[0]["idioma"] == "en" \
+        and fis_hits[0]["prioridad"] == "libro principal", fis_hits[0]
+    assert "Semana 2 - Cinemática.pptx" in [h["archivo"] for h in fis_hits], "también encuentra lo que está en español"
+    dump("`buscar_material` en Física: «tiro parabólico alcance máximo» y «projectile motion maximum range»", fis_hits)
+    material_md += ["## Física: el libro que nombró el capitán, pedido una vez\n",
+                    f"```\n{readable(told)}\n\n{fis_ask}\n```\n"]
+    report.append("Libro principal de Física: el capitán le dijo a Vinci «el libro de Física es el Serway»; el bot de "
+                  "Física se lo pidió una vez y el sondeo siguiente no insistió; el PDF que el capitán puso en "
+                  "libros/FISG1002 (para los de más de 20 MB) se leyó ahí mismo en el sondeo siguiente, y una pregunta "
+                  "en español encontró el Serway en inglés primero y las diapositivas en español: «"
+                  + readable(projectile)[:110].replace("\n", " ") + "…»")
+
+    # Each subject bot's ver_pagina is its own: Cálculo's shows Cálculo's PDF, Física's refuses it.
+    calc_page = turn(lambda: telegram.send_text(MATG, CAPTAIN, "muéstrame la página 2 del capítulo 3 como imagen"),
+                     "vinci_calculo_bot", "🖼️")
+    assert "Página 2 de 3 de «Capítulo 3 - Derivadas.pdf»" in readable(calc_page), readable(calc_page)
+    other = turn(lambda: telegram.send_text(FIS, CAPTAIN, "muéstrame la página 2 del capítulo 3 como imagen"),
+                 "vinci_fisica_bot", "otra materia")
+    scan = turn(lambda: telegram.send_text(FIS, CAPTAIN, "léeme la lectura de vectores que dejó el profe"),
+                "vinci_fisica_bot", "escaneo")
+    scanned = db_rows("SELECT * FROM files WHERE id = 5102")[0]
+    assert scanned["index_status"] == "escaneado" and scanned["source"] == "Página «Lectura recomendada»", scanned
+    images = [part["image_url"]["url"] for req in llm.requests for m in req.get("messages") or []
+              if isinstance(m.get("content"), list) for part in m["content"]
+              if isinstance(part, dict) and part.get("type") == "image_url"
+              and str(part["image_url"].get("url", "")).startswith("data:image/jpeg;base64,")]
+    assert len(images) >= 2, fail("las páginas no le llegaron al modelo como imagen")
+    page = base64.b64decode(images[-1].split(",", 1)[1])
+    assert page[:3] == b"\xff\xd8\xff" and len(page) > 10_000
+    (artifact / "pagina-escaneada.jpg").write_bytes(page)
+    material_md += ["## Física: una lectura escaneada, mirada como imagen\n",
+                    f"```\n{readable(scan)}\n```\n", "La página que recibió el modelo (ver_pagina):\n",
+                    "![página 1 de la lectura escaneada](pagina-escaneada.jpg)\n"]
+    report.append("PDF escaneado: la lectura de vectores que enlaza una Página de Física se bajó cuando se la pidieron, "
+                  "quedó marcada «escaneado» (sus páginas no tienen texto) y el bot la miró con ver_pagina: la página "
+                  "le llegó al modelo como imagen JPEG (pagina-escaneada.jpg), no como una ruta. Cada bot ve solo sus "
+                  "PDF: el de Cálculo mostró su capítulo 3 y el de Física se negó: «"
+                  + readable(other)[:80].replace("\n", " ") + "…»")
+    take("El material de Física: búsqueda en dos idiomas y una lectura escaneada")
+
     # 7g. Vinci reads the notebooks but cannot write them or reach a terminal
     read = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué hay en el cuaderno de cálculo?"),
                 "vinci_bot", "Esto hay en el cuaderno")
@@ -1310,6 +1574,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
         if who:
             tools_seen.setdefault(who, set()).update(tools_of(req))
     vinci_tools = tools_seen["Vinci"]
+    assert all("ver_pagina" in tools_seen[b] for b in ("Cálculo de una Variable", "Física I")), tools_seen
+    assert "mcp__vinci__libro_principal" in vinci_tools
     assert {"mcp__vinci__cuaderno", "mcp__vinci__entregar_a_materia", "mcp__vinci__proponer_horario",
             "mcp__vinci__proponer_equipo", "web_search"} <= vinci_tools
     assert all(t.startswith("mcp__vinci__") or t in VINCI_TOOLS_OK for t in vinci_tools), vinci_tools
@@ -1624,7 +1890,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
         for rule in ("Reglas firmes:", f"Solo {name}.", "Solo lectura del aula virtual", "No tienes web, terminal"):
             assert rule in soul, f"{bot_name} no cambia sus reglas: falta «{rule}»"
         scfg = yaml.safe_load((profile / "config.yaml").read_text())
-        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia"}
+        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia",
+                                                              "vinci-paginas"}
         assert {"web", "terminal", "file", "skills"} <= set(scfg["agent"]["disabled_toolsets"])
         assert scfg["compression"]["threshold_tokens"] == 80_000, f"{bot_name} resume su chat a los 80 mil tokens"
         if code in EXISTING and not EXISTING[code][1].startswith("Vinci · "):

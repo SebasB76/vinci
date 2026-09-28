@@ -19,7 +19,9 @@
   material nuevo; recordatorios 24 h y 3 h antes de cada entrega que aún no enviaste, y un resumen de la semana
   a las 7:00. Te los manda Vinci, con un botón para **consultarlo con el bot de la materia**.
 - **Preguntas sobre el material** (PDF, PPTX y DOCX): explicar un tema, resumir un capítulo o hacerte preguntas
-  tipo examen, citando archivo, página y el enlace del aula virtual.
+  tipo examen, citando archivo, página y el enlace del aula virtual. Cada bot se guía primero por el **libro
+  principal** de su materia (la bibliografía BÁSICA del sílabo, o el que tú le digas) y busca en español y en
+  inglés. [Cómo llega el material a cada bot](#el-material-de-cada-materia).
 - El comando **`aula`** para consultar todo desde la terminal, y una skill para que **Claude Code** en tu PC
   también pueda usarlo.
 
@@ -189,10 +191,38 @@ si vuelve a fallar después de recuperarse, te avisa de nuevo. Para forzar una r
 `vinci cron run vinci-sondeo`.
 
 El sondeo trata al aula virtual con calma, para que su tráfico nunca parezca abuso: espacia sus consultas (una
-por segundo) y baja el material nuevo de a poco (hasta 50 MB por sondeo; la primera vez se reparte en varios
-sondeos). Si el aula pide bajar el ritmo, no la vuelve a leer durante una hora. Lo que le preguntas a un bot
+por segundo), solo baja los sílabos (hasta 50 MB por sondeo) y sigue a lo más 60 enlaces por sondeo hacia el
+material que solo un enlace muestra (Páginas, adjuntos de anuncios); lo demás, en los siguientes. Si el aula pide
+bajar el ritmo, no la vuelve a leer durante una hora. Lo que le preguntas a un bot
 en Telegram no espera esa pausa. Lo que le escribas a un bot de materia con el gateway apagado te lo responde
 al encenderlo.
+
+## El material de cada materia
+
+Sin llenar el contexto del modelo ni tu disco: cada bot tiene un **catálogo** de todo el material y baja solo lo que
+necesita en el momento.
+
+- **El catálogo** (`archivos`): cada documento del aula, de la pestaña Archivos, de los Módulos, de las Páginas, del
+  «Programa del curso», de los adjuntos de anuncios y de los enlaces dentro de tareas, con su módulo, su sección
+  del módulo («ANTES de clase…»), su carpeta, de dónde salió, fecha, tamaño, idioma y si ya está leído. Las copias
+  del mismo archivo en otra carpeta o año se muestran una vez, y lo de un semestre anterior (`Slides/2021`) va al
+  final.
+- **Qué se baja**: solo el sílabo de cada curso, solo. Lo demás lo baja el bot de la materia cuando le hace falta
+  para responder (`bajar_archivo`); ya bajado, se queda. El material que un bot ya bajó antes sigue ahí.
+- **El libro principal**: el bot lo saca del sílabo (BÁSICA, «Lectura obligatoria» o «Texto guía»), o se lo dices
+  tú en el chat («el libro de Estadística es Zurita», a Vinci o al bot). La búsqueda lo pone primero. Si su PDF no
+  está en el aula, el bot de la materia te lo pide **una sola vez**: hasta 20 MB se lo mandas por su chat; si pesa
+  más (Telegram no deja que un bot reciba archivos más grandes), lo pones en
+  `~/.local/share/espol-academic-bot/libros/<CÓDIGO>/` y lo toma en la siguiente revisión del aula.
+- **Buscar**: en el texto de lo ya leído, en español y en inglés (mucho material está en inglés), sin repetir la
+  misma página de dos copias.
+- **PDFs escaneados**: se detectan (sus páginas casi no tienen texto) y el bot te lo dice y mira sus páginas como
+  imagen (`ver_pagina`, solo PDFs de su materia ya bajados).
+- **Enlaces de fuera**: un archivo de Dropbox o la página pública de un profesor, el bot los abre cuando le hacen
+  falta (solo direcciones públicas de internet). SharePoint, OneDrive, Stream y los videos piden tu cuenta de
+  ESPOL: quedan listados con su enlace para que los abras tú.
+- Un archivo nuevo en el aula te llega como aviso (con su módulo, sección y si ya está leído) y en el brief; un
+  enlace nuevo de un módulo, también.
 
 ## Uso
 
@@ -213,6 +243,7 @@ al encenderlo.
 - Una foto de la pizarra o una nota de voz → la guarda en el cuaderno con un resumen.
 - «No entendí la prueba de hipótesis» → te lo explica con el material del curso y lo anota como duda.
 - «Explícame el capítulo 3» / «Hazme 5 preguntas tipo examen».
+- «El libro principal es el Zurita» / el PDF del libro → lo usa primero desde ahí.
 
 Cada bot recuerda sus conversaciones (memoria propia) y usa su cuaderno para los briefs.
 
@@ -224,11 +255,12 @@ aula tareas                       # pendientes, por fecha de entrega
 aula tareas --curso estadistica --dias 7
 aula anuncios --curso software
 aula notas
-aula archivos --curso nube --nombre "semana 3"
+aula archivos --curso nube --nombre "semana 3"   # el catálogo: leído o no, con su módulo y carpeta
 aula archivos bajar 5001          # descarga (y lo indexa) en ~/.local/share/espol-academic-bot/materiales/
 aula archivos leer 5001 --paginas 2-3
+aula enlaces --curso nube         # Dropbox, SharePoint, videos…
 aula buscar "teorema del límite central"
-aula sincronizar --material       # leer todo ahora y bajar el material nuevo
+aula sincronizar --material       # leer todo ahora y bajar los sílabos nuevos
 ```
 
 `--curso` acepta cualquier parte del nombre o del código, sin tildes. `aula` reutiliza los datos guardados si
@@ -294,9 +326,9 @@ Todo lo ajustable está en [`config.toml`](config.toml):
 | `notificaciones.resumen_diario` | `"07:00"` | hora del resumen de la semana |
 | `clases.brief_minutos_antes` | `30` | cuántos minutos antes de cada clase llega el brief |
 | `general.zona_horaria` | `America/Guayaquil` | zona para fechas, horarios y briefs |
-| `material.extensiones` | `pdf, pptx, docx` | qué archivos se descargan e indexan |
-| `material.tamano_maximo_mb` | `60` | archivos más grandes no se descargan |
-| `material.max_mb_per_sync` | `50` | cuánto material baja como máximo cada sondeo (lo demás, en los siguientes) |
+| `material.extensiones` | `pdf, pptx, docx` | qué archivos del aula leen los bots |
+| `material.tamano_maximo_mb` | `200` | archivos más grandes no se descargan |
+| `material.max_mb_per_sync` | `50` | cuántos sílabos baja como máximo cada sondeo (los demás, en los siguientes) |
 | `canvas.request_interval_seconds` | `1.0` | pausa mínima entre dos consultas del sondeo al aula virtual |
 | `almacenamiento.carpeta_datos` | `~/.local/share/espol-academic-bot` | base de datos, material y cuadernos |
 | `hermes.perfil` | `vinci` | perfil de Vinci; cada materia usa `<perfil>-<código>` |
@@ -309,7 +341,8 @@ Después de cambiarlo corre `./setup.sh` otra vez (la frecuencia y la hora del r
 Todo queda en tu PC, en `~/.local/share/espol-academic-bot/`:
 
 - `espol.db`: tus materias, tareas, anuncios, notas, archivos y el índice del material;
-- `materiales/<código de la materia>/`: los archivos descargados;
+- `materiales/<código de la materia>/`: los archivos descargados (y en `recibidos/`, los que le mandaste a un bot);
+- `libros/<CÓDIGO>/`: donde pones el PDF del libro principal de una materia si pesa más de 20 MB;
 - `materias.toml`: tu equipo de bots, con los cursos del aula de cada materia (puedes cambiar el `nombre` de una
   materia a mano; su bot se llama así, salvo que `hermes/characters.toml` le dé su nombre);
 - `horario.toml`: tu horario guardado (puedes editarlo a mano; Vinci guarda una copia del anterior cada vez que
@@ -351,7 +384,12 @@ su trabajo tarde) y un segundo «Crear» no reenvía, que un bot nuevo responde 
 de que el gateway lo tome, que Vinci contesta lo que le escribiste mientras el gateway se reiniciaba, que la
 agenda de cada bot de materia corre cada minuto de verdad (y al actualizar, los cron de antes se corrigen sin
 duplicarse), que las imágenes de la página del aula no cuentan como material, que el sondeo espacia
-sus consultas y baja el material de a poco, que Telegram con el IPv6 roto no demora nada, que una descarga larga
+sus consultas y baja solo los sílabos de a poco, el catálogo del material (módulos con sus secciones, carpetas,
+Páginas, «Programa del curso», adjuntos de anuncios, enlaces de tareas y módulos, copias repetidas, material de otro
+año), el libro principal leído del sílabo o dicho en el chat y pedido una sola vez (por el chat o por la carpeta
+`libros/`), la búsqueda en dos idiomas con el libro principal primero, un PDF escaneado mirado como imagen (la imagen
+llega al modelo), un Dropbox abierto y un SharePoint solo listado, que Telegram con el IPv6 roto no demora nada, que
+una descarga larga
 no frena a quien refresca el aula, que un token rechazado se avisa una vez y no se vuelve a usar, que setup.sh
 no dice «✓ Canvas responde» si Canvas rechazó el token, y que cada bot de materia se llame solo como su
 materia (los que ya se llamaban «Vinci · …» o como su personaje se renombran ahí mismo al actualizar, sin crear
@@ -360,8 +398,9 @@ a Telegram, sin personaje y sin cambiar sus reglas, y que cada usuario sugerido 
 con un solo «bot». Deja el resultado en **`artifacts/e2e/`**: `REPORTE.md`,
 `notificaciones.md` (todos los mensajes), `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `party.md`
 (el nombre, el usuario y la foto que subió cada bot, `foto-<bot>.jpg`),
-`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log` y
-`setup.log`.
+`material.md` (el catálogo, el libro principal y lo que vio el modelo), `pagina-escaneada.jpg` (la página que
+recibió el modelo), `hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`,
+`canvas_requests.log` y `setup.log`.
 
 ## Desinstalar
 
@@ -378,7 +417,8 @@ Los bots de Telegram los borras en @BotFather (`/deletebot`).
 ## Próximos pasos (aún no incluidos)
 
 - Videos de las clases: transcribirlos para poder preguntar sobre ellos.
-- PDFs escaneados y fotos de la pizarra con texto: OCR.
+- Fotos de la pizarra con texto: OCR (los PDFs escaneados ya los mira como imagen el bot de la materia).
+- Buscar por significado (búsqueda semántica local), además de por palabras.
 - Notas de voz: Hermes las transcribe (en español) si tiene con qué; si no, el bot guarda el audio sin
   transcribir. Dejar instalado un modelo local (faster-whisper) desde el setup.
 - Contador de tareas pendientes en la barra de Omarchy y notificaciones de escritorio.

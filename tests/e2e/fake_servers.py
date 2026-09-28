@@ -6,7 +6,11 @@ client must follow it), `X-Rate-Limit-Remaining`, one 429 to exercise backoff,
 a course whose Files tab is hidden (401 unauthorized), and file downloads.
 API paths added to `failing` answer 503 until removed (a resource that keeps failing), and a
 file in `slow_downloads` takes that many seconds to download.
-It answers 405 to anything but GET and records every request.
+It answers 405 to anything but GET and records every request. `{{WEB}}` in a fixture is the
+FakeWeb server's address.
+
+FakeWeb stands in for the public internet a course links to (a professor's own page): it serves
+fixtures/web/ to anyone, with no token, and records every request.
 
 FakeTelegram stands in for the Bot API of several bots at once (Vinci and each subject
 bot, one token each): it records every call, answers getMe, keeps inline buttons, hands
@@ -46,7 +50,8 @@ from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
 
 FIXTURES = Path(__file__).parent / "fixtures"
 PAGE_SIZE = 2
-DOWNLOADS = {5001: "capitulo-3-derivadas.pdf", 5101: "semana-2-cinematica.pptx"}
+DOWNLOADS = {5001: "capitulo-3-derivadas.pdf", 5005: "capitulo-3-derivadas.pdf", 5101: "semana-2-cinematica.pptx",
+             5010: "silabo-matg1049.pdf", 5301: "silabo-matg1049.pdf", 5102: "lectura-vectores-escaneada.pdf"}
 THROTTLE_ONCE = "/api/v1/courses/102/assignments"
 
 
@@ -76,14 +81,23 @@ class FakeCanvas(_Server):
         self.throttled = False
         self.failing: set[str] = set()
         self.slow_downloads: dict[int, float] = {}
+        self.web = "http://web.invalid"
         self.lock = threading.Lock()
 
     def load(self, api_path: str):
         for state in dict.fromkeys([self.state, "state1"]):
             path = FIXTURES / "canvas" / state / (api_path.strip("/") + ".json")
             if path.is_file():
-                return json.loads(path.read_text(encoding="utf-8").replace("{{BASE}}", self.base))
+                text = path.read_text(encoding="utf-8").replace("{{BASE}}", self.base).replace("{{WEB}}", self.web)
+                return json.loads(text)
         return None
+
+
+class FakeWeb(_Server):
+    def __init__(self):
+        super().__init__(_WebHandler)
+        self.requests: list[tuple[str, str]] = []
+        self.lock = threading.Lock()
 
 
 class _Quiet(BaseHTTPRequestHandler):
@@ -168,6 +182,17 @@ class _CanvasHandler(_Quiet):
             links.append(f'{page_url(page + 1)}; rel="next"')
         links.append(f'{page_url(1)}; rel="first"')
         return self._json(200, chunk, {**quota, "Link": ",".join(links)})
+
+
+class _WebHandler(_Quiet):
+    def do_GET(self):
+        web: FakeWeb = self.server.owner
+        with web.lock:
+            web.requests.append(("GET", self.path))
+        path = (FIXTURES / "web" / unquote(urlsplit(self.path).path).lstrip("/")).resolve()
+        if not path.is_relative_to((FIXTURES / "web").resolve()) or not path.is_file():
+            return self._send(404, b"not found", "text/plain")
+        return self._send(200, path.read_bytes(), "text/html; charset=utf-8")
 
 
 class FakeTelegram(_Server):

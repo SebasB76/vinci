@@ -13,7 +13,8 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
 - Tools: `platform_toolsets.<platform>` lists what each platform may use and
   `agent.disabled_toolsets` removes toolsets everywhere, after everything else; a
   stdio MCP server in `mcp_servers:` becomes the `mcp-<server>` toolset (tools
-  `mcp__<server>__<tool>`). Tool Search is turned off so the model sees exactly that list.
+  `mcp__<server>__<tool>`), and a plugin's tool its own toolset (ver_pagina: `vinci-paginas`, the one
+  way a tool's image reaches the model). Tool Search is turned off so the model sees exactly that list.
   `skills.auto_load` pins a skill fully loaded in every session (chat and cron), so no
   bot needs the skills toolset (whose skill_manage writes files).
 - Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
@@ -65,7 +66,7 @@ SKILLS_CATEGORY = "vinci"
 TEMPLATES = REPO_ROOT / "hermes"
 
 VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "mcp-vinci"]
-SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "mcp-materia"]
+SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "mcp-materia", "vinci-paginas"]
 # Removed everywhere, whatever a platform list says (Hermes applies this last). `skills` goes
 # too: its skill_manage tool writes files; each bot's own skill is pinned with skills.auto_load.
 BLOCKED_TOOLSETS = [

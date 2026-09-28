@@ -1,0 +1,12 @@
+{
+  "page_id": 610,
+  "url": "lectura-recomendada",
+  "html_url": "{{BASE}}/courses/102/pages/lectura-recomendada",
+  "title": "Lectura recomendada",
+  "created_at": "2026-09-10T12:00:00Z",
+  "updated_at": "2026-09-10T12:00:00Z",
+  "published": true,
+  "front_page": false,
+  "locked_for_user": false,
+  "body": "<p>Antes de la clase lean la <a href=\"{{BASE}}/courses/102/files/5102/download\">Lectura 1: suma de vectores</a> (la escaneé de la biblioteca) y revisen la <a href=\"{{WEB}}/profesor/vectores.html\">página del profesor</a>.</p><p><img src=\"{{BASE}}/courses/102/files/5199/preview\" alt=\"banner-fisica.png\"></p>"
+}

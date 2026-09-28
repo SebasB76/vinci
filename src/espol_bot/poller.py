@@ -6,7 +6,9 @@
      a token Canvas refused is not tried again (the captain hears once) until it changes;
   2. report, once per failure episode, each course resource that keeps failing;
   3. send one Telegram message per undelivered event (grouped when there are many);
-  4. send the 24 h / 3 h reminders for unsubmitted deliverables.
+  4. send the 24 h / 3 h reminders for unsubmitted deliverables;
+  5. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
+     that bot's chat, for its main book's PDF when there is none it can read (libros.py).
 `summary()` runs at `resumen_diario` and sends the week at a glance.
 
 Events stay undelivered, and reminders unmarked, until Telegram accepts the
@@ -29,8 +31,8 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import materias, messages, store
-from espol_bot.config import BotConfig
+from espol_bot import agenda, libros, materias, messages, store
+from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
 log = logging.getLogger(__name__)
@@ -155,7 +157,29 @@ class Bot:
         except TelegramError as exc:
             log.error("%s", exc)
             result.error = str(exc)
+        self._main_books(result, now)
         return result
+
+    def _main_books(self, result: PollResult, now: datetime) -> None:
+        for subject in self.subjects:
+            course_ids = agenda.course_ids_for(self.conn, subject)
+            if not course_ids:
+                continue
+            try:
+                libros.scan_folder(self.conn, self.cfg.core, subject, course_ids)
+            except OSError as exc:
+                log.warning("carpeta de libros de %s: %s", subject.code, exc)
+            book = libros.main_book(self.conn, self.cfg.core, subject, course_ids)
+            if not libros.needs_ask(book):
+                continue
+            text = libros.ask_text(self.cfg.core, subject, book)
+            try:  # from the subject bot's own chat; a failure asks again next poll
+                Telegram(load_telegram_secrets(subject.code), api=self.cfg.telegram_api).send(text)
+            except (TelegramError, ConfigError) as exc:
+                log.warning("no pude pedir el libro de %s: %s", subject.code, exc)
+                continue
+            libros.mark_asked(self.conn, subject.code, now)
+            result.sent.append(text)
 
     def _report_failures(self, failed: list[core_sync.FailedResource], now: datetime) -> None:
         for failure in failed:

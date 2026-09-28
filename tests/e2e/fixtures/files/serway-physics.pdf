@@ -1,0 +1,56 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 263 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 72 740 Tm (Serway and Jewett - Physics for Scientists and Engineers) Tj
+1 0 0 1 72 724 Tm (Chapter 4: Motion in Two Dimensions) Tj
+1 0 0 1 72 708 Tm (4.1 The position, velocity, and acceleration vectors of a particle moving in a plane.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 488 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 72 740 Tm (4.3 Projectile Motion) Tj
+1 0 0 1 72 724 Tm (A projectile moves with constant horizontal velocity and constant downward acceleration g.) Tj
+1 0 0 1 72 708 Tm (Its path is a parabola. The horizontal range of a projectile launched with speed vi at) Tj
+1 0 0 1 72 692 Tm (angle theta is R = vi^2 sin\(2 theta\) / g, so the maximum range is reached when theta is 45) Tj
+1 0 0 1 72 676 Tm (degrees. The maximum height is h = vi^2 sin^2\(theta\) / \(2g\).) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000224 00000 n 
+0000000350 00000 n 
+0000000664 00000 n 
+0000000790 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1329
+%%EOF

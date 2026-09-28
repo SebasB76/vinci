@@ -4,8 +4,9 @@ It holds the GET-only Canvas client, the local SQLite store and its sync, materi
 download/indexing, and read-side queries. It has no Telegram or Hermes dependency,
 so the `aula` CLI, the Telegram bot, or a future web page can all build on it.
 
-Gentle with Canvas: background work (the bot's poll) spaces its requests and downloads at
-most `max_mb_per_sync` of material a run. A token Canvas refused (401) is not used again,
+Gentle with Canvas: background work (the bot's poll) spaces its requests, downloads at most
+`max_mb_per_sync` of material a run (only syllabi download on their own), and follows at most
+CATALOG_BUDGET links a run to the material only they lead to. A token Canvas refused (401) is not used again,
 and after Canvas kept throttling nothing reads it for a while, unless the reader is
 `explicit` (a command the student ran); a successful read clears both.
 """
@@ -19,6 +20,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from aula_core import enlaces as _enlaces
 from aula_core import materials as _materials
 from aula_core import store as _store
 from aula_core import sync as _sync
@@ -29,6 +31,7 @@ from aula_core.config import CoreConfig, canvas_token, load_config, now_utc
 REFUSED_KEY = "canvas_token_refused"  # fingerprint of the token Canvas answered 401
 PAUSED_KEY = "canvas_paused_until"    # after Canvas kept throttling, no reads before this
 PAUSE = timedelta(hours=1)
+CATALOG_BUDGET = 60  # reads a background sync spends on Pages and files that only a link leads to
 
 
 def token_fingerprint(token: str) -> str:
@@ -93,7 +96,8 @@ class Aula:
 
     def _sync(self) -> _sync.SyncReport:
         with self._reading() as client:
-            return _sync.sync(self.conn, client, self.cfg, self.now())
+            return _sync.sync(self.conn, client, self.cfg, self.now(),
+                              budget=CATALOG_BUDGET if self.background else None)
 
     def sync(self, *, materials: bool = False) -> _sync.SyncReport:
         with _store.sync_lock(self.cfg.data_dir):
@@ -108,12 +112,14 @@ class Aula:
         last = _sync.last_sync(self.conn)
         return last is None or self.now() - last > timedelta(minutes=max_age_minutes)
 
-    def ensure_fresh(self, max_age_minutes: int | None = None) -> _sync.SyncReport | None:
+    def ensure_fresh(self, max_age_minutes: int | None = None, *, wait: bool = True) -> _sync.SyncReport | None:
+        """Sync when the saved copy is older than `max_age_minutes`. With `wait` off, a sync already running
+        (the poll's, which paces its reads) is not waited for: the saved copy answers meanwhile."""
         minutes = self.cfg.cache_minutes if max_age_minutes is None else max_age_minutes
         if not self.is_stale(minutes):
             return None
-        with _store.sync_lock(self.cfg.data_dir):
-            if not self.is_stale(minutes):  # the sync this one waited for just refreshed it
+        with _store.sync_lock(self.cfg.data_dir, wait=wait) as locked:
+            if not locked or not self.is_stale(minutes):  # the sync this one waited for just refreshed it
                 return None
             return self._sync()
 
@@ -122,9 +128,13 @@ class Aula:
             path = _materials.download(self.conn, client, self.cfg, file_id)
             row = self.conn.execute("SELECT index_status FROM files WHERE id = ?", (file_id,)).fetchone()
             ext = path.suffix.lower().lstrip(".")
-            if index and ext in ("pdf", "pptx", "docx") and not (row and row["index_status"]):
+            if index and ext in _materials.READABLE and not (row and row["index_status"]):
                 _materials.index(self.conn, file_id)
             return path
+
+    def fetch_link(self, link_id: int) -> int:
+        """Open a public outside link of the catalog and index what it leads to (no Canvas read)."""
+        return _enlaces.fetch(self.conn, self.cfg, link_id)
 
     def close(self) -> None:
         if self._conn is not None:

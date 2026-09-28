@@ -1,11 +1,19 @@
 """Reads the aula virtual into the local store and records what changed.
 
 A sync reads, per active course: assignments with the student's submission,
-announcements, and files (from the Files listing and from Modules). It compares
-each item against the previous snapshot and appends an `events` row for:
+announcements, and the material catalog. It compares each item against the previous
+snapshot and appends an `events` row for:
 
   new_course, new_assignment, due_changed, new_announcement,
-  grade_posted, grade_changed, new_file, file_updated
+  grade_posted, grade_changed, new_file, file_updated, new_link
+
+The catalog is every document the aula shows, downloaded or not: the Files listing (with its
+folders), Modules (with the subheaders that split a week, «ANTES de clase…», and their outside
+links), and what Pages, the «Programa del curso», announcements (and their attachments) and
+assignments link to. Only metadata is read here; aula_core.materials downloads. What the catalog
+finds only by following a link (a linked file's metadata, a Page's body) costs extra reads, so
+background work gets a `budget` of them per sync and the rest waits for the next one; a course's
+first catalog read stays silent until it is complete, like every first read.
 
 The first successful read of each course resource (assignments, announcements,
 files) only seeds the store, so the student is not flooded with every historical
@@ -18,13 +26,11 @@ without losing them.
 
 from __future__ import annotations
 
-import html
 import json
 import logging
-import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from aula_core import timefmt
@@ -34,10 +40,15 @@ from aula_core.canvas import (
     InvalidTokenError,
     ThrottledError,
 )
+from aula_core.catalog import Refs, classify, clean_title, html_to_text, mark_duplicates, refs, term_year
 from aula_core.config import CoreConfig
 from aula_core.store import delete_meta, get_meta, set_meta
 
 log = logging.getLogger(__name__)
+
+HIDDEN = (401, 403, 404)  # a tab or a file this student cannot see: not a failure
+PAGE_REFRESH = timedelta(days=1)  # a Page read through a link, when the course hides its Pages list
+UNREACHABLE_RETRY = timedelta(days=7)
 
 
 @dataclass
@@ -59,19 +70,6 @@ class SyncReport:
     requests: int = 0
 
 
-def html_to_text(value: str | None) -> str:
-    if not value:
-        return ""
-    text = re.sub(r"(?is)<(script|style).*?</\1>", "", value)
-    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>|</h\d>", "\n", text)
-    text = re.sub(r"(?i)<li[^>]*>", "• ", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = html.unescape(text).replace("\xa0", " ")
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n\s*\n+", "\n\n", text)
-    return text.strip()
-
-
 def _resource_key(kind: str, course_id: int, resource: str) -> str:
     return f"{kind}:{course_id}:{resource}"
 
@@ -84,14 +82,26 @@ def _record(conn, now_iso: str, kind: str, course_id: int, ref_id: int, payload:
 
 
 class _Syncer:
-    def __init__(self, conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: datetime):
+    def __init__(self, conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: datetime,
+                 budget: int | None = None):
         self.conn = conn
         self.client = client
         self.cfg = cfg
+        self.now = now
         self.now_iso = timefmt.iso(now)
+        self.budget = budget
         self.events = 0
         self.warnings: list[str] = []
         self.failed: list[FailedResource] = []
+        self.bodies: dict[int, list[tuple[str, str | None, list]]] = {}  # course: (where, html, attachments)
+        self.read: dict[int, set[str]] = {}
+
+    def spend(self) -> bool:
+        """One more read for what only a link leads to; False once this sync's budget is used up."""
+        if self.budget is None:
+            return True
+        self.budget -= 1
+        return self.budget >= 0
 
     def emit(self, quiet: bool, kind: str, course: dict, ref_id: int, payload: dict) -> None:
         if quiet:
@@ -105,7 +115,7 @@ class _Syncer:
     def courses(self) -> list[dict]:
         raw = self.client.get_all(
             "courses",
-            {"enrollment_state": "active", "include[]": ["term", "total_scores"]},
+            {"enrollment_state": "active", "include[]": ["term", "total_scores", "syllabus_body"]},
         )
         courses = []
         for c in raw:
@@ -120,6 +130,8 @@ class _Syncer:
                 "html_url": f"{self.cfg.canvas_url}/courses/{c['id']}",
                 "current_score": enrollment.get("computed_current_score"),
                 "current_grade": enrollment.get("computed_current_grade"),
+                "term_start": timefmt.normalize((c.get("term") or {}).get("start_at")),
+                "syllabus_body": c.get("syllabus_body"),
             })
         return courses
 
@@ -127,11 +139,12 @@ class _Syncer:
         """Returns True when the course was already known."""
         known = self.conn.execute("SELECT 1 FROM courses WHERE id = ?", (c["id"],)).fetchone() is not None
         self.conn.execute(
-            """INSERT INTO courses(id, name, course_code, term, html_url, current_score, current_grade, active, first_seen)
-               VALUES (:id, :name, :course_code, :term, :html_url, :current_score, :current_grade, 1, :now)
+            """INSERT INTO courses(id, name, course_code, term, html_url, current_score, current_grade, active, first_seen,
+                 term_start)
+               VALUES (:id, :name, :course_code, :term, :html_url, :current_score, :current_grade, 1, :now, :term_start)
                ON CONFLICT(id) DO UPDATE SET name=excluded.name, course_code=excluded.course_code, term=excluded.term,
                  html_url=excluded.html_url, current_score=excluded.current_score,
-                 current_grade=excluded.current_grade, active=1""",
+                 current_grade=excluded.current_grade, active=1, term_start=excluded.term_start""",
             {**c, "now": self.now_iso},
         )
         return known
@@ -144,9 +157,11 @@ class _Syncer:
             {"include[]": ["submission"], "order_by": "due_date"},
         )
         seen = []
+        bodies = self.bodies.setdefault(course["id"], [])
         for a in raw:
             if a.get("published") is False:
                 continue
+            bodies.append((f"Tarea «{a.get('name') or '(sin nombre)'}»", a.get("description"), []))
             sub = a.get("submission") or {}
             row = {
                 "id": a["id"],
@@ -198,6 +213,7 @@ class _Syncer:
                 {**row, "now": self.now_iso},
             )
         self._deactivate("assignments", course["id"], seen)
+        self.read.setdefault(course["id"], set()).add("assignments")
 
     # -- announcements ----------------------------------------------------------------
 
@@ -207,7 +223,9 @@ class _Syncer:
             f"courses/{course['id']}/discussion_topics",
             {"only_announcements": "true", "per_page": 50},
         )
+        bodies = self.bodies.setdefault(course["id"], [])
         for t in raw if isinstance(raw, list) else []:
+            bodies.append((f"Anuncio «{t.get('title') or '(sin título)'}»", t.get("message"), t.get("attachments") or []))
             if self.conn.execute("SELECT 1 FROM announcements WHERE id = ?", (t["id"],)).fetchone():
                 continue
             author = (t.get("author") or {}).get("display_name") or t.get("user_name")
@@ -228,57 +246,220 @@ class _Syncer:
             self.emit(quiet, "new_announcement", course, row["id"], {
                 "titulo": row["title"], "autor": author, "texto": row["message_text"][:600], "url": row["html_url"],
             })
+        self.read.setdefault(course["id"], set()).add("announcements")
 
-    # -- files --------------------------------------------------------------------------
+    # -- the material catalog ----------------------------------------------------------------
 
     def files(self, course: dict, quiet: bool) -> None:
         cid = course["id"]
+        catalog_seeded = _resource_key("seeded", cid, "catalog")
+        quiet_catalog = quiet or get_meta(self.conn, catalog_seeded) is None
         found: dict[int, dict] = {}
         listing_ok = True
         try:
             for f in self.client.iter_pages(f"courses/{cid}/files", {"sort": "updated_at", "order": "desc"}):
-                found[f["id"]] = {"file": f, "module": None}
+                found[f["id"]] = {"file": f, "source": "Archivos", "quiet": quiet}
         except InvalidTokenError:
             raise
         except CanvasError as exc:
             # Many courses hide the Files tab from students; Modules still link the files.
-            if exc.status not in (401, 403, 404):
+            if exc.status not in HIDDEN:
                 raise
             listing_ok = False
+        folders = self._folders(cid) if listing_ok else {}
 
+        links: dict[str, dict] = {}
+        module_pages: dict[str, dict] = {}
         modules_ok = True
         try:
             for module in self.client.iter_pages(f"courses/{cid}/modules", {"include[]": ["items"]}):
                 items = module.get("items")
                 if items is None and module.get("items_url"):
                     items = self.client.get_all(module["items_url"])
+                name, section = clean_title(module.get("name")), None
                 for item in items or []:
-                    if item.get("type") != "File" or not item.get("content_id"):
-                        continue
-                    fid = item["content_id"]
-                    if fid not in found:
-                        try:
-                            found[fid] = {"file": self.client.get(f"courses/{cid}/files/{fid}"), "module": None}
-                        except InvalidTokenError:
-                            raise
-                        except CanvasError as exc:
-                            if exc.status not in (401, 403, 404):
+                    kind = item.get("type")
+                    if kind == "SubHeader":  # «ANTES de clase en vivo», «Materiales adicionales»…
+                        section = clean_title(item.get("title"))
+                    elif kind == "File" and item.get("content_id"):
+                        fid = item["content_id"]
+                        if fid not in found:
+                            try:
+                                found[fid] = {"file": self.client.get(f"courses/{cid}/files/{fid}"), "quiet": quiet}
+                            except InvalidTokenError:
                                 raise
-                            continue
-                    found[fid]["module"] = found[fid]["module"] or module.get("name")
+                            except CanvasError as exc:
+                                if exc.status not in HIDDEN:
+                                    raise
+                                continue
+                        entry = found[fid]
+                        if not entry.get("module"):
+                            entry.update(module=name, section=section, source=f"Módulo «{name}»")
+                    elif kind == "ExternalUrl" and item.get("external_url"):
+                        self._link(links, item["external_url"], item.get("title"), f"Módulo «{name}»", name, section,
+                                   module_item=True)
+                    elif kind == "Page" and item.get("page_url"):
+                        module_pages.setdefault(item["page_url"], {"module": name, "section": section})
         except InvalidTokenError:
             raise
         except CanvasError as exc:
-            if exc.status not in (401, 403, 404):
+            if exc.status not in HIDDEN:
                 raise
             modules_ok = False
         if not listing_ok and not modules_ok:
             raise CanvasError("no tengo acceso a Archivos ni a Módulos", 403)
 
+        complete = self._linked(course, found, links, module_pages, quiet_catalog)
+        seen = self._store_files(course, found, folders)
+        seen_links = self._store_links(course, links, quiet_catalog)
+        if listing_ok and modules_ok and complete:
+            self._deactivate("files", cid, seen)
+            self._deactivate("links", cid, seen_links)
+        term = self.conn.execute("SELECT term_start, term, name FROM courses WHERE id = ?", (cid,)).fetchone()
+        mark_duplicates(self.conn, cid, term_year(term["term_start"], term["name"], term["term"]) or self.now.year)
+        if complete:
+            set_meta(self.conn, catalog_seeded, self.now_iso)
+
+    def _folders(self, cid: int) -> dict[int, str]:
+        """Folder id -> its path in the Files tab ('Slides/2026'), without the root folder."""
+        try:
+            return {f["id"]: (f.get("full_name") or "").partition("/")[2] or None
+                    for f in self.client.iter_pages(f"courses/{cid}/folders")}
+        except InvalidTokenError:
+            raise
+        except CanvasError as exc:
+            if exc.status not in HIDDEN:
+                raise
+            return {}
+
+    def _link(self, links: dict, url: str, title: str | None, source: str, module: str | None, section: str | None, *,
+              module_item: bool = False) -> None:
+        url = url.strip()
+        if url in links:
+            links[url]["module_item"] |= module_item
+            return
+        kind, access = classify(url)
+        links[url] = {"url": url, "title": clean_title(title) or url, "kind": kind, "access": access, "source": source,
+                      "module": module, "section": section, "module_item": module_item}
+
+    def _linked(self, course: dict, found: dict, links: dict, module_pages: dict, quiet: bool) -> bool:
+        """Adds what the course's Pages, «Programa del curso», announcements and assignments link to.
+        False when this sync could not read all of it (a source failed, or the budget ran out)."""
+        cid = course["id"]
+        complete = {"assignments", "announcements"} <= self.read.get(cid, set())
+        sources = [("Programa del curso", course.get("syllabus_body"), [])] + self.bodies.get(cid, [])
+        for where, _, attachments in sources:
+            for att in attachments:
+                if att.get("id") and att["id"] not in found:
+                    found[att["id"]] = {"file": att, "source": where, "quiet": quiet, "download_url": att.get("url")}
+        pages, pages_complete = self._pages(cid, module_pages, [body for _, body, _ in sources])
+        items = [(where, refs(body, self.cfg.canvas_url), None, None) for where, body, _ in sources] + pages
+        for where, found_refs, module, section in items:
+            for link_cid, fid, _ in found_refs.files:
+                if fid in found:
+                    continue
+                entry, spent = self._linked_file(cid, link_cid or cid, fid)
+                complete &= spent
+                if entry is not None:
+                    found[fid] = {**entry, "source": where, "module": module, "section": section, "quiet": quiet}
+            for url, text in found_refs.links:
+                self._link(links, url, text, where, module, section)
+        return complete and pages_complete
+
+    def _linked_file(self, cid: int, link_cid: int, fid: int) -> tuple[dict | None, bool]:
+        """(entry, whether it could be looked at): a file known from an earlier sync costs no read."""
+        known = self.conn.execute("SELECT * FROM files WHERE id = ?", (fid,)).fetchone()
+        if known is not None:
+            return (None if known["active"] and known["course_id"] != cid else {"known": known}), True
+        blocked = self.conn.execute("SELECT checked_at FROM unreachable WHERE course_id = ? AND file_id = ?",
+                                    (cid, fid)).fetchone()
+        if blocked and self.now - timefmt.parse(blocked["checked_at"]) < UNREACHABLE_RETRY:
+            return None, True
+        if not self.spend():
+            return None, False
+        try:
+            return {"file": self.client.get(f"courses/{link_cid}/files/{fid}")}, True
+        except InvalidTokenError:
+            raise
+        except CanvasError as exc:
+            if exc.status not in HIDDEN:
+                raise
+            self.conn.execute("INSERT OR REPLACE INTO unreachable(course_id, file_id, checked_at) VALUES (?, ?, ?)",
+                              (cid, fid, self.now_iso))
+            return None, True
+
+    def _pages(self, cid: int, module_pages: dict, bodies: list[str | None]) -> tuple[list, bool]:
+        """(where, refs, module, section) of every Page the course shows or links to. A Page's body is
+        read again only when it changed (or, when the Pages list is hidden, once a day)."""
+        try:
+            listed = {p["url"]: p for p in self.client.iter_pages(f"courses/{cid}/pages", {"sort": "updated_at"})
+                      if p.get("url") and p.get("published") is not False}
+        except InvalidTokenError:
+            raise
+        except CanvasError as exc:
+            if exc.status not in HIDDEN:
+                raise
+            listed = {}
+        wanted = {slug: {"module": None, "section": None} for slug in listed} | module_pages
+        for body in bodies:
+            for page_cid, slug in refs(body, self.cfg.canvas_url).pages:
+                if page_cid == cid:
+                    wanted.setdefault(slug, {"module": None, "section": None})
+        out, complete, queue, done = [], True, list(wanted), set()
+        while queue:
+            slug = queue.pop(0)
+            if slug in done:
+                continue
+            done.add(slug)
+            stored = self.conn.execute("SELECT * FROM pages WHERE course_id = ? AND slug = ?", (cid, slug)).fetchone()
+            listing = listed.get(slug)
+            fresh = stored is not None and (
+                stored["updated_at"] == timefmt.normalize(listing.get("updated_at")) if listing is not None
+                else self.now - (timefmt.parse(stored["fetched_at"]) or self.now) < PAGE_REFRESH)
+            if fresh:
+                page_refs, title = Refs.from_json(json.loads(stored["refs"])), stored["title"]
+            elif self.spend():
+                try:
+                    page = self.client.get(f"courses/{cid}/pages/{slug}")
+                except InvalidTokenError:
+                    raise
+                except CanvasError as exc:
+                    if exc.status not in HIDDEN:
+                        raise
+                    continue
+                page_refs, title = refs(page.get("body"), self.cfg.canvas_url), page.get("title") or slug
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO pages(course_id, slug, title, updated_at, refs, fetched_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (cid, slug, title, timefmt.normalize(page.get("updated_at")),
+                     json.dumps(page_refs.as_json(), ensure_ascii=False), self.now_iso))
+            else:
+                complete = False
+                if stored is None:
+                    continue
+                page_refs, title = Refs.from_json(json.loads(stored["refs"])), stored["title"]
+            where = wanted[slug]
+            out.append((f"Página «{title}»", page_refs, where["module"], where["section"]))
+            for page_cid, sub in page_refs.pages:
+                if page_cid == cid and sub not in done:
+                    wanted.setdefault(sub, where)
+                    queue.append(sub)
+        return out, complete
+
+    def _store_files(self, course: dict, found: dict, folders: dict) -> list[int]:
+        cid, seen = course["id"], []
         for fid, entry in found.items():
+            known = entry.get("known")
+            if known is not None:  # linked from somewhere, already in the catalog: nothing new to read
+                self.conn.execute(
+                    "UPDATE files SET active = 1, course_id = ?, source = ?, module = COALESCE(module, ?),"
+                    " section = COALESCE(section, ?) WHERE id = ?",
+                    (cid, entry["source"], entry.get("module"), entry.get("section"), fid))
+                seen.append(fid)
+                continue
             f = entry["file"]
             if f.get("locked_for_user") or f.get("hidden_for_user"):
                 continue
+            seen.append(fid)
             row = {
                 "id": fid,
                 "course_id": cid,
@@ -287,42 +468,74 @@ class _Syncer:
                 "content_type": f.get("content-type") or f.get("content_type"),
                 "size": f.get("size"),
                 "updated_at": timefmt.normalize(f.get("updated_at") or f.get("modified_at")),
+                "created_at": timefmt.normalize(f.get("created_at")),
                 "html_url": f"{self.cfg.canvas_url}/courses/{cid}/files/{fid}",
-                "module": entry["module"],
+                "module": entry.get("module"),
+                "section": entry.get("section"),
+                "folder": folders.get(f.get("folder_id")),
+                "source": entry.get("source") or "Archivos",
+                "download_url": entry.get("download_url"),
             }
             prev = self.conn.execute("SELECT * FROM files WHERE id = ?", (fid,)).fetchone()
-            info = {"archivo": row["display_name"], "modulo": row["module"], "url": row["html_url"]}
+            info = {"archivo": row["display_name"], "modulo": row["module"], "seccion": row["section"],
+                    "origen": row["source"], "url": row["html_url"]}
             if prev is None:
-                self.emit(quiet, "new_file", course, fid, info)
+                self.emit(entry["quiet"], "new_file", course, fid, info)
             elif prev["updated_at"] != row["updated_at"]:
-                self.emit(quiet, "file_updated", course, fid, info)
+                self.emit(entry["quiet"], "file_updated", course, fid, info)
             self.conn.execute(
                 """INSERT INTO files(id, course_id, display_name, filename, content_type, size, updated_at, html_url,
-                     module, active, first_seen)
+                     module, active, first_seen, folder, section, source, created_at, download_url)
                    VALUES (:id, :course_id, :display_name, :filename, :content_type, :size, :updated_at, :html_url,
-                     :module, 1, :now)
+                     :module, 1, :now, :folder, :section, :source, :created_at, :download_url)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, display_name=excluded.display_name,
                      filename=excluded.filename, content_type=excluded.content_type, size=excluded.size,
                      updated_at=excluded.updated_at, html_url=excluded.html_url,
-                     module=COALESCE(excluded.module, files.module), active=1""",
+                     module=COALESCE(excluded.module, files.module), section=COALESCE(excluded.section, files.section),
+                     folder=COALESCE(excluded.folder, files.folder), source=excluded.source,
+                     created_at=COALESCE(excluded.created_at, files.created_at),
+                     download_url=COALESCE(excluded.download_url, files.download_url), active=1""",
                 {**row, "now": self.now_iso},
             )
-        if listing_ok and modules_ok:
-            self._deactivate("files", cid, list(found))
+        return seen
+
+    def _store_links(self, course: dict, links: dict, quiet: bool) -> list[int]:
+        """Outside links; one a module lists (the professor's own «material» item) is announced as new."""
+        cid, seen = course["id"], []
+        for link in links.values():
+            prev = self.conn.execute("SELECT id FROM links WHERE course_id = ? AND url = ?", (cid, link["url"])).fetchone()
+            self.conn.execute(
+                """INSERT INTO links(course_id, url, title, kind, access, source, module, section, active, first_seen)
+                   VALUES (:course_id, :url, :title, :kind, :access, :source, :module, :section, 1, :now)
+                   ON CONFLICT(course_id, url) DO UPDATE SET title=excluded.title, kind=excluded.kind,
+                     access=excluded.access, source=excluded.source, module=excluded.module,
+                     section=excluded.section, active=1""",
+                {**link, "course_id": cid, "now": self.now_iso})
+            link_id = self.conn.execute("SELECT id FROM links WHERE course_id = ? AND url = ?",
+                                        (cid, link["url"])).fetchone()["id"]
+            seen.append(link_id)
+            if prev is None and link["module_item"]:
+                self.emit(quiet, "new_link", course, link_id, {
+                    "enlace": link["title"], "url": link["url"], "tipo": link["kind"], "acceso": link["access"],
+                    "modulo": link["module"], "seccion": link["section"]})
+        return seen
 
     def _deactivate(self, table: str, course_id: int, seen: list[int]) -> None:
+        # Negative ids are material that never came from Canvas (a fetched link, a PDF the student gave).
         marks = ",".join("?" * len(seen)) or "NULL"
         self.conn.execute(
-            f"UPDATE {table} SET active = 0 WHERE course_id = ? AND id NOT IN ({marks})",
+            f"UPDATE {table} SET active = 0 WHERE course_id = ? AND id > 0 AND id NOT IN ({marks})",
             (course_id, *seen),
         )
 
 
-def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: datetime) -> SyncReport:
-    """Read everything once and record changes. Caller holds `store.sync_lock`."""
+def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: datetime, *,
+         budget: int | None = None) -> SyncReport:
+    """Read everything once and record changes. Caller holds `store.sync_lock`. `budget`: how many
+    reads the catalog may spend following links (None: as many as it needs)."""
     first = get_meta(conn, "initialized") is None
     report = SyncReport(first_sync=first)
-    s = _Syncer(conn, client, cfg, now)
+    s = _Syncer(conn, client, cfg, now, budget)
     courses = s.courses()
     report.courses = len(courses)
     ids = [c["id"] for c in courses]
@@ -348,7 +561,7 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
             except CanvasError as exc:
                 s.warnings.append(f"{course['name']}: {exc}")
                 log.warning("%s: %s", course["name"], exc)
-                if exc.status not in (401, 403, 404):
+                if exc.status not in HIDDEN:
                     reads = int(get_meta(conn, failing) or 0) + 1
                     set_meta(conn, failing, str(reads))
                     s.failed.append(FailedResource(course["id"], resource, f"los {label} de {course['name']}",

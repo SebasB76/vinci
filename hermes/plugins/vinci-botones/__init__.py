@@ -11,6 +11,10 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 - /start: Hermes ignores it, so the bot greets with `espol-bot saludo` (who it is, and for a
   subject bot when its next brief comes).
 
+A subject bot also gets the tool `ver_pagina` (toolset vinci-paginas): a page of one of its own
+downloaded PDFs, from `espol-bot pagina`, handed to the model as an image. A scanned book has
+next to no text, and an MCP tool's image reaches the model only as a file path.
+
 These run in group -100, before every Hermes handler, and stop the update there
 (ApplicationHandlerStop): a token or a bot-creation message never becomes a Hermes
 event, so it never reaches the model or a session log.
@@ -156,3 +160,37 @@ def register(ctx):
         application.add_handler(CallbackQueryHandler(_on_button, pattern=PATTERN))
 
     ctx.register_platform_handler("telegram", _wire)
+    if SUBJECT:
+        ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
+                          is_async=True, description=PAGE_TOOL["description"])
+
+
+PAGE_TOOL = {
+    "name": "ver_pagina",
+    "description": "Muestra como imagen una página de un PDF del material de tu materia, para leerla tú: un "
+                   "escaneo (estado «escaneado»), una fórmula, una figura o una tabla que el texto no trae bien. "
+                   "Solo PDF ya bajados; una página por llamada.",
+    "parameters": {"type": "object", "properties": {
+        "archivo_id": {"type": "integer", "description": "el ID del archivo (de archivos o buscar_material)"},
+        "pagina": {"type": "integer", "description": "número de página, desde 1"}},
+        "required": ["archivo_id", "pagina"]},
+}
+
+
+async def _see_page(args, **_):
+    try:
+        file_id, page = int(args["archivo_id"]), int(args["pagina"])
+    except (KeyError, TypeError, ValueError):
+        return json.dumps({"error": "Dime «archivo_id» y «pagina» como números."}, ensure_ascii=False)
+    try:
+        result = await _run("pagina", "--curso", SUBJECT, str(file_id), str(page))
+    except Exception as exc:
+        logger.error("ver_pagina: %s", exc)
+        return json.dumps({"error": "No pude mostrar la página; intenta de nuevo."}, ensure_ascii=False)
+    if result.get("error"):
+        return json.dumps({"error": result["error"]}, ensure_ascii=False)
+    text = (f"Página {result['pagina']} de {result.get('paginas') or '?'} de «{result['archivo']}» (archivo "
+            f"{result['archivo_id']}), como imagen: léela tú y cita esa página.")
+    return {"_multimodal": True, "text_summary": text,
+            "content": [{"type": "text", "text": text},
+                        {"type": "image_url", "image_url": {"url": f"data:{result['tipo']};base64,{result['imagen']}"}}]}

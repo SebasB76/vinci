@@ -22,7 +22,9 @@
         "type": "Page",
         "module_id": 8101,
         "html_url": "{{BASE}}/courses/102/modules/items/81011",
-        "published": true
+        "published": true,
+        "page_url": "lectura-recomendada",
+        "url": "{{BASE}}/api/v1/courses/102/pages/lectura-recomendada"
       }
     ]
   },

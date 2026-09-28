@@ -18,11 +18,12 @@ Always pass `--json` and parse the output.
 | Pending work, by due date | `aula tareas --json` (`--dias 7`, `--curso calculo`) |
 | Announcements | `aula anuncios --json` (`--curso fisica -n 5`) |
 | Grades | `aula notas --json` |
-| Course files | `aula archivos --json` (`--curso ... --nombre "semana 3"`) |
+| Course files (the catalog, read or not) | `aula archivos --json` (`--curso ... --nombre "semana 3"`) |
 | Download (and index) files | `aula archivos bajar <id> [<id>...] --json` → `ruta_local` |
 | Read an indexed file | `aula archivos leer <id> --paginas 3-6 --json` |
+| Links outside the aula (Dropbox, SharePoint, videos) | `aula enlaces --json` (`--curso ...`) |
 | Search course material | `aula buscar "regla de la cadena" --json` (`--curso ... -n 8`) |
-| Refresh now | `aula sincronizar --json` (`--material` also downloads all new PDFs/PPTX/DOCX) |
+| Refresh now | `aula sincronizar --json` (`--material` also downloads each course's new syllabus) |
 
 `--curso` matches any fragment of the course name or code, ignoring accents and case. Data refreshes
 automatically when older than a few minutes (falling back to the local copy when the aula virtual can't be
@@ -37,11 +38,15 @@ read); `--sin-actualizar` uses only the local copy, and `--actualizar` reads it 
   → read the local PDF at `ruta_local` directly (you can open it with your Read tool) or
   `aula archivos leer <id> --json`, then find the exercise and explain it.
 - **Study questions** — `aula buscar "<keywords>" --json`, read the `texto` of the top hits, answer
-  from that text, and cite `archivo`, `unidad` + `pagina`, and `url`.
+  from that text, and cite `archivo`, `unidad` + `pagina`, and `url`. Search only covers downloaded
+  files: the catalog lists every document, and only syllabi download on their own, so `aula archivos
+  bajar` the ones on the topic first. Much material is in English: search with English keywords too.
+  Hits marked `prioridad: libro principal` come from the syllabus' main book.
 
 ## Limits
 
 - Never try to submit, post, or message on Canvas; there is no command for it by design. If asked,
   tell the user to do it themselves and share the `url`.
 - Do not read `secrets.env` or call the Canvas API with curl; use `aula`.
-- Videos are not processed yet (PDF, PPTX, DOCX only).
+- Videos are not processed yet (PDF, PPTX, DOCX and web pages only). A scanned PDF (`indexado:
+  escaneado`) has next to no text: open the local file at `ruta_local` and read its pages as images.

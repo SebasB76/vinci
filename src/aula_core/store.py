@@ -5,7 +5,15 @@ Tables:
                  resources already have their silent first read, and which
                  ones are failing and whether that was already reported)
   courses, assignments, announcements, files
-                 the latest snapshot read from Canvas
+                 the latest snapshot read from Canvas. `files` is the material catalog: every
+                 document of a course wherever the aula shows it (Files, Modules, Pages, the
+                 «Programa del curso», announcements, assignments), downloaded or not, plus
+                 material that never came from Canvas (negative ids: a public link fetched,
+                 a PDF the student handed over)
+  links          external links of each course (Dropbox, SharePoint, a professor's page, videos)
+  pages          the course Pages already read, with the files and links they point to
+  unreachable    files linked somewhere that this student cannot open (retried weekly)
+  bibliography   the main and complementary books parsed from each syllabus
   events         changes detected by a sync (new assignment, grade posted, ...);
                  consumers such as the bot mark them delivered
   chunks         full-text index (FTS5) of downloaded course material, one row per page
@@ -31,7 +39,8 @@ CREATE TABLE IF NOT EXISTS courses (
     current_score REAL,
     current_grade TEXT,
     active INTEGER NOT NULL DEFAULT 1,
-    first_seen TEXT NOT NULL
+    first_seen TEXT NOT NULL,
+    term_start TEXT
 );
 
 CREATE TABLE IF NOT EXISTS assignments (
@@ -82,7 +91,55 @@ CREATE TABLE IF NOT EXISTS files (
     index_status TEXT,
     pages INTEGER,
     active INTEGER NOT NULL DEFAULT 1,
-    first_seen TEXT NOT NULL
+    first_seen TEXT NOT NULL,
+    folder TEXT,
+    section TEXT,
+    source TEXT,
+    created_at TEXT,
+    language TEXT,
+    duplicate_of INTEGER,
+    download_url TEXT
+);
+
+CREATE TABLE IF NOT EXISTS links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT,
+    kind TEXT NOT NULL,
+    access TEXT NOT NULL,
+    source TEXT,
+    module TEXT,
+    section TEXT,
+    file_id INTEGER,
+    active INTEGER NOT NULL DEFAULT 1,
+    first_seen TEXT NOT NULL,
+    UNIQUE (course_id, url)
+);
+
+CREATE TABLE IF NOT EXISTS pages (
+    course_id INTEGER NOT NULL,
+    slug TEXT NOT NULL,
+    title TEXT,
+    updated_at TEXT,
+    refs TEXT NOT NULL DEFAULT '{}',
+    fetched_at TEXT,
+    PRIMARY KEY (course_id, slug)
+);
+
+CREATE TABLE IF NOT EXISTS unreachable (
+    course_id INTEGER NOT NULL,
+    file_id INTEGER NOT NULL,
+    checked_at TEXT NOT NULL,
+    PRIMARY KEY (course_id, file_id)
+);
+
+CREATE TABLE IF NOT EXISTS bibliography (
+    file_id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL,
+    main TEXT NOT NULL DEFAULT '[]',
+    others TEXT NOT NULL DEFAULT '[]',
+    parsed_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -105,6 +162,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
 """
 
 
+# Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS leaves an existing table as it was.
+ADDED_COLUMNS = {
+    "courses": ["term_start TEXT"],
+    "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",
+              "duplicate_of INTEGER", "download_url TEXT"],
+}
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=30)
@@ -112,6 +177,12 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript(SCHEMA)
+    for table, columns in ADDED_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for column in columns:
+            if column.split()[0] not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+    conn.commit()
     return conn
 
 
@@ -132,19 +203,24 @@ def delete_meta(conn: sqlite3.Connection, *keys: str) -> None:
 
 
 @contextmanager
-def file_lock(data_dir: Path, name: str) -> Iterator[None]:
+def file_lock(data_dir: Path, name: str, *, wait: bool = True) -> Iterator[bool]:
+    """Yields whether it holds the lock: with `wait` off it yields False at once while another process has it."""
     data_dir.mkdir(parents=True, exist_ok=True)
     with (data_dir / name).open("w") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
         try:
-            yield
+            fcntl.flock(fh, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
-def sync_lock(data_dir: Path):
+def sync_lock(data_dir: Path, *, wait: bool = True):
     """One sync at a time, whether it comes from the bot or from `aula`."""
-    return file_lock(data_dir, "sync.lock")
+    return file_lock(data_dir, "sync.lock", wait=wait)
 
 
 def material_lock(data_dir: Path):

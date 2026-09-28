@@ -4,7 +4,8 @@ The legacy User-Generated developer key on ESPOL's Canvas silently expires each 
 after an hour. This manager creates a verified successor before then, swaps it into the
 gitignored secrets file atomically, and deletes superseded tokens only after the swap.
 One predecessor is retained briefly as a probe: if it still works after 70 minutes, the
-server-side bug was fixed and automatic renewal disables itself.
+server-side bug was fixed and automatic renewal disables itself. Renewal tokens left
+behind by an interrupted run are swept after the next successful swap.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ PROBE_CREATED = "canvas_renewal_probe_created_at"
 PROBE_ID = "canvas_renewal_probe_id"
 DISABLED = "canvas_renewal_disabled"
 PROBE_TOKEN_KEY = "CANVAS_TOKEN_PROBE"
+PURPOSE = "Vinci (renovación automática)"
 
 RENEW_AFTER = timedelta(minutes=40)
 PROBE_AFTER = timedelta(minutes=70)
@@ -77,7 +79,7 @@ class TokenRenewal:
         if old_id is None:
             old_id = self._find_token_id(current)
         token_data = self._create(current)
-        successor = str(token_data.get("token") or "")
+        successor = self._secret(token_data)
         successor_id = self._integer(token_data.get("id"))
         if not successor or successor_id is None:
             raise RenewalError("Canvas creó un reemplazo incompleto; conservé el token actual")
@@ -100,6 +102,8 @@ class TokenRenewal:
 
         if probe and old_id is not None:
             self._delete(successor, old_id)
+        keep_ids = {successor_id, self._integer(get_meta(self.conn, PROBE_ID))}
+        self._sweep_orphans(successor, held=(successor, probe or current), keep_ids=keep_ids)
         return RenewalResult(renewed=True)
 
     def reseed(self, token: str) -> RenewalResult:
@@ -136,7 +140,7 @@ class TokenRenewal:
         expires = timefmt.iso(self.now + PERMANENT_EXPIRY)
         response = self._request(
             "POST", "/users/self/tokens", token,
-            json={"token": {"purpose": "Vinci (renovación automática)", "expires_at": expires}},
+            json={"token": {"purpose": PURPOSE, "expires_at": expires}},
         )
         if response.status_code == 401 and self._is_bad_token(response):
             raise RenewalError("El token venció antes de poder crear su reemplazo", 401)
@@ -157,18 +161,39 @@ class TokenRenewal:
                                response.status_code)
 
     def _find_token_id(self, token: str) -> int | None:
-        response = self._request("GET", "/users/self/user_generated_tokens?per_page=100", token)
-        if response.status_code != 200:
-            return None
-        try:
-            items = response.json()
-        except ValueError:
-            return None
-        for item in items if isinstance(items, list) else []:
-            hint = str(item.get("token_hint") or "")
-            if hint and token.startswith(hint):
-                return self._integer(item.get("id"))
-        return None
+        matches = [item.get("id") for item in self._list_tokens(token)
+                   if (hint := self._hint(item)) and token.startswith(hint)]
+        return self._integer(matches[0]) if len(matches) == 1 else None
+
+    def _list_tokens(self, token: str) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        target = "/users/self/user_generated_tokens?per_page=100"
+        for _ in range(10):
+            response = self._request("GET", target, token)
+            if response.status_code != 200:
+                return []
+            try:
+                page = response.json()
+            except ValueError:
+                return []
+            items += [item for item in page if isinstance(item, dict)] if isinstance(page, list) else []
+            target = response.links.get("next", {}).get("url")
+            if not target:
+                break
+        return items
+
+    def _sweep_orphans(self, token: str, held: tuple[str, ...], keep_ids: set[int | None]) -> None:
+        """Best-effort: delete renewal tokens an interrupted run created; other purposes are never touched."""
+        for item in self._list_tokens(token):
+            token_id = self._integer(item.get("id"))
+            hint = self._hint(item)
+            if (item.get("purpose") != PURPOSE or token_id is None or token_id in keep_ids
+                    or not hint or any(value.startswith(hint) for value in held)):
+                continue
+            try:
+                self._delete(token, token_id)
+            except RenewalError:
+                pass  # orphans still die with Canvas' hour; the next renewal retries
 
     def _delete(self, current: str, token_id: int) -> None:
         response = self._request("DELETE", f"/users/self/tokens/{token_id}", current)
@@ -177,7 +202,7 @@ class TokenRenewal:
                                f"({response.status_code})", response.status_code)
 
     def _request(self, method: str, path: str, token: str, **kwargs) -> requests.Response:
-        url = self.api + path
+        url = path if path.startswith(("http://", "https://")) else self.api + path
         if urlsplit(url).netloc != self.host:
             raise RenewalError("La renovación intentó salir del dominio del aula")
         try:
@@ -186,6 +211,20 @@ class TokenRenewal:
                                     timeout=TIMEOUT, allow_redirects=False, **kwargs)
         except requests.RequestException as exc:
             raise RenewalError(f"No pude conectar con Canvas para renovar ({type(exc).__name__})") from None
+
+    @staticmethod
+    def _secret(data: dict[str, Any]) -> str:
+        # Canvas returns a new token's value as visible_token (lib/api/v1/token.rb); "hint..." is not a value.
+        for key in ("visible_token", "token"):
+            value = str(data.get(key) or "")
+            if value and not value.endswith("..."):
+                return value
+        return ""
+
+    @staticmethod
+    def _hint(item: dict[str, Any]) -> str:
+        # Listings show only visible_token "<hint>..."; token_hint is serialization-excluded.
+        return str(item.get("token_hint") or "").strip() or str(item.get("visible_token") or "").removesuffix("...")
 
     @staticmethod
     def _is_bad_token(response: requests.Response) -> bool:

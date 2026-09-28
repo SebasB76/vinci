@@ -35,7 +35,8 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      material, without the aula's template images;
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
-     offline; reactivated from Vinci's card, the same gateway serves it again.
+     offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
+     Vinci's card, the same gateway serves it again. Each agenda really runs every minute.
   8. setup.sh a third time with the team in place, just as Canvas stops taking the token:
      nothing changes, and it says Canvas refused the token instead of «✓ Canvas responde».
   9. the party: Vinci got its wizard as its Telegram photo at setup (once), and no bot plays a
@@ -45,6 +46,8 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      update (setup.sh) renames all four in place to just their subject (setMyName), with no new
      or duplicate bot and the same usernames; the photos already set are not uploaded again.
      Every bot summarizes its chat at 80K tokens, set in existing profiles without touching the rest.
+     The update also moves the old `every 30m` poll and `every 1m` agendas to cron expressions in
+     place, and has Vinci keep what it gets while the gateway is down.
      The fifth, Sistemas Distribuidos, is created from Vinci's «Crear» button: Telegram's
      creation screen takes its suggested name and username (the one Telegram Web once refused
      as too long). Every suggested username fits Telegram's rules. setup.sh once more asks
@@ -537,7 +540,7 @@ def test_e2e(tmp_path):
             jobs = json.loads((profile / "cron" / "jobs.json").read_text())["jobs"]
             assert sorted(j["name"] for j in jobs) == ["vinci-resumen", "vinci-sondeo"], jobs
             by_name = {j["name"]: j for j in jobs}
-            assert by_name["vinci-sondeo"]["schedule_display"] == "every 30m"
+            assert by_name["vinci-sondeo"]["schedule_display"] == "15,45 * * * *", "cada 30 min, lejos del resumen"
             assert by_name["vinci-resumen"]["schedule"].get("expr") == "0 7 * * *" or \
                 by_name["vinci-resumen"]["schedule_display"] == "0 7 * * *"
             assert all(j["no_agent"] and j["deliver"] == f"telegram:{CAPTAIN_ID}" for j in jobs)
@@ -559,6 +562,7 @@ def test_e2e(tmp_path):
             assert "vinci-botones" in vcfg["plugins"]["enabled"]
             assert vcfg["unauthorized_dm_behavior"] == "ignore" and vcfg["stt"]["language"] == "es"
             assert vcfg["platforms"]["telegram"]["extra"]["base_url"] == f"{telegram.base}/bot"
+            assert vcfg["platforms"]["telegram"]["extra"]["drop_pending_on_cold_boot"] is False
             assert {"*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"} <= set(vcfg["approvals"]["deny"])
             assert (profile / "skills" / "vinci" / "vinci" / "SKILL.md").is_file()
             assert telegram.profile_photos.get("vinci_bot") == [(AVATARS / "wizard.jpg").read_bytes()], \
@@ -947,6 +951,15 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
         jobs = json.loads((profiles / f"vinci-{code.lower()}" / "cron" / "jobs.json").read_text())["jobs"]
         return next((j.get("last_run_at") for j in jobs if j["name"] == "vinci-agenda"), None)
 
+    def agenda_starts(code: str) -> list[datetime]:
+        """When each scheduled run of a subject bot's agenda started, from Hermes' executions ledger."""
+        conn = sqlite3.connect(profiles / f"vinci-{code.lower()}" / "cron" / "executions.db")
+        try:
+            rows = conn.execute("SELECT claimed_at FROM executions WHERE scheduled_instant IS NOT NULL").fetchall()
+        finally:
+            conn.close()
+        return sorted(datetime.fromisoformat(row[0]) for row in rows)
+
     def show(title: str, text: str) -> None:
         equipo_md.append(f"## {title}\n\n```\n{text.rstrip()}\n```\n")
 
@@ -954,6 +967,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     assert gate_before == SKIP, "sin bots, horario ni entregas la agenda no despierta al modelo"
 
     mark_calls = len(telegram.calls)
+    sessions = [time.time()]  # when the gateway starts and stops serving
     gateway.start()
     polling({"vinci_bot"}, mark_calls)
     take("Gateway encendido (solo Vinci)")
@@ -1050,7 +1064,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
         assert scfg["compression"]["threshold_tokens"] == 80_000
         jobs = json.loads((sp / "cron" / "jobs.json").read_text())["jobs"]
         assert [(j["name"], j["schedule_display"], j["no_agent"], j["script"], j["enabled"]) for j in jobs] == [
-            ("vinci-agenda", "every 1m", False, "vinci-agenda.sh", True)], jobs
+            ("vinci-agenda", "* * * * * */30", False, "vinci-agenda.sh", True)], jobs
     for token in (MATG, FIS, UNKNOWN_TOKEN):  # where a token may live: secrets.env and its own profile's .env
         holders = sorted(str(f.relative_to(home)) for f in home.rglob("*") if f.is_file()
                          and token.encode() in f.read_bytes())
@@ -1331,6 +1345,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     assert team()["FISG1002"]["estado"] == "archivada" and (fis_profile / "gateway.parked").exists()
     assert json.loads((fis_profile / "cron" / "jobs.json").read_text())["jobs"][0]["enabled"] is False
     gateway.stop()
+    sessions.append(time.time())
     gate_after = run([bot, "agenda", "--curso", "MATG1049"], T_VINCI).stdout.strip()
     gate_fis = run([bot, "agenda", "--curso", "FISG1002"], T_VINCI).stdout.strip()
     assert gate_after == SKIP and gate_fis == SKIP
@@ -1349,8 +1364,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     restart = datetime.now().astimezone()
     briefs_before, tasks_before = len(cron_tasks("brief_de_clase")), len(cron_tasks("entrega_de_vinci"))
     mark_calls, mark_msgs = len(telegram.calls), len(telegram.messages)
+    telegram.send_text(BOT_TOKEN, CAPTAIN, "hola, ¿estás?")  # while the gateway is down
+    sessions.append(time.time())
     gateway.start()
     polling({"vinci_bot", "vinci_calculo_bot"}, mark_calls)
+    wait_msg("vinci_bot", mark_msgs, "¿En qué te ayudo?")
     telegram.send_text(FIS, CAPTAIN, "¿sigues ahí?")
     calls = len(telegram.calls)
     telegram.press(BOT_TOKEN, CAPTAIN, fis_alert, fis_data)
@@ -1370,7 +1388,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
                   "el brief",
                   f"- antes del horario, la misma compuerta respondía `{gate_before}` (sin clase no hay brief)", ""]
     report.append("Reinicio del gateway: la agenda de Cálculo volvió a correr sin gastar tokens ni repetir el brief; "
-                  "cada minuto sin nada que hacer tampoco llama al modelo")
+                  "cada minuto sin nada que hacer tampoco llama al modelo; y Vinci contestó el mensaje que le "
+                  "llegó con el gateway apagado, en vez de descartarlo al arrancar")
     report.append("Archivar Física desde la tarjeta de Vinci (solo con el botón del capitán): su bot quedó apagado "
                   "(gateway.parked; no volvió a escuchar a Telegram), su agenda en pausa y su botón en los avisos ya "
                   "no lo despierta; memoria y cuaderno intactos")
@@ -1395,6 +1414,17 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
                   "y el mismo gateway volvió a atender su bot, sin reiniciarlo")
     take("Reactivar Física")
     gateway.stop()
+    sessions.append(time.time())
+    gaps = []  # seconds between back-to-back agenda runs of one bot while the same gateway served it
+    for code in SUBJECT_TOKENS:
+        starts = agenda_starts(code)
+        for start, end in zip(sessions[::2], sessions[1::2]):
+            served = [s for s in starts if start <= s.timestamp() <= end]
+            gaps += [(b - a).total_seconds() for a, b in zip(served, served[1:])]
+    assert gaps and max(gaps) < 90, f"la agenda de un bot de materia se saltó un minuto: {gaps}"
+    report.append(f"La agenda de cada bot de materia corre cada minuto de verdad («* * * * * */30»): entre una corrida y "
+                  f"la siguiente con el mismo gateway pasaron {', '.join(f'{g:.0f} s' for g in gaps)}, también después "
+                  f"de un brief o una entrega que despertó al modelo; con «every 1m» Hermes la corría cada 2 min")
 
     for job_id in vinci_jobs.values():
         run([hermes, "-p", "vinci", "cron", "resume", job_id], T_VINCI)
@@ -1456,6 +1486,19 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
                 {"bot": PARTY_TOKENS[code].split(":")[0], "name": old_name,
                  "photo": hashlib.sha256(avatar).hexdigest()}, ensure_ascii=False) + "\n", encoding="utf-8")
             telegram.profile_photos[username] = [avatar]
+    # As the previous setup.sh left Vinci and the team: interval schedules, and Vinci dropping what it got while
+    # the gateway was down.
+    old_jobs = {}
+    for name, job_name, schedule in (("vinci", "vinci-sondeo", "every 30m"), ("vinci-matg1049", "vinci-agenda", "every 1m"),
+                                     ("vinci-fisg1002", "vinci-agenda", "every 1m")):
+        job = next(j for j in json.loads((profiles / name / "cron" / "jobs.json").read_text())["jobs"]
+                   if j["name"] == job_name)
+        run([hermes, "-p", name, "cron", "edit", job["id"], "--schedule", schedule], T_VINCI)
+        old_jobs[name] = (job_name, job["id"])
+    vinci_cfg = profiles / "vinci" / "config.yaml"
+    cfg = yaml.safe_load(vinci_cfg.read_text())
+    del cfg["platforms"]["telegram"]["extra"]["drop_pending_on_cold_boot"]
+    vinci_cfg.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
     throttled = EXISTING["ADSG1026"][0]
     telegram.throttle[(throttled, "setMyName")] = 3600  # Telegram's setMyName flood waits can last hours
     mark_calls = len(telegram.calls)
@@ -1480,11 +1523,21 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
             assert telegram.name_of(PARTY_TOKENS[code]) == bot_name
             assert f"• {bot_name}: su nombre en Telegram quedó «{bot_name}»" in update.stdout
     assert telegram.name_of(PARTY_TOKENS["ADSG1026"]) == "El Equilibrio · Sostenibilidad"
+    for name, (job_name, job_id) in old_jobs.items():
+        jobs = [(j["id"], j["schedule_display"]) for j in json.loads((profiles / name / "cron" / "jobs.json").read_text())[
+            "jobs"] if j["name"] == job_name]
+        assert jobs == [(job_id, "15,45 * * * *" if name == "vinci" else "* * * * * */30")], f"{name}: {jobs}"
+    assert "• cron «vinci-sondeo» actualizado (15,45 * * * *)" in update.stdout, update.stdout
+    assert yaml.safe_load(vinci_cfg.read_text())["platforms"]["telegram"]["extra"]["drop_pending_on_cold_boot"] is False
     report.append("Actualizar con bots de materia ya creados, dos con el nombre de antes de PR #4 («Vinci · Ingeniería "
                   "de Software I») y dos con el de su personaje («El Analítico · Estadística», con la foto y el registro "
                   "que dejó PR #4): setup.sh los renombró ahí mismo con su propio token a solo su materia (setMyName: "
                   "«Ingeniería de Software I», «Estadística»…); mismos bots y usuarios, ningún bot nuevo ni duplicado, y "
                   "la foto que ya tenían no se volvió a subir")
+    report.append("La misma actualización corrigió ahí mismo los cron que dejó la versión anterior, sin duplicar "
+                  "ninguno (mismo id): el sondeo de Vinci de «every 30m» a «15,45 * * * *» y la agenda de Cálculo y "
+                  "Física de «every 1m» a «* * * * * */30»; y Vinci dejó de descartar lo que le llega con el gateway apagado "
+                  "(drop_pending_on_cold_boot: false, como los bots de materia)")
     take("setup.sh (4ª vez: la actualización renombra los bots de antes)")
 
     # 9b. Telegram throttled Ciencias de la Sostenibilidad's rename: the next setup.sh renames it, nothing else.

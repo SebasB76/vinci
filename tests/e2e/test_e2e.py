@@ -546,7 +546,7 @@ def test_e2e(tmp_path):
         config = config.replace('url = "https://aulavirtual.espol.edu.ec"', f'url = "{canvas.base}"')
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
-        config = config.replace('modelo = "claude-sonnet-5"', 'modelo = "fake"')
+        config = config.replace('modelo = "claude-sonnet-5-5"', 'modelo = "fake"')
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
@@ -645,6 +645,7 @@ def test_e2e(tmp_path):
             assert profile_env["TELEGRAM_ALLOWED_USERS"] == profile_env["TELEGRAM_HOME_CHANNEL"] == CAPTAIN_ID
             vcfg = yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8"))
             assert vcfg["timezone"] == "America/Guayaquil" and vcfg["model"]["provider"] == "fakellm"
+            assert vcfg["model"]["default"] == "fake", "the config.toml model substitution no longer matches"
             assert set(vcfg["platform_toolsets"]["telegram"]) == {"web", "memory", "session_search", "clarify",
                                                                   "mcp-vinci"}
             assert {"terminal", "file", "code_execution", "skills", "delegation", "cronjob"} <= \

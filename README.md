@@ -133,7 +133,7 @@ Así está organizado el repositorio:
 - **Una PC con Linux** que quede encendida mientras quieras que los bots funcionen (se usa en Arch / Omarchy).
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** instalado en `~/.local/bin/hermes` (o en la
   ruta que pongas en `HERMES_BIN`), con un modelo de **Anthropic** configurado con `hermes model`. Vinci usa
-  `claude-sonnet-5` por defecto. Si a Hermes le falta su conector de Telegram, el setup lo instala.
+  `claude-sonnet-5-5` por defecto. Si a Hermes le falta su conector de Telegram, el setup lo instala.
 - **Python 3.11 o más nuevo** y, de preferencia, [uv](https://docs.astral.sh/uv/) (`sudo pacman -S uv`). Sin uv,
   el setup usa `python -m venv`.
 - **Una cuenta de Telegram** y **tu cuenta institucional** del aula virtual.
@@ -408,7 +408,7 @@ Todo lo ajustable está en [`config.toml`](config.toml). Después de cambiarlo, 
 | `material.max_mb_per_sync` | `50` | Cuántos MB de sílabos baja como máximo cada sondeo; los demás, en los siguientes |
 | `almacenamiento.carpeta_datos` | `~/.local/share/espol-academic-bot` | Base de datos, material y cuadernos |
 | `hermes.perfil` | `vinci` | Perfil de Vinci; cada materia usa `<perfil>-<código>` |
-| `hermes.proveedor` · `hermes.modelo` | `anthropic` · `claude-sonnet-5` | Modelo de Vinci y de los bots de materia |
+| `hermes.proveedor` · `hermes.modelo` | `anthropic` · `claude-sonnet-5-5` | Modelo de Vinci y de los bots de materia |
 
 Otros archivos que puedes editar:
 

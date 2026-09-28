@@ -56,4 +56,4 @@ perfil = "vinci"
 # Modelo de Vinci y de los bots de materia (los avisos del aula y la agenda no gastan tokens;
 # solo las respuestas, los briefs y lo que les pases).
 proveedor = "anthropic"
-modelo = "claude-sonnet-5"
+modelo = "claude-sonnet-5-5"

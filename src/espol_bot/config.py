@@ -78,7 +78,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         brief_minutes=brief_minutes,
         hermes_profile=profile,
         hermes_provider=str(hermes.get("proveedor", "anthropic")),
-        hermes_model=str(hermes.get("modelo", "claude-sonnet-5")),
+        hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
     )
 

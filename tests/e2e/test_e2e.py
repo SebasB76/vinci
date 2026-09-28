@@ -6,11 +6,13 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
 ~/.hermes, ~/.claude, ~/.local and user services are never touched.
 
   1. setup.sh twice: a legacy «espol» profile becomes Vinci with its memory; the second
-     run changes nothing.
+     run changes nothing. Then, with IPv6 to Telegram broken and IPv4 working (the captain's
+     network), Vinci's own Bot API calls must not stall.
   2. `aula` CLI commands against the first fixture state.
   3. Vinci's polls, then the fixtures change (new assignment, due-date change, new
      announcement, posted grade, new material, a submission), then polls 2-4 and the 07:00
-     summary (twice: the second must not resend).
+     summary (twice: the second must not resend). While poll 2 slowly downloads the new
+     material, `aula cursos --actualizar` (what setup.sh runs) must not wait for it.
   4. retrieval: sample questions must hit the right file and page.
   5. a fresh install where two resources fail at different polls: the rest keeps working,
      one alert per failure episode and resource.
@@ -20,17 +22,22 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      from chat: its card's «Crear» buttons; Cálculo created as a Telegram managed bot (its
      token fetched with getManagedBotToken), Física from BotFather's forwarded reply (caught,
      deleted, never seen by the model; a repeated, an unknown and a stranger's token handled).
+     Every press is answered at once, even one whose work is slow; a second «Crear» does not
+     resend; the /start the captain sends Cálculo before the gateway serves it gets a greeting.
      Then, with both subject bots served by the same gateway: strangers get silence; the
      schedule read from a screenshot is saved only by the
      captain's «Guardar» (a stranger's press and a stale proposal are refused); a photo
      routed to Cálculo, an unknown subject refused; an alert's button and a reply to an
      alert handed to the subject bots (alerts of both Cálculo courses go to its one bot);
-     the brief 30 minutes before Wednesday's class, with what is due in both courses;
-     notebook capture of a photo, a voice note and a doubt (and no arbitrary files);
+     the brief 30 minutes before Wednesday's class, with what is due in both courses (and on
+     Monday, theory then práctico back to back, one brief before the first block, none mid-class);
+     notebook capture of a photo, a voice note and a doubt (and no arbitrary files); the course
+     material, without the aula's template images;
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline; reactivated from Vinci's card, the same gateway serves it again.
-  8. setup.sh a third time with the team in place: nothing changes.
+  8. setup.sh a third time with the team in place, just as Canvas stops taking the token:
+     nothing changes, and it says Canvas refused the token instead of «✓ Canvas responde».
   9. the party: Vinci got its wizard as its Telegram photo at setup (once), and no bot plays a
      character. Cálculo and Física, with no photo in the party, keep theirs. Four of the
      captain's real subjects already have bots: two still named «Vinci · <materia>», two with
@@ -72,10 +79,11 @@ HERE = Path(__file__).parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
-from fake_servers import FakeCanvas, FakeTelegram, ScriptedLLM  # noqa: E402
+from fake_servers import BrokenIPv6, FakeCanvas, FakeTelegram, ScriptedLLM  # noqa: E402
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
+NEW_CANVAS_TOKEN = "7~prueba-token-nuevo-de-canvas"  # after the aula virtual refused the first one
 BOT_TOKEN = "123456:PRUEBA-bot-token"
 SUBJECT_TOKENS = {"MATG1049": "700001:PRUEBA-token-de-calculo-xxxxxxxxxxxxxxxx",
                   "FISG1002": "700002:PRUEBA-token-de-fisica-xxxxxxxxxxxxxxxxx"}
@@ -121,6 +129,8 @@ T_POLL4 = "2026-09-29T20:30:00-05:00"   # Taller 2 vence en 2.5 h → recordator
 T_RESILIENCE = [f"2026-09-30T{12 + i // 2}:{i % 2 * 30:02d}:00-05:00" for i in range(9)]  # 12:00 … 16:00
 T_VINCI = "2026-09-30T08:30:00-05:00"   # sesión del gateway: miércoles, 30 min antes de Cálculo (09:00)
 T_EARLY = "2026-09-30T08:29:00-05:00"   # un minuto antes: todavía no toca el brief
+T_MONDAY = "2026-10-05T08:30:00-05:00"  # lunes: teórico 09:00–11:00 y práctico 11:00–12:00 seguidos
+T_MIDCLASS = "2026-10-05T10:30:00-05:00"  # en pleno teórico, 30 min antes del práctico
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -132,6 +142,7 @@ QUESTIONS = [
 # Cálculo at 10:00), then corrected by the captain. Cálculo's práctico keeps the screenshot's label.
 SCHEDULE_V1 = [
     {"materia": "MATG1049", "dia": "lunes", "inicio": "09:00", "fin": "11:00", "aula": "A105", "paralelo": "5"},
+    {"materia": "MATG1049", "dia": "lunes", "inicio": "11:00", "fin": "12:00", "aula": "LAB 11C", "paralelo": "105"},
     {"materia": "MATG1049", "dia": "miércoles", "inicio": "10:00", "fin": "12:00", "aula": "A105", "paralelo": "5"},
     {"materia": "MATG1049 - CÁLCULO DE UNA VARIABLE Paralelo N°105", "dia": "viernes", "inicio": "10:00",
      "fin": "12:00", "aula": "LAB 11C", "paralelo": "105"},
@@ -332,11 +343,16 @@ class Script:
                          texto="No entiende la regla de la cadena con funciones trigonométricas.")
         if "guarda en el cuaderno el archivo" in text:
             return _call("mcp__materia__guardar_adjunto", tipo="documento", ruta=str(self.secrets), resumen="archivo")
+        if "qué material" in text:
+            return _call("mcp__materia__archivos")
         return {"content": f"Hola, soy el bot de {name}."}
 
     @staticmethod
     def subject_answer(results: list[str]) -> str:
         data = _json(results[-1])
+        if isinstance(data, dict) and "material" in data:
+            return "📚 Material del curso: " + "; ".join(f["archivo"] for f in data["material"]) + (
+                f"\n{data['nota']}" if data.get("nota") else "")
         if isinstance(data, dict) and data.get("tipo") in ("foto", "audio", "documento"):
             icon = {"foto": "📸", "audio": "🎙️", "documento": "📄"}[data["tipo"]]
             return f"{icon} Guardé en tu cuaderno ({data['tipo']} #{data['id']}): {data['texto']}"
@@ -440,6 +456,7 @@ def test_e2e(tmp_path):
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
         config = config.replace('modelo = "claude-sonnet-5"', 'modelo = "fake"')
+        config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
         secrets = tmp_path / "secrets.env"
@@ -563,6 +580,21 @@ def test_e2e(tmp_path):
             setup_log = "Hermes no está instalado aquí: se omitió la prueba de setup.sh.\n"
             report.append("setup.sh omitido: Hermes no está instalado en esta máquina")
 
+        # 1b. Telegram over a broken IPv6 route (IPv4 works): no Bot API call may wait on it ---------
+        with BrokenIPv6(telegram) as broken:
+            if broken.base:
+                started = time.monotonic()
+                run([str(VENV_BIN / "espol-bot"), "probar"], T_SETUP, env_extra={"ESPOL_TELEGRAM_API_BASE": broken.base})
+                took = time.monotonic() - started
+                probe = take("Prueba de Vinci con el IPv6 de Telegram roto")
+                assert len(probe) == 1 and "Prueba" in probe[0]["text"], probe
+                assert took < 5, f"con IPv6 roto, `espol-bot probar` tardó {took:.1f} s: se quedó esperando al IPv6"
+                report.append("Con el IPv6 hacia Telegram roto y el IPv4 funcionando (como en la red del capitán), "
+                              "Vinci envió su mensaje de prueba y consultó getMe en menos de 5 s: sus llamadas al "
+                              "Bot API prueban IPv4 primero en vez de esperar a que venza el IPv6")
+            else:
+                report.append("IPv6 roto omitido: en esta máquina localhost no resuelve primero a ::1")
+
         # 2. aula CLI against state 1 -----------------------------------------------------
         aula = str(VENV_BIN / "aula")
         cli_runs = [
@@ -598,7 +630,23 @@ def test_e2e(tmp_path):
         assert "Listo" in poll1[0]["text"] and "Recordatorio" in poll1[1]["text"] and "Deber 2" in poll1[1]["text"]
 
         canvas.state = "state2"
-        run([bot, "sondeo"], T_POLL2)
+        canvas.slow_downloads[5101] = 8
+        sondeo = subprocess.Popen([bot, "sondeo"], env={**base_env, "AULA_NOW": T_POLL2}, cwd=REPO, text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        downloading = telegram.wait_for(lambda _: any("/files/5101/download" in p for _, p in list(canvas.requests)), 60)
+        assert downloading, "el sondeo 2 debía bajar el material nuevo de Física"
+        started = time.monotonic()
+        refresh = run([aula, "cursos", "--actualizar"], T_POLL2)
+        took = time.monotonic() - started
+        assert sondeo.poll() is None and took < 5, \
+            f"`aula cursos --actualizar` tardó {took:.1f} s: esperó a que el sondeo terminara de bajar el material"
+        out, err = sondeo.communicate(timeout=120)
+        assert sondeo.returncode == 0, f"el sondeo 2 falló:\n{out}\n{err}"
+        canvas.slow_downloads.clear()
+        assert "FÍSICA I" in refresh.stdout
+        report.append("Mientras el sondeo bajaba material nuevo (una descarga de 8 s), `aula cursos --actualizar` "
+                      "(lo que corre setup.sh, y lo mismo que refresca una herramienta de un bot) leyó el aula en "
+                      "menos de 5 s: la descarga ya no retiene el candado de la sincronización")
         poll2 = take("Sondeo 2 · mar 29 sep 00:30 (tras los cambios)")
         texts = "\n\n".join(m["text"] for m in poll2)
         for expected in ("Nueva tarea en FÍSICA I", "Taller 2: Movimiento parabólico", "Cambió la fecha de entrega",
@@ -645,17 +693,26 @@ def test_e2e(tmp_path):
 
         # 6. two resources failing at different polls on a fresh install ---------------
         fresh_config = tmp_path / "config-resiliencia.toml"
-        fresh_config.write_text(config.replace(str(data_dir), str(tmp_path / "resiliencia")), encoding="utf-8")
+        fresh_config.write_text(config.replace(str(data_dir), str(tmp_path / "resiliencia"))
+                                .replace("request_interval_seconds = 0", "request_interval_seconds = 0.1")
+                                .replace("max_mb_per_sync = 50", "max_mb_per_sync = 0.001"), encoding="utf-8")
         fresh = {"AULA_CONFIG": str(fresh_config)}
         fisica_anuncios, calculo_archivos = "/api/v1/courses/102/discussion_topics", "/api/v1/courses/101/files"
         names = {fisica_anuncios: "anuncios de Física", calculo_archivos: "archivos de Cálculo"}
         plan = [{fisica_anuncios}, {fisica_anuncios}, {fisica_anuncios, calculo_archivos},
                 {fisica_anuncios, calculo_archivos}, {calculo_archivos}, {fisica_anuncios, calculo_archivos},
                 {fisica_anuncios}, {fisica_anuncios}, set()]
-        polls = []
+        polls, downloads = [], []
         for i, (now, paths) in enumerate(zip(T_RESILIENCE, plan, strict=True), start=1):
             canvas.failing = set(paths)
+            mark = len(canvas.requests)
             run([bot, "sondeo"], now, env_extra=fresh)
+            with canvas.lock:
+                sent, times = canvas.requests[mark:], canvas.times[mark:]
+            downloads.append([int(path.split("/")[2]) for _, path in sent if path.startswith("/files/")])
+            if i == 1:
+                gaps = [b - a for a, b in zip(times, times[1:])]
+                assert len(times) > 10 and min(gaps) >= 0.08, f"el sondeo no espació sus consultas: {min(gaps):.3f} s"
             failing = ", ".join(names[p] for p in sorted(paths)) or "nada"
             polls.append(take(f"Resiliencia · sondeo {i} ({now[11:16]}), fallando: {failing}"))
             if i == 4:
@@ -675,6 +732,28 @@ def test_e2e(tmp_path):
                                   T_RESILIENCE[-1], env_extra=fresh).stdout)
         assert len(anuncios) == 1, "al recuperarse, el anuncio existente queda guardado"
         canvas.failing = set()
+        assert downloads[:2] == [[5001], [5101]] and not any(downloads[2:]), downloads
+        report.append("El sondeo trata el aula virtual con suavidad: espació cada consulta (con el ritmo de prueba de "
+                      "0,1 s) y bajó el material de a poco (con un tope de prueba de 1 KB por sondeo, un archivo en "
+                      "el primero y el otro en el segundo), en vez de todo de golpe")
+
+        # 6b. Canvas refuses the token: one alert, then no more reads until secrets.env has another ---------
+        canvas.token = NEW_CANVAS_TOKEN  # the aula virtual revoked the first one
+        mark = len(canvas.requests)
+        run([bot, "sondeo"], T_POLL4)
+        refused = take("El aula virtual rechaza el token (sondeo)")
+        assert len(refused) == 1 and "token de Canvas ya no funciona" in refused[0]["text"], refused
+        assert len(canvas.requests) - mark == 1, "un solo intento con el token rechazado"
+        mark = len(canvas.requests)
+        run([bot, "sondeo"], T_POLL4)
+        run([bot, "resumen"], T_POLL4)
+        assert take("Sondeo y resumen con el mismo token rechazado") == [], "el aviso llega una sola vez"
+        assert len(canvas.requests) == mark, "con el mismo token rechazado no vuelve a consultar el aula virtual"
+        secrets.write_text(secrets.read_text().replace(f"CANVAS_TOKEN={CANVAS_TOKEN}", f"CANVAS_TOKEN={NEW_CANVAS_TOKEN}"))
+        run([bot, "sondeo"], T_POLL4)
+        assert take("Sondeo con el token nuevo") == [] and len(canvas.requests) > mark, "con el token nuevo vuelve a leer"
+        report.append("Cuando el aula virtual rechazó el token (401), Vinci avisó una sola vez y los sondeos siguientes "
+                      "(y el resumen) no volvieron a consultarla; con el token nuevo en secrets.env volvió a leerla sola")
 
         equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
         horario_md = ["# Horario desde una captura (se guarda solo con el botón del capitán)\n"]
@@ -704,7 +783,7 @@ def test_e2e(tmp_path):
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
         assert all(str(m["chat_id"]) == CAPTAIN_ID for _, m in sent_log), "solo se escribe al capitán"
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
-        secrets_all = [CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+        secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
@@ -749,7 +828,7 @@ def test_e2e(tmp_path):
             + "\n", encoding="utf-8")
     for path in artifact.iterdir():  # no artifact may carry a token
         text = path.read_text(encoding="utf-8", errors="replace")
-        for secret in (CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+        for secret in (CANVAS_TOKEN, NEW_CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
                        *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
@@ -775,7 +854,7 @@ def test_e2e(tmp_path):
     (artifact / "REPORTE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, report, gateway, artifact,
+def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, take, report, gateway, artifact,
                equipo_md, horario_md, briefs_md, party_md, tools_seen, pwned, secrets, base_env, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
@@ -894,19 +973,31 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     create = {b["text"]: b["callback_data"] for b in buttons(card)}
 
     # Cálculo: Telegram's managed bots (the token never touches the chat)
-    calls = len(telegram.calls)
+    calls, pressed = len(telegram.calls), time.time()
     keyboard_msg = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Cálculo de una Variable"]),
                         "vinci_bot", "Creemos Cálculo de una Variable")
-    toast(calls, "Creemos")
+    assert toast(calls, "Creemos")["at"] - pressed < 5, "el botón debe contestar en segundos"
+    assert "Si Telegram te pide esperar porque creaste muchos bots seguidos" in plain(keyboard_msg["text"])
+    calls, mark = len(telegram.calls), len(telegram.messages)
+    telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Cálculo de una Variable"])
+    again = toast(calls, "Ya te mandé el botón")
+    time.sleep(1)
+    assert not [m for m in telegram.messages[mark:] if "Creemos" in readable(m)], "un segundo «Crear» no reenvía"
     request = keyboard_msg["reply_markup"]["keyboard"][0][0]["request_managed_bot"]
     assert telegram.creation_screen(request) == ("Cálculo de una Variable", "vinci_calculo_variable_bot")
     assert team()["MATG1049"]["estado"] == "esperando_bot"
     show("Pulsa «➕ Crear Cálculo de una Variable» (Vinci puede gestionar bots)",
          plain(keyboard_msg["text"]) + f"\n[botón de Telegram: {keyboard_msg['reply_markup']['keyboard'][0][0]['text']} → "
-         f"request_managed_bot {json.dumps(request, ensure_ascii=False)}]")
-    created = turn(lambda: telegram.create_managed_bot(BOT_TOKEN, CAPTAIN, MATG, "vinci_calculo_bot",
-                                                       "Cálculo de una Variable"),
-                   "vinci_bot", "quedó creado y activo", timeout=180)
+         f"request_managed_bot {json.dumps(request, ensure_ascii=False)}]\n\nLo pulsa otra vez → aviso: "
+         f"«{again['params']['text']}» (sin reenviar nada)")
+    mark_start = len(telegram.messages)
+
+    def create_and_start():
+        # The captain opens the new bot and presses START at once, before the gateway serves it.
+        telegram.create_managed_bot(BOT_TOKEN, CAPTAIN, MATG, "vinci_calculo_bot", "Cálculo de una Variable")
+        telegram.send_text(MATG, CAPTAIN, "/start")
+
+    created = turn(create_and_start, "vinci_bot", "quedó creado y activo", timeout=180)
     patch_profile("vinci-matg1049")
     assert created["reply_markup"] == {"remove_keyboard": True}
     assert any(c["method"] == "getManagedBotToken" and int(c["params"]["user_id"]) == 700001 for c in telegram.calls)
@@ -914,8 +1005,12 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
 
     # Física: BotFather's reply forwarded (the plugin deletes it before Hermes sees it)
     telegram.add_bot(FIS, USERNAMES[FIS], "Física I")  # the captain created it with /newbot in @BotFather
+    telegram.slow[(BOT_TOKEN, "getMe")] = 6  # the work behind this press is slow
+    calls, pressed = len(telegram.calls), time.time()
     turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Física I"]), "vinci_bot",
          "Creemos Física I")
+    telegram.slow.clear()
+    assert toast(calls, "Un momento")["at"] - pressed < 5, "un botón lento contesta enseguida y trabaja después"
     attempts = []
     for label, token, expected in (("el token de Cálculo otra vez", MATG, "ya estaba configurado"),
                                    ("un token que Telegram no conoce", UNKNOWN_TOKEN, "Telegram no aceptó ese token"),
@@ -980,6 +1075,17 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     mark_calls = len(telegram.calls)
     polling({"vinci_calculo_bot", "vinci_fisica_bot"}, mark_calls, timeout=150)
     report.append("El mismo gateway de Hermes empezó a atender a los dos bots nuevos solo, sin reiniciarlo")
+    hello = wait_msg("vinci_calculo_bot", mark_start, "Soy Cálculo de una Variable", timeout=120)
+    assert "Todavía no tengo tu horario" in plain(hello["text"])
+    starts = [r for r in llm.requests for m in r.get("messages") or []
+              if m.get("role") == "user" and flatten(m.get("content")).strip() == "/start"]
+    assert not starts, "el saludo a /start no pasa por el modelo"
+    show("El capitán le manda /start a Cálculo apenas lo crea (antes de que el gateway lo atienda)", plain(hello["text"]))
+    report.append("Botones de Vinci: cada toque contestó en menos de 5 s, también uno cuyo trabajo tardaba (primero "
+                  "«⏳ Un momento…» y después su respuesta); un segundo «➕ Crear» no reenvió el mensaje, y el mensaje "
+                  "para crear el bot avisa que Telegram puede pedir esperar si se crearon muchos seguidos")
+    report.append("El /start que el capitán le mandó a Cálculo apenas lo creó, antes de que el gateway lo atendiera, "
+                  "tuvo respuesta: un saludo sin modelo que dice qué hace el bot y cuándo llega su brief")
     take("Vinci arma el equipo")
 
     # 7a. strangers get silence
@@ -1148,11 +1254,26 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     assert not any(e["tipo"] == "documento" for e in calc_nb)
     for stored in (data_dir / "cuadernos").rglob("*"):
         if stored.is_file() and stored.suffix != ".db":
-            assert CANVAS_TOKEN.encode() not in stored.read_bytes(), "un archivo con secretos llegó al cuaderno"
+            data = stored.read_bytes()
+            assert CANVAS_TOKEN.encode() not in data and NEW_CANVAS_TOKEN.encode() not in data, \
+                "un archivo con secretos llegó al cuaderno"
     report.append("Cuaderno: el bot de Física guardó una nota de voz (audio y transcripción) y el de Cálculo una "
                   "foto de la pizarra y una duda; pedirle guardar un archivo del computador (secrets.env) fue "
                   "rechazado: «" + readable(attack)[:70].replace("\n", " ") + "…»")
     take("Cuaderno: foto, nota de voz y duda")
+
+    # the course material: the aula's template images (silabos.png) are not material
+    material = turn(lambda: telegram.send_text(MATG, CAPTAIN, "¿qué material del curso tienes?"), "vinci_calculo_bot",
+                    "Material del curso")
+    listings = [flatten(m.get("content")) for r in llm.requests for m in r.get("messages") or []
+                if m.get("role") == "tool" and '"material"' in flatten(m.get("content"))]
+    assert listings and not any("silabos.png" in t for t in listings), "la imagen del aula llegó al modelo como material"
+    assert "Capítulo 3 - Derivadas.pdf" in readable(material) and "1 archivo(s) más" in readable(material)
+    assert "silabos.png" not in readable(material)
+    report.append("Material del curso: el bot de Cálculo listó solo lo que puede leer (el PDF del capítulo 3 y el "
+                  "sílabo en PDF); la imagen silabos.png de la página del aula no llegó al modelo como material, "
+                  "solo una nota de que hay 1 archivo más que no es material del curso")
+    take("Material del curso, sin las imágenes del aula")
 
     # 7g. Vinci reads the notebooks but cannot write them or reach a terminal
     read = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué hay en el cuaderno de cálculo?"),
@@ -1179,12 +1300,17 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     for who, names in tools_seen.items():
         if who != "Vinci":
             assert all(t.startswith("mcp__materia__") or t in SUBJECT_TOOLS_OK for t in names), (who, names)
+    everything = json.dumps(llm.requests, ensure_ascii=False)
+    assert "very first message ever" in everything, "Hermes debía marcar el primer mensaje de cada bot"
+    assert "build a short profile" not in everything, "ningún bot ofrece armar un perfil del estudiante"
     report.append("Vinci leyó el cuaderno de Cálculo (la foto y la duda), pero al intentar escribirlo o usar una "
                   f"terminal Hermes respondió que esas herramientas no existen: «{readable(shell)[:60]}…»; el "
                   "cuaderno no cambió y no se creó ningún archivo")
     report.append("Herramientas que Hermes le ofreció al modelo (ver hermes_herramientas.json): Vinci, solo las "
                   "suyas + búsqueda web, memoria, historial y preguntas; los bots de materia, solo las de su "
                   "materia + memoria (sin web); ninguno con terminal, archivos, código ni skills")
+    report.append("El primer mensaje de cada bot trae solo la presentación de Hermes: ninguno le ofrece al estudiante "
+                  "«armar un perfil tuyo» (onboarding.profile_build: off)")
     take("Vinci lee cuadernos, no los escribe, sin terminal")
 
     # 7h. archive Física from Vinci's card, restart the gateway: no repeated brief, Física offline
@@ -1205,6 +1331,18 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     gate_after = run([bot, "agenda", "--curso", "MATG1049"], T_VINCI).stdout.strip()
     gate_fis = run([bot, "agenda", "--curso", "FISG1002"], T_VINCI).stdout.strip()
     assert gate_after == SKIP and gate_fis == SKIP
+    monday = run([bot, "agenda", "--curso", "MATG1049"], T_MONDAY).stdout
+    for expected in ("Clase: hoy lunes 5 oct, 09:00–12:00 en A105 (empieza en 30 min)",
+                     "un único brief para todos: 09:00–11:00 en A105 · paralelo 5; 11:00–12:00 en LAB 11C · paralelo 105"):
+        assert expected in monday, f"falta «{expected}» en el brief del lunes:\n{monday}"
+    midclass = run([bot, "agenda", "--curso", "MATG1049"], T_MIDCLASS).stdout.strip()
+    assert midclass == SKIP, f"a las 10:30, en pleno teórico, no toca el brief del práctico de las 11:00:\n{midclass}"
+    briefs_md += ["## Lunes: teórico 09:00–11:00 y práctico 11:00–12:00 seguidos\n",
+                  "A las 08:30, la agenda le pasa al bot un solo brief para los dos bloques:\n",
+                  f"```\n{monday.strip()}\n```\n",
+                  f"A las 10:30, en pleno teórico (30 min antes del práctico): `{midclass}`\n"]
+    report.append("Bloques seguidos de una misma materia (el lunes, teórico 09:00–11:00 y práctico 11:00–12:00): un "
+                  "solo brief a las 08:30 que cubre los dos; a las 10:30, en plena clase, ninguno")
     restart = datetime.now().astimezone()
     briefs_before, tasks_before = len(cron_tasks("brief_de_clase")), len(cron_tasks("entrega_de_vinci"))
     mark_calls, mark_msgs = len(telegram.calls), len(telegram.messages)
@@ -1258,13 +1396,19 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     for job_id in vinci_jobs.values():
         run([hermes, "-p", "vinci", "cron", "resume", job_id], T_VINCI)
 
-    # 8. setup.sh with the team in place: idempotent ---------------------------------------------
+    # 8. setup.sh with the team in place (idempotent), just as the aula virtual stops taking the token -------
+    canvas.token = "7~otro-token-que-el-aula-si-acepta"
     third = run(["bash", str(REPO / "setup.sh"), "--skip-deps"], T_VINCI)
-    show("`./setup.sh --skip-deps` con el equipo armado (3ª vez)", third.stdout)
+    canvas.token = NEW_CANVAS_TOKEN
+    show("`./setup.sh --skip-deps` con el equipo armado (3ª vez), con el token de Canvas ya rechazado",
+         third.stdout + third.stderr)
     for word in ("creado", "actualizado", "reanudado", "pausado", "instalados"):
         assert word not in third.stdout, f"«{word}» en la 3ª corrida de setup.sh:\n{third.stdout}"
     assert third.stdout.count("sin cambios") >= 6
-    report.append("setup.sh por tercera vez, con Vinci y los dos bots de materia: nada cambió")
+    assert "✓ Canvas responde" not in third.stdout, "setup.sh no puede decir que Canvas responde si rechazó el token"
+    assert "no es válido o expiró" in third.stderr and "No pude leer el aula virtual" in third.stderr, third.stderr
+    report.append("setup.sh por tercera vez, con Vinci y los dos bots de materia: nada cambió; y como el aula virtual "
+                  "ya rechazaba el token, dijo «⚠ No pude leer el aula virtual» en vez de «✓ Canvas responde»")
     take("setup.sh (3ª vez, mensaje de prueba)")
 
     # 9. the party: what reached the model, then the captain's own subjects -------------------------

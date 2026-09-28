@@ -4,7 +4,8 @@ FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ the way
 Canvas does: Bearer auth, `Link` pagination (capped at 2 items per page so the
 client must follow it), `X-Rate-Limit-Remaining`, one 429 to exercise backoff,
 a course whose Files tab is hidden (401 unauthorized), and file downloads.
-API paths added to `failing` answer 503 until removed (a resource that keeps failing).
+API paths added to `failing` answer 503 until removed (a resource that keeps failing), and a
+file in `slow_downloads` takes that many seconds to download.
 It answers 405 to anything but GET and records every request.
 
 FakeTelegram stands in for the Bot API of several bots at once (Vinci and each subject
@@ -17,7 +18,13 @@ getManagedBotToken hands the manager that bot's token. A call listed in `throttl
 once, with that retry_after.
 Each bot has a name (getMe's first_name, getMyName; setMyName renames it), and
 setMyProfilePhoto (Bot API 9.4) takes only a fresh static JPG upload, as Telegram does, and keeps
-every photo each bot set. Every chat message a bot sends is kept in order.
+every photo each bot set. Every chat message a bot sends is kept in order. As Telegram does,
+deleteWebhook with drop_pending_updates discards what the bot had queued; a (token, method) in
+`slow` answers that many seconds late.
+
+BrokenIPv6 makes a server reachable as `localhost` where IPv6 is broken and IPv4 works, like
+the captain's network towards api.telegram.org: `localhost` resolves to ::1 first, and a listener
+there with a full accept queue drops every new SYN, so an IPv6 connect hangs until it times out.
 
 ScriptedLLM is an OpenAI-compatible chat-completions endpoint whose answers come from a
 Python function (the test's script): it sees the whole request, so it can pick a tool
@@ -28,6 +35,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import threading
 import time
 from email.parser import BytesParser
@@ -64,8 +72,10 @@ class FakeCanvas(_Server):
         self.token = token
         self.state = "state1"
         self.requests: list[tuple[str, str]] = []
+        self.times: list[float] = []  # when each request arrived
         self.throttled = False
         self.failing: set[str] = set()
+        self.slow_downloads: dict[int, float] = {}
         self.lock = threading.Lock()
 
     def load(self, api_path: str):
@@ -101,6 +111,7 @@ class _CanvasHandler(_Quiet):
         canvas: FakeCanvas = self.server.owner
         with canvas.lock:
             canvas.requests.append((self.command, self.path))
+            canvas.times.append(time.time())
         self._json(405, {"errors": [{"message": "El bot solo debe leer"}]})
 
     do_POST = do_PUT = do_PATCH = do_DELETE = _refuse
@@ -109,6 +120,7 @@ class _CanvasHandler(_Quiet):
         canvas: FakeCanvas = self.server.owner
         with canvas.lock:
             canvas.requests.append(("GET", self.path))
+            canvas.times.append(time.time())
         if self.headers.get("Authorization") != f"Bearer {canvas.token}":
             return self._json(401, {"errors": [{"message": "Invalid access token."}]},
                               {"WWW-Authenticate": 'Bearer realm="canvas-lms"'})
@@ -120,6 +132,7 @@ class _CanvasHandler(_Quiet):
             name = DOWNLOADS.get(file_id)
             if not name:
                 return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]})
+            time.sleep(canvas.slow_downloads.get(file_id, 0))
             return self._send(200, (FIXTURES / "files" / name).read_bytes(), "application/octet-stream", quota)
 
         if not url.path.startswith("/api/v1/"):
@@ -164,7 +177,7 @@ class FakeTelegram(_Server):
     def __init__(self, bots: dict[str, str]):
         super().__init__(_TelegramHandler)
         self.bots = dict(bots)
-        self.calls: list[dict] = []          # every API call: {"bot", "method", "params"}
+        self.calls: list[dict] = []          # every API call: {"bot", "method", "params", "at"}
         self.messages: list[dict] = []       # outgoing chat messages, in order: {"bot", "method", **params}
         self.files: dict[str, tuple[str, bytes]] = {}
         self.updates: dict[str, list[dict]] = {}
@@ -174,6 +187,7 @@ class FakeTelegram(_Server):
         self.profile_photos: dict[str, list[bytes]] = {}  # username -> every photo it set, in order
         self.names: dict[str, str] = {}  # token -> the bot's name, when it is not its username
         self.throttle: dict[tuple[str, str], int] = {}  # (username, method) -> retry_after of its next call
+        self.slow: dict[tuple[str, str], float] = {}  # (token, method) -> seconds before answering
         self.cond = threading.Condition()
         self.lock = self.cond
         # Hermes remembers the update ids it already handled, even across restarts: start from the clock.
@@ -350,8 +364,10 @@ class _TelegramHandler(_Quiet):
         username = stub.bots[token]
         params = self._decode(params)
         with stub.cond:
-            stub.calls.append({"bot": username, "method": method, "params": params})
+            stub.calls.append({"bot": username, "method": method, "params": params, "at": time.time()})
             retry = stub.throttle.pop((username, method), None)
+            delay = stub.slow.get((token, method), 0)
+        time.sleep(delay)
         if retry:
             return self._json(429, {"ok": False, "error_code": 429, "parameters": {"retry_after": retry},
                                     "description": f"Too Many Requests: retry after {retry}"})
@@ -420,6 +436,11 @@ class _TelegramHandler(_Quiet):
             chat = {"id": int(params.get("chat_id", 0) or 0), "type": "private"}
             return self._ok({"message_id": int(params.get("message_id", 0) or 0), "date": int(time.time()),
                              "chat": chat, "from": me, "text": params.get("text", "")})
+        if method == "deleteWebhook":
+            if str(params.get("drop_pending_updates", "")).lower() in ("true", "1"):
+                with stub.cond:
+                    stub.updates[token] = []
+            return self._ok(True)
         if method == "getWebhookInfo":
             return self._ok({"url": "", "has_custom_certificate": False, "pending_update_count": 0})
         if method in ("getMyCommands",):
@@ -443,6 +464,38 @@ class _TelegramHandler(_Quiet):
                 if queue or time.time() >= deadline:
                     return list(queue)
                 stub.cond.wait(max(0.05, deadline - time.time()))
+
+
+class BrokenIPv6:
+    """`localhost:<port>` for a server that listens on 127.0.0.1 only, with IPv6 blackholed: `base` is its
+    URL, or None where this machine does not resolve localhost to ::1 first (nothing to break)."""
+
+    def __init__(self, server: _Server):
+        self.port = int(server.base.rsplit(":", 1)[1])
+        self.base: str | None = None
+        self._sockets: list[socket.socket] = []
+
+    def __enter__(self):
+        infos = socket.getaddrinfo("localhost", self.port, type=socket.SOCK_STREAM)
+        if not infos or infos[0][0] != socket.AF_INET6:
+            return self
+        hole = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        hole.bind(("::1", self.port))
+        hole.listen(0)
+        filler = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        filler.setblocking(False)
+        try:  # the one connection the backlog holds; it is never accepted
+            filler.connect(("::1", self.port))
+        except BlockingIOError:
+            pass
+        self._sockets = [hole, filler]
+        time.sleep(0.2)
+        self.base = f"http://localhost:{self.port}"
+        return self
+
+    def __exit__(self, *exc):
+        for sock in self._sockets:
+            sock.close()
 
 
 class ScriptedLLM(_Server):

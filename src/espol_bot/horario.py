@@ -176,6 +176,23 @@ def occurrences(classes: list[Clase], start: datetime, end: datetime, tz: ZoneIn
     return sorted(found, key=lambda item: (item[0], item[1].materia))
 
 
+def sessions(classes: list[Clase], lead: timedelta) -> dict[Clase, list[Clase]]:
+    """Blocks of a subject that follow each other on one day (a theory hour, then its práctico) as one
+    session, keyed by its first block: a block starting less than `lead` after the session so far ends
+    would get its brief mid-class, so the session's single brief covers it."""
+    found: dict[Clase, list[Clase]] = {}
+    first, end = None, None
+    for c in sorted(classes, key=lambda c: (c.materia, c.dia, c.inicio, c.fin)):
+        begins = datetime.combine(date.min, c.inicio)
+        if first and (first.materia, first.dia) == (c.materia, c.dia) and begins - end < lead:
+            found[first].append(c)
+            end = max(end, datetime.combine(date.min, c.fin))
+        else:
+            first, end = c, datetime.combine(date.min, c.fin)
+            found[first] = [c]
+    return found
+
+
 def previous(classes: list[Clase], code: str, before: datetime, tz: ZoneInfo) -> tuple[datetime, Clase] | None:
     """The most recent class of `code` that started before `before` (up to 3 weeks back)."""
     past = occurrences(classes, before - timedelta(days=21), before, tz, code)

@@ -132,6 +132,7 @@ def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]
 
 def _file(r: sqlite3.Row) -> dict:
     return {"id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "archivo": r["display_name"],
+            "extension": Path(r["filename"] or r["display_name"] or "").suffix.lower().lstrip("."),
             "modulo": r["module"], "tamano": r["size"], "actualizado": r["updated_at"],
             "descargado": r["local_path"] if r["local_path"] and Path(r["local_path"]).exists() else None,
             "indexado": r["index_status"], "paginas": r["pages"], "url": r["html_url"]}

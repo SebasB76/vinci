@@ -25,7 +25,8 @@ Always pass `--json` and parse the output.
 | Refresh now | `aula sincronizar --json` (`--material` also downloads all new PDFs/PPTX/DOCX) |
 
 `--curso` matches any fragment of the course name or code, ignoring accents and case. Data refreshes
-automatically when older than a few minutes; `--sin-actualizar` uses only the local copy.
+automatically when older than a few minutes (falling back to the local copy when the aula virtual can't be
+read); `--sin-actualizar` uses only the local copy, and `--actualizar` reads it now or fails.
 
 ## Workflows
 

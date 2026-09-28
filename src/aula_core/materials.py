@@ -81,7 +81,6 @@ def download(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, fi
 
 def index(conn: sqlite3.Connection, file_id: int) -> str:
     row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
-    conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
     path = Path(row["local_path"] or "")
     try:
         pages = extract.extract(path)
@@ -94,6 +93,8 @@ def index(conn: sqlite3.Connection, file_id: int) -> str:
         pages = []
     else:
         status = "ok" if any(text for _, text in pages) else "sin_texto"
+    # Write only after the (slow) extraction, so a sync running meanwhile never waits on this transaction.
+    conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
     for number, text in pages:
         for start in range(0, len(text), CHUNK_CHARS):
             piece = text[start:start + CHUNK_CHARS]

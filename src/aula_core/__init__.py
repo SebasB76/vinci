@@ -42,9 +42,10 @@ class Aula:
     def sync(self, *, materials: bool = False) -> _sync.SyncReport:
         with _store.sync_lock(self.cfg.data_dir):
             report = _sync.sync(self.conn, self.client, self.cfg, self.now())
-            if materials:
+        if materials:
+            with _store.material_lock(self.cfg.data_dir):
                 _materials.sync_materials(self.conn, self.client, self.cfg)
-            return report
+        return report
 
     def is_stale(self, max_age_minutes: int) -> bool:
         last = _sync.last_sync(self.conn)
@@ -52,12 +53,15 @@ class Aula:
 
     def ensure_fresh(self, max_age_minutes: int | None = None) -> _sync.SyncReport | None:
         minutes = self.cfg.cache_minutes if max_age_minutes is None else max_age_minutes
-        if self.is_stale(minutes):
-            return self.sync()
-        return None
+        if not self.is_stale(minutes):
+            return None
+        with _store.sync_lock(self.cfg.data_dir):
+            if not self.is_stale(minutes):  # the sync this one waited for just refreshed it
+                return None
+            return _sync.sync(self.conn, self.client, self.cfg, self.now())
 
     def download(self, file_id: int, *, index: bool = True):
-        with _store.sync_lock(self.cfg.data_dir):
+        with _store.material_lock(self.cfg.data_dir):
             path = _materials.download(self.conn, self.client, self.cfg, file_id)
             row = self.conn.execute("SELECT index_status FROM files WHERE id = ?", (file_id,)).fetchone()
             ext = path.suffix.lower().lstrip(".")

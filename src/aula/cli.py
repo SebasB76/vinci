@@ -31,7 +31,7 @@ def _common() -> argparse.ArgumentParser:
     p.add_argument("--sin-actualizar", action="store_true", default=argparse.SUPPRESS,
                    help="usar solo los datos locales, sin leer el aula virtual")
     p.add_argument("--actualizar", action="store_true", default=argparse.SUPPRESS,
-                   help="leer el aula virtual aunque los datos locales sean recientes")
+                   help="leer el aula virtual aunque los datos locales sean recientes (si no puedo, es un error)")
     return p
 
 
@@ -210,11 +210,11 @@ def render_sync(report) -> str:
 def _refresh(aula: Aula, args) -> None:
     if getattr(args, "sin_actualizar", False):
         return
+    if getattr(args, "actualizar", False):
+        aula.sync()  # fresh data was asked for: the saved copy is no answer (setup.sh relies on the exit code)
+        return
     try:
-        if getattr(args, "actualizar", False):
-            aula.sync()
-        else:
-            aula.ensure_fresh()
+        aula.ensure_fresh()
     except (CanvasError, ConfigError) as exc:
         if queries.courses(aula.conn):
             print(f"⚠ No pude actualizar desde el aula virtual ({exc}); muestro los últimos datos guardados.",

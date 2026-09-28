@@ -145,3 +145,9 @@ def file_lock(data_dir: Path, name: str) -> Iterator[None]:
 def sync_lock(data_dir: Path):
     """One sync at a time, whether it comes from the bot or from `aula`."""
     return file_lock(data_dir, "sync.lock")
+
+
+def material_lock(data_dir: Path):
+    """One material download at a time. Apart from sync_lock: a first download can take many minutes,
+    and a quick sync (a bot's refresh, setup.sh) must not wait for it."""
+    return file_lock(data_dir, "material.lock")

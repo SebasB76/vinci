@@ -22,6 +22,10 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
 - Plugins in a profile's `plugins/` load only when named in `plugins.enabled`.
 - `compression.threshold_tokens` caps when a chat gets summarized (default 256K); a running
   gateway rebuilds its cached agent when it changes, so it applies at the next message.
+- A profile's first message ever gets an onboarding note; `onboarding.profile_build: off` makes it a
+  plain introduction instead of an offer to build a profile of the user.
+- Telegram updates that arrive while a bot is not served yet are dropped when the gateway starts
+  serving it, unless `platforms.telegram.extra.drop_pending_on_cold_boot` is false.
 
 Each bot sets its own Telegram profile photo from the party (characters.py; setMyProfilePhoto,
 Bot API 9.4) and a subject bot its name, just its subject («Estadística», setMyName), with its
@@ -192,6 +196,8 @@ class Setup:
             "unauthorized_dm_behavior": "ignore",
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
+            # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
+            "onboarding": {"profile_build": "off"},
         }
         if self.cfg.telegram_api != DEFAULT_TELEGRAM_API:
             # A local Bot API server (or the E2E test's stand-in) for Hermes' own Telegram client and
@@ -341,7 +347,7 @@ class Setup:
 
         party = "\n".join(f"- «{characters.bot_name(code, c.subject or code)}»: {c.subject} ({code})"
                           for code, c in characters.party().items())
-        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party}
+        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": ""}
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
@@ -393,6 +399,9 @@ class Setup:
         managed = self.base_config(SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"], "materia",
                                    ["materia", "--curso", subject.code, "--hermes-home", str(profile)], "vinci-materia")
         managed["cron"] = {"wrap_response": False}
+        # The gateway serves a new bot a minute after it is created; by default it then drops what the bot got
+        # meanwhile, such as the captain's first /start.
+        _deep_merge(managed, {"platforms": {"telegram": {"extra": {"drop_pending_on_cold_boot": False}}}})
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         changed |= self.telegram_env(profile, token)
         values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,

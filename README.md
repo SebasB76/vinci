@@ -43,7 +43,9 @@ Todo corre en tu **Hermes Agent** (el mismo que ya usas, con tu mismo login), ca
 
 Lo que no necesita pensar **no usa el modelo ni gasta tokens**: los avisos, los recordatorios, el resumen de las
 7:00 y la agenda que decide cuándo toca un brief son scripts fijos. Solo gastan tokens tus preguntas, lo que le
-pasas a un bot y escribir cada brief.
+pasas a un bot y escribir cada brief. Cada mensaje viaja con la conversación de ese chat, así que cada bot la
+resume al llegar a unos 80 000 tokens (Hermes, por defecto, espera a 256 000); lo importante queda en el cuaderno
+de cada materia.
 
 Los bots no tienen terminal ni acceso libre a tus archivos: solo un juego fijo de herramientas. Vinci lee el
 aula virtual de todas tus materias, lee (sin poder escribir) los cuadernos y busca en la web. Cada bot de materia

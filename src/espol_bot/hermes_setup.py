@@ -20,6 +20,8 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   `--script` runs the script first and skips the model when its last line is
   `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use.
 - Plugins in a profile's `plugins/` load only when named in `plugins.enabled`.
+- `compression.threshold_tokens` caps when a chat gets summarized (default 256K); a running
+  gateway rebuilds its cached agent when it changes, so it applies at the next message.
 
 Each bot sets its own Telegram profile photo from the party (characters.py; setMyProfilePhoto,
 Bot API 9.4) and a subject bot its name, just its subject («Estadística», setMyName), with its
@@ -61,6 +63,9 @@ BLOCKED_TOOLSETS = [
     "spotify", "x_search", "a2a",
 ]
 APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
+# Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
+# 25K verbatim tail already weigh ~50K, so a lower trigger would summarize again every question or two.
+COMPRESSION_THRESHOLD_TOKENS = 80_000
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -176,6 +181,7 @@ class Setup:
             "agent": {"disabled_toolsets": blocked},
             "tools": {"tool_search": {"enabled": "off"}},
             "skills": {"auto_load": [skill], "project_discovery": False},
+            "compression": {"threshold_tokens": COMPRESSION_THRESHOLD_TOKENS},
             "mcp_servers": {mcp_name: {
                 "command": str(self.bot_bin), "args": ["mcp", *mcp_args],
                 "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"]},

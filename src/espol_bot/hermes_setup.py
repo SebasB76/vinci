@@ -21,10 +21,10 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use.
 - Plugins in a profile's `plugins/` load only when named in `plugins.enabled`.
 
-Each bot also gets its character (characters.py): the persona goes into its SOUL.md, and each
-bot sets its own Telegram profile photo (setMyProfilePhoto, Bot API 9.4) and a subject bot its
-name («El Analítico · Estadística», setMyName) with its own token, so neither BotFather nor the
-manager bot is involved and an existing bot is renamed in place.
+Each bot sets its own Telegram profile photo from the party (characters.py; setMyProfilePhoto,
+Bot API 9.4) and a subject bot its name, just its subject («Estadística», setMyName), with its
+own token, so neither BotFather nor the manager bot is involved and an existing bot is renamed
+in place.
 """
 
 from __future__ import annotations
@@ -245,7 +245,7 @@ class Setup:
 
     def telegram_profile(self, profile: Path, token: str, character: characters.Character, label: str,
                          name: str | None = None) -> None:
-        """Sets the bot's Telegram photo (its character's avatar) and, for a subject bot, its name, with its
+        """Sets the bot's Telegram photo (its avatar from the party) and, for a subject bot, its name, with its
         own token. A stamp records what was set on which bot, so a rerun calls Telegram only when the
         wanted name or photo changes, and a name or photo the captain later changed by hand stays."""
         stamp_file = profile / "telegram-profile.json"
@@ -270,17 +270,17 @@ class Setup:
                     print(f"⚠ No pude ponerle el nombre «{name}» en Telegram ({exc}). {retry}, o cámbialo tú en "
                           "@BotFather con /setname.")
         if character.avatar is None:
-            print(f"• {label}: sin personaje propio; su foto de Telegram queda como está")
+            print(f"• {label}: sin foto propia en la party; su foto de Telegram queda como está")
         else:
             photo = character.avatar.read_bytes()
             digest = hashlib.sha256(photo).hexdigest()
             if stamp.get("photo") == digest:
-                print(f"• Foto de perfil de {label} sin cambios ({character.title})")
+                print(f"• Foto de perfil de {label} sin cambios ({character.avatar.name})")
             else:
                 try:
                     telegram.set_profile_photo(photo)
                     stamp["photo"] = digest
-                    print(f"• Foto de perfil de {label} puesta: {character.title}, {character.look}")
+                    print(f"• Foto de perfil de {label} puesta ({character.avatar.name})")
                 except TelegramError as exc:
                     print(f"⚠ No pude ponerle su foto a {label} ({exc}). {retry}, o pónsela tú en @BotFather con "
                           f"/setuserpic ({character.avatar}).")
@@ -333,10 +333,9 @@ class Setup:
         changed = self.telegram_env(profile, token)
         print(f"• .env de Vinci {'actualizado' if changed else 'sin cambios'} (Telegram solo para tu ID)")
 
-        character = characters.vinci()
-        party = "\n".join(f"- {c.subject} ({code}): «{characters.bot_name(code, c.subject)}», {c.look}"
+        party = "\n".join(f"- «{characters.bot_name(code, c.subject or code)}»: {c.subject} ({code})"
                           for code, c in characters.party().items())
-        values = {**self.values, "PROFILE_HOME": str(profile), "PERSONA": character.persona, "PARTY": party}
+        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party}
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
@@ -346,7 +345,7 @@ class Setup:
         changed |= self._install_plugin(profile, values)
         changed |= self._drop_legacy_files(profile)
         print(f"• SOUL.md, skill vinci, plugin de botones y scripts de cron {'instalados' if changed else 'sin cambios'}")
-        self.telegram_profile(profile, token, character, "Vinci")
+        self.telegram_profile(profile, token, characters.vinci(), "Vinci")
 
         self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
         self.reconcile_job(name, "vinci-sondeo", f"every {self.cfg.poll_minutes}m", "vinci-sondeo.sh", no_agent=True)
@@ -384,16 +383,14 @@ class Setup:
             return
         if token == self.secrets.get(token_key()):
             raise ConfigError(f"{subject.display} usa el mismo token que Vinci; cada bot necesita el suyo.")
-        profile = self.ensure_profile(name, f"{subject.display}: el bot de la materia {subject.name} ({subject.code}).",
-                                      alias=False)
+        profile = self.ensure_profile(name, f"El bot de la materia {subject.name} ({subject.code}).", alias=False)
         managed = self.base_config(SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"], "materia",
                                    ["materia", "--curso", subject.code, "--hermes-home", str(profile)], "vinci-materia")
         managed["cron"] = {"wrap_response": False}
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         changed |= self.telegram_env(profile, token)
-        character = characters.for_subject(subject.code)
         values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,
-                  "PROFILE_HOME": str(profile), "PERSONA": character.persona}
+                  "PROFILE_HOME": str(profile)}
         changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "materia" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci-materia" / "SKILL.md",
                                      _render(TEMPLATES / "materia" / "SKILL.md", values))
@@ -402,8 +399,9 @@ class Setup:
             TEMPLATES / "cron-script.sh", {**values, "COMMAND": f"agenda --curso {subject.code}"}), 0o755)
         print(f"• {subject.display}: config, .env, SOUL.md, skill, plugin y agenda {'instalados' if changed else 'sin cambios'}"
               f" (solo su materia y su cuaderno; sin web, terminal ni archivos)")
-        self.telegram_profile(profile, token, character, subject.display, name=subject.display)
-        prompt = (f"Eres {subject.display}, el bot de la materia {subject.name} ({subject.code}). El script de tu "
+        self.telegram_profile(profile, token, characters.for_subject(subject.code), subject.display,
+                              name=subject.display)
+        prompt = (f"Eres el bot de la materia {subject.name} ({subject.code}). El script de tu "
                   "agenda (arriba) te dice qué hacer ahora: el brief antes de una clase o algo que Vinci te pasó. "
                   "Sigue sus instrucciones; tu respuesta final le llega al estudiante en tu chat de Telegram.")
         active = subject.state == "activa"

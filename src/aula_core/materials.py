@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aula_core import extract
-from aula_core.canvas import CanvasClient, CanvasError, InvalidTokenError
+from aula_core.canvas import CanvasClient, CanvasError, InvalidTokenError, ThrottledError
 from aula_core.config import CoreConfig
 
 log = logging.getLogger(__name__)
@@ -108,10 +108,13 @@ def index(conn: sqlite3.Connection, file_id: int) -> str:
     return status
 
 
-def sync_materials(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig) -> list[MaterialResult]:
-    """Download and index every new or updated file of the configured types."""
+def sync_materials(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, *,
+                   budget_mb: float | None = None) -> list[MaterialResult]:
+    """Download and index new or updated files of the configured types, up to `budget_mb` a run (the
+    first file always goes): the rest waits for the next run, so a first sync spreads over several polls."""
     results = []
     max_bytes = cfg.max_file_mb * 1024 * 1024
+    budget, used = (budget_mb * 1024 * 1024 if budget_mb is not None else float("inf")), 0
     rows = conn.execute("SELECT * FROM files WHERE active = 1 ORDER BY course_id, id").fetchall()
     for row in rows:
         if extension(row) not in cfg.material_extensions:
@@ -125,10 +128,12 @@ def sync_materials(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConf
                 conn.execute("UPDATE files SET index_status = 'muy_grande' WHERE id = ?", (row["id"],))
                 conn.commit()
             continue
+        if used and used + (row["size"] or 0) > budget:
+            break
         try:
-            download(conn, client, cfg, row["id"])
+            used += download(conn, client, cfg, row["id"]).stat().st_size
             status = index(conn, row["id"])
-        except InvalidTokenError:
+        except (InvalidTokenError, ThrottledError):
             raise
         except CanvasError as exc:
             log.warning("%s: %s", row["display_name"], exc)

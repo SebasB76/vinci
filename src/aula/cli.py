@@ -285,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     aula = None
     try:
-        aula = Aula()
+        aula = Aula(explicit=True)
         return run(args, aula)
     except (ConfigError, CanvasError, queries.NotFound) as exc:
         print(f"Error: {exc}", file=sys.stderr)

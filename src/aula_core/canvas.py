@@ -10,6 +10,11 @@ Behaviour, per the public Canvas API docs:
 - Throttling: Canvas reports the remaining quota in `X-Rate-Limit-Remaining`
   and answers 429 (older versions: 403 "Rate Limit Exceeded") when it runs out.
   Requests are sequential; we slow down when the quota gets low and back off on 429.
+
+Beyond what Canvas enforces, the client stays gentle so the traffic never looks like abuse:
+background work (the bot's poll) asks for at most one request per `interval` seconds, and
+ThrottledError tells the caller when Canvas keeps throttling after the retries, so it stops
+reading instead of moving on to the next resource.
 """
 
 from __future__ import annotations
@@ -39,13 +44,20 @@ class InvalidTokenError(CanvasError):
     pass
 
 
+class ThrottledError(CanvasError):
+    pass
+
+
 class CanvasClient:
-    def __init__(self, base_url: str, token: str, *, timeout: float = 30.0, sleep=time.sleep):
+    def __init__(self, base_url: str, token: str, *, timeout: float = 30.0, sleep=time.sleep,
+                 interval: float = 0.0):
         self.base_url = base_url.rstrip("/")
         self.api = self.base_url + "/api/v1"
         self._host = urlsplit(self.base_url).netloc
         self._timeout = timeout
         self._sleep = sleep
+        self._interval = interval
+        self._last = 0.0
         self._session = requests.Session()
         self._session.headers.update({"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT})
         self.requests_made = 0
@@ -58,7 +70,9 @@ class CanvasClient:
             # followed by requests itself, which drops Authorization across hosts.
             raise CanvasError(f"URL fuera del aula virtual, no se consulta: {url}")
         delay = 1.0
+        throttled = False
         for attempt in range(MAX_RETRIES + 1):
+            self._pace()
             try:
                 resp = self._session.get(url, params=params, timeout=self._timeout, stream=stream)
             except requests.RequestException as exc:
@@ -69,7 +83,8 @@ class CanvasClient:
                 continue
             self.requests_made += 1
             self._respect_quota(resp)
-            if self._is_throttled(resp) or resp.status_code >= 500:
+            throttled = self._is_throttled(resp)
+            if throttled or resp.status_code >= 500:
                 if attempt == MAX_RETRIES:
                     break
                 retry_after = resp.headers.get("Retry-After")
@@ -86,7 +101,14 @@ class CanvasClient:
                 # resource (for example a course whose Files tab is hidden).
                 raise CanvasError(f"Canvas respondió {resp.status_code} para {urlsplit(url).path}", resp.status_code)
             return resp
+        if throttled:
+            raise ThrottledError(f"el aula virtual sigue pidiendo bajar el ritmo ({resp.status_code})", 429)
         raise CanvasError(f"Canvas sigue limitando o fallando ({resp.status_code}) para {urlsplit(url).path}", resp.status_code)
+
+    def _pace(self) -> None:
+        if self._interval > 0:
+            self._sleep(max(0.0, self._last + self._interval - time.monotonic()))
+            self._last = time.monotonic()
 
     @staticmethod
     def _is_bad_token(resp: requests.Response) -> bool:

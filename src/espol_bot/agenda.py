@@ -113,8 +113,8 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
     lines = [
         "TAREA: brief_de_clase",
         f"Materia: {subject.name} ({subject.code}){paralelo}",
-        f"Clase: {_day_label(start, now, tz)}, {clase.inicio:%H:%M}–{max(b.fin for b in blocks):%H:%M}{room} "
-        f"(empieza en {minutes} min)",
+        (f"Clase: {_day_label(start, now, tz)}, {clase.inicio:%H:%M}–{max(b.fin for b in blocks):%H:%M}{room} "
+         f"(empieza en {minutes} min)"),
     ]
     if len(blocks) > 1:
         lines.append("Son bloques seguidos, con este único brief para todos: " + "; ".join(map(_block, blocks)))

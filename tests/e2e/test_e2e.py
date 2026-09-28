@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import itertools
 import json
 import os
 import re
@@ -711,7 +712,7 @@ def test_e2e(tmp_path):
                 sent, times = canvas.requests[mark:], canvas.times[mark:]
             downloads.append([int(path.split("/")[2]) for _, path in sent if path.startswith("/files/")])
             if i == 1:
-                gaps = [b - a for a, b in zip(times, times[1:])]
+                gaps = [b - a for a, b in itertools.pairwise(times)]
                 assert len(times) > 10 and min(gaps) >= 0.08, f"el sondeo no espació sus consultas: {min(gaps):.3f} s"
             failing = ", ".join(names[p] for p in sorted(paths)) or "nada"
             polls.append(take(f"Resiliencia · sondeo {i} ({now[11:16]}), fallando: {failing}"))
@@ -1075,7 +1076,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     mark_calls = len(telegram.calls)
     polling({"vinci_calculo_bot", "vinci_fisica_bot"}, mark_calls, timeout=150)
     report.append("El mismo gateway de Hermes empezó a atender a los dos bots nuevos solo, sin reiniciarlo")
-    hello = wait_msg("vinci_calculo_bot", mark_start, "Soy Cálculo de una Variable", timeout=120)
+    hello = wait_msg("vinci_calculo_bot", mark_start, "Soy el bot de Cálculo de una Variable", timeout=120)
     assert "Todavía no tengo tu horario" in plain(hello["text"])
     starts = [r for r in llm.requests for m in r.get("messages") or []
               if m.get("role") == "user" and flatten(m.get("content")).strip() == "/start"]

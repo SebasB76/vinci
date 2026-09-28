@@ -28,7 +28,12 @@ from datetime import datetime
 from typing import Any
 
 from aula_core import timefmt
-from aula_core.canvas import CanvasClient, CanvasError, InvalidTokenError, ThrottledError
+from aula_core.canvas import (
+    CanvasClient,
+    CanvasError,
+    InvalidTokenError,
+    ThrottledError,
+)
 from aula_core.config import CoreConfig
 from aula_core.store import delete_meta, get_meta, set_meta
 

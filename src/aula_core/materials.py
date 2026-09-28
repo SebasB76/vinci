@@ -10,7 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aula_core import extract
-from aula_core.canvas import CanvasClient, CanvasError, InvalidTokenError, ThrottledError
+from aula_core.canvas import (
+    CanvasClient,
+    CanvasError,
+    InvalidTokenError,
+    ThrottledError,
+)
 from aula_core.config import CoreConfig
 
 log = logging.getLogger(__name__)

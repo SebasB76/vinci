@@ -164,11 +164,12 @@ def vinci_greeting() -> str:
 
 def subject_greeting(display: str, name: str, code: str, brief_minutes: int, has_schedule: bool,
                      next_class: datetime | None, tz: ZoneInfo, now: datetime) -> str:
-    lines = [f"👋 <b>¡Hola! Soy {e(display)}</b>, tu bot de {e(name)} ({e(code)}).",
-             f"• {brief_minutes} minutos antes de cada clase te mando un brief: repaso, lo que vence, material "
-             "nuevo y los conceptos clave.",
-             "• Cuéntame lo que vieron en clase o mándame fotos de la pizarra y notas de voz: lo guardo en mi "
-             "cuaderno.",
+    who = f"el bot de {e(name)}" if display == name else f"{e(display)}, el bot de {e(name)}"
+    lines = [f"👋 <b>¡Hola! Soy {who}</b> ({e(code)}).",
+             (f"• {brief_minutes} minutos antes de cada clase te mando un brief: repaso, lo que vence, material "
+              "nuevo y los conceptos clave."),
+             ("• Cuéntame lo que vieron en clase o mándame fotos de la pizarra y notas de voz: lo guardo en mi "
+              "cuaderno."),
              "• Pregúntame del material del curso o pídeme preguntas tipo examen."]
     if next_class:
         start = next_class.astimezone(tz)

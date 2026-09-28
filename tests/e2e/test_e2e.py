@@ -1266,9 +1266,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     # the course material: the aula's template images (silabos.png) are not material
     material = turn(lambda: telegram.send_text(MATG, CAPTAIN, "¿qué material del curso tienes?"), "vinci_calculo_bot",
                     "Material del curso")
-    listings = [flatten(m.get("content")) for r in llm.requests for m in r.get("messages") or []
-                if m.get("role") == "tool" and '"material"' in flatten(m.get("content"))]
-    assert listings and not any("silabos.png" in t for t in listings), "la imagen del aula llegó al modelo como material"
+    tool_results = [flatten(m.get("content")) for r in llm.requests for m in r.get("messages") or []
+                    if m.get("role") == "tool"]
+    assert any(isinstance(data := _json(t), dict) and "material" in data for t in tool_results), \
+        "el bot no listó el material"
+    assert not any("silabos.png" in t for t in tool_results), "la imagen del aula llegó al modelo como material"
     assert "Capítulo 3 - Derivadas.pdf" in readable(material) and "1 archivo(s) más" in readable(material)
     assert "silabos.png" not in readable(material)
     report.append("Material del curso: el bot de Cálculo listó solo lo que puede leer (el PDF del capítulo 3 y el "
@@ -1334,7 +1336,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, 
     assert gate_after == SKIP and gate_fis == SKIP
     monday = run([bot, "agenda", "--curso", "MATG1049"], T_MONDAY).stdout
     for expected in ("Clase: hoy lunes 5 oct, 09:00–12:00 en A105 (empieza en 30 min)",
-                     "un único brief para todos: 09:00–11:00 en A105 · paralelo 5; 11:00–12:00 en LAB 11C · paralelo 105"):
+                     "con este único brief para todos: 09:00–11:00 en A105 · paralelo 5; 11:00–12:00 en LAB 11C · paralelo 105"):
         assert expected in monday, f"falta «{expected}» en el brief del lunes:\n{monday}"
     midclass = run([bot, "agenda", "--curso", "MATG1049"], T_MIDCLASS).stdout.strip()
     assert midclass == SKIP, f"a las 10:30, en pleno teórico, no toca el brief del práctico de las 11:00:\n{midclass}"

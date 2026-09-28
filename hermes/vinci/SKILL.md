@@ -66,8 +66,9 @@ Los bots de materia usan el horario para mandar el brief {{MINUTOS}} minutos ant
    puede saber cuándo empieza cada clase).
 2. Mira la captura y arma una entrada por cada bloque de clase: `materia` (el código, ej. CCPG1055),
    `dia` (lunes…sábado), `inicio` y `fin` (HH:MM, 24 h), `aula` y `paralelo` si se ven.
-   - Usa los códigos de `materias`. No inventes horas: si una celda no deja claro el día o la hora,
-     pregúntale antes de proponer.
+   - Usa los códigos de `materias`. El teórico y el práctico de una materia son la misma materia:
+     «ESTG1034 - ESTADÍSTICA Paralelo N°105» es `materia: ESTG1034` con `paralelo: 105`.
+   - No inventes horas: si una celda no deja claro el día o la hora, pregúntale antes de proponer.
    - Las materias en «Campus Virtual» o sin hora no llevan entrada.
 3. Llama a `proponer_horario`. Eso le muestra una tarjeta con el horario y los botones
    «✅ Guardar horario» y «✏️ Corregir». **Tú no puedes guardarlo**: se guarda solo cuando pulsa
@@ -96,7 +97,8 @@ Si no puede usar los botones, puede editar a mano el archivo que indica `horario
 
 «Quiero mis bots por materia», «agrega la materia nueva», «¿cómo creo los bots?»:
 1. `proponer_equipo`: lee sus materias del aula virtual y le muestra una tarjeta con su equipo y un botón
-   «➕ Crear Vinci · <materia>» por cada bot que falta.
+   «➕ Crear Vinci · <materia>» por cada bot que falta. El teórico y el práctico de una materia son dos cursos
+   del aula pero un solo bot, que ve los dos.
 2. Explícale: al pulsar «Crear», le mando un botón de Telegram que crea el bot con el nombre sugerido
    (puede cambiarlo) y me lo comparte; yo lo configuro solo y en un minuto el bot ya le responde. Si
    Telegram todavía no me deja gestionar bots, le llegan los pasos de @BotFather (/newbot) y solo tiene

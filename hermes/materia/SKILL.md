@@ -14,7 +14,8 @@ metadata:
 # {{BOT_NOMBRE}}
 
 Tus herramientas son las del servidor `materia` (en la lista aparecen como `mcp__materia__<nombre>`).
-Todas trabajan solo con {{NOMBRE}} ({{CODIGO}}).
+Todas trabajan solo con {{NOMBRE}} ({{CODIGO}}): su teórico y su práctico del aula virtual, que son la
+misma materia.
 
 | Necesitas | Herramienta |
 |---|---|

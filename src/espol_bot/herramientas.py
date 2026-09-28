@@ -7,7 +7,7 @@ to a subject bot, and the team (it shows cards whose «Crear» / «Archivar» bu
 by the captain, create or archive a subject bot). No Vinci tool writes a notebook, reads
 arbitrary files, runs commands, or sees a bot token.
 
-A subject bot: the same queries restricted to its own course, the classes of its
+A subject bot: the same queries restricted to its own courses (theory and práctico), the classes of its
 subject, and its own notebook (read and write; attachments only from the files the
 captain sent it, which Hermes keeps in the profile's media cache).
 
@@ -181,9 +181,9 @@ def _vinci_course_ids(ctx: Ctx, materia: str | None) -> list[int] | None:
     if subjects:
         try:
             subject = materias.resolve(subjects, materia)
-            course_id = agenda.course_id_for(ctx.conn, subject)
-            if course_id is not None:
-                return [course_id]
+            course_ids = agenda.course_ids_for(ctx.conn, subject)
+            if course_ids:
+                return course_ids
         except materias.Ambiguous as exc:
             ambiguous = exc
     try:
@@ -434,11 +434,11 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
 
 
 def subject_tools(ctx: Ctx) -> list[Tool]:
-    def course_id() -> int:
-        cid = agenda.course_id_for(ctx.conn, ctx.subject())
-        if cid is None:
+    def course_ids() -> list[int]:
+        ids = agenda.course_ids_for(ctx.conn, ctx.subject())
+        if not ids:
             raise ToolError(f"No encuentro {ctx.code} entre las materias del aula virtual.")
-        return cid
+        return ids
 
     def own_file(file_id) -> int:
         fid = _int(file_id, "archivo_id", hi=10**12)
@@ -446,40 +446,40 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
             info = queries.file_by_id(ctx.conn, fid)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
-        if info["curso_id"] != course_id():
+        if info["curso_id"] not in course_ids():
             raise ToolError("Ese archivo es de otra materia; solo puedes usar el material de la tuya.")
         return fid
 
     def resumen(args):
         ctx.refresh()
-        s, cid, now = ctx.subject(), course_id(), ctx.now()
+        s, cids, now = ctx.subject(), course_ids(), ctx.now()
         nb = Notebook(ctx.cfg.core, s.code)
         try:
             notebook = {"resumen": nb.overview(), "ultimas": nb.entries(limit=5)}
         finally:
             nb.close()
         return {"materia": s.name, "codigo": s.code, "bot": s.display, "proximas_clases": _upcoming(ctx, 7, s.code),
-                "pendientes": queries.pending(ctx.conn, now, [cid], days=14),
-                "anuncios": queries.announcements(ctx.conn, [cid], limit=3), "cuaderno": notebook}
+                "pendientes": queries.pending(ctx.conn, now, cids, days=14),
+                "anuncios": queries.announcements(ctx.conn, cids, limit=3), "cuaderno": notebook}
 
     def tareas(args):
         ctx.refresh()
-        return queries.pending(ctx.conn, ctx.now(), [course_id()], days=_int(args.get("dias"), "dias"))
+        return queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
 
     def anuncios(args):
         ctx.refresh()
-        return queries.announcements(ctx.conn, [course_id()], limit=_int(args.get("n"), "n", 5, 1, 30))
+        return queries.announcements(ctx.conn, course_ids(), limit=_int(args.get("n"), "n", 5, 1, 30))
 
     def notas(args):
         ctx.refresh()
-        return queries.grades(ctx.conn, [course_id()])
+        return queries.grades(ctx.conn, course_ids())
 
     def archivos(args):
         return [{k: v for k, v in f.items() if k != "descargado"}
-                for f in queries.files(ctx.conn, [course_id()], args.get("nombre"))]
+                for f in queries.files(ctx.conn, course_ids(), args.get("nombre"))]
 
     def buscar(args):
-        return _trim_hits(search.search(ctx.conn, str(args["pregunta"]), course_ids=[course_id()],
+        return _trim_hits(search.search(ctx.conn, str(args["pregunta"]), course_ids=course_ids(),
                                         limit=_int(args.get("n"), "n", 5, 1, 10)))
 
     def leer(args):

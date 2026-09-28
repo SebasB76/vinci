@@ -3,13 +3,15 @@
     [[materia]]
     codigo = "ESTG1034"            # código ESPOL (sin el paralelo)
     nombre = "Estadística"         # el bot se llama «Vinci · Estadística»
-    curso_id = 12345               # ID de la materia en el aula virtual
+    cursos = [12345, 12346]        # sus cursos en el aula virtual: el teórico y el práctico
     usuario = "vinci_estadistica_bot"
     estado = "activa"              # pendiente | esperando_bot | activa | archivada
 
-Vinci writes it: `proponer_equipo` adds the courses of the aula virtual, the captain's
-«Crear» button marks one as waiting for its Telegram bot, the new bot's token makes it
-active, and «Archivar» archives it. The captain may rename a subject by hand. Each
+Vinci writes it: `proponer_equipo` adds the courses of the aula virtual, one subject per
+ESPOL code (a subject's theory and práctico sections, e.g. `Paralelo5_ESTG1034` and
+`Paralelo105_ESTG1034`, are two aula courses of one subject bot), the captain's «Crear»
+button marks one as waiting for its Telegram bot, the new bot's token makes it active,
+and «Archivar» archives it. The captain may rename a subject by hand. Each
 subject bot is a Hermes profile named after Vinci's profile plus the code (`vinci-estg1034`).
 """
 
@@ -26,6 +28,10 @@ from espol_bot import tomlfile
 
 STATES = ("pendiente", "esperando_bot", "activa", "archivada")
 CODE_RE = re.compile(r"[A-Z]{3,5}\d{3,5}")
+CODE_IN_TEXT = re.compile(r"(?<![A-Z])[A-Z]{3,5}\d{3,5}(?!\d)")
+# What follows the subject in a course name: « - II PAO 2026», « - PARALELO 5», « (PARALELO 5)».
+NAME_SUFFIX = re.compile(r"\s+-\s+(?:PARALELO\b|[IVX]+\s+PA[OE]\b|PA[OE]\b|\d{4}\b)|\s*\(PARALELO", re.IGNORECASE)
+SECTION = re.compile(r"\s*[-(]?\s*\b(?:pr[aá]ctic[oa]|te[oó]ric[oa])\)?$", re.IGNORECASE)
 SMALL_WORDS = {"de", "del", "la", "las", "el", "los", "un", "una", "y", "e", "en", "a", "para", "por", "con", "o",
                "u"}
 ROMAN = {"i", "ii", "iii", "iv", "v", "vi"}
@@ -41,7 +47,7 @@ memoria y cuaderno intactos)"""
 class Subject:
     code: str
     name: str
-    course_id: int | None = None
+    course_ids: tuple[int, ...] = ()
     username: str | None = None
     state: str = "pendiente"
 
@@ -61,15 +67,19 @@ def path(cfg: CoreConfig) -> Path:
     return cfg.data_dir / "materias.toml"
 
 
-def base_code(course_code: str | None) -> str | None:
-    """'MATG1049-5' → 'MATG1049' (the paralelo is dropped); None when it is not an ESPOL code."""
-    head = re.split(r"[-\s_]", (course_code or "").strip().upper(), maxsplit=1)[0]
-    return head if CODE_RE.fullmatch(head) else None
+def base_code(text: str | None) -> str | None:
+    """The ESPOL code in a course code or a schedule entry, without paralelo or section:
+    'Paralelo105_ESTG1034', 'MATG1049-5', 'ESTG1034 - ESTADÍSTICA Paralelo N°105' → 'ESTG1034'.
+    None when there is none."""
+    match = CODE_IN_TEXT.search((text or "").upper())
+    return match[0] if match else None
 
 
 def short_name(course_name: str) -> str:
-    """'ESTADÍSTICA - PARALELO 5' → 'Estadística'; 'INGENIERÍA DE SOFTWARE I' → 'Ingeniería de Software I'."""
-    name = re.split(r"\s+-\s+PARALELO\b|\s*\(PARALELO", course_name, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    """'ESTADÍSTICA - II PAO 2026 Práctico' → 'Estadística'; 'INGENIERÍA DE SOFTWARE I - PARALELO 5' →
+    'Ingeniería de Software I'. The term, the paralelo and the section (teórico/práctico) are dropped."""
+    name = NAME_SUFFIX.split(course_name, maxsplit=1)[0].strip()
+    name = SECTION.sub("", name).strip() or name
     words = []
     for i, word in enumerate(name.split()):
         low = word.lower()
@@ -98,10 +108,12 @@ def load(cfg: CoreConfig) -> list[Subject]:
         state = str(row.get("estado", "pendiente"))
         if state not in STATES:
             raise ConfigError(f"{file}: estado inválido {state!r} en {code} (usa {', '.join(STATES)})")
-        course_id = row.get("curso_id")
+        # `curso_id` is the single course of files written before a subject could have several.
+        course_ids = row.get("cursos", [] if row.get("curso_id") is None else [row["curso_id"]])
+        if not isinstance(course_ids, list) or not all(isinstance(i, int) for i in course_ids):
+            raise ConfigError(f"{file}: «cursos» de {code} debe ser una lista de números")
         subjects.append(Subject(
-            code=code, name=str(row.get("nombre") or code).strip(),
-            course_id=int(course_id) if course_id is not None else None,
+            code=code, name=str(row.get("nombre") or code).strip(), course_ids=tuple(course_ids),
             username=(str(row["usuario"]).lstrip("@") or None) if row.get("usuario") else None,
             state=state,
         ))
@@ -109,8 +121,8 @@ def load(cfg: CoreConfig) -> list[Subject]:
 
 
 def save(cfg: CoreConfig, subjects: list[Subject]) -> None:
-    rows = [{"codigo": s.code, "nombre": s.name, "curso_id": s.course_id, "usuario": s.username, "estado": s.state}
-            for s in subjects]
+    rows = [{"codigo": s.code, "nombre": s.name, "cursos": list(s.course_ids) or None, "usuario": s.username,
+             "estado": s.state} for s in subjects]
     tomlfile.write_atomic(path(cfg), tomlfile.render(HEADER, "materia", rows))
 
 
@@ -129,8 +141,8 @@ def by_code(subjects: list[Subject], code: str) -> Subject | None:
 
 
 def for_course(subjects: list[Subject], course_id: int | None, course_code: str | None = None) -> Subject | None:
-    """The subject bot that covers an aula virtual course (by course id, else by code)."""
-    match = next((s for s in subjects if course_id is not None and s.course_id == course_id), None)
+    """The subject bot that covers an aula virtual course, theory or práctico (by course id, else by code)."""
+    match = next((s for s in subjects if course_id is not None and course_id in s.course_ids), None)
     code = base_code(course_code)
     return match or next((s for s in subjects if code and s.code == code), None)
 

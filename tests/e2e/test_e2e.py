@@ -14,7 +14,9 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
   4. retrieval: sample questions must hit the right file and page.
   5. a fresh install where two resources fail at different polls: the rest keeps working,
      one alert per failure episode and resource.
-  6-7. the real Hermes gateway serving Vinci over the fake Telegram. Vinci builds the team
+  6-7. the real Hermes gateway serving Vinci over the fake Telegram. The aula uses ESPOL's
+     real course codes and names, and Cálculo has a theory and a práctico course
+     (`Paralelo5_MATG1049`, `Paralelo105_MATG1049`): one subject, one bot. Vinci builds the team
      from chat: its card's «Crear» buttons; Cálculo created as a Telegram managed bot (its
      token fetched with getManagedBotToken), Física from BotFather's forwarded reply (caught,
      deleted, never seen by the model; a repeated, an unknown and a stranger's token handled).
@@ -22,7 +24,8 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      schedule read from a screenshot is saved only by the
      captain's «Guardar» (a stranger's press and a stale proposal are refused); a photo
      routed to Cálculo, an unknown subject refused; an alert's button and a reply to an
-     alert handed to the subject bots; the brief 30 minutes before Wednesday's class;
+     alert handed to the subject bots (alerts of both Cálculo courses go to its one bot);
+     the brief 30 minutes before Wednesday's class, with what is due in both courses;
      notebook capture of a photo, a voice note and a doubt (and no arbitrary files);
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
@@ -98,10 +101,12 @@ QUESTIONS = [
 ]
 
 # What the model "reads" from the screenshot: the first time with one mistake (Wednesday's
-# Cálculo at 10:00), then corrected by the captain.
+# Cálculo at 10:00), then corrected by the captain. Cálculo's práctico keeps the screenshot's label.
 SCHEDULE_V1 = [
     {"materia": "MATG1049", "dia": "lunes", "inicio": "09:00", "fin": "11:00", "aula": "A105", "paralelo": "5"},
     {"materia": "MATG1049", "dia": "miércoles", "inicio": "10:00", "fin": "12:00", "aula": "A105", "paralelo": "5"},
+    {"materia": "MATG1049 - CÁLCULO DE UNA VARIABLE Paralelo N°105", "dia": "viernes", "inicio": "10:00",
+     "fin": "12:00", "aula": "LAB 11C", "paralelo": "105"},
     {"materia": "FISG1002", "dia": "martes", "inicio": "14:30", "fin": "16:30", "aula": "L204", "paralelo": "3"},
     {"materia": "FISG1002", "dia": "jueves", "inicio": "14:30", "fin": "16:30", "aula": "L204", "paralelo": "3"},
 ]
@@ -527,10 +532,11 @@ def test_e2e(tmp_path):
             if "--json" in args:
                 cli_json[" ".join(args)] = json.loads(proc.stdout)
         tareas = cli_json["tareas --curso calculo --json"]
-        assert [t["tarea"] for t in tareas] == ["Deber 2: Continuidad", "Taller 3: Derivadas"]
+        assert [t["tarea"] for t in tareas] == ["Deber 2: Continuidad", "Taller 3: Derivadas",
+                                                "Práctica 4: Regla de la cadena"], "teórico y práctico de Cálculo"
         bajado = cli_json["archivos bajar 5001 --json"][0]
         assert bajado["indexado"] == "ok" and Path(bajado["ruta_local"]).is_file()
-        assert "MATG1049-5" in bajado["ruta_local"]
+        assert "Paralelo5_MATG1049" in bajado["ruta_local"]
         assert take("aula CLI") == [], "la CLI nunca envía mensajes"
 
         # 3. polls -----------------------------------------------------------------------
@@ -608,8 +614,8 @@ def test_e2e(tmp_path):
         assert "FÍSICA I" in polls[0][0]["text"], "la bienvenida lista la materia aunque falle una parte"
         alerts = [(i, re.search(r"sin poder leer (.+?);", m["text"]).group(1))
                   for i, poll in enumerate(polls, start=1) for m in poll if m["text"].startswith("\u26a0")]
-        fisica_what = "los anuncios de FÍSICA I - PARALELO 3"
-        calculo_what = "los archivos de CÁLCULO DE UNA VARIABLE - PARALELO 5"
+        fisica_what = "los anuncios de FÍSICA I - II PAO 2026"
+        calculo_what = "los archivos de CÁLCULO DE UNA VARIABLE - II PAO 2026"
         assert alerts == [(3, fisica_what), (5, calculo_what), (8, fisica_what)], alerts
         for poll in polls[1:]:
             assert all(m["text"].startswith(("\u23f0", "\u26a0")) for m in poll), \
@@ -821,7 +827,10 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     card = wait_msg("vinci_bot", mark, "Tu equipo de bots")
     wait_msg("vinci_bot", mark, "Un bot se crea solo cuando pulse ese botón")
     assert [b["text"] for b in buttons(card)] == ["➕ Crear Vinci · Cálculo de una Variable", "➕ Crear Vinci · Física I"]
-    assert {c: m["estado"] for c, m in team().items()} == {"MATG1049": "pendiente", "FISG1002": "pendiente"}
+    assert len(re.findall(r"^• ", plain(card["text"]), re.M)) == 2 and "reconocible" not in card["text"], \
+        "tres cursos del aula, dos materias: el práctico de Cálculo no es otro bot"
+    assert {c: (m["estado"], m["cursos"]) for c, m in team().items()} == {
+        "MATG1049": ("pendiente", [101, 103]), "FISG1002": ("pendiente", [102])}
     assert not (profiles / "vinci-matg1049").exists(), "proponer no crea nada"
     show("Vinci arma el equipo («arma mi equipo de bots por materia»)",
          plain(card["text"]) + "\n" + "".join(f"[{b['text']}]" for b in buttons(card)))
@@ -896,8 +905,9 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
         assert set(holders) <= allowed, f"el token apareció en {holders}"
     assert "Congratulations on your new bot" not in json.dumps(llm.requests, ensure_ascii=False)
     report.append("Vinci armó el equipo desde el chat: su tarjeta mostró un botón «➕ Crear» por materia (proponer "
-                  "no creó nada); Cálculo se creó como bot gestionado de Telegram (Vinci obtuvo el token con "
-                  "getManagedBotToken, sin que pasara por el chat) y Física con la respuesta de @BotFather "
+                  "no creó nada; los cursos Paralelo5_MATG1049 y Paralelo105_MATG1049, teórico y práctico de "
+                  "Cálculo, quedaron en un solo bot); Cálculo se creó como bot gestionado de Telegram (Vinci obtuvo "
+                  "el token con getManagedBotToken, sin que pasara por el chat) y Física con la respuesta de @BotFather "
                   "reenviada, que el plugin borró del chat antes de que Hermes la viera; un token repetido, uno "
                   "desconocido y el de un extraño no crearon nada. Los tokens quedaron solo en secrets.env (600) y "
                   "en el .env de su propio perfil: nunca en una sesión, un log ni lo que vio el modelo")
@@ -953,6 +963,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     from espol_bot import horario
     classes = horario.load(load_config(Path(base_env["AULA_CONFIG"])))
     assert [c.as_json() for c in classes] == horario.to_json(horario.validate(SCHEDULE_V2)[0])
+    assert {"materia": "MATG1049", "dia": "viernes", "inicio": "10:00", "fin": "12:00", "aula": "LAB 11C",
+            "paralelo": "105"} in [c.as_json() for c in classes], "el práctico de Cálculo es una clase de MATG1049"
     assert any(c["method"] == "editMessageReplyMarkup" and int(c["params"].get("message_id", 0)) == card2["message_id"]
                for c in telegram.calls), "los botones de la tarjeta guardada se quitan"
     horario_md += ["## 6. El capitán pulsa «Guardar horario»\n", f"```\n{plain(saved['text'])}\n```\n",
@@ -982,10 +994,19 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     # 7d. alerts with a handoff button, and a reply to an alert
     run([bot, "sondeo"], T_VINCI)
     reminders = take("Sondeo · mié 30 sep 08:30 (avisos con botón)")
-    assert len(reminders) == 2, [m["text"][:60] for m in reminders]
+    assert len(reminders) == 3, [m["text"][:60] for m in reminders]
     calc_alert = next(m for m in reminders if "Taller 3" in m["text"])
+    practico_alert = next(m for m in reminders if "Práctica 4" in m["text"])
     fis_alert = next(m for m in reminders if "Examen parcial" in m["text"])
-    assert [b["text"] for b in buttons(calc_alert)] == ["🎓 Consultar con Vinci · Cálculo de una Variable"]
+    assert "CÁLCULO DE UNA VARIABLE - II PAO 2026 Práctico" in practico_alert["text"]
+    for alert in (calc_alert, practico_alert):  # theory and práctico: the same one bot
+        assert [b["text"] for b in buttons(alert)] == ["🎓 Consultar con Vinci · Cálculo de una Variable"]
+        assert re.fullmatch(r"v1:a:\d+:MATG1049", buttons(alert)[0]["callback_data"])
+        passed = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, alert, buttons(alert)[0]["callback_data"]),
+                      "vinci_bot", "Le pasé el aviso")
+        assert "Le pasé el aviso a Vinci · Cálculo de una Variable" in plain(passed["text"])
+    calc_avisos = [h for h in handoffs() if h["materia"] == "MATG1049" and h["origen"] == "aviso"]
+    assert len(calc_avisos) == 2 and "Taller 3" in calc_avisos[0]["texto"] and "Práctica 4" in calc_avisos[1]["texto"]
     assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Vinci · Física I"]
     fis_data = buttons(fis_alert)[0]["callback_data"]
     assert re.fullmatch(r"v1:a:\d+:FISG1002", fis_data)
@@ -996,9 +1017,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "pásaselo al bot de cálculo, ¿por dónde empiezo?",
                                     reply_to=reply_to), "vinci_bot", "se lo pasé a Vinci · Cálculo de una Variable")
     calc_handoffs = [h for h in handoffs() if h["materia"] == "MATG1049"]
-    assert len(calc_handoffs) == 2 and "Taller 3" in calc_handoffs[1]["texto"]
+    assert len(calc_handoffs) == 4 and "Taller 3" in calc_handoffs[-1]["texto"]
     report.append("Avisos del aula con botón «🎓 Consultar con …» por materia: el botón pasó el aviso de Física a su "
-                  "bot una sola vez (el segundo toque avisa que ya estaba); responder a un aviso también lo reparte")
+                  "bot una sola vez (el segundo toque avisa que ya estaba); los avisos del teórico y del práctico de "
+                  "Cálculo llevan el mismo botón y los dos llegaron a su único bot; responder a un aviso también lo "
+                  "reparte")
     take("Traspasos desde avisos")
 
     # 7e. the subject bots' agenda (Hermes cron in the gateway): brief, then the handoffs
@@ -1012,24 +1035,31 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     task = brief_tasks[0]
     for expected in ("Materia: Cálculo de una Variable (MATG1049) · paralelo 5",
                      "Clase: hoy miércoles 30 sep, 09:00–11:00 en A105 (empieza en 30 min)",
-                     "Clase anterior: lunes 28 sep, 09:00.", "Taller 3: Derivadas", "3 a 5 conceptos clave",
-                     "Una pregunta concreta"):
+                     "Clase anterior: lunes 28 sep, 09:00.", "Taller 3: Derivadas", "Práctica 4: Regla de la cadena",
+                     "3 a 5 conceptos clave", "Una pregunta concreta"):
         assert expected in task, f"falta «{expected}» en la tarea del brief:\n{task}"
     assert "Taller 3: Derivadas" in readable(brief) and "📄 Capítulo 3 - Derivadas.pdf" in readable(brief), \
         "el brief cita el material del curso"
+    assert "Práctica 4: Regla de la cadena" in readable(brief), "el brief incluye lo que vence en el práctico"
     handoff_tasks = cron_tasks("entrega_de_vinci")
     assert any("foto #" in t for t in handoff_tasks) and any("Examen parcial" in t for t in handoff_tasks)
+    assert any("Práctica 4" in t for t in handoff_tasks), "el aviso del práctico llegó al bot de Cálculo"
     calc_nb, fis_nb = entries(data_dir, "MATG1049"), entries(data_dir, "FISG1002")
     photo = next(e for e in calc_nb if e["tipo"] == "foto" and e["origen"] == "vinci")
     assert (data_dir / "cuadernos" / "MATG1049" / photo["archivo"]).read_bytes() == pizarra
-    assert len([e for e in calc_nb if e["tipo"] == "de_vinci"]) == 2
+    calc_from_vinci = [e for e in calc_nb if e["tipo"] == "de_vinci"]
+    avisos = [e["texto"] for e in calc_from_vinci if e["origen"] == "aviso"]
+    assert len(calc_from_vinci) == 4 and len(avisos) == 2, calc_from_vinci
+    assert any("Taller 3" in t for t in avisos) and any("Práctica 4" in t for t in avisos), \
+        "los avisos del teórico y del práctico quedaron en el cuaderno de Cálculo"
     assert not any((data_dir / "entregas" / "MATG1049").iterdir()), "el adjunto se movió al cuaderno"
     assert [e["origen"] for e in fis_nb if e["tipo"] == "de_vinci"] == ["aviso"]
     briefs_md += ["## Lo que la agenda le pasó al bot de Cálculo (miércoles 08:30, clase a las 09:00)\n",
                   f"```\n{task}\n```\n", "## El brief que llegó a Telegram (@vinci_calculo_bot)\n",
                   f"```\n{readable(brief)}\n```\n"]
     report.append("Agenda de cada bot de materia (cron de Hermes en el gateway): el bot de Cálculo mandó su brief "
-                  "30 min antes de la clase del miércoles (a las 08:29 aún no; con repaso, entregas, novedades, conceptos citando el "
+                  "30 min antes de la clase del miércoles (a las 08:29 aún no; con repaso, entregas del teórico y del "
+                  "práctico, novedades, conceptos citando el "
                   "material y una pregunta) y después respondió lo que le pasó Vinci; el de Física respondió el "
                   "aviso; las fotos quedaron en el cuaderno")
     take("Agenda de los bots de materia")

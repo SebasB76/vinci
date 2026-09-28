@@ -37,13 +37,14 @@ def _day_label(moment: datetime, now: datetime, tz) -> str:
     return f"{prefix}{timefmt.DAYS_LONG[local.weekday()]} {local.day} {timefmt.MONTHS[local.month - 1]}"
 
 
-def course_id_for(conn, subject: materias.Subject) -> int | None:
-    if subject.course_id is not None:
-        return subject.course_id
-    for row in conn.execute("SELECT id, course_code FROM courses WHERE active = 1").fetchall():
-        if materias.base_code(row["course_code"]) == subject.code:
-            return row["id"]
-    return None
+def course_ids_for(conn, subject: materias.Subject) -> list[int]:
+    """Every aula course of the subject, theory and práctico: the ones in materias.toml plus any
+    active course with its code (a section that showed up after the team was made)."""
+    ids = list(subject.course_ids)
+    for row in conn.execute("SELECT id, course_code FROM courses WHERE active = 1 ORDER BY id").fetchall():
+        if row["id"] not in ids and materias.base_code(row["course_code"]) == subject.code:
+            ids.append(row["id"])
+    return ids
 
 
 def _entry_line(e: dict) -> str:
@@ -59,7 +60,7 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, clase
     aula = Aula(cfg.core)
     try:
         conn = aula.conn
-        course_id = course_id_for(conn, subject)
+        course_ids = course_ids_for(conn, subject)
         previous = horario.previous(classes, subject.code, start, tz)
         since = previous[0] if previous else now - timedelta(days=7)
         notebook = Notebook(cfg.core, subject.code)
@@ -70,11 +71,12 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, clase
         weak = notebook.entries(kind="tema_debil", open_only=True, limit=8)
         notebook.close()
 
-        due = queries.pending(conn, now, [course_id], days=7, overdue_days=0) if course_id else []
+        due = queries.pending(conn, now, course_ids, days=7, overdue_days=0) if course_ids else []
         events = conn.execute(
-            "SELECT kind, payload, created_at FROM events WHERE course_id = ? AND created_at >= ?"
+            f"SELECT kind, payload, created_at FROM events WHERE course_id IN ({','.join('?' * len(course_ids))})"
+            " AND created_at >= ?"
             " AND kind IN ('new_file', 'file_updated', 'new_announcement', 'due_changed', 'new_assignment')"
-            " ORDER BY id", (course_id, timefmt.iso(since))).fetchall() if course_id else []
+            " ORDER BY id", (*course_ids, timefmt.iso(since))).fetchall() if course_ids else []
     finally:
         aula.close()
 

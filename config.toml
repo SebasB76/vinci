@@ -34,16 +34,18 @@ max_mensajes_por_sondeo = 8
 brief_minutos_antes = 30
 
 [material]
-# Tipos de archivo que se descargan e indexan para poder preguntar sobre ellos.
+# Tipos de archivo del aula que los bots leen (además de las páginas web que abren desde un enlace).
+# Solo el sílabo de cada curso se baja solo; lo demás queda en el catálogo y el bot de la materia
+# lo baja cuando lo necesita.
 extensiones = ["pdf", "pptx", "docx"]
-# Archivos más grandes que esto no se descargan.
-tamano_maximo_mb = 60
-# Cuánto material baja como máximo cada sondeo (MB); lo demás, en los siguientes. La primera vez
-# el material se reparte así en varios sondeos en vez de bajarlo todo de golpe.
+# Nada más grande que esto se baja (un libro escaneado puede pesar más de 100 MB).
+tamano_maximo_mb = 200
+# Cuántos sílabos baja como máximo cada sondeo (MB); los demás, en los siguientes.
 max_mb_per_sync = 50
 
 [almacenamiento]
-# Dónde se guardan la base de datos y el material descargado (queda en tu PC).
+# Dónde se guardan la base de datos y el material descargado (queda en tu PC). El PDF de un libro
+# principal de más de 20 MB (lo que Telegram deja pasar a un bot) va en libros/<CÓDIGO>/ de esta carpeta.
 carpeta_datos = "~/.local/share/espol-academic-bot"
 
 [hermes]

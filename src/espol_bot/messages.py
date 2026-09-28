@@ -9,6 +9,8 @@ from html import escape, unescape
 from zoneinfo import ZoneInfo
 
 from aula_core import timefmt
+from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY
+from aula_core.materials import READABLE
 
 KIND_TITLE = {
     "new_assignment": "📝 Tareas nuevas",
@@ -18,6 +20,7 @@ KIND_TITLE = {
     "grade_changed": "✏️ Notas actualizadas",
     "new_file": "📚 Material nuevo",
     "file_updated": "📚 Material actualizado",
+    "new_link": "🔗 Enlaces nuevos",
     "new_course": "🎓 Materias nuevas",
 }
 
@@ -64,9 +67,23 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
                 f"{link(ev['url'])}")
     if kind in ("new_file", "file_updated"):
         verb = "Nuevo material" if kind == "new_file" else "Material actualizado"
-        module = f" · {e(ev['modulo'])}" if ev.get("modulo") else ""
-        ready = "\nYa lo leí: puedes preguntarme sobre él." if index_status == "ok" else ""
-        return f"📚 <b>{verb} en {course}</b>{module}\n{e(ev['archivo'])}{ready}\n{link(ev['url'], 'Ver archivo')}"
+        where = "".join(f" · {e(ev[k])}" for k in ("modulo", "seccion") if ev.get(k))
+        origin = ev.get("origen") or ""
+        source = f"\n{e(origin)}" if origin and not origin.startswith(("Archivos", "Módulo")) else ""
+        later = "\nLo bajo y lo leo cuando haga falta." if ev["archivo"].lower().endswith(
+            tuple(f".{ext}" for ext in READABLE)) else ""
+        ready = {"ok": "\nYa lo leí: puedes preguntarme sobre él.",
+                 "escaneado": "\nEs un escaneo: su bot de materia mira sus páginas como imagen."}.get(
+            index_status or "", "" if index_status else later)
+        return (f"📚 <b>{verb} en {course}</b>{where}\n{e(ev['archivo'])}{source}{ready}\n"
+                f"{link(ev['url'], 'Ver archivo')}")
+    if kind == "new_link":
+        where = "".join(f" · {e(ev[k])}" for k in ("modulo", "seccion") if ev.get(k))
+        what = KIND_LABEL.get(ev.get("tipo"), ev.get("tipo") or "enlace")
+        how = ("Es público: su bot de materia lo abre si hace falta." if ev.get("acceso") == PUBLIC else
+               f"Ábrelo tú: {e(WHY_LINK_ONLY.get(ev.get('tipo'), 'no lo puedo abrir'))}.")
+        return (f"🔗 <b>Enlace nuevo en {course}</b>{where}\n{e(ev['enlace'])} ({e(what)})\n{how}\n"
+                f"{link(ev['url'], 'Abrir enlace')}")
     if kind == "new_course":
         return f"🎓 <b>Nueva materia en tu aula virtual</b>\n{course}\nDesde ahora te aviso de sus tareas y anuncios.\n{link(ev['url'])}"
     return f"{course}: {e(kind)}"
@@ -74,7 +91,7 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
 
 def _digest_line(ev: dict, tz: ZoneInfo) -> str:
     kind = ev["kind"]
-    name = str(ev.get("tarea") or ev.get("titulo") or ev.get("archivo") or ev["curso"])
+    name = str(ev.get("tarea") or ev.get("titulo") or ev.get("archivo") or ev.get("enlace") or ev["curso"])
     extra = ""
     if kind in ("new_assignment", "due_changed") and ev.get("due_at"):
         extra = f" — vence {e(timefmt.human(ev['due_at'], tz))}"

@@ -3,8 +3,8 @@
 Deterministic and model-free. Each run prints one of:
   - {"wakeAgent": false}  nothing to do; Hermes skips the agent, so the tick costs no tokens;
   - a pre-class brief task, with every fact the brief needs (last class from the
-    notebook, what is due, new material, open doubts), when a class of this subject
-    starts within `brief_minutos_antes`;
+    notebook, what is due, the main book, new material and links, open doubts), when a
+    class of this subject starts within `brief_minutos_antes`;
   - a handoff task with everything Vinci (or an alert button) queued for this subject.
 
 Only the agent run that follows writes anything with the model, and its answer is
@@ -23,7 +23,7 @@ from pathlib import Path
 
 from aula_core import Aula, queries, timefmt
 from aula_core.config import ConfigError
-from espol_bot import horario, materias, store
+from espol_bot import horario, libros, materias, store
 from espol_bot.config import BotConfig
 from espol_bot.cuaderno import FILE_KINDS, Notebook
 
@@ -98,11 +98,18 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
 
         due = queries.pending(conn, now, course_ids, days=7, overdue_days=0) if course_ids else []
         events = conn.execute(
-            "SELECT e.kind, e.payload, e.created_at, f.filename, f.display_name FROM events e"
-            " LEFT JOIN files f ON f.id = e.ref_id AND e.kind IN ('new_file', 'file_updated')"
+            "SELECT e.kind, e.payload, e.created_at, e.ref_id FROM events e"
             f" WHERE e.course_id IN ({','.join('?' * len(course_ids))}) AND e.created_at >= ?"
-            " AND e.kind IN ('new_file', 'file_updated', 'new_announcement', 'due_changed', 'new_assignment')"
-            " ORDER BY e.id", (*course_ids, timefmt.iso(since))).fetchall() if course_ids else []
+            " AND e.kind IN ('new_file', 'file_updated', 'new_link', 'new_announcement', 'due_changed',"
+            " 'new_assignment') ORDER BY e.id", (*course_ids, timefmt.iso(since))).fetchall() if course_ids else []
+        files = {}
+        for r in events:
+            if r["kind"] in ("new_file", "file_updated"):
+                try:
+                    files[r["ref_id"]] = queries.file_by_id(conn, r["ref_id"])
+                except queries.NotFound:
+                    pass
+        book = libros.main_book(conn, cfg.core, subject, course_ids) if course_ids else None
     finally:
         aula.close()
 
@@ -138,16 +145,24 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
         flag = " (sin entrega en línea: examen/lección presencial)" if t["sin_entrega_en_linea"] else ""
         lines.append(f"  - {t['tarea']} — vence {timefmt.human(t['vence'], tz)} ({timefmt.until(t['vence'], now)})"
                      f"{flag} · {t['url']}")
-    readable = cfg.core.material_extensions
-    new_material = [json.loads(r["payload"]) for r in events if r["kind"] in ("new_file", "file_updated")
-                    and Path(r["filename"] or r["display_name"] or "").suffix.lower().lstrip(".") in readable]
+    if book and book["titulo"]:
+        pdfs = "; ".join(f"«{f['archivo']}» (archivo {f['archivo_id']}, {f['estado']})" for f in book["archivos"])
+        lines.append(f"Libro principal: {book['titulo']} — " + (pdfs or "no tengo su PDF: usa el resto del material."))
+    readable = {*cfg.core.material_extensions, "html"}
+    new_material = [f for f in files.values() if f["extension"] in readable]
+    links = [json.loads(r["payload"]) for r in events if r["kind"] == "new_link"]
     news = [json.loads(r["payload"]) | {"kind": r["kind"]} for r in events
-            if r["kind"] not in ("new_file", "file_updated")]
-    lines.append("Material nuevo desde la clase anterior:" if new_material else
+            if r["kind"] not in ("new_file", "file_updated", "new_link")]
+    lines.append("Material nuevo desde la clase anterior:" if new_material or links else
                  "Material nuevo desde la clase anterior: ninguno.")
-    for m in new_material:
-        module = f" [{m['modulo']}]" if m.get("modulo") else ""
-        lines.append(f"  - {m['archivo']}{module} · {m.get('url', '')}")
+    for f in new_material:
+        where = " · ".join(v for v in (f["modulo"], f["seccion"]) if v)
+        origin = f["origen"] if f["origen"] and not f["origen"].startswith(("Archivos", "Módulo")) else None
+        lines.append(f"  - {f['archivo']}" + (f" [{where}]" if where else "") + (f" ({origin})" if origin else "")
+                     + f" · archivo {f['id']}, {queries.file_state(f, cfg.core.max_file_mb)} · {f['url'] or ''}")
+    for link in links:
+        where = " · ".join(v for v in (link.get("modulo"), link.get("seccion")) if v)
+        lines.append(f"  - enlace: {link['enlace']}" + (f" [{where}]" if where else "") + f" · {link['url']}")
     if news:
         lines.append("Novedades del aula desde la clase anterior:")
         for n in news:
@@ -158,9 +173,9 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
         "Qué hacer: escribe el brief de esta clase para Telegram, en español, breve (máx. ~250 palabras):",
         "1) Repaso de la clase anterior (desde tu cuaderno; si no hay nada, dilo en una línea).",
         "2) Qué hay por entregar (con fecha) y si algo es para pronto.",
-        "3) Material nuevo desde la clase anterior.",
-        "4) 3 a 5 conceptos clave para esta clase (usa buscar_material / leer_archivo sobre el material del curso "
-        "y cita archivo y página).",
+        "3) Material nuevo desde la clase anterior (si uno «sin bajar» es de esta clase, bájalo con bajar_archivo).",
+        "4) 3 a 5 conceptos clave para esta clase (usa buscar_material, con «traduccion» si el material está en "
+        "inglés, y leer_archivo; primero el libro principal; cita archivo y página).",
         "5) Una pregunta concreta para hacerle al profesor en clase.",
         "Empieza con «📚 Brief de " + subject.name + "» y la hora. No inventes fechas ni material.",
     ]
@@ -203,6 +218,8 @@ def handoff_task(cfg: BotConfig, subject: materias.Subject, items: list[dict], n
         "- Si son apuntes, fotos o audio de clase: di en 2-4 viñetas qué contienen y confirma que los guardaste "
         "en tu cuaderno; si corresponden a una clase, registra lo visto con anotar (tipo «clase»).",
         "- Si es una pregunta: respóndela citando el material del curso.",
+        "- Si es un documento del curso (el PDF del libro principal, unas diapositivas): agrégalo al material con "
+        "agregar_material (la ruta del adjunto en tu cuaderno; libro_principal si es ese libro).",
         "Empieza con «📨 De parte de Vinci:». Sé breve.",
     ]
     return "\n".join(lines)

@@ -3,12 +3,13 @@ so the CLI, the bot, or a future web page can render them however they like."""
 
 from __future__ import annotations
 
+import json
 import sqlite3
-import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from aula_core import extract, timefmt
+from aula_core.catalog import KIND_LABEL, fold, is_old, term_year
 
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
             " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review'))")
@@ -17,11 +18,6 @@ OFFLINE_TYPES = {"none", "on_paper"}
 
 class NotFound(Exception):
     pass
-
-
-def fold(value: str | None) -> str:
-    value = unicodedata.normalize("NFKD", value or "")
-    return "".join(ch for ch in value if not unicodedata.combining(ch)).casefold()
 
 
 def courses(conn: sqlite3.Connection) -> list[dict]:
@@ -130,29 +126,76 @@ def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]
     return result
 
 
+INDEX_STATE = {"ok": "leído", "escaneado": "escaneado", "sin_texto": "sin texto", "no_soportado": "formato que no leo",
+               "error_lectura": "no se pudo leer"}
+
+
+def file_state(f: dict, max_mb: float) -> str:
+    """leído · escaneado (its pages are images) · sin bajar · muy grande para bajar · no se pudo bajar · …"""
+    if f["descargado"] and f["indexado"] in INDEX_STATE:
+        return INDEX_STATE[f["indexado"]]
+    if f["indexado"] == "muy_grande" or (f["tamano"] or 0) > max_mb * 1024 * 1024:
+        return "muy grande para bajar"
+    return "no se pudo bajar" if f["indexado"] == "error_descarga" else "sin bajar"
+
+
 def _file(r: sqlite3.Row) -> dict:
     return {"id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "archivo": r["display_name"],
             "extension": Path(r["filename"] or r["display_name"] or "").suffix.lower().lstrip("."),
-            "modulo": r["module"], "tamano": r["size"], "actualizado": r["updated_at"],
+            "modulo": r["module"], "seccion": r["section"], "carpeta": r["folder"], "origen": r["source"],
+            "tamano": r["size"], "subido": r["created_at"], "actualizado": r["updated_at"],
             "descargado": r["local_path"] if r["local_path"] and Path(r["local_path"]).exists() else None,
-            "indexado": r["index_status"], "paginas": r["pages"], "url": r["html_url"]}
+            "indexado": r["index_status"], "paginas": r["pages"], "idioma": r["language"] or None,
+            "copia_de": r["duplicate_of"], "url": r["html_url"],
+            "anterior": is_old(r["folder"], r["display_name"], term_year(r["term_start"], r["course_name"], r["term"]))}
 
 
 def files(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | None = None) -> list[dict]:
+    """The catalog: every document the aula shows (downloaded or not) plus what was added by hand."""
     extra, params = _course_filter(ids, "f.course_id")
     rows = conn.execute(
-        f"""SELECT f.*, c.name AS course_name FROM files f JOIN courses c ON c.id = f.course_id
+        f"""SELECT f.*, c.name AS course_name, c.term_start, c.term FROM files f JOIN courses c ON c.id = f.course_id
             WHERE f.active = 1 AND c.active = 1{extra} ORDER BY c.name, f.module, f.display_name""",
         params,
     ).fetchall()
     needle = fold(name) if name else None
-    return [_file(r) for r in rows
-            if not needle or needle in fold(r["display_name"]) or needle in fold(r["module"])]
+    return [_file(r) for r in rows if not needle or any(
+        needle in fold(r[k]) for k in ("display_name", "module", "section", "folder", "source"))]
+
+
+def links(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | None = None) -> list[dict]:
+    """Outside links of the courses: what they are, and whether a bot can open them (acceso «publico»)."""
+    extra, params = _course_filter(ids, "l.course_id")
+    rows = conn.execute(
+        f"""SELECT l.*, c.name AS course_name FROM links l JOIN courses c ON c.id = l.course_id
+            WHERE l.active = 1 AND c.active = 1{extra} ORDER BY c.name, l.module, l.id""",
+        params,
+    ).fetchall()
+    needle = fold(name) if name else None
+    return [{"enlace_id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "titulo": r["title"],
+             "tipo": KIND_LABEL.get(r["kind"], r["kind"]), "acceso": r["access"], "modulo": r["module"],
+             "seccion": r["section"], "origen": r["source"], "archivo_id": r["file_id"], "url": r["url"]}
+            for r in rows if not needle or any(needle in fold(r[k]) for k in ("title", "module", "section", "url"))]
+
+
+def bibliography(conn: sqlite3.Connection, ids: list[int]) -> dict | None:
+    """The books the newest syllabus of these courses names: {'principal': [...], 'complementaria': [...], ...}."""
+    extra, params = _course_filter(ids, "b.course_id")
+    row = conn.execute(
+        f"""SELECT b.*, f.display_name, f.html_url FROM bibliography b JOIN files f ON f.id = b.file_id
+            WHERE f.active = 1 AND b.main != '[]'{extra} ORDER BY f.updated_at DESC, b.file_id DESC LIMIT 1""",
+        params,
+    ).fetchone()
+    if row is None:
+        return None
+    return {"principal": json.loads(row["main"]), "complementaria": json.loads(row["others"]),
+            "silabo": row["display_name"], "silabo_id": row["file_id"], "url": row["html_url"]}
 
 
 def file_by_id(conn: sqlite3.Connection, file_id: int) -> dict:
     row = conn.execute(
-        "SELECT f.*, c.name AS course_name FROM files f JOIN courses c ON c.id = f.course_id WHERE f.id = ?",
+        "SELECT f.*, c.name AS course_name, c.term_start, c.term FROM files f JOIN courses c ON c.id = f.course_id"
+        " WHERE f.id = ?",
         (file_id,),
     ).fetchone()
     if row is None:

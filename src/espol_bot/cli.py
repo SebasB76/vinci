@@ -14,6 +14,8 @@
                                      the captain forwarded; the plugin deleted it from the chat)
     espol-bot saludo [--curso CÓDIGO]
                                      a bot's answer to /start, which Hermes ignores (the plugin calls it)
+    espol-bot pagina --curso CÓDIGO <archivo_id> <página>
+                                     a page of the subject's PDF as a JPEG, for the plugin's ver_pagina
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -103,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("token", help="configurar el bot de un token leído por stdin (lo usa el plugin vinci-botones)")
     p = sub.add_parser("saludo", help="la respuesta de un bot a /start (la usa el plugin vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
+    p = sub.add_parser("pagina", help="una página de un PDF como imagen (la usa ver_pagina, del plugin vinci-botones)")
+    p.add_argument("--curso", required=True, help="código de la materia")
+    p.add_argument("archivo_id", type=int)
+    p.add_argument("pagina", type=int)
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -122,6 +128,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "saludo":
             print(json.dumps(_greeting(cfg, args.curso), ensure_ascii=False))
+            return 0
+        if args.cmd == "pagina":
+            from espol_bot import herramientas
+            from espol_bot.mcp_server import ToolError
+            try:
+                result = herramientas.page_image(cfg, args.curso, args.archivo_id, args.pagina)
+            except ToolError as exc:
+                result = {"error": str(exc)}
+            print(json.dumps(result, ensure_ascii=False))
             return 0
         if args.cmd in ("bot-creado", "token"):
             from espol_bot import equipo

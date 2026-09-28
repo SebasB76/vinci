@@ -91,5 +91,44 @@
         "external_url": "https://www.youtube.com/watch?v=clase-derivadas"
       }
     ]
+  },
+  {
+    "id": 8004,
+    "name": "Semana 4: Aplicaciones de la derivada",
+    "position": 4,
+    "unlock_at": null,
+    "require_sequential_progress": false,
+    "requirement_type": "all",
+    "publish_final_grade": false,
+    "prerequisite_module_ids": [],
+    "state": "unlocked",
+    "completed_at": null,
+    "items_count": 2,
+    "items_url": "{{BASE}}/api/v1/courses/101/modules/8004/items",
+    "items": [
+      {
+        "indent": 0,
+        "quiz_lti": false,
+        "published": true,
+        "id": 80040,
+        "title": "ANTES de clase en vivo",
+        "position": 1,
+        "type": "SubHeader",
+        "module_id": 8004,
+        "html_url": "{{BASE}}/courses/101/modules/items/80040"
+      },
+      {
+        "indent": 0,
+        "quiz_lti": false,
+        "published": true,
+        "id": 80041,
+        "title": "Guía de optimización (página del profesor)",
+        "position": 2,
+        "type": "ExternalUrl",
+        "module_id": 8004,
+        "html_url": "{{BASE}}/courses/101/modules/items/80041",
+        "external_url": "{{WEB}}/profesor/optimizacion.html"
+      }
+    ]
   }
 ]

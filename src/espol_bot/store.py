@@ -8,6 +8,8 @@
                        so a restart never sends a brief twice
   horario_propuestas   schedules Vinci extracted from a screenshot, waiting for the
                        captain to press «Guardar»
+  libros               per subject: the main book the captain named, the files given as its PDF,
+                       and when the subject bot asked the captain for that PDF (once)
 """
 
 from __future__ import annotations
@@ -48,6 +50,13 @@ CREATE TABLE IF NOT EXISTS briefs (
     inicio TEXT NOT NULL,
     reclamado TEXT NOT NULL,
     PRIMARY KEY (materia, inicio)
+);
+CREATE TABLE IF NOT EXISTS libros (
+    materia TEXT PRIMARY KEY,
+    titulo TEXT,
+    archivos TEXT NOT NULL DEFAULT '[]',
+    pedido TEXT,
+    actualizado TEXT
 );
 CREATE TABLE IF NOT EXISTS horario_propuestas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -7,8 +7,12 @@
     aula archivos  [listar] [--curso X] [--nombre Y]
     aula archivos  bajar <id>... | --curso X [--nombre Y]
     aula archivos  leer <id> [--paginas 3-5]
+    aula enlaces   [--curso X] [--nombre Y]
     aula buscar    "pregunta" [--curso X] [-n N]
     aula sincronizar [--material]
+
+`archivos` is the catalog: every document the aula shows, read or not; a document is downloaded
+when it is asked for (only syllabi come down on their own, with `sincronizar --material`).
 
 Human-readable Spanish by default; `--json` for agents. Nothing here can submit,
 post, or change anything on Canvas: the core client only issues GET requests.
@@ -54,12 +58,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("notas", parents=[common], help="calificaciones publicadas")
     p.add_argument("--curso")
 
-    p = sub.add_parser("archivos", parents=[common], help="material del curso: listar, bajar, leer")
+    p = sub.add_parser("archivos", parents=[common], help="catálogo del material: listar, bajar, leer")
     p.add_argument("accion", nargs="?", choices=["listar", "bajar", "leer"], default="listar")
     p.add_argument("ids", nargs="*", type=int, help="ID de archivo (de `aula archivos`)")
     p.add_argument("--curso")
-    p.add_argument("--nombre", help="parte del nombre del archivo o del módulo (ej. 'semana 3')")
+    p.add_argument("--nombre", help="parte del nombre, módulo, sección o carpeta (ej. 'semana 3')")
     p.add_argument("--paginas", help="para leer: rango de páginas, ej. 3-5")
+
+    p = sub.add_parser("enlaces", parents=[common], help="enlaces de fuera del aula (Dropbox, SharePoint, videos)")
+    p.add_argument("--curso")
+    p.add_argument("--nombre", help="parte del título, módulo o dirección")
 
     p = sub.add_parser("buscar", parents=[common], help="buscar en el material descargado")
     p.add_argument("pregunta")
@@ -67,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-n", type=int, default=5)
 
     p = sub.add_parser("sincronizar", parents=[common], help="leer el aula virtual ahora")
-    p.add_argument("--material", action="store_true", help="también descargar e indexar el material nuevo")
+    p.add_argument("--material", action="store_true", help="también bajar e indexar el sílabo nuevo de cada curso")
     return parser
 
 
@@ -156,7 +164,7 @@ def render_grades(rows) -> str:
     return "\n\n".join(blocks)
 
 
-def render_files(rows) -> str:
+def render_files(rows, max_mb: float) -> str:
     if not rows:
         return "No hay archivos."
     lines = []
@@ -165,10 +173,19 @@ def render_files(rows) -> str:
         if f["curso"] != current:
             current = f["curso"]
             lines.append(f"{current}:")
-        where = f" [{f['modulo']}]" if f["modulo"] else ""
-        local = " ✓ descargado" if f["descargado"] else ""
-        lines.append(f"  {f['id']}  {f['archivo']}{where} {_size(f['tamano'])}{local}")
+        where = " · ".join(v for v in (f["modulo"], f["seccion"], f["carpeta"]) if v)
+        where = f" [{where}]" if where else ""
+        copy = f", copia de {f['copia_de']}" if f["copia_de"] else ""
+        lines.append(f"  {f['id']}  {f['archivo']}{where} {_size(f['tamano'])} ({queries.file_state(f, max_mb)}{copy})")
     return "\n".join(lines)
+
+
+def render_links(rows) -> str:
+    if not rows:
+        return "No hay enlaces."
+    return "\n".join(f"• {r['curso']}: {r['titulo'] or r['url']} ({r['tipo']}; "
+                     f"{'público' if r['acceso'] == 'publico' else 'solo enlace'})"
+                     f"{' [' + r['modulo'] + ']' if r['modulo'] else ''}\n  {r['url']}" for r in rows)
 
 
 def render_downloads(rows) -> str:
@@ -254,11 +271,13 @@ def run(args, aula: Aula) -> int:
         _out(queries.announcements(conn, ids, limit=args.n), as_json, lambda r: render_announcements(r, aula))
     elif cmd == "notas":
         _out(queries.grades(conn, ids), as_json, render_grades)
+    elif cmd == "enlaces":
+        _out(queries.links(conn, ids, args.nombre), as_json, render_links)
     elif cmd == "buscar":
         _out(search.search(conn, args.pregunta, course_ids=ids, limit=args.n), as_json, render_search)
     elif cmd == "archivos":
         if args.accion == "listar":
-            _out(queries.files(conn, ids, args.nombre), as_json, render_files)
+            _out(queries.files(conn, ids, args.nombre), as_json, lambda r: render_files(r, aula.cfg.max_file_mb))
         elif args.accion == "leer":
             if len(args.ids) != 1:
                 raise SystemExit("Uso: aula archivos leer <id> [--paginas 3-5]")

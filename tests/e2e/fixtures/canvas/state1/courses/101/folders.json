@@ -1,0 +1,20 @@
+[
+  {
+    "id": 9001,
+    "name": "course files",
+    "full_name": "course files",
+    "parent_folder_id": null
+  },
+  {
+    "id": 9002,
+    "name": "Libros",
+    "full_name": "course files/Libros",
+    "parent_folder_id": 9001
+  },
+  {
+    "id": 9003,
+    "name": "Clases 2025",
+    "full_name": "course files/Clases 2025",
+    "parent_folder_id": 9001
+  }
+]

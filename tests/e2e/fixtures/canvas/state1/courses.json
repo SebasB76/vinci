@@ -54,7 +54,8 @@
       "created_at": "2026-06-10T15:22:41Z",
       "workflow_state": "active",
       "grading_period_group_id": null
-    }
+    },
+    "syllabus_body": "<h2>Programa del curso</h2><p>El texto guía es el Purcell. Está en la biblioteca digital: <a href=\"https://espolec.sharepoint.com/:b:/s/MATG1049/EQpurcell9?e=Xy12\">Purcell - Cálculo (9a ed.)</a>.</p><p><img src=\"{{BASE}}/courses/101/files/5003/preview\" alt=\"silabos.png\"></p>"
   },
   {
     "id": 102,

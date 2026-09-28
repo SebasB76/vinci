@@ -12,7 +12,9 @@ bot, one token each): it records every call, answers getMe, keeps inline buttons
 queued updates (text, photo, voice, document, button presses) to getUpdates long polls,
 serves the files behind getFile, and plays Telegram's part in managed bots (Bot API 9.6): a
 bot marked as a manager reports can_manage_bots, the captain can "create" a bot from its
-request_managed_bot button, and getManagedBotToken hands the manager that bot's token.
+request_managed_bot button (through the creation screen Telegram shows for it), and
+getManagedBotToken hands the manager that bot's token. A call listed in `throttle` answers 429
+once, with that retry_after.
 Each bot has a name (getMe's first_name, getMyName; setMyName renames it), and
 setMyProfilePhoto (Bot API 9.4) takes only a fresh static JPG upload, as Telegram does, and keeps
 every photo each bot set. Every chat message a bot sends is kept in order.
@@ -25,6 +27,7 @@ the request offers, and it records each request (including the tools offered).
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from email.parser import BytesParser
@@ -170,6 +173,7 @@ class FakeTelegram(_Server):
         self.managed: dict[int, tuple[str, str]] = {}  # managed bot id -> (manager token, bot token)
         self.profile_photos: dict[str, list[bytes]] = {}  # username -> every photo it set, in order
         self.names: dict[str, str] = {}  # token -> the bot's name, when it is not its username
+        self.throttle: dict[tuple[str, str], int] = {}  # (username, method) -> retry_after of its next call
         self.cond = threading.Condition()
         self.lock = self.cond
         # Hermes remembers the update ids it already handled, even across restarts: start from the clock.
@@ -236,6 +240,19 @@ class FakeTelegram(_Server):
         bot = {"id": self.bot_id(token), "is_bot": True, "first_name": self.bots[token], "username": self.bots[token]}
         return {"message_id": record["message_id"], "date": int(time.time()), "from": bot, "text": text,
                 "chat": {"id": int(record["chat_id"]), "type": "private"}}
+
+    @staticmethod
+    def creation_screen(request: dict) -> tuple[str, str]:
+        """(name, username) as Telegram's «create bot» screen offers a request_managed_bot suggestion, or
+        AssertionError with the error it shows. The screen puts the suggested username in a 29-character field
+        before its own fixed «bot»; a username has letters, digits and underscores, starts with a letter and
+        has 5-32 characters."""
+        name, stem = str(request.get("suggested_name") or ""), str(request.get("suggested_username") or "")
+        assert 0 < len(name) <= 64, f"Name is invalid: {name!r}"
+        assert len(stem) <= 29, f"Username is too long. ({stem!r})"
+        username = stem + "bot"
+        assert re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", username), f"Username is invalid. ({username!r})"
+        return name, username
 
     def create_managed_bot(self, manager: str, user_id: int, token: str, username: str, name: str) -> int:
         """The captain pressed the manager's request_managed_bot button and confirmed the new bot."""
@@ -334,6 +351,10 @@ class _TelegramHandler(_Quiet):
         params = self._decode(params)
         with stub.cond:
             stub.calls.append({"bot": username, "method": method, "params": params})
+            retry = stub.throttle.pop((username, method), None)
+        if retry:
+            return self._json(429, {"ok": False, "error_code": 429, "parameters": {"retry_after": retry},
+                                    "description": f"Too Many Requests: retry after {retry}"})
         me = {"id": stub.bot_id(token), "is_bot": True, "first_name": stub.name_of(token), "username": username,
               "can_join_groups": False, "can_read_all_group_messages": False, "supports_inline_queries": False}
         if method == "getMe":

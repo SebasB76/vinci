@@ -10,15 +10,15 @@ buttons; the captain's press, handled without the model by the `vinci-botones` p
   2. «➕ Crear <bot>» marks the subject "esperando_bot" and sends a Telegram keyboard
      button that creates the bot for Vinci to manage (Bot API 9.6 managed bots: the captain
      confirms name and username in Telegram's own screen; the name suggested is its
-     character's, «El Analítico · Estadística»). If Vinci may not manage bots
-     yet, it sends the @BotFather steps instead.
+     subject's, «Estadística»). If Vinci may not manage bots yet, it sends the
+     @BotFather steps instead.
   3. The new bot arrives as a `managed_bot_created` service message (its token is fetched
      with getManagedBotToken) or as BotFather's reply forwarded by the captain. The plugin
      catches either before Hermes sees it (so it never reaches the model or a session log),
      deletes any message carrying a token, and runs `espol-bot bot-creado` / `espol-bot
      token`: the token goes to secrets.env (mode 600) and the subject's Hermes profile, cron
-     agenda and plugin are created (idempotent), and the bot gets its character's name and
-     photo. The multiplexing gateway serves the new profile by itself within a minute.
+     agenda and plugin are created (idempotent), and the bot gets its subject's name and
+     its photo from the party. The multiplexing gateway serves the new profile by itself within a minute.
   4. «🗄️ Archivar» / «♻️ Reactivar» park or unpark the subject's gateway and pause or resume
      its agenda; memory and notebook stay.
 """
@@ -26,6 +26,7 @@ buttons; the captain's press, handled without the model by the `vinci-botones` p
 from __future__ import annotations
 
 import contextlib
+import itertools
 import re
 import sys
 import zlib
@@ -44,17 +45,20 @@ from espol_bot.telegram import Telegram, TelegramError
 TOKEN_RE = re.compile(r"\d{5,}:[A-Za-z0-9_-]{30,}")
 WAITING = "esperando_bot"
 TO_CREATE = ("pendiente", WAITING)
+USERNAME_MAX = 32  # Telegram's cap on a bot's username, «bot» included
 STATE_LABEL = {"pendiente": "➕ por crear", WAITING: "⏳ esperando su bot", "activa": "✅ activo",
                "archivada": "🗄️ archivado"}
 
 
 def suggested_username(subject: materias.Subject) -> str:
-    """vinci_<words of the name>_bot, within Telegram's 32 characters, cut at a whole word."""
-    slug = ""
-    for word in re.findall(r"[a-z0-9]+", fold(subject.name).lower()):
-        if word not in materias.SMALL_WORDS and len(slug) + len(word) + 1 <= 23:
-            slug = f"{slug}_{word}"
-    return f"vinci{slug or '_' + subject.code.lower()}_bot"
+    """vinci_<words of the bot's name>_bot within USERNAME_MAX: the words that fit with the most letters,
+    the later ones on a tie ('Ciencias de la Sostenibilidad' → vinci_sostenibilidad_bot); vinci_<code>_bot
+    when none fits."""
+    words = [w for w in re.findall(r"[a-z0-9]+", fold(subject.display).lower()) if w not in materias.SMALL_WORDS][:8]
+    room = USERNAME_MAX - len("vinci__bot")
+    subsets = [c for n in range(len(words), 0, -1) for c in itertools.combinations(words, n)]
+    slug = max((s for s in map("_".join, reversed(subsets)) if len(s) <= room), key=len, default=subject.code.lower())
+    return f"vinci_{slug}_bot"
 
 
 def propose(cfg: BotConfig, conn) -> tuple[list[materias.Subject], list[str], list[materias.Subject]]:
@@ -108,8 +112,9 @@ def creation_message(subject: materias.Subject, can_manage: bool) -> tuple[str, 
                 f"Pulsa el botón de abajo. Telegram te muestra el bot nuevo con el nombre «{e(subject.display)}» y el "
                 f"usuario @{username} (puedes cambiarlos); al confirmarlo me lo comparte y yo lo configuro solo. "
                 "El token no pasa por el chat.")
+        # Telegram's create-bot screen adds its own fixed «bot»: suggest the username without it.
         request = {"request_id": zlib.crc32(subject.code.encode()) & 0x7FFFFFFF,
-                   "suggested_name": subject.display, "suggested_username": username}
+                   "suggested_name": subject.display, "suggested_username": username.removesuffix("bot")}
         markup = {"keyboard": [[{"text": f"🤖 Crear {subject.display}", "request_managed_bot": request}]],
                   "resize_keyboard": True, "one_time_keyboard": True}
         return text, markup

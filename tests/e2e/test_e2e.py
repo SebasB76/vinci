@@ -862,9 +862,14 @@ def test_e2e(tmp_path):
                       "teórico en el primero y el del práctico en el segundo), en vez de todo el material de golpe")
 
         # 6b. Token renewal survives several generations before the one-hour Canvas expiry ----------------
+        orphan = canvas.mint("7~huerfano-de-una-renovacion-rota", "Vinci (renovación automática)")
+        other = canvas.mint("7~otro-token-del-capitan", "Mi script")
         run([bot, "mantenimiento"], T_RENEW_0)
         first = parse_env_file(secrets)["CANVAS_TOKEN"]
         assert first != CANVAS_TOKEN and first in canvas.valid_tokens
+        assert CANVAS_TOKEN in canvas.valid_tokens, "la semilla queda viva como sonda"
+        assert orphan in canvas.deleted and other not in canvas.deleted, \
+            "solo se borra el huérfano de renovación, nunca otro token del capitán"
         canvas.expire(CANVAS_TOKEN)
 
         run([bot, "mantenimiento"], T_RENEW_1)
@@ -876,10 +881,13 @@ def test_e2e(tmp_path):
         third = parse_env_file(secrets)["CANVAS_TOKEN"]
         assert third not in (CANVAS_TOKEN, first, second) and third in canvas.valid_tokens
         assert len(canvas.issued()) == 3
+        assert canvas.token_ids[first] in canvas.deleted, "el antecesor ya reemplazado se borró de Canvas"
         run([bot, "sondeo"], T_RENEW_2)
         assert take("Renovación automática · tres generaciones") == [], "renovar no manda ruido al chat"
-        report.append("La renovación creó y verificó tres generaciones de token en segundo plano; después de expirar "
-                      "cada antecesor, el sondeo siguió leyendo con el sucesor y ningún token apareció en el chat")
+        report.append("La renovación creó y verificó tres generaciones de token en segundo plano (leyendo el valor "
+                      "de visible_token, como lo devuelve Canvas); después de expirar cada antecesor, el sondeo "
+                      "siguió leyendo con el sucesor, borró el huérfano de una renovación rota sin tocar otros "
+                      "tokens del capitán, y ningún token apareció en el chat")
 
         # 6c. With every token dead, public feeds still update due dates and announcements ------------------
         for token in list(canvas.valid_tokens):
@@ -924,8 +932,7 @@ END:VCALENDAR
 
         # 6d. A hidden terminal prompt re-seeds the chain; the token never passes through Telegram -------------
         canvas.valid_tokens.add(NEW_CANVAS_TOKEN)
-        canvas.token_ids[NEW_CANVAS_TOKEN] = canvas.next_token
-        canvas.next_token += 1
+        canvas.mint(NEW_CANVAS_TOKEN, "Token personal")
         reseed = run([bot, "resembrar", "--stdin"], T_RENEW_2, stdin=NEW_CANVAS_TOKEN + "\n")
         assert "verificado" in reseed.stdout.lower() and NEW_CANVAS_TOKEN not in reseed.stdout + reseed.stderr
         reseeded = parse_env_file(secrets)["CANVAS_TOKEN"]

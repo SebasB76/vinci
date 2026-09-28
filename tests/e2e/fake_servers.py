@@ -78,6 +78,9 @@ class FakeCanvas(_Server):
         self._token = token
         self.valid_tokens = {token}
         self.token_ids = {token: 1}
+        self.purposes = {token: "Token personal"}
+        self.created: list[str] = []  # tokens minted through POST /users/self/tokens
+        self.deleted: set[int] = set()
         self.next_token = 2
         self.state = "state1"
         self.requests: list[tuple[str, str]] = []
@@ -109,8 +112,26 @@ class FakeCanvas(_Server):
 
     def issued(self) -> list[str]:
         with self.lock:
-            return [token for token, token_id in sorted(self.token_ids.items(), key=lambda item: item[1])
-                    if token_id > 1]
+            return list(self.created)
+
+    def mint(self, token: str, purpose: str) -> int:
+        """A token that exists in the account without the bot having created it in this run."""
+        with self.lock:
+            token_id = self.next_token
+            self.next_token += 1
+            self.valid_tokens.add(token)
+            self.token_ids[token] = token_id
+            self.purposes[token] = purpose
+            return token_id
+
+    def token_json(self, token: str, *, fresh: bool = False) -> dict:
+        """The shape of canvas-lms lib/api/v1/token.rb: the value only as visible_token, and only at creation."""
+        return {"id": self.token_ids[token], "created_at": "2026-09-28T11:30:00Z", "expires_at": None,
+                "last_used_at": None, "purpose": self.purposes.get(token, "Token personal"),
+                "real_user_id": None, "remember_access": None, "scopes": [], "updated_at": "2026-09-28T11:30:00Z",
+                "user_id": 42, "workflow_state": "deleted" if self.token_ids[token] in self.deleted else "active",
+                "app_name": "User-Generated", "visible_token": token if fresh else f"{token[:5]}...",
+                "can_manually_regenerate": True}
 
     def load(self, api_path: str):
         for state in dict.fromkeys([self.state, "state1"]):
@@ -176,17 +197,14 @@ class _CanvasHandler(_Quiet):
             payload = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             payload = {}
-        if not (payload.get("token") or {}).get("purpose"):
+        purpose = (payload.get("token") or {}).get("purpose")
+        if not purpose:
             return self._json(400, [{"message": "token[purpose] is missing"}])
+        token = f"7~{canvas.next_token:03d}-renovado-e2e-xxxxxxxxxxxxxxxx"
+        canvas.mint(token, purpose)
         with canvas.lock:
-            token_id = canvas.next_token
-            canvas.next_token += 1
-            token = f"7~{token_id:03d}-renovado-e2e-xxxxxxxxxxxxxxxx"
-            canvas.valid_tokens.add(token)
-            canvas.token_ids[token] = token_id
-        return self._json(200, {"id": token_id, "created_at": "2026-09-28T11:30:00Z",
-                                "workflow_state": "active", "token": token,
-                                "token_hint": token[:5], "purpose": "Vinci"})
+            canvas.created.append(token)
+            return self._json(200, canvas.token_json(token, fresh=True))
 
     def do_DELETE(self):
         canvas: FakeCanvas = self.server.owner
@@ -201,9 +219,11 @@ class _CanvasHandler(_Quiet):
         token_id = int(match[1])
         with canvas.lock:
             found = next((token for token, known_id in canvas.token_ids.items() if known_id == token_id), None)
-            if found:
-                canvas.valid_tokens.discard(found)
-        return self._json(200, {"id": token_id, "workflow_state": "deleted"})
+            if not found or token_id in canvas.deleted:
+                return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]})
+            canvas.valid_tokens.discard(found)
+            canvas.deleted.add(token_id)
+            return self._json(200, canvas.token_json(found))
 
     def do_GET(self):
         canvas: FakeCanvas = self.server.owner
@@ -225,8 +245,8 @@ class _CanvasHandler(_Quiet):
             return self._json(200, {"id": 42, "name": "Estudiante E2E"}, quota)
         if url.path == "/api/v1/users/self/user_generated_tokens":
             with canvas.lock:
-                tokens = [{"id": token_id, "token_hint": token[:5], "workflow_state": "active"}
-                          for token, token_id in canvas.token_ids.items()]
+                tokens = [canvas.token_json(token) for token, token_id in canvas.token_ids.items()
+                          if token_id not in canvas.deleted]
             return self._json(200, tokens, quota)
 
         if url.path.startswith("/files/") and url.path.endswith("/download"):

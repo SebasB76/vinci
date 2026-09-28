@@ -54,7 +54,14 @@ from pathlib import Path
 
 import yaml
 
-from aula_core.config import REPO_ROOT, ConfigError, config_path, load_secret_values, secrets_path
+from aula_core.config import (
+    REPO_ROOT,
+    ConfigError,
+    config_path,
+    load_secret_values,
+    secrets_path,
+    update_secret_values,
+)
 from espol_bot import characters, materias
 from espol_bot.config import DEFAULT_TELEGRAM_API, BotConfig, TelegramSecrets, captain_id, token_key
 from espol_bot.telegram import Telegram, TelegramError
@@ -124,20 +131,7 @@ def _render(template: Path, values: dict[str, str]) -> str:
 
 
 def upsert_env(path: Path, values: dict[str, str]) -> bool:
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    seen, out = set(), []
-    for line in lines:
-        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
-        if key in values:
-            if key not in seen:
-                out.append(f"{key}={values[key]}")
-                seen.add(key)
-            continue
-        out.append(line)
-    for key, value in values.items():
-        if key not in seen:
-            out.append(f"{key}={value}")
-    return _write_if_changed(path, "\n".join(out) + "\n", 0o600)
+    return update_secret_values(values, path=path)
 
 
 class Setup:
@@ -371,7 +365,8 @@ class Setup:
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
-        for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen"}.items():
+        for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen",
+                                "vinci-mantenimiento.sh": "mantenimiento"}.items():
             changed |= _write_if_changed(profile / "scripts" / script,
                                          _render(TEMPLATES / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
         plugin_changed = self._install_plugin(profile, values)
@@ -384,6 +379,8 @@ class Setup:
         self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
         self.reconcile_job(name, "vinci-sondeo", poll_schedule(self.cfg.poll_minutes, self.cfg.summary_time.minute),
                            "vinci-sondeo.sh", no_agent=True)
+        self.reconcile_job(name, "vinci-mantenimiento", "2,12,22,32,42,52 * * * *",
+                           "vinci-mantenimiento.sh", no_agent=True)
         self.reconcile_job(name, "vinci-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
                            "vinci-resumen.sh", no_agent=True)
 

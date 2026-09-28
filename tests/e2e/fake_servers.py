@@ -1,9 +1,10 @@
 """Local stand-ins for Canvas and the Telegram Bot API, used only by the E2E test.
 
 FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ the way
-Canvas does: Bearer auth, `Link` pagination (capped at 2 items per page so the
-client must follow it), `X-Rate-Limit-Remaining`, one 429 to exercise backoff,
-a course whose Files tab is hidden (401 unauthorized), and file downloads.
+Canvas does: Bearer auth, access-token creation/deletion, public iCal/Atom feeds,
+`Link` pagination (capped at 2 items per page so the client must follow it),
+`X-Rate-Limit-Remaining`, one 429 to exercise backoff, a course whose Files tab
+is hidden (401 unauthorized), and file downloads.
 API paths added to `failing` answer 503 until removed (a resource that keeps failing), and a
 file in `slow_downloads` takes that many seconds to download.
 It answers 405 to anything but GET and records every request. `{{WEB}}` in a fixture is the
@@ -74,7 +75,10 @@ class _Server:
 class FakeCanvas(_Server):
     def __init__(self, token: str):
         super().__init__(_CanvasHandler)
-        self.token = token
+        self._token = token
+        self.valid_tokens = {token}
+        self.token_ids = {token: 1}
+        self.next_token = 2
         self.state = "state1"
         self.requests: list[tuple[str, str]] = []
         self.times: list[float] = []  # when each request arrived
@@ -82,7 +86,31 @@ class FakeCanvas(_Server):
         self.failing: set[str] = set()
         self.slow_downloads: dict[int, float] = {}
         self.web = "http://web.invalid"
+        self.calendar_feed = ""
+        self.announcement_feeds: dict[str, str] = {}
         self.lock = threading.Lock()
+
+    @property
+    def token(self) -> str:
+        return self._token
+
+    @token.setter
+    def token(self, value: str) -> None:
+        """Compatibility with older E2E stages: make exactly this token valid."""
+        with self.lock:
+            self._token = value
+            self.valid_tokens = {value}
+            self.token_ids.setdefault(value, self.next_token)
+            self.next_token = max(self.next_token, self.token_ids[value] + 1)
+
+    def expire(self, token: str) -> None:
+        with self.lock:
+            self.valid_tokens.discard(token)
+
+    def issued(self) -> list[str]:
+        with self.lock:
+            return [token for token, token_id in sorted(self.token_ids.items(), key=lambda item: item[1])
+                    if token_id > 1]
 
     def load(self, api_path: str):
         for state in dict.fromkeys([self.state, "state1"]):
@@ -128,18 +156,78 @@ class _CanvasHandler(_Quiet):
             canvas.times.append(time.time())
         self._json(405, {"errors": [{"message": "El bot solo debe leer"}]})
 
-    do_POST = do_PUT = do_PATCH = do_DELETE = _refuse
+    do_PUT = do_PATCH = _refuse
+
+    def _authorized(self, canvas: FakeCanvas) -> bool:
+        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+        return token in canvas.valid_tokens
+
+    def do_POST(self):
+        canvas: FakeCanvas = self.server.owner
+        with canvas.lock:
+            canvas.requests.append(("POST", self.path))
+            canvas.times.append(time.time())
+        if not self._authorized(canvas):
+            return self._json(401, {"errors": [{"message": "Invalid access token."}]})
+        if urlsplit(self.path).path != "/api/v1/users/self/tokens":
+            return self._json(405, {"errors": [{"message": "El bot no puede cambiar el aula"}]})
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            payload = {}
+        if not (payload.get("token") or {}).get("purpose"):
+            return self._json(400, [{"message": "token[purpose] is missing"}])
+        with canvas.lock:
+            token_id = canvas.next_token
+            canvas.next_token += 1
+            token = f"7~{token_id:03d}-renovado-e2e-xxxxxxxxxxxxxxxx"
+            canvas.valid_tokens.add(token)
+            canvas.token_ids[token] = token_id
+        return self._json(200, {"id": token_id, "created_at": "2026-09-28T11:30:00Z",
+                                "workflow_state": "active", "token": token,
+                                "token_hint": token[:5], "purpose": "Vinci"})
+
+    def do_DELETE(self):
+        canvas: FakeCanvas = self.server.owner
+        with canvas.lock:
+            canvas.requests.append(("DELETE", self.path))
+            canvas.times.append(time.time())
+        if not self._authorized(canvas):
+            return self._json(401, {"errors": [{"message": "Invalid access token."}]})
+        match = re.fullmatch(r"/api/v1/users/self/tokens/(\d+)", urlsplit(self.path).path)
+        if not match:
+            return self._json(405, {"errors": [{"message": "El bot no puede cambiar el aula"}]})
+        token_id = int(match[1])
+        with canvas.lock:
+            found = next((token for token, known_id in canvas.token_ids.items() if known_id == token_id), None)
+            if found:
+                canvas.valid_tokens.discard(found)
+        return self._json(200, {"id": token_id, "workflow_state": "deleted"})
 
     def do_GET(self):
         canvas: FakeCanvas = self.server.owner
         with canvas.lock:
             canvas.requests.append(("GET", self.path))
             canvas.times.append(time.time())
-        if self.headers.get("Authorization") != f"Bearer {canvas.token}":
+        url = urlsplit(self.path)
+        if url.path == "/feeds/calendars/user-e2e.ics":
+            return self._send(200, canvas.calendar_feed.encode(), "text/calendar; charset=utf-8")
+        if url.path in canvas.announcement_feeds:
+            return self._send(200, canvas.announcement_feeds[url.path].encode(),
+                              "application/atom+xml; charset=utf-8")
+        if not self._authorized(canvas):
             return self._json(401, {"errors": [{"message": "Invalid access token."}]},
                               {"WWW-Authenticate": 'Bearer realm="canvas-lms"'})
-        url = urlsplit(self.path)
         quota = {"X-Rate-Limit-Remaining": "599.12", "X-Request-Cost": "0.018"}
+
+        if url.path == "/api/v1/users/self":
+            return self._json(200, {"id": 42, "name": "Estudiante E2E"}, quota)
+        if url.path == "/api/v1/users/self/user_generated_tokens":
+            with canvas.lock:
+                tokens = [{"id": token_id, "token_hint": token[:5], "workflow_state": "active"}
+                          for token, token_id in canvas.token_ids.items()]
+            return self._json(200, tokens, quota)
 
         if url.path.startswith("/files/") and url.path.endswith("/download"):
             file_id = int(url.path.split("/")[2])

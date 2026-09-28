@@ -2,6 +2,9 @@
 
     espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes)
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
+    espol-bot mantenimiento          renew Canvas access and refresh token-free feeds (no model)
+    espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
+    espol-bot feeds                  securely save the iCal and announcement feed URLs
     espol-bot probar                 send a test message from Vinci to your Telegram
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
     espol-bot agenda --curso CÓDIGO  a subject bot's cron gate: prints {"wakeAgent": false} unless a
@@ -25,6 +28,7 @@ Hermes forwards the error to the captain's Telegram.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import logging
 import sys
@@ -84,11 +88,47 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
     return server.serve()
 
 
+def _reseed(cfg, *, from_stdin: bool = False) -> int:
+    from aula_core import Aula
+    from espol_bot.token_renewal import RenewalError, TokenRenewal
+    token = sys.stdin.readline() if from_stdin else getpass.getpass("Token nuevo de Canvas (no se mostrará): ")
+    aula = Aula(cfg.core, explicit=True)
+    try:
+        with file_lock(cfg.core.data_dir, "bot.lock"):
+            result = TokenRenewal(cfg.core, aula.conn, now_utc()).reseed(token)
+    except RenewalError as exc:
+        print(f"Vinci: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        token = ""
+        aula.close()
+    suffix = " y su sucesor automático ya quedó activo" if result.renewed else ""
+    print(f"Token verificado y guardado{suffix}. La cadena de renovación volvió a funcionar.")
+    return 0
+
+
+def _configure_feeds(cfg) -> int:
+    from aula_core import feeds
+    calendar = getpass.getpass("URL de Fuente del calendario (iCal; no se mostrará): ").strip()
+    raw = getpass.getpass("URLs RSS/Atom de Anuncios, separadas por espacios (no se mostrarán): ").strip()
+    try:
+        feeds.configure(calendar, raw.split(), cfg.core)
+    except feeds.FeedError as exc:
+        print(f"Vinci: {exc}", file=sys.stderr)
+        return 1
+    print(f"Feeds guardados de forma privada: calendario y {len(raw.split())} feed(s) de anuncios.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
     sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
     sub.add_parser("resumen", help="enviar el resumen de la semana")
+    sub.add_parser("mantenimiento", help="renovar el token y actualizar los feeds, sin usar el modelo")
+    p = sub.add_parser("resembrar", help="guardar un token nuevo desde una entrada oculta y reactivar la renovación")
+    p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
+    sub.add_parser("feeds", help="guardar de forma privada los feeds iCal y RSS/Atom")
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu Telegram")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
@@ -118,6 +158,10 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import hermes_setup
             return hermes_setup.provision(cfg, hermes_bin=args.hermes)
         _logging(cfg)
+        if args.cmd == "resembrar":
+            return _reseed(cfg, from_stdin=args.stdin)
+        if args.cmd == "feeds":
+            return _configure_feeds(cfg)
         if args.cmd == "agenda":
             return _agenda(cfg, args.curso)
         if args.cmd == "mcp":
@@ -157,7 +201,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         with file_lock(cfg.core.data_dir, "bot.lock"):
             bot = Bot(cfg, telegram)
-            result = bot.poll() if args.cmd == "sondeo" else bot.summary()
+            if args.cmd == "sondeo":
+                result = bot.poll()
+            elif args.cmd == "mantenimiento":
+                result = bot.maintenance()
+            else:
+                result = bot.summary()
         logging.info("%s: %d mensajes, %d eventos, %d recordatorios, error=%s",
                      args.cmd, len(result.sent), result.events, result.reminders, result.error)
         return 0

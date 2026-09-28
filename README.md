@@ -10,7 +10,7 @@ cada una de tus materias y te prepara para cada clase.
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Hermes Agent](https://img.shields.io/badge/corre%20en-Hermes%20Agent-7c3aed)
 ![Telegram](https://img.shields.io/badge/Telegram-bots-26A5E4?logo=telegram&logoColor=white)
-![Aula virtual: solo lectura](https://img.shields.io/badge/aula%20virtual-solo%20lectura-2e7d32)
+![Datos académicos: solo lectura](https://img.shields.io/badge/datos%20académicos-solo%20lectura-2e7d32)
 ![Licencia: pendiente](https://img.shields.io/badge/licencia-pendiente-lightgrey)
 
 [Qué hace](#qué-hace) · [Cómo funciona](#cómo-funciona) · [Instalación](#instalación) ·
@@ -70,7 +70,7 @@ flowchart TB
     you(["📱 Tú, en Telegram"])
 
     subgraph pc["Tu PC"]
-        cron["Cron sin modelo<br/>sondeo, resumen de las 7:00,<br/>agenda de cada materia"]
+        cron["Cron sin modelo<br/>sondeo, renovación, resumen,<br/>agenda de cada materia"]
         gateway["Gateway de Hermes Agent<br/>Vinci + un bot por materia<br/>cada uno en su perfil"]
         plugin["Plugin vinci-botones<br/>botones, tokens, /start<br/>y ver_pagina"]
         tools["Herramientas fijas por MCP<br/>aula, material, cuadernos, horario"]
@@ -90,7 +90,7 @@ flowchart TB
 
     you <-->|mensajes| gateway
     cron -->|avisos y recordatorios| you
-    cron -->|solo GET| canvas
+    cron -->|GET académico;<br/>POST/DELETE solo de sus tokens| canvas
     tools -->|solo GET| canvas
     gateway -->|tus preguntas y los briefs| llm
     tools -->|solo si hace falta| web
@@ -104,6 +104,10 @@ flowchart TB
 - **El sondeo** (`espol-bot sondeo`) es un cron de Hermes sin modelo: lee el aula, compara con lo que ya tenía,
   actualiza el catálogo del material, baja los sílabos nuevos y te manda los avisos por el chat de Vinci. La
   primera vez solo guarda cómo está el aula, así que no te llega todo lo viejo de golpe.
+- **El mantenimiento** (`espol-bot mantenimiento`) corre cada 10 minutos, sin modelo. Como el Canvas de ESPOL
+  invalida en silencio los tokens personales tras una hora, crea y verifica un sucesor a los 40 minutos, lo guarda
+  de forma atómica y recién entonces borra el anterior. Si ESPOL corrige esa configuración, lo detecta y deja de
+  renovar. Los feeds iCal y Atom mantienen fechas, eventos y anuncios aunque la cadena se corte.
 - **La agenda** de cada bot de materia corre cada minuto y casi siempre contesta «nada que hacer», sin llamar al
   modelo. Solo lo despierta cuando una clase empieza dentro de 30 minutos (con todos los datos del brief ya
   armados) o cuando Vinci le pasó algo.
@@ -182,8 +186,10 @@ en `TELEGRAM_USER_ID` y es la única persona a la que le responderán tus bots.
    pon el **fin del término**: si algún día se filtra, deja de servir solo.
 4. Pulsa **Generar token** y cópialo **en ese momento** (Canvas no lo vuelve a mostrar). Va en `CANVAS_TOKEN`.
 
-Ese token puede hacer en el aula lo mismo que tú, así que trátalo como una contraseña. Vinci solo lo usa para
-leer.
+Ese token puede hacer en el aula lo mismo que tú, así que trátalo como una contraseña. Vinci lo usa para leer tus
+datos académicos y para crear/borrar únicamente sus propios tokens de reemplazo. Nunca entrega, publica ni cambia
+cursos. ESPOL actualmente invalida cada token personal al cabo de una hora aunque muestre otra fecha; Vinci lo
+renueva antes de que ocurra.
 
 ### 4. Completa `secrets.env`
 
@@ -201,6 +207,11 @@ TELEGRAM_USER_ID=…        # paso 2
 
 `secrets.env` está en `.gitignore`: nunca se sube a GitHub. Los tokens de los bots de materia
 (`TELEGRAM_BOT_TOKEN_<CÓDIGO>`) no los escribes tú: Vinci los agrega cuando crea cada bot.
+
+**Respaldo recomendado sin token (una sola vez):** copia en Canvas la **Fuente del calendario** y el enlace
+**RSS** de Anuncios de cada materia, y ejecuta `.venv/bin/espol-bot feeds`. Las entradas se piden de forma oculta
+y quedan en `secrets.env`; no las pegues en Telegram. Así las fechas, eventos y anuncios siguen llegando incluso
+si la PC estuvo apagada más de una hora y se rompió la cadena de renovación.
 
 ### 5. Corre el setup
 
@@ -465,9 +476,10 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 
 ## Seguridad y privacidad
 
-- **Solo lectura del aula virtual.** El cliente de Canvas ([`src/aula_core/canvas.py`](src/aula_core/canvas.py))
-  solo sabe hacer peticiones `GET`: no hay forma de entregar, publicar, comentar ni cambiar nada. Tampoco manda tu
-  token a otro sitio que no sea tu aula.
+- **Datos académicos de solo lectura.** El cliente académico de Canvas
+  ([`src/aula_core/canvas.py`](src/aula_core/canvas.py)) solo sabe hacer `GET`: no hay forma de entregar, publicar,
+  comentar ni cambiar cursos. Un componente separado hace `POST` y `DELETE` únicamente sobre los tokens propios
+  de Vinci, verifica el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
 - **Solo tú.** Cada bot acepta mensajes solo de tu ID de Telegram. A cualquier otra persona no le contesta nada (ni
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
 - **Herramientas cerradas.** Ningún bot tiene terminal, acceso a archivos, ejecución de código, navegador ni
@@ -483,7 +495,7 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 
 | Dónde | Qué guarda |
 |---|---|
-| `secrets.env` (en esta carpeta, permisos 600, fuera de git) | `CANVAS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_ID` y un `TELEGRAM_BOT_TOKEN_<CÓDIGO>` por materia |
+| `secrets.env` (en esta carpeta, permisos 600, fuera de git) | Tokens de Canvas y Telegram, y las URLs secretas de los feeds iCal/Atom |
 | `~/.hermes/profiles/<perfil>/.env` | El token del bot de ese perfil y tu ID como único usuario permitido |
 | Hermes | Tu acceso al modelo, según cómo lo configuraste con `hermes model` |
 
@@ -529,8 +541,8 @@ repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.
 | `No encuentro Hermes Agent en ~/.local/bin/hermes` | Instala Hermes, o indica dónde está: `HERMES_BIN=/ruta/a/hermes ./setup.sh`. |
 | `Faltan valores en secrets.env: …` | Completa esas claves (pasos 1 a 4) y vuelve a correr `./setup.sh`. |
 | `⚠ Telegram no aceptó el mensaje` | Mándale `/start` a tu bot de Vinci y revisa `TELEGRAM_BOT_TOKEN`. |
-| `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El aula rechazó el token: crea otro (paso 3) y ponlo en `secrets.env`. |
-| Vinci te dice «Tu token de Canvas ya no funciona» | Venció o lo revocaron. Crea otro y cámbialo en `secrets.env`; no hace falta reiniciar nada. Hasta entonces Vinci no vuelve a consultar el aula. |
+| `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El token inicial no funcionó durante el setup. Crea otro (paso 3) y ejecuta `.venv/bin/espol-bot resembrar`. |
+| Vinci dice que la cadena del token se cortó | Pulsa «🔑 Crear token nuevo», créalo y ejecuta `.venv/bin/espol-bot resembrar`: la entrada es oculta y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
 | Vinci te dice «Llevo un rato sin poder leer … de …» | Una parte de una materia falló tres veces seguidas. Lo sigue intentando y el resto funciona normal; te avisa de nuevo si vuelve a fallar después de recuperarse. |
 | `⚠ Agrega ~/.local/bin a tu PATH` | Agrégalo en tu `~/.bashrc` (o el de tu shell) para usar `aula`. |
 | `vinci: command not found` | `vinci` es el alias que Hermes crea para el perfil; sin él, usa `hermes -p vinci …`. |
@@ -545,7 +557,7 @@ Para ver qué pasa:
 
 ```bash
 hermes gateway status                                  # ¿está corriendo?
-vinci cron list                                        # los cron de Vinci: sondeo y resumen
+vinci cron list                                        # sondeo, mantenimiento y resumen de Vinci
 tail -f ~/.hermes/logs/gateway.log                     # registro del gateway de Hermes
 tail -f ~/.local/share/espol-academic-bot/bot.log      # registro del sondeo, la agenda y los botones
 ```

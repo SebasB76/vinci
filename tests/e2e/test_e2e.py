@@ -31,6 +31,13 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline; reactivated from Vinci's card, the same gateway serves it again.
   8. setup.sh a third time with the team in place: nothing changes.
+  9. the party: Vinci got its wizard as its Telegram photo at setup (once) and its persona;
+     Cálculo and Física, with no character, are named after their subject and keep the usual
+     tone and their photo. Four of the captain's real subjects already have bots named «Vinci ·
+     <materia>» from before: the update (setup.sh) renames them in place (setMyName) and gives
+     them their photo and persona, with no new or duplicate bot. The fifth, Estadística, is
+     created from Vinci's «Crear» button under its character's name. setup.sh once more asks
+     Telegram for nothing.
 
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
 temporary paths are normalized, so reruns produce comparable files.
@@ -74,6 +81,15 @@ BOTFATHER_REPLY = ("Done! Congratulations on your new bot. You will find it at t
                    "add a description.\n\nUse this token to access the HTTP API:\n{token}\nKeep your token secure "
                    "and store it safely, it can be used by anyone to control your bot.")
 MATG, FIS = SUBJECT_TOKENS["MATG1049"], SUBJECT_TOKENS["FISG1002"]
+AVATARS = REPO / "hermes" / "avatars"
+PARTY = {  # the captain's subjects this semester: (name, the character its bot must get, its avatar)
+    "SOFG1007": ("Ingeniería de Software I", "El Programador", "robot.jpg"),
+    "CCPG1041": ("Dirección de Proyectos Informáticos", "El Estratega", "builder.jpg"),
+    "CCPG1055": ("Sistemas Distribuidos y Computación en la Nube", "El Conector", "server.jpg"),
+    "ESTG1034": ("Estadística", "El Analítico", "book.jpg"),
+    "ADSG1026": ("Ciencias de la Sostenibilidad", "El Equilibrio", "sprout.jpg"),
+}
+PARTY_TOKENS = {code: f"70010{i}:PRUEBA-token-de-{code.lower()}-xxxxxxxxxxxxxxxx" for i, code in enumerate(PARTY, 1)}
 USERNAMES = {BOT_TOKEN: "vinci_bot", MATG: "vinci_calculo_bot", FIS: "vinci_fisica_bot"}
 CAPTAIN_ID = "987654321"
 CAPTAIN = int(CAPTAIN_ID)
@@ -132,14 +148,25 @@ def flatten(content) -> str:
 
 
 def bot_of(req: dict) -> str | None:
-    """Which bot a request comes from: its SOUL.md («Eres **Vinci · Física I**…»)."""
+    """Which bot a request comes from: its SOUL.md («Eres **Física I**, el bot de la materia…»)."""
     messages = req.get("messages") or []
     for role in ("system", None):
         text = "\n".join(flatten(m.get("content")) for m in messages if role is None or m.get("role") == role)
-        match = re.search(r"Eres \*\*(Vinci(?: · [^*]+)?)\*\*", text)
+        match = re.search(r"Eres \*\*([^*]+)\*\*, el bot (?:principal|de la materia)", text)
         if match:
             return match[1]
     return None
+
+
+def subject_of(req: dict) -> str | None:
+    """The subject of a subject bot's request («…el bot de la materia **Física I**…»)."""
+    text = "\n".join(flatten(m.get("content")) for m in req.get("messages") or [])
+    match = re.search(r"el bot de la materia \*\*([^*]+)\*\*", text)
+    return match[1] if match else None
+
+
+def system_of(req: dict) -> str:
+    return "\n".join(flatten(m.get("content")) for m in req.get("messages") or [] if m.get("role") == "system")
 
 
 def tools_of(req: dict) -> list[str]:
@@ -198,7 +225,7 @@ class Script:
         results = [flatten(m.get("content")) for m in turn if m.get("role") == "tool"]
         if bot == "Vinci":
             return self.vinci(text, results)
-        return self.subject(bot.split(" · ", 1)[1], text, called, results)
+        return self.subject(subject_of(req) or bot, text, called, results)
 
     def vinci(self, text: str, results: list[str]) -> dict:
         if results:
@@ -502,11 +529,20 @@ def test_e2e(tmp_path):
             assert vcfg["platforms"]["telegram"]["extra"]["base_url"] == f"{telegram.base}/bot"
             assert {"*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"} <= set(vcfg["approvals"]["deny"])
             assert (profile / "skills" / "vinci" / "vinci" / "SKILL.md").is_file()
+            assert telegram.profile_photos.get("vinci_bot") == [(AVATARS / "wizard.jpg").read_bytes()], \
+                "setup.sh le pone a Vinci su mago como foto de perfil, una sola vez"
+            assert "Foto de perfil de Vinci puesta" in first.stdout and "Foto de perfil de Vinci sin cambios" in second.stdout
+            soul = (profile / "SOUL.md").read_text(encoding="utf-8")
+            assert "**Guía Académico**" in soul and "Estadística (ESTG1034): «El Analítico · Estadística»" in soul, \
+                "Vinci tiene su personaje y conoce a su party"
             assert (home / ".local" / "bin" / "aula").is_file()
             assert (home / ".claude" / "skills" / "aula" / "SKILL.md").is_file()
             assert not (home / ".hermes" / "config.yaml").exists(), "setup no debe crear config del perfil por defecto"
             report.append(f"setup.sh ×2 con Hermes real en un HOME aislado: el perfil «espol» del bot anterior pasó "
                           f"a «vinci» con su memoria; {len(jobs)} cron no-agent; la segunda corrida no cambió nada")
+            report.append("Vinci quedó con su personaje: setup.sh le puso su mago (Guía Académico) como foto de perfil "
+                          "con setMyProfilePhoto una sola vez (la segunda corrida no la volvió a subir) y su SOUL.md "
+                          "tiene su personalidad y la de su party")
             take("setup.sh (mensaje de prueba de Vinci)")
         else:
             setup_log = "Hermes no está instalado aquí: se omitió la prueba de setup.sh.\n"
@@ -628,6 +664,9 @@ def test_e2e(tmp_path):
         equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
         horario_md = ["# Horario desde una captura (se guarda solo con el botón del capitán)\n"]
         briefs_md = ["# Brief antes de clase\n"]
+        party_md = ["# Tu party: el personaje de cada bot\n",
+                    "Cada foto es la que el bot subió a Telegram (setMyProfilePhoto), tal como la recibió el Telegram "
+                    "falso; la personalidad es la de su SOUL.md.\n"]
         tools_seen: dict[str, set[str]] = {}
         vinci_section = bool(hermes and ptb)
         gateway = Gateway(hermes, {**base_env, "AULA_NOW": T_VINCI}, tmp_path / "gateway.log") if vinci_section else None
@@ -650,7 +689,8 @@ def test_e2e(tmp_path):
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
         assert all(str(m["chat_id"]) == CAPTAIN_ID for _, m in sent_log), "solo se escribe al capitán"
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
-        secrets_all = [CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN]
+        secrets_all = [CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+                       *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
         for secret in secrets_all:
@@ -680,6 +720,7 @@ def test_e2e(tmp_path):
         (artifact / "equipo.md").write_text(normalize("\n".join(equipo_md)), encoding="utf-8")
         (artifact / "horario.md").write_text(normalize("\n".join(horario_md)), encoding="utf-8")
         (artifact / "briefs.md").write_text(normalize("\n".join(briefs_md)), encoding="utf-8")
+        (artifact / "party.md").write_text(normalize("\n".join(party_md)), encoding="utf-8")
         cuadernos_md = ["# Cuadernos de los bots de materia (al final de la prueba)\n"]
         for code in SUBJECT_TOKENS:
             cuadernos_md.append(f"## {code}\n")
@@ -693,7 +734,8 @@ def test_e2e(tmp_path):
             + "\n", encoding="utf-8")
     for path in artifact.iterdir():  # no artifact may carry a token
         text = path.read_text(encoding="utf-8", errors="replace")
-        for secret in (CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN):
+        for secret in (CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+                       *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
     lines = [
@@ -711,15 +753,15 @@ def test_e2e(tmp_path):
         "- Ningún token (Canvas ni bots) apareció en mensajes de Telegram, en lo que vio el modelo ni en estos archivos.",
         "\n## Mensajes por etapa\n",
         *[f"- {label}: {n}" for label, n in counts.items()],
-        "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, "
-        "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
-        "`setup.log`.\n",
+        "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `party.md` (con "
+        "la foto de cada bot, `foto-<bot>.jpg`), `hermes_herramientas.json`, `resumen_diario.txt`, "
+        "`recuperacion.json`, `cli.md`, `canvas_requests.log`, `setup.log`.\n",
     ]
     (artifact / "REPORTE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, report, gateway,
-               equipo_md, horario_md, briefs_md, tools_seen, pwned, secrets, base_env, **_) -> None:
+def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, report, gateway, artifact,
+               equipo_md, horario_md, briefs_md, party_md, tools_seen, pwned, secrets, base_env, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -826,7 +868,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     telegram.send_text(BOT_TOKEN, CAPTAIN, "arma mi equipo de bots por materia")
     card = wait_msg("vinci_bot", mark, "Tu equipo de bots")
     wait_msg("vinci_bot", mark, "Un bot se crea solo cuando pulse ese botón")
-    assert [b["text"] for b in buttons(card)] == ["➕ Crear Vinci · Cálculo de una Variable", "➕ Crear Vinci · Física I"]
+    assert [b["text"] for b in buttons(card)] == ["➕ Crear Cálculo de una Variable", "➕ Crear Física I"]
     assert len(re.findall(r"^• ", plain(card["text"]), re.M)) == 2 and "reconocible" not in card["text"], \
         "tres cursos del aula, dos materias: el práctico de Cálculo no es otro bot"
     assert {c: (m["estado"], m["cursos"]) for c, m in team().items()} == {
@@ -838,18 +880,18 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
 
     # Cálculo: Telegram's managed bots (the token never touches the chat)
     calls = len(telegram.calls)
-    keyboard_msg = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Vinci · Cálculo de una Variable"]),
-                        "vinci_bot", "Creemos Vinci · Cálculo de una Variable")
+    keyboard_msg = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Cálculo de una Variable"]),
+                        "vinci_bot", "Creemos Cálculo de una Variable")
     toast(calls, "Creemos")
     request = keyboard_msg["reply_markup"]["keyboard"][0][0]["request_managed_bot"]
-    assert request["suggested_name"] == "Vinci · Cálculo de una Variable"
+    assert request["suggested_name"] == "Cálculo de una Variable"
     assert request["suggested_username"] == "vinci_calculo_variable_bot"
     assert team()["MATG1049"]["estado"] == "esperando_bot"
-    show("Pulsa «➕ Crear Vinci · Cálculo de una Variable» (Vinci puede gestionar bots)",
+    show("Pulsa «➕ Crear Cálculo de una Variable» (Vinci puede gestionar bots)",
          plain(keyboard_msg["text"]) + f"\n[botón de Telegram: {keyboard_msg['reply_markup']['keyboard'][0][0]['text']} → "
          f"request_managed_bot {json.dumps(request, ensure_ascii=False)}]")
     created = turn(lambda: telegram.create_managed_bot(BOT_TOKEN, CAPTAIN, MATG, "vinci_calculo_bot",
-                                                       "Vinci · Cálculo de una Variable"),
+                                                       "Cálculo de una Variable"),
                    "vinci_bot", "quedó creado y activo", timeout=180)
     patch_profile("vinci-matg1049")
     assert created["reply_markup"] == {"remove_keyboard": True}
@@ -857,9 +899,9 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     show("Telegram le comparte a Vinci el bot creado (managed_bot_created)", plain(created["text"]))
 
     # Física: BotFather's reply forwarded (the plugin deletes it before Hermes sees it)
-    telegram.add_bot(FIS, USERNAMES[FIS])  # the captain created it with /newbot in @BotFather
-    turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Vinci · Física I"]), "vinci_bot",
-         "Creemos Vinci · Física I")
+    telegram.add_bot(FIS, USERNAMES[FIS], "Física I")  # the captain created it with /newbot in @BotFather
+    turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, card, create["➕ Crear Física I"]), "vinci_bot",
+         "Creemos Física I")
     attempts = []
     for label, token, expected in (("el token de Cálculo otra vez", MATG, "ya estaba configurado"),
                                    ("un token que Telegram no conoce", UNKNOWN_TOKEN, "Telegram no aceptó ese token"),
@@ -904,6 +946,14 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
         allowed = {f".hermes/profiles/vinci-{c.lower()}/.env" for c, t in SUBJECT_TOKENS.items() if t == token}
         assert set(holders) <= allowed, f"el token apareció en {holders}"
     assert "Congratulations on your new bot" not in json.dumps(llm.requests, ensure_ascii=False)
+    for code in SUBJECT_TOKENS:  # no character in the party for these two
+        soul = (profiles / f"vinci-{code.lower()}" / "SOUL.md").read_text(encoding="utf-8")
+        assert "compañero cercano y claro" in soul and "Tu personaje es" not in soul
+    assert not {"vinci_calculo_bot", "vinci_fisica_bot"} & set(telegram.profile_photos), \
+        "un bot sin personaje conserva su foto de Telegram"
+    assert (telegram.name_of(MATG), telegram.name_of(FIS)) == ("Cálculo de una Variable", "Física I")
+    assert not [c for c in telegram.calls if c["method"] == "setMyName"], \
+        "creados con el nombre sugerido, no hay que renombrarlos"
     report.append("Vinci armó el equipo desde el chat: su tarjeta mostró un botón «➕ Crear» por materia (proponer "
                   "no creó nada; los cursos Paralelo5_MATG1049 y Paralelo105_MATG1049, teórico y práctico de "
                   "Cálculo, quedaron en un solo bot); Cálculo se creó como bot gestionado de Telegram (Vinci obtuvo "
@@ -980,7 +1030,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     pizarra = (FILES / "pizarra.jpg").read_bytes()
     routed = turn(lambda: telegram.send_photo(BOT_TOKEN, CAPTAIN, pizarra,
                                               caption="esto es de cálculo: lo que el profe copió en la pizarra hoy"),
-                  "vinci_bot", "se lo pasé a Vinci · Cálculo de una Variable")
+                  "vinci_bot", "se lo pasé a Cálculo de una Variable")
     assert "@vinci_calculo_bot" in readable(routed) and "1 adjunto" in readable(routed)
     queued = [h for h in handoffs() if h["materia"] == "MATG1049" and h["origen"] == "vinci"]
     assert len(queued) == 1 and len(json.loads(queued[0]["adjuntos"])) == 1
@@ -1000,14 +1050,14 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     fis_alert = next(m for m in reminders if "Examen parcial" in m["text"])
     assert "CÁLCULO DE UNA VARIABLE - II PAO 2026 Práctico" in practico_alert["text"]
     for alert in (calc_alert, practico_alert):  # theory and práctico: the same one bot
-        assert [b["text"] for b in buttons(alert)] == ["🎓 Consultar con Vinci · Cálculo de una Variable"]
+        assert [b["text"] for b in buttons(alert)] == ["🎓 Consultar con Cálculo de una Variable"]
         assert re.fullmatch(r"v1:a:\d+:MATG1049", buttons(alert)[0]["callback_data"])
         passed = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, alert, buttons(alert)[0]["callback_data"]),
                       "vinci_bot", "Le pasé el aviso")
-        assert "Le pasé el aviso a Vinci · Cálculo de una Variable" in plain(passed["text"])
+        assert "Le pasé el aviso a Cálculo de una Variable" in plain(passed["text"])
     calc_avisos = [h for h in handoffs() if h["materia"] == "MATG1049" and h["origen"] == "aviso"]
     assert len(calc_avisos) == 2 and "Taller 3" in calc_avisos[0]["texto"] and "Práctica 4" in calc_avisos[1]["texto"]
-    assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Vinci · Física I"]
+    assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Física I"]
     fis_data = buttons(fis_alert)[0]["callback_data"]
     assert re.fullmatch(r"v1:a:\d+:FISG1002", fis_data)
     turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, fis_alert, fis_data), "vinci_bot", "Le pasé el aviso")
@@ -1015,7 +1065,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     assert len([h for h in handoffs() if h["materia"] == "FISG1002"]) == 1, "un aviso se pasa una sola vez"
     reply_to = telegram.as_incoming(BOT_TOKEN, calc_alert, plain(calc_alert["text"]))
     turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "pásaselo al bot de cálculo, ¿por dónde empiezo?",
-                                    reply_to=reply_to), "vinci_bot", "se lo pasé a Vinci · Cálculo de una Variable")
+                                    reply_to=reply_to), "vinci_bot", "se lo pasé a Cálculo de una Variable")
     calc_handoffs = [h for h in handoffs() if h["materia"] == "MATG1049"]
     assert len(calc_handoffs) == 4 and "Taller 3" in calc_handoffs[-1]["texto"]
     report.append("Avisos del aula con botón «🎓 Consultar con …» por materia: el botón pasó el aviso de Física a su "
@@ -1200,3 +1250,122 @@ def vinci_flow(*, hermes, home, profiles, data_dir, telegram, llm, run, take, re
     assert third.stdout.count("sin cambios") >= 6
     report.append("setup.sh por tercera vez, con Vinci y los dos bots de materia: nada cambió")
     take("setup.sh (3ª vez, mensaje de prueba)")
+
+    # 9. the party: what reached the model, then the captain's own subjects -------------------------
+    def soul_md(name: str) -> str:
+        return (profiles / name / "SOUL.md").read_text(encoding="utf-8")
+
+    def profile_calls(mark: int) -> list[tuple[str, str]]:
+        return [(c["bot"], c["method"]) for c in telegram.calls[mark:]
+                if c["method"] in ("getMyName", "setMyName", "setMyProfilePhoto")]
+
+    vinci_systems = [system_of(r) for r in llm.requests if bot_of(r) == "Vinci"]
+    calc_systems = [system_of(r) for r in llm.requests if bot_of(r) == "Cálculo de una Variable"]
+    assert vinci_systems and all("**Guía Académico**" in t and "Esa personalidad es solo tu tono" in t
+                                 for t in vinci_systems), "cada turno de Vinci trae su personaje"
+    assert calc_systems and all("compañero cercano y claro" in t for t in calc_systems)
+    from aula_core.config import load_config
+    from espol_bot import equipo, materias
+    core = load_config(Path(base_env["AULA_CONFIG"]))
+
+    # 9a. Four of the captain's bots already exist from before, named «Vinci · <materia>»: the update
+    # (setup.sh) renames them in place with their own token and gives them their photo and persona.
+    before = {code: PARTY[code] for code in ("SOFG1007", "CCPG1041", "CCPG1055", "ADSG1026")}
+    existing = [materias.Subject(code=code, name=name, state="activa",
+                                 username=equipo.suggested_username(materias.Subject(code=code, name=name)))
+                for code, (name, _, _) in before.items()]
+    new_subject = materias.Subject(code="ESTG1034", name=PARTY["ESTG1034"][0])
+    materias.save(core, materias.load(core) + existing + [new_subject])
+    with secrets.open("a", encoding="utf-8") as f:  # as Vinci stored them when it created those bots
+        f.writelines(f"TELEGRAM_BOT_TOKEN_{subject.code}={PARTY_TOKENS[subject.code]}\n" for subject in existing)
+    for subject in existing:
+        telegram.add_bot(PARTY_TOKENS[subject.code], subject.username, f"Vinci · {subject.name}")
+    mark_calls = len(telegram.calls)
+    update = run(["bash", str(REPO / "setup.sh"), "--skip-deps"], T_VINCI)
+    renames = [(c["bot"], c["params"]["name"]) for c in telegram.calls[mark_calls:] if c["method"] == "setMyName"]
+    assert sorted(renames) == sorted((subject.username, subject.display) for subject in existing), renames
+    assert not [c for c in telegram.calls[mark_calls:] if c["method"] == "getManagedBotToken"]
+    assert {c: (m["estado"], m.get("usuario")) for c, m in team().items() if c in before} == \
+        {subject.code: ("activa", subject.username) for subject in existing}, "los mismos bots, con su mismo usuario"
+    assert len(team()) == len(SUBJECT_TOKENS) + len(PARTY), "ningún bot duplicado"
+    party_bots = []
+    for subject in existing:
+        name, title, avatar = PARTY[subject.code]
+        assert telegram.name_of(PARTY_TOKENS[subject.code]) == subject.display, subject.display
+        assert subject.display.startswith(f"{title} · ")
+        assert f"• {subject.display}: su nombre en Telegram quedó «{subject.display}»" in update.stdout
+        assert telegram.profile_photos.get(subject.username) == [(AVATARS / avatar).read_bytes()]
+        party_bots.append((subject.code, f"Vinci · {name}", subject.username))
+    report.append("Actualizar con bots de materia ya creados con el nombre de antes («Vinci · <materia>»): setup.sh "
+                  "los renombró ahí mismo con su propio token (setMyName: «" + existing[0].display + "», «"
+                  + existing[1].display + "»…) y les puso su foto; mismos bots y usuarios, ningún bot nuevo ni "
+                  "duplicado")
+    take("setup.sh (4ª vez: la actualización renombra los bots de antes)")
+
+    # 9b. Estadística is created now, from Vinci's «Crear» button: the name Telegram suggests is its character's.
+    stats = materias.by_code(materias.load(core), "ESTG1034")
+    assert stats.display == "El Analítico · Estadística"
+    mark_msgs = len(telegram.messages)
+    pressed = json.loads(run([bot, "boton", "v1:c:0:ESTG1034"], T_VINCI).stdout)
+    assert pressed["aviso"] == "Creemos El Analítico · Estadística", pressed
+    offer = telegram.messages[mark_msgs]
+    request = offer["reply_markup"]["keyboard"][0][0]["request_managed_bot"]
+    assert "Creemos El Analítico · Estadística" in plain(offer["text"])
+    assert request["suggested_name"] == "El Analítico · Estadística"
+    assert request["suggested_username"] == equipo.suggested_username(stats)
+    token = PARTY_TOKENS["ESTG1034"]
+    mark_calls = len(telegram.calls)
+    telegram.create_managed_bot(BOT_TOKEN, CAPTAIN, token, request["suggested_username"], request["suggested_name"])
+    created = json.loads(run([bot, "bot-creado", str(telegram.bot_id(token))], T_VINCI).stdout)
+    assert created["materia"] == "ESTG1034" and "El Analítico · Estadística quedó creado y activo" in \
+        plain(created["respuesta"]), created
+    assert ("vinci_estadistica_bot", "setMyName") not in profile_calls(mark_calls), "ya tiene el nombre sugerido"
+    assert telegram.profile_photos.get("vinci_estadistica_bot") == [(AVATARS / "book.jpg").read_bytes()]
+    party_bots.append(("ESTG1034", None, "vinci_estadistica_bot"))
+    report.append("Crear Estadística desde el botón de Vinci: Telegram sugiere el nombre de su personaje («El "
+                  "Analítico · Estadística», con el usuario de siempre) y el bot creado queda con su foto y su "
+                  "personalidad, sin renombrarlo")
+    take("Crear El Analítico · Estadística")
+
+    for code, _, username in party_bots:
+        name, title, _ = PARTY[code]
+        soul = soul_md(f"vinci-{code.lower()}")
+        assert f"Tu personaje es **{title}**" in soul and "Esa personalidad es solo tu tono" in soul
+        for rule in ("Reglas firmes:", f"Solo {name}.", "Solo lectura del aula virtual", "No tienes web, terminal"):
+            assert rule in soul, f"el personaje de {code} no cambia sus reglas: falta «{rule}»"
+    for token in PARTY_TOKENS.values():  # a token lives only in secrets.env and its own profile's .env
+        holders = {str(f.relative_to(home)) for f in home.rglob("*") if f.is_file() and token.encode() in f.read_bytes()}
+        assert len(holders) == 1 and holders <= {f".hermes/profiles/vinci-{c.lower()}/.env" for c in PARTY}, holders
+
+    mark_calls = len(telegram.calls)
+    again = run(["bash", str(REPO / "setup.sh"), "--skip-deps"], T_VINCI)
+    assert profile_calls(mark_calls) == [], "con todo puesto, setup.sh no le pide nada más a Telegram"
+    assert "quedó «" not in again.stdout and "puesta" not in again.stdout, again.stdout
+    report.append("Tu party completa: cada bot de las 5 materias del capitán se llama como su personaje, tiene su "
+                  "foto (El Programador, El Estratega, El Conector, El Analítico, El Equilibrio) y su personalidad "
+                  "en su SOUL.md con sus reglas intactas; Cálculo y Física, sin personaje, se llaman como su materia "
+                  "y conservan el tono de siempre y su foto; lo que vio el modelo en cada turno trae el personaje; "
+                  "setup.sh otra vez no le pidió nada más a Telegram")
+    take("setup.sh (5ª vez, con la party completa)")
+
+    rows = [("Vinci", None, BOT_TOKEN, "Guía Académico", "wizard.jpg", soul_md("vinci")),
+            ("Cálculo de una Variable", None, MATG, None, None, soul_md("vinci-matg1049")),
+            ("Física I", None, FIS, None, None, soul_md("vinci-fisg1002"))]
+    rows += [(telegram.name_of(PARTY_TOKENS[code]), old, PARTY_TOKENS[code], PARTY[code][1], PARTY[code][2],
+              soul_md(f"vinci-{code.lower()}")) for code, old, _ in party_bots]
+    for name, old, token, title, avatar, text in rows:
+        username = USERNAMES.get(token) or telegram.bots[token]
+        photos = telegram.profile_photos.get(username, [])
+        persona = next(p for p in text.split("\n\n") if "Esa personalidad es solo tu tono" in p)
+        party_md.append(f"## {name} (@{username})\n")
+        party_md.append(f"{'«' + title + '»' if title else 'Sin personaje propio: se llama como su materia.'}"
+                        + (f" Antes se llamaba «{old}»; setup.sh lo renombró en Telegram." if old else "") + "\n")
+        if avatar:
+            assert photos == [(AVATARS / avatar).read_bytes()]
+            (artifact / f"foto-{username}.jpg").write_bytes(photos[0])
+            party_md.append(f"![{title}](foto-{username}.jpg)\n\nFoto subida una vez, idéntica a "
+                            f"`hermes/avatars/{avatar}`.\n")
+        else:
+            assert not photos
+            party_md.append("Ninguna foto subida: conserva la que tenga en Telegram.\n")
+        party_md.append("> " + persona.replace("\n", "\n> ") + "\n")

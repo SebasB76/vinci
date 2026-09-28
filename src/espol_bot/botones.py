@@ -3,11 +3,11 @@ button press in Vinci's gateway, checks it comes from the captain, and runs
 `espol-bot boton <callback_data>`; this module does the work and answers what the
 plugin should show:
 
-  v1:a:<aviso>:<CÓDIGO>   «Consultar con Vinci · <materia>» under an alert: queues the
+  v1:a:<aviso>:<CÓDIGO>   «Consultar con <bot>» under an alert: queues the
                           alert as a handoff for that subject bot (once per alert and subject)
   v1:h:<propuesta>:ok     «Guardar horario»: validates the proposal again and saves horario.toml
   v1:h:<propuesta>:no     «Corregir»: discards the proposal
-  v1:c:0:<CÓDIGO>         «➕ Crear Vinci · <materia>»: the subject waits for its bot and Vinci
+  v1:c:0:<CÓDIGO>         «➕ Crear <bot>»: the subject waits for its bot and Vinci
                           sends the button that creates it (or the @BotFather steps)
   v1:x:0:<CÓDIGO>         «🗄️ Archivar»: parks the subject bot and pauses its agenda
   v1:r:0:<CÓDIGO>         «♻️ Reactivar»: undoes it

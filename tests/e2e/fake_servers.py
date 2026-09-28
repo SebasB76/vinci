@@ -13,7 +13,9 @@ queued updates (text, photo, voice, document, button presses) to getUpdates long
 serves the files behind getFile, and plays Telegram's part in managed bots (Bot API 9.6): a
 bot marked as a manager reports can_manage_bots, the captain can "create" a bot from its
 request_managed_bot button, and getManagedBotToken hands the manager that bot's token.
-Every chat message a bot sends is kept in order.
+Each bot has a name (getMe's first_name, getMyName; setMyName renames it), and
+setMyProfilePhoto (Bot API 9.4) takes only a fresh static JPG upload, as Telegram does, and keeps
+every photo each bot set. Every chat message a bot sends is kept in order.
 
 ScriptedLLM is an OpenAI-compatible chat-completions endpoint whose answers come from a
 Python function (the test's script): it sees the whole request, so it can pick a tool
@@ -153,7 +155,8 @@ class _CanvasHandler(_Quiet):
 
 
 class FakeTelegram(_Server):
-    """bots: {token: username}. Chat ids are the captain's user id (private chats)."""
+    """bots: {token: username}; a bot's name starts as its username. Chat ids are the captain's
+    user id (private chats)."""
 
     def __init__(self, bots: dict[str, str]):
         super().__init__(_TelegramHandler)
@@ -165,15 +168,23 @@ class FakeTelegram(_Server):
         self.pushed: dict[int, dict] = {}       # every update handed out, by update_id
         self.managers: set[str] = set()         # tokens of bots that may manage other bots
         self.managed: dict[int, tuple[str, str]] = {}  # managed bot id -> (manager token, bot token)
+        self.profile_photos: dict[str, list[bytes]] = {}  # username -> every photo it set, in order
+        self.names: dict[str, str] = {}  # token -> the bot's name, when it is not its username
         self.cond = threading.Condition()
         self.lock = self.cond
         # Hermes remembers the update ids it already handled, even across restarts: start from the clock.
         self._next_update = int(time.time()) * 10
         self._next_message = 1
 
-    def add_bot(self, token: str, username: str) -> None:
+    def add_bot(self, token: str, username: str, name: str | None = None) -> None:
         with self.cond:
             self.bots[token] = username
+            if name:
+                self.names[token] = name
+
+    def name_of(self, token: str) -> str:
+        with self.cond:
+            return self.names.get(token, self.bots[token])
 
     def bot_id(self, token: str) -> int:
         return int(token.split(":", 1)[0])
@@ -228,7 +239,7 @@ class FakeTelegram(_Server):
 
     def create_managed_bot(self, manager: str, user_id: int, token: str, username: str, name: str) -> int:
         """The captain pressed the manager's request_managed_bot button and confirmed the new bot."""
-        self.add_bot(token, username)
+        self.add_bot(token, username, name)
         bot = {"id": self.bot_id(token), "is_bot": True, "first_name": name, "username": username}
         with self.cond:
             self.managed[bot["id"]] = (manager, token)
@@ -265,6 +276,7 @@ class FakeTelegram(_Server):
 
 class _TelegramHandler(_Quiet):
     def _params(self) -> dict:
+        self.uploads: dict[str, bytes] = {}
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b""
         ctype = self.headers.get("Content-Type", "")
@@ -278,6 +290,8 @@ class _TelegramHandler(_Quiet):
                 name = part.get_param("name", header="content-disposition")
                 payload = part.get_payload(decode=True) or b""
                 filename = part.get_filename()
+                if filename:
+                    self.uploads[name] = payload
                 out[name] = {"filename": filename, "size": len(payload)} if filename else payload.decode()
             return out
         return dict(parse_qsl(raw.decode(), keep_blank_values=True)) if raw else dict(parse_qsl(urlsplit(self.path).query))
@@ -320,7 +334,7 @@ class _TelegramHandler(_Quiet):
         params = self._decode(params)
         with stub.cond:
             stub.calls.append({"bot": username, "method": method, "params": params})
-        me = {"id": stub.bot_id(token), "is_bot": True, "first_name": username, "username": username,
+        me = {"id": stub.bot_id(token), "is_bot": True, "first_name": stub.name_of(token), "username": username,
               "can_join_groups": False, "can_read_all_group_messages": False, "supports_inline_queries": False}
         if method == "getMe":
             return self._ok({**me, "can_manage_bots": token in stub.managers})
@@ -331,6 +345,24 @@ class _TelegramHandler(_Quiet):
             return self._ok(managed_token)
         if method == "getUpdates":
             return self._ok(self._updates(stub, token, params))
+        if method == "getMyName":
+            return self._ok({"name": stub.name_of(token)})
+        if method == "setMyName":
+            name = str(params.get("name", ""))
+            if not 0 < len(name) <= 64 or params.get("language_code"):
+                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: invalid name"})
+            with stub.cond:
+                stub.names[token] = name
+            return self._ok(True)
+        if method == "setMyProfilePhoto":
+            photo = params.get("photo") if isinstance(params.get("photo"), dict) else {}
+            upload = self.uploads.get(str(photo.get("photo", "")).removeprefix("attach://"), b"")
+            if photo.get("type") != "static" or not upload.startswith(b"\xff\xd8\xff"):
+                return self._json(400, {"ok": False, "error_code": 400,
+                                        "description": "Bad Request: a static profile photo must be a new JPG upload"})
+            with stub.cond:
+                stub.profile_photos.setdefault(username, []).append(upload)
+            return self._ok(True)
         if method == "getFile":
             file_id = params.get("file_id")
             if file_id not in stub.files:

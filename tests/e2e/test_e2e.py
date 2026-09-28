@@ -45,8 +45,10 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
      Vinci's card, the same gateway serves it again. Each agenda really runs every minute.
-  8. setup.sh a third time with the team in place, just as Canvas stops taking the token:
-     nothing changes, and it says Canvas refused the token instead of «✓ Canvas responde».
+  8. Canvas tokens rotate through three generations without interrupting polls. When every
+     token dies, the token-free calendar and announcement feeds still deliver useful alerts;
+     a hidden CLI reseed restores the renewal chain. setup.sh then runs a third time with the
+     team in place and reports the refused token instead of «✓ Canvas responde».
   9. the party: Vinci got its wizard as its Telegram photo at setup (once), and no bot plays a
      character. Cálculo and Física, with no photo in the party, keep theirs. Four of the
      captain's real subjects already have bots: two still named «Vinci · <materia>», two with
@@ -83,6 +85,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -96,7 +99,7 @@ from fake_servers import BrokenIPv6, FakeCanvas, FakeTelegram, FakeWeb, Scripted
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
-NEW_CANVAS_TOKEN = "7~prueba-token-nuevo-de-canvas"  # after the aula virtual refused the first one
+NEW_CANVAS_TOKEN = "7~nuevo-token-de-canvas"  # after the aula virtual refused the first one
 BOT_TOKEN = "123456:PRUEBA-bot-token"
 SUBJECT_TOKENS = {"MATG1049": "700001:PRUEBA-token-de-calculo-xxxxxxxxxxxxxxxx",
                   "FISG1002": "700002:PRUEBA-token-de-fisica-xxxxxxxxxxxxxxxxx"}
@@ -144,6 +147,9 @@ T_VINCI = "2026-09-30T08:30:00-05:00"   # sesión del gateway: miércoles, 30 mi
 T_EARLY = "2026-09-30T08:29:00-05:00"   # un minuto antes: todavía no toca el brief
 T_MONDAY = "2026-10-05T08:30:00-05:00"  # lunes: teórico 09:00–11:00 y práctico 11:00–12:00 seguidos
 T_MIDCLASS = "2026-10-05T10:30:00-05:00"  # en pleno teórico, 30 min antes del práctico
+T_RENEW_0 = "2026-09-29T21:00:00-05:00"
+T_RENEW_1 = "2026-09-29T21:41:00-05:00"
+T_RENEW_2 = "2026-09-29T22:22:00-05:00"
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -531,7 +537,11 @@ def test_e2e(tmp_path):
 
     with FakeCanvas(CANVAS_TOKEN) as canvas, FakeTelegram({BOT_TOKEN: USERNAMES[BOT_TOKEN]}) as telegram, \
             FakeWeb() as web:
+        calendar_feed_url = f"{canvas.base}/feeds/calendars/user-e2e.ics"
+        announcement_feed_url = f"{canvas.base}/feeds/announcements/course-101.atom"
         canvas.web = web.base
+        canvas.announcement_feeds["/feeds/announcements/course-101.atom"] = \
+            '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
         config = REPO.joinpath("config.toml").read_text(encoding="utf-8")
         config = config.replace('url = "https://aulavirtual.espol.edu.ec"', f'url = "{canvas.base}"')
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
@@ -541,12 +551,19 @@ def test_e2e(tmp_path):
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
         secrets = tmp_path / "secrets.env"
-        secrets.write_text(f"CANVAS_TOKEN={CANVAS_TOKEN}\nTELEGRAM_BOT_TOKEN={BOT_TOKEN}\nTELEGRAM_USER_ID={CAPTAIN_ID}\n")
+        secrets.write_text(
+            f"CANVAS_TOKEN={CANVAS_TOKEN}\n"
+            f"CANVAS_CALENDAR_FEED_URL={calendar_feed_url}\n"
+            f"CANVAS_ANNOUNCEMENT_FEED_URLS={announcement_feed_url}\n"
+            f"TELEGRAM_BOT_TOKEN={BOT_TOKEN}\nTELEGRAM_USER_ID={CAPTAIN_ID}\n"
+        )
         secrets.chmod(0o600)
         llm_ctx = ScriptedLLM(Script(pwned, secrets))
         llm = llm_ctx.__enter__()
 
         def normalize(text: str) -> str:
+            text = text.replace(calendar_feed_url, "<calendar-feed>")
+            text = text.replace(announcement_feed_url, "<announcement-feed>")
             text = text.replace(canvas.base, "https://aulavirtual.test").replace(telegram.base, "https://telegram.test")
             text = text.replace(llm.base, "https://llm.test").replace(web.base, "https://profesor.test")
             text = text.replace(str(data_dir), "<datos>").replace(str(home), "<home>").replace(str(tmp_path), "<tmp>")
@@ -615,9 +632,10 @@ def test_e2e(tmp_path):
             assert (profile / "memories" / "MEMORY.md").read_text() == "El estudiante prefiere respuestas cortas.\n"
             assert not (profile / "scripts" / "espol-sondeo.sh").exists()
             jobs = json.loads((profile / "cron" / "jobs.json").read_text())["jobs"]
-            assert sorted(j["name"] for j in jobs) == ["vinci-resumen", "vinci-sondeo"], jobs
+            assert sorted(j["name"] for j in jobs) == ["vinci-mantenimiento", "vinci-resumen", "vinci-sondeo"], jobs
             by_name = {j["name"]: j for j in jobs}
             assert by_name["vinci-sondeo"]["schedule_display"] == "15,45 * * * *", "cada 30 min, lejos del resumen"
+            assert by_name["vinci-mantenimiento"]["schedule_display"] == "2,12,22,32,42,52 * * * *"
             assert by_name["vinci-resumen"]["schedule"].get("expr") == "0 7 * * *" or \
                 by_name["vinci-resumen"]["schedule_display"] == "0 7 * * *"
             assert all(j["no_agent"] and j["deliver"] == f"telegram:{CAPTAIN_ID}" for j in jobs)
@@ -843,23 +861,80 @@ def test_e2e(tmp_path):
                       "0,1 s) y solo bajó los sílabos, de a poco (con un tope de prueba de 1 KB por sondeo, el del "
                       "teórico en el primero y el del práctico en el segundo), en vez de todo el material de golpe")
 
-        # 6b. Canvas refuses the token: one alert, then no more reads until secrets.env has another ---------
-        canvas.token = NEW_CANVAS_TOKEN  # the aula virtual revoked the first one
+        # 6b. Token renewal survives several generations before the one-hour Canvas expiry ----------------
+        run([bot, "mantenimiento"], T_RENEW_0)
+        first = parse_env_file(secrets)["CANVAS_TOKEN"]
+        assert first != CANVAS_TOKEN and first in canvas.valid_tokens
+        canvas.expire(CANVAS_TOKEN)
+
+        run([bot, "mantenimiento"], T_RENEW_1)
+        second = parse_env_file(secrets)["CANVAS_TOKEN"]
+        assert second not in (CANVAS_TOKEN, first) and second in canvas.valid_tokens
+        canvas.expire(first)
+
+        run([bot, "mantenimiento"], T_RENEW_2)
+        third = parse_env_file(secrets)["CANVAS_TOKEN"]
+        assert third not in (CANVAS_TOKEN, first, second) and third in canvas.valid_tokens
+        assert len(canvas.issued()) == 3
+        run([bot, "sondeo"], T_RENEW_2)
+        assert take("Renovación automática · tres generaciones") == [], "renovar no manda ruido al chat"
+        report.append("La renovación creó y verificó tres generaciones de token en segundo plano; después de expirar "
+                      "cada antecesor, el sondeo siguió leyendo con el sucesor y ningún token apareció en el chat")
+
+        # 6c. With every token dead, public feeds still update due dates and announcements ------------------
+        for token in list(canvas.valid_tokens):
+            canvas.expire(token)
+        canvas.calendar_feed = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:assignment-3004@canvas
+DTSTART:20260930T180000Z
+SUMMARY:Taller 2: Movimiento parabólico
+URL:{base}/courses/102/assignments/3004
+END:VEVENT
+BEGIN:VEVENT
+UID:event-lectura-1@canvas
+DTSTART:20261001T140000Z
+SUMMARY:Lectura guiada de Cálculo
+URL:{base}/courses/101/calendar_events/9001
+END:VEVENT
+END:VCALENDAR
+""".format(base=canvas.base)
+        canvas.announcement_feeds["/feeds/announcements/course-101.atom"] = """<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry><id>tag:canvas,2026:topic-2999</id><title>Clase en laboratorio</title>
+  <published>2026-09-30T02:20:00Z</published><author><name>Docente</name></author>
+  <link href="{base}/courses/101/discussion_topics/2999" />
+  <content type="html">Lleven su computador cargado.</content></entry>
+</feed>
+""".format(base=canvas.base)
+        run([bot, "sondeo"], T_RENEW_2)
+        floor = take("Piso sin token · iCal y anuncios Atom")
+        floor_text = "\n".join(message["text"] for message in floor)
+        assert "token de Canvas" in floor_text and "Crear token nuevo" in json.dumps(floor, ensure_ascii=False)
+        assert "Cambió la fecha de entrega" in floor_text and "Clase en laboratorio" in floor_text
+        pending_floor = json.loads(run([aula, "tareas", "--sin-actualizar", "--json"], T_RENEW_2).stdout)
+        assert any(task["tarea"] == "Lectura guiada de Cálculo" for task in pending_floor)
         mark = len(canvas.requests)
-        run([bot, "sondeo"], T_POLL4)
-        refused = take("El aula virtual rechaza el token (sondeo)")
-        assert len(refused) == 1 and "token de Canvas ya no funciona" in refused[0]["text"], refused
-        assert len(canvas.requests) - mark == 1, "un solo intento con el token rechazado"
-        mark = len(canvas.requests)
-        run([bot, "sondeo"], T_POLL4)
-        run([bot, "resumen"], T_POLL4)
-        assert take("Sondeo y resumen con el mismo token rechazado") == [], "el aviso llega una sola vez"
-        assert len(canvas.requests) == mark, "con el mismo token rechazado no vuelve a consultar el aula virtual"
-        secrets.write_text(secrets.read_text().replace(f"CANVAS_TOKEN={CANVAS_TOKEN}", f"CANVAS_TOKEN={NEW_CANVAS_TOKEN}"))
-        run([bot, "sondeo"], T_POLL4)
-        assert take("Sondeo con el token nuevo") == [] and len(canvas.requests) > mark, "con el token nuevo vuelve a leer"
-        report.append("Cuando el aula virtual rechazó el token (401), Vinci avisó una sola vez y los sondeos siguientes "
-                      "(y el resumen) no volvieron a consultarla; con el token nuevo en secrets.env volvió a leerla sola")
+        run([bot, "sondeo"], T_RENEW_2)
+        assert take("Piso sin token repetido") == [], "el aviso de re-siembra y los feeds no se duplican"
+        assert all(method == "GET" and path.startswith("/feeds/") for method, path in canvas.requests[mark:])
+        report.append("Con toda la cadena de tokens vencida, iCal actualizó una fecha y agregó un evento, Atom trajo "
+                      "un anuncio, y Vinci siguió alertando sin mandar Authorization a esos feeds")
+
+        # 6d. A hidden terminal prompt re-seeds the chain; the token never passes through Telegram -------------
+        canvas.valid_tokens.add(NEW_CANVAS_TOKEN)
+        canvas.token_ids[NEW_CANVAS_TOKEN] = canvas.next_token
+        canvas.next_token += 1
+        reseed = run([bot, "resembrar", "--stdin"], T_RENEW_2, stdin=NEW_CANVAS_TOKEN + "\n")
+        assert "verificado" in reseed.stdout.lower() and NEW_CANVAS_TOKEN not in reseed.stdout + reseed.stderr
+        reseeded = parse_env_file(secrets)["CANVAS_TOKEN"]
+        assert reseeded in canvas.valid_tokens
+        run([bot, "sondeo"], T_RENEW_2)
+        after_reseed = take("Cadena resembrada")
+        assert not any("cadena automática del token" in message["text"] for message in after_reseed)
+        report.append("Tras el corte total, `espol-bot resembrar` leyó el token con entrada oculta, lo verificó y "
+                      "reactivó la cadena sin imprimirlo ni enviarlo por Telegram")
 
         equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
         material_md = ["# El material de cada materia (lo que vio el modelo)\n"]
@@ -884,8 +959,11 @@ def test_e2e(tmp_path):
 
         take("Fin")
         # Safety: read-only, captain-only, no secrets anywhere ---------------------------------
-        methods = {m for m, _ in canvas.requests}
-        assert methods == {"GET"}, f"hubo solicitudes que no son GET: {methods}"
+        mutations = [(method, urlsplit(path).path) for method, path in canvas.requests if method != "GET"]
+        assert mutations and all(method in {"POST", "DELETE"} and
+                                 (path == "/api/v1/users/self/tokens" or
+                                  re.fullmatch(r"/api/v1/users/self/tokens/\d+", path))
+                                 for method, path in mutations), mutations
         assert canvas.throttled, "el 429 de prueba debió ocurrir"
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
         assert all(str(m["chat_id"]) == CAPTAIN_ID for _, m in sent_log), "solo se escribe al capitán"
@@ -893,7 +971,9 @@ def test_e2e(tmp_path):
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
         assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102} if vinci_section else set()), \
             f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
-        secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+        secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
+                       calendar_feed_url, announcement_feed_url, BOT_TOKEN,
+                       *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
@@ -918,7 +998,12 @@ def test_e2e(tmp_path):
                                                encoding="utf-8")
     (artifact / "cli.md").write_text("\n".join(cli_md), encoding="utf-8")
     (artifact / "setup.log").write_text(normalize(setup_log), encoding="utf-8")
-    requests_log = "\n".join(f"{m} {re.sub(r'verifier=[^&]+', 'verifier=…', p)}" for m, p in canvas.requests)
+    def safe_canvas_path(path: str) -> str:
+        if urlsplit(path).path.startswith("/feeds/"):
+            return "/feeds/<secret>"
+        return re.sub(r"verifier=[^&]+", "verifier=…", path)
+
+    requests_log = "\n".join(f"{method} {safe_canvas_path(path)}" for method, path in canvas.requests)
     (artifact / "canvas_requests.log").write_text(requests_log + "\n", encoding="utf-8")
     if vinci_section:
         (artifact / "equipo.md").write_text(normalize("\n".join(equipo_md)), encoding="utf-8")
@@ -939,7 +1024,10 @@ def test_e2e(tmp_path):
             + "\n", encoding="utf-8")
     for path in artifact.iterdir():  # no artifact may carry a token
         text = path.read_text(encoding="utf-8", errors="replace")
-        for secret in (CANVAS_TOKEN, NEW_CANVAS_TOKEN, BOT_TOKEN, *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+        for secret in (CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
+                       calendar_feed_url, announcement_feed_url, "/feeds/calendars/user-e2e.ics",
+                       "/feeds/announcements/course-101.atom", BOT_TOKEN,
+                       *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
                        *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
@@ -947,7 +1035,8 @@ def test_e2e(tmp_path):
         "# Reporte E2E: Vinci y los bots de materia (ESPOL)\n",
         "Resultado: **todas las verificaciones pasaron**.\n",
         *[f"- {line}" for line in report],
-        f"- Canvas falso: {len(canvas.requests)} solicitudes, todas GET; paginación seguida; un 429 con reintento; "
+        f"- Canvas falso: {len(canvas.requests)} solicitudes; las únicas mutaciones fueron crear/borrar los tokens "
+        "propios de Vinci; paginación seguida; un 429 con reintento; "
         "Física con la pestaña Archivos oculta (material encontrado vía Módulos).",
         "- Sondeo 3 y el resumen repetido no enviaron nada (sin duplicados).",
         "- Instalación nueva con los anuncios de Física y los archivos de Cálculo fallando en distintos sondeos: "

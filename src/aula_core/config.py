@@ -13,6 +13,7 @@ Environment overrides (used by setup.sh's wrappers and by the E2E test):
 from __future__ import annotations
 
 import os
+import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -122,6 +123,55 @@ def load_secret_values(path: Path | None = None) -> dict[str, str]:
         raise ConfigError(
             f"No encuentro {path}. Copia secrets.env.example como secrets.env y complétalo."
         ) from exc
+
+
+def update_secret_values(values: dict[str, str], *, remove: tuple[str, ...] = (),
+                         path: Path | None = None) -> bool:
+    """Atomically update selected keys in the gitignored secrets file.
+
+    Values are never returned or logged. The replacement is written beside the target,
+    fsynced, chmodded to 0600 and then renamed over it, so readers see either complete file.
+    """
+    path = path or secrets_path()
+    try:
+        original = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        original = ""
+    wanted = set(values)
+    removed = set(remove) - wanted
+    seen: set[str] = set()
+    lines: list[str] = []
+    for line in original.splitlines():
+        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
+        if key in removed:
+            continue
+        if key in wanted:
+            if key not in seen:
+                lines.append(f"{key}={values[key]}")
+                seen.add(key)
+            continue
+        lines.append(line)
+    lines.extend(f"{key}={value}" for key, value in values.items() if key not in seen)
+    updated = "\n".join(lines) + "\n"
+    if updated == original:
+        os.chmod(path, 0o600)
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_name = ""
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
+                                         prefix=f".{path.name}.", delete=False) as tmp:
+            tmp_name = tmp.name
+            tmp.write(updated)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, path)
+    finally:
+        if tmp_name:
+            Path(tmp_name).unlink(missing_ok=True)
+    return True
 
 
 def canvas_token(path: Path | None = None) -> str:

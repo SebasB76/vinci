@@ -23,10 +23,13 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from html import escape
+from pathlib import Path
 
-from aula_core import Aula, queries, timefmt
+from aula_core import Aula, feeds, queries, timefmt
 from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
@@ -34,6 +37,7 @@ from aula_core.store import delete_meta, get_meta, set_meta
 from espol_bot import agenda, libros, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
+from espol_bot.token_renewal import RenewalError, TokenRenewal
 
 log = logging.getLogger(__name__)
 
@@ -107,12 +111,19 @@ class Bot:
 
     def _token_refused(self) -> str:
         """Tells the captain once per refused token (the polls leave Canvas alone until it changes)."""
-        text = ("Tu token de Canvas ya no funciona (¿expiró o lo revocaron?). Crea uno nuevo en el aula virtual y "
-                "ponlo en secrets.env; hasta entonces no vuelvo a consultar el aula virtual.")
+        command = Path(sys.executable).with_name("espol-bot")
+        floor = (" Los feeds públicos siguen actualizando fechas, eventos y anuncios." if feeds.configured() else
+                 f" Para mantener fechas y anuncios aun sin token, configura sus feeds una vez con "
+                 f"<code>{escape(str(command))} feeds</code>.")
+        text = ("La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
+                "Pulsa el botón, crea un token y, sin pegarlo en ningún chat, ejecuta en una terminal:\n"
+                f"<code>{escape(str(command))} resembrar</code>" + floor)
         refused = self.aula.refused_token()
         if refused and get_meta(self.conn, "bot_alert_token") != refused:
             try:
-                self.telegram.send(messages.alert(text))
+                markup = {"inline_keyboard": [[{"text": "🔑 Crear token nuevo",
+                                                 "url": self.cfg.core.canvas_url + "/profile/settings"}]]}
+                self.telegram.send(messages.alert(text), reply_markup=markup)
                 set_meta(self.conn, "bot_alert_token", refused)
                 self.conn.commit()
             except TelegramError as exc:
@@ -125,6 +136,28 @@ class Bot:
 
     # -- poll ------------------------------------------------------------------------
 
+    def maintenance(self) -> PollResult:
+        """Fast no-agent background work: renew the token and refresh token-free feeds."""
+        result = PollResult()
+        now = self.aula.now()
+        try:
+            renewal = TokenRenewal(self.cfg.core, self.conn, now).maintain()
+            if renewal.server_fixed:
+                delete_meta(self.conn, "bot_fail_count_renewal", "bot_alert_renewal")
+                self.conn.commit()
+        except RenewalError as exc:
+            result.error = self._fail("renewal", f"No pude renovar el token de Canvas: {exc}. "
+                                      "Si la cadena se corta, te mostraré cómo resembrarla.", threshold=1)
+        floor = feeds.sync(self.conn, self.cfg.core, now)
+        if floor.errors:
+            self._fail("feeds", "No pude actualizar el respaldo sin token (" + "; ".join(floor.errors) + ").",
+                       threshold=ALERT_AFTER)
+        else:
+            delete_meta(self.conn, "bot_fail_count_feeds")
+            self.conn.commit()
+        result.events = floor.events
+        return result
+
     def poll(self) -> PollResult:
         result = PollResult()
         if self.team_error:
@@ -135,12 +168,17 @@ class Bot:
             report = self.aula.sync(materials=True)
         except InvalidTokenError:
             result.error = self._token_refused()
-            return result
+            report = core_sync.SyncReport(first_sync=False)
+            floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
+            result.events += floor.events
         except CanvasError as exc:
             result.error = self._fail(
                 "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=ALERT_AFTER)
-            return result
-        self._ok()
+            report = core_sync.SyncReport(first_sync=False)
+            floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
+            result.events += floor.events
+        else:
+            self._ok()
         now = self.aula.now()
 
         try:

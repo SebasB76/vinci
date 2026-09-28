@@ -6,10 +6,14 @@
 - **Vinci** es el bot principal. Le preguntas lo que quieras de cualquier materia, le mandas «tengo esto de
   Estadística» (texto, foto, PDF o nota de voz) y se lo pasa al bot de esa materia. También es el que **crea tu
   equipo de bots** desde el chat.
-- **Un bot por materia** («Vinci · Estadística», «Vinci · Ingeniería de Software»…), que cubre su teórico y su
-  práctico (en el aula son dos cursos, como `Paralelo5_ESTG1034` y `Paralelo105_ESTG1034`), cada uno con su propia
+- **Un bot por materia** («El Analítico · Estadística», «El Programador · Ing. Software I»…), que cubre su teórico
+  y su práctico (en el aula son dos cursos, como `Paralelo5_ESTG1034` y `Paralelo105_ESTG1034`), cada uno con su propia
   memoria y su **cuaderno** (lo que se vio en clase, fotos de la pizarra, audios, dudas). Le puedes escribir
   directo a cualquiera.
+- **Cada bot con su personaje** ([tu party](#tu-party-el-personaje-de-cada-bot)): Vinci es el «Guía Académico»
+  (un mago azul) y cada materia tiene el suyo, «El Programador», «El Estratega», «El Conector», «El Analítico» y
+  «El Equilibrio», que le da su nombre, su foto de perfil en Telegram y su forma de hablar. Es solo el tono: lo
+  que cada bot puede hacer no cambia.
 - **Llegas listo a cada clase**: 30 minutos antes, el bot de la materia te manda un brief con un repaso de la
   clase anterior, lo que vence, el material nuevo, 3 a 5 conceptos clave y una pregunta para la clase.
 - **Avisos del aula virtual** (revisa cada 30 minutos): tareas nuevas, cambios de fecha, anuncios, notas y
@@ -31,7 +35,8 @@ aula_core   núcleo reutilizable: cliente de Canvas (solo GET), base de datos lo
 aula        la herramienta de línea de comandos, encima del núcleo.
 espol_bot   Vinci y los bots de materia: sondeo y avisos, agenda de briefs, cuadernos, horario,
             el equipo de bots y las herramientas fijas que usa cada bot.
-hermes/     las plantillas de cada bot (personalidad, instrucciones y el filtro de botones y tokens).
+hermes/     las plantillas de cada bot (personalidad, instrucciones y el filtro de botones y tokens),
+            los personajes de tu party (characters.toml) y sus fotos (avatars/).
 ```
 
 Todo corre en tu **Hermes Agent** (el mismo que ya usas, con tu mismo login), cada bot en **su propio perfil**:
@@ -106,6 +111,8 @@ Puedes correrlo las veces que quieras (por ejemplo, después de cambiar `config.
 - instala el comando `aula` en `~/.local/bin/` y la skill de Claude Code en `~/.claude/skills/aula/`;
 - crea o actualiza el perfil de Hermes `vinci` (modelo, zona horaria, Telegram solo para tu ID, sus herramientas
   y los cron del sondeo cada 30 min y el resumen de las 7:00), y el perfil de cada bot de materia que ya exista;
+- le pone a cada bot la foto de su personaje en Telegram, y a cada bot de materia su nombre (una sola vez; mira
+  [Tu party](#tu-party-el-personaje-de-cada-bot));
 - prueba que Canvas responde y Vinci te manda un mensaje de prueba por Telegram (y te dice si todavía falta
   activar lo de gestionar otros bots del paso 1).
 
@@ -130,14 +137,16 @@ Escríbele a Vinci **«arma mi equipo»**. Lee tus materias del aula virtual y t
 un botón **«➕ Crear»** por materia (el teórico y el práctico de una materia van juntos en un solo bot: sus tareas,
 anuncios, archivos, notas y clases). Un bot se crea solo cuando tú pulsas su botón:
 
-- **Si activaste «gestionar otros bots»** (paso 1): Vinci te manda un botón «🤖 Crear Vinci · <materia>».
+- **Si activaste «gestionar otros bots»** (paso 1): Vinci te manda un botón «🤖 Crear <bot>» (ej. «🤖 Crear El
+  Analítico · Estadística»).
   Al pulsarlo, Telegram te muestra el bot nuevo con su nombre y usuario ya sugeridos (puedes cambiarlos);
   confirmas y listo: Vinci recibe el bot directamente de Telegram y lo configura solo.
 - **Si no**: Vinci te dice el nombre y el usuario que le puedes poner. En @BotFather envía `/newbot`, créalo y
   **reenvíale a Vinci la respuesta de BotFather** (la que trae el token). Vinci guarda el token, **borra ese
   mensaje del chat** y configura el bot.
 
-En los dos casos, Vinci te confirma «✅ Vinci · <materia> quedó creado y activo». Abre el bot nuevo y mándale
+En los dos casos, Vinci te confirma «✅ <bot> quedó creado y activo», y el bot ya tiene el nombre, la foto y
+la personalidad de su personaje. Abre el bot nuevo y mándale
 `/start`. Repite con cada materia (5 en total). Si el gateway ya estaba encendido, toma cada bot nuevo en
 unos 30 segundos; no hace falta reiniciar nada.
 
@@ -183,7 +192,8 @@ si vuelve a fallar después de recuperarse, te avisa de nuevo. Para forzar una r
 - «Tengo esto de Sistemas Distribuidos» + una foto, un PDF o una nota de voz → te dice a qué bot se lo pasó. Si
   no le queda claro de qué materia es, te pregunta antes.
 - «¿Qué hay en el cuaderno de Ingeniería de Software?» (Vinci lee los cuadernos, pero no los cambia).
-- Bajo cada aviso del aula hay un botón **«🎓 Consultar con Vinci · <materia>»**: el bot de esa materia recibe el
+- Bajo cada aviso del aula hay un botón **«🎓 Consultar con <bot>»** (ej. «🎓 Consultar con El Analítico ·
+  Estadística»): el bot de esa materia recibe el
   aviso y te escribe en su chat. También puedes responder al aviso con «pásaselo al de la materia».
 - «Arma mi equipo» / «archiva el bot de Estadística» (siempre te pide confirmar con un botón).
 
@@ -218,6 +228,41 @@ tienen menos de 10 minutos; si no, vuelve a leer el aula virtual.
 «bájate el PDF de la semana 3 de Estadística y explícame el ejercicio 4»; la skill `aula` le enseña a usar el
 comando.
 
+## Tu party: el personaje de cada bot
+
+| | Bot | Materia | Personaje |
+|---|---|---|---|
+| <img src="hermes/avatars/wizard.jpg" width="56" alt=""> | **Vinci** | todas | «Guía Académico», un mago azul con su báculo |
+| <img src="hermes/avatars/robot.jpg" width="56" alt=""> | **El Programador · Ing. Software I** | Ingeniería de Software I (SOFG1007) | un robot verde |
+| <img src="hermes/avatars/builder.jpg" width="56" alt=""> | **El Estratega · Dir. Proyectos** | Dirección de Proyectos Informáticos (CCPG1041) | con casco de obra y engranaje |
+| <img src="hermes/avatars/server.jpg" width="56" alt=""> | **El Conector · Sist. Distribuidos** | Sistemas Distribuidos y Computación en la Nube (CCPG1055) | un servidor morado |
+| <img src="hermes/avatars/book.jpg" width="56" alt=""> | **El Analítico · Estadística** | Estadística (ESTG1034) | un libro azul con lentes |
+| <img src="hermes/avatars/sprout.jpg" width="56" alt=""> | **El Equilibrio · Sostenibilidad** | Ciencias de la Sostenibilidad (ADSG1026) | un brote verde |
+
+Solo el bot principal se llama Vinci. Cada bot de materia se llama como su personaje y su materia, en corto (como
+en el arte de la party), para que tu lista de chats de Telegram se lea sola.
+
+- **La foto y el nombre** los pone cada bot con su propio token (`setMyProfilePhoto` y `setMyName` del Bot API
+  de Telegram): los de Vinci cuando corres `./setup.sh` (a Vinci solo la foto) y los de cada bot de materia
+  cuando Vinci lo crea, lo hayas creado con un toque o con @BotFather. No tienes que hacer nada. Se ponen una
+  sola vez por bot: si después le cambias la foto o el nombre a mano, se queda lo tuyo.
+- **Si ya tenías bots de materia** con el nombre de antes («Vinci · Estadística»), `./setup.sh` les cambia el
+  nombre y les pone su foto ahí mismo: son los mismos bots, con su chat, su memoria y su cuaderno; no se crea
+  ninguno nuevo. Su usuario (@…) no cambia: Telegram no deja cambiarlo.
+- **Si Telegram no lo acepta** (por ejemplo, sin internet), `setup.sh` te avisa y lo reintenta la próxima vez que
+  lo corras. También puedes hacerlo a mano en @BotFather: `/setuserpic` (elige el bot y mándale su foto de
+  [`hermes/avatars/`](hermes/avatars)) y `/setname`.
+- **La personalidad** va en el `SOUL.md` de cada bot: su tono y su estilo. No cambia sus herramientas ni sus
+  reglas (solo lectura del aula virtual, solo te responde a ti, sin terminal ni archivos).
+- Los personajes van por el **código de la materia**, así que el teórico y el práctico comparten el suyo. Una
+  materia sin personaje (por ejemplo, las del próximo semestre) tiene un bot con el tono de siempre y la foto que
+  ya tenga, y se llama como la materia (el `nombre` de `materias.toml`). Para darle uno: pon su foto cuadrada en
+  JPG (ej. 640×640) en `hermes/avatars/`, agrega una sección `[subjects.<CÓDIGO>]` en
+  [`hermes/characters.toml`](hermes/characters.toml) y corre `./setup.sh`.
+- Si cambias la foto o el nombre de un personaje, `./setup.sh` los pone otra vez. Para volver a poner los mismos,
+  borra `~/.hermes/profiles/<perfil del bot>/telegram-profile.json` (el registro de qué ya se puso) y corre
+  `./setup.sh`.
+
 ## Fin de semestre: archivar los bots
 
 Pídele a Vinci «archiva el bot de Estadística» y confirma con el botón. Un bot archivado deja de responder y de
@@ -251,7 +296,7 @@ Todo queda en tu PC, en `~/.local/share/espol-academic-bot/`:
 - `espol.db`: tus materias, tareas, anuncios, notas, archivos y el índice del material;
 - `materiales/<código de la materia>/`: los archivos descargados;
 - `materias.toml`: tu equipo de bots, con los cursos del aula de cada materia (puedes cambiar el `nombre` de una
-  materia a mano);
+  materia a mano; un bot sin personaje se llama así);
 - `horario.toml`: tu horario guardado (puedes editarlo a mano; Vinci guarda una copia del anterior cada vez que
   lo cambia);
 - `cuadernos/<CÓDIGO>/`: el cuaderno de cada materia (`cuaderno.db`) y sus fotos, audios y documentos;
@@ -285,8 +330,11 @@ flujo con los comandos reales y el gateway real de Hermes (si está instalado), 
 práctico (un solo bot recibe los avisos y las entregas de los dos). Cubre crear el equipo desde el chat (con un
 toque y reenviando a BotFather), repartir a un bot de materia, el botón de un aviso, guardar el horario solo tras
 confirmar, el brief 30 min antes de una clase sin repetirse tras reiniciar, el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin poder
-escribirlos ni usar una terminal, y archivar y reactivar un bot. Deja el resultado en **`artifacts/e2e/`**: `REPORTE.md`,
-`notificaciones.md` (todos los mensajes), `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`,
+escribirlos ni usar una terminal, archivar y reactivar un bot, y que cada bot quede con su personaje: su
+nombre (los bots de materia que ya se llamaban «Vinci · …» se renombran ahí mismo al actualizar, sin crear
+ninguno nuevo), la foto que sube a Telegram y su personalidad, sin cambiar sus reglas. Deja el resultado en **`artifacts/e2e/`**: `REPORTE.md`,
+`notificaciones.md` (todos los mensajes), `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `party.md`
+(con la foto que subió cada bot, `foto-<bot>.jpg`),
 `hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log` y
 `setup.log`.
 

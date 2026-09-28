@@ -11,7 +11,7 @@ Events stay undelivered, and reminders unmarked, until Telegram accepts the
 message, so a failed send is retried on the next poll.
 
 Everything goes out through Vinci's chat. A message about a course that has an
-active subject bot carries a «Consultar con Vinci · <materia>» button per course;
+active subject bot carries a «Consultar con <bot>» button per course;
 the alert is recorded in `avisos` so the button can hand it to that bot.
 """
 

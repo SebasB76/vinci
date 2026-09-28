@@ -7,17 +7,18 @@ buttons; the captain's press, handled without the model by the `vinci-botones` p
   1. `proponer_equipo` reads the courses of the aula virtual, adds one subject per ESPOL code
      to materias.toml ("pendiente"; its theory and práctico courses go to the same subject)
      and shows the team with a «➕ Crear» button each.
-  2. «➕ Crear Vinci · X» marks the subject "esperando_bot" and sends a Telegram keyboard
+  2. «➕ Crear <bot>» marks the subject "esperando_bot" and sends a Telegram keyboard
      button that creates the bot for Vinci to manage (Bot API 9.6 managed bots: the captain
-     confirms name and username in Telegram's own screen). If Vinci may not manage bots
+     confirms name and username in Telegram's own screen; the name suggested is its
+     character's, «El Analítico · Estadística»). If Vinci may not manage bots
      yet, it sends the @BotFather steps instead.
   3. The new bot arrives as a `managed_bot_created` service message (its token is fetched
      with getManagedBotToken) or as BotFather's reply forwarded by the captain. The plugin
      catches either before Hermes sees it (so it never reaches the model or a session log),
      deletes any message carrying a token, and runs `espol-bot bot-creado` / `espol-bot
      token`: the token goes to secrets.env (mode 600) and the subject's Hermes profile, cron
-     agenda and plugin are created (idempotent). The multiplexing gateway serves the new
-     profile by itself within a minute.
+     agenda and plugin are created (idempotent), and the bot gets its character's name and
+     photo. The multiplexing gateway serves the new profile by itself within a minute.
   4. «🗄️ Archivar» / «♻️ Reactivar» park or unpark the subject's gateway and pause or resume
      its agenda; memory and notebook stay.
 """

@@ -2,7 +2,7 @@
 
     [[materia]]
     codigo = "ESTG1034"            # código ESPOL (sin el paralelo)
-    nombre = "Estadística"         # el bot se llama «Vinci · Estadística»
+    nombre = "Estadística"         # el bot se llama «El Analítico · Estadística» (su personaje)
     cursos = [12345, 12346]        # sus cursos en el aula virtual: el teórico y el práctico
     usuario = "vinci_estadistica_bot"
     estado = "activa"              # pendiente | esperando_bot | activa | archivada
@@ -11,8 +11,9 @@ Vinci writes it: `proponer_equipo` adds the courses of the aula virtual, one sub
 ESPOL code (a subject's theory and práctico sections, e.g. `Paralelo5_ESTG1034` and
 `Paralelo105_ESTG1034`, are two aula courses of one subject bot), the captain's «Crear»
 button marks one as waiting for its Telegram bot, the new bot's token makes it active,
-and «Archivar» archives it. The captain may rename a subject by hand. Each
-subject bot is a Hermes profile named after Vinci's profile plus the code (`vinci-estg1034`).
+and «Archivar» archives it. The captain may rename a subject by hand. A subject bot is
+named after its character (characters.py), else after its subject; its Hermes profile is
+named after Vinci's profile plus the code (`vinci-estg1034`).
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from pathlib import Path
 
 from aula_core.config import ConfigError, CoreConfig
 from aula_core.queries import fold
-from espol_bot import tomlfile
+from espol_bot import characters, tomlfile
 
 STATES = ("pendiente", "esperando_bot", "activa", "archivada")
 CODE_RE = re.compile(r"[A-Z]{3,5}\d{3,5}")
@@ -38,7 +39,8 @@ ROMAN = {"i", "ii", "iii", "iv", "v", "vi"}
 
 HEADER = """\
 Tus bots de materia. Lo escribe Vinci cuando le pides armar tu equipo (a partir de tu aula virtual).
-Puedes cambiar `nombre` a mano (el bot se llama «Vinci · <nombre>»); lo demás lo maneja Vinci con tus botones.
+Puedes cambiar `nombre` a mano (un bot sin personaje en hermes/characters.toml se llama así); lo demás lo
+maneja Vinci con tus botones.
 estado: pendiente (sin bot) · esperando_bot (pulsaste «Crear») · activa · archivada (sin briefs ni respuestas;
 memoria y cuaderno intactos)"""
 
@@ -53,7 +55,7 @@ class Subject:
 
     @property
     def display(self) -> str:
-        return f"Vinci · {self.name}"
+        return characters.bot_name(self.code, self.name)
 
     @property
     def active(self) -> bool:
@@ -152,13 +154,18 @@ class Ambiguous(ConfigError):
 
 
 def resolve(subjects: list[Subject], text: str) -> Subject:
-    """Find the subject a free-text mention refers to ('estadística', 'ESTG1034', 'la de software').
-    Raises Ambiguous (listing the candidates) instead of guessing."""
+    """Find the subject a free-text mention refers to ('estadística', 'ESTG1034', 'la de software', its
+    bot's name or its character: 'El Analítico'). Raises Ambiguous (listing the candidates) instead of guessing."""
     needle = fold(text).strip()
     needle = re.sub(r"^(vinci\s*[·.-]?\s*)", "", needle)
     if not needle:
         raise Ambiguous("No me dijiste de qué materia es.")
-    exact = [s for s in subjects if needle in (fold(s.code), fold(s.name))]
+
+    def aliases(s: Subject) -> set[str]:
+        title = fold(characters.for_subject(s.code).title or "")
+        return {fold(s.code), fold(s.name), fold(s.display)} | ({title, title.removeprefix("el ")} - {""})
+
+    exact = [s for s in subjects if needle in aliases(s)]
     if len(exact) == 1:
         return exact[0]
     words = [w for w in re.findall(r"\w+", needle) if len(w) >= 3 and w not in SMALL_WORDS]
@@ -169,7 +176,7 @@ def resolve(subjects: list[Subject], text: str) -> Subject:
                    for n in re.findall(r"\w+", name))
 
     partial = [s for s in subjects
-               if needle in fold(s.name) or needle in fold(s.code)
+               if needle in fold(s.name) or needle in fold(s.code) or needle in fold(s.display)
                or (words and all(word_match(w, fold(s.name)) for w in words))]
     if len(partial) == 1:
         return partial[0]

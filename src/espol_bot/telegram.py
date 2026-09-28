@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 
@@ -13,6 +14,8 @@ from espol_bot.config import DEFAULT_TELEGRAM_API, TelegramSecrets
 log = logging.getLogger(__name__)
 
 LIMIT = 4000  # Telegram caps a message at 4096 characters
+# setMyName and friends answer 429 with waits of up to hours: past this, give up and try on the next setup.
+PROFILE_MAX_WAIT = 30
 
 
 class TelegramError(Exception):
@@ -74,6 +77,18 @@ class Telegram:
             raise TelegramError("Telegram no devolvió el token del bot nuevo")
         return token
 
+    def my_name(self) -> str:
+        return str(self._call("getMyName", {}, max_wait=PROFILE_MAX_WAIT).get("name") or "")
+
+    def set_my_name(self, name: str) -> None:
+        """Renames this bot for everyone (no language_code): the name in the captain's chat list."""
+        self._call("setMyName", {"name": name}, max_wait=PROFILE_MAX_WAIT)
+
+    def set_profile_photo(self, jpeg: bytes) -> None:
+        """Sets this bot's own profile photo (Bot API 9.4). Telegram only takes a fresh JPG upload."""
+        self._call("setMyProfilePhoto", {"photo": json.dumps({"type": "static", "photo": "attach://avatar"})},
+                   files={"avatar": ("avatar.jpg", jpeg, "image/jpeg")}, max_wait=PROFILE_MAX_WAIT)
+
     def _send_one(self, text: str, markup: dict | None) -> None:
         payload = {"chat_id": self._chat_id, "text": text, "parse_mode": "HTML",
                    "disable_web_page_preview": True}
@@ -84,11 +99,12 @@ class Telegram:
         # Stay well below Telegram's per-chat limit.
         self._sleep(0.4)
 
-    def _call(self, method: str, payload: dict):
+    def _call(self, method: str, payload: dict, files: dict | None = None, max_wait: float | None = None):
         url = f"{self._base}/{method}"
         for attempt in range(4):
             try:
-                resp = requests.post(url, json=payload, timeout=30)
+                resp = (requests.post(url, data=payload, files=files, timeout=30) if files
+                        else requests.post(url, json=payload, timeout=30))
             except requests.RequestException as exc:
                 if attempt == 3:
                     raise TelegramError(f"No pude conectar con Telegram ({type(exc).__name__})") from None
@@ -96,6 +112,8 @@ class Telegram:
                 continue
             if resp.status_code == 429:
                 retry = (resp.json().get("parameters") or {}).get("retry_after", 5)
+                if max_wait is not None and float(retry) > max_wait:
+                    raise TelegramError(f"Telegram pide esperar {int(retry)} s antes de reintentar")
                 self._sleep(float(retry))
                 continue
             if resp.status_code >= 500:

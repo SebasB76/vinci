@@ -6,7 +6,8 @@
 - **Vinci** es el bot principal. Le preguntas lo que quieras de cualquier materia, le mandas «tengo esto de
   Estadística» (texto, foto, PDF o nota de voz) y se lo pasa al bot de esa materia. También es el que **crea tu
   equipo de bots** desde el chat.
-- **Un bot por materia** («Vinci · Estadística», «Vinci · Ingeniería de Software»…), cada uno con su propia
+- **Un bot por materia** («Vinci · Estadística», «Vinci · Ingeniería de Software»…), que cubre su teórico y su
+  práctico (en el aula son dos cursos, como `Paralelo5_ESTG1034` y `Paralelo105_ESTG1034`), cada uno con su propia
   memoria y su **cuaderno** (lo que se vio en clase, fotos de la pizarra, audios, dudas). Le puedes escribir
   directo a cualquiera.
 - **Llegas listo a cada clase**: 30 minutos antes, el bot de la materia te manda un brief con un repaso de la
@@ -126,7 +127,8 @@ Queda en segundo plano y arranca con tu sesión. Para que siga funcionando con l
 ### 7. Arma tu equipo de bots desde el chat
 
 Escríbele a Vinci **«arma mi equipo»**. Lee tus materias del aula virtual y te muestra el equipo propuesto, con
-un botón **«➕ Crear»** por materia. Un bot se crea solo cuando tú pulsas su botón:
+un botón **«➕ Crear»** por materia (el teórico y el práctico de una materia van juntos en un solo bot: sus tareas,
+anuncios, archivos, notas y clases). Un bot se crea solo cuando tú pulsas su botón:
 
 - **Si activaste «gestionar otros bots»** (paso 1): Vinci te manda un botón «🤖 Crear Vinci · <materia>».
   Al pulsarlo, Telegram te muestra el bot nuevo con su nombre y usuario ya sugeridos (puedes cambiarlos);
@@ -248,7 +250,8 @@ Todo queda en tu PC, en `~/.local/share/espol-academic-bot/`:
 
 - `espol.db`: tus materias, tareas, anuncios, notas, archivos y el índice del material;
 - `materiales/<código de la materia>/`: los archivos descargados;
-- `materias.toml`: tu equipo de bots (puedes cambiar el `nombre` de una materia a mano);
+- `materias.toml`: tu equipo de bots, con los cursos del aula de cada materia (puedes cambiar el `nombre` de una
+  materia a mano);
 - `horario.toml`: tu horario guardado (puedes editarlo a mano; Vinci guarda una copia del anterior cada vez que
   lo cambia);
 - `cuadernos/<CÓDIGO>/`: el cuaderno de cada materia (`cuaderno.db`) y sus fotos, audios y documentos;
@@ -278,9 +281,10 @@ uv run pytest
 Una sola prueba de punta a punta (`tests/e2e/test_e2e.py`; su encabezado describe cada paso): levanta un Canvas
 falso con datos grabados (`tests/e2e/fixtures/`), un Telegram falso y un modelo falso con guion, y recorre todo el
 flujo con los comandos reales y el gateway real de Hermes (si está instalado), en un HOME temporal; nunca toca tu
-`~/.hermes`. Cubre crear el equipo desde el chat (con un toque y reenviando a BotFather), repartir a un bot de
-materia, el botón de un aviso, guardar el horario solo tras confirmar, el brief 30 min antes de una clase sin
-repetirse tras reiniciar, el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin poder
+`~/.hermes`. El aula falsa usa los códigos y nombres reales de ESPOL, con una materia que tiene teórico y
+práctico (un solo bot recibe los avisos y las entregas de los dos). Cubre crear el equipo desde el chat (con un
+toque y reenviando a BotFather), repartir a un bot de materia, el botón de un aviso, guardar el horario solo tras
+confirmar, el brief 30 min antes de una clase sin repetirse tras reiniciar, el cuaderno con una foto y una nota de voz, que Vinci lee los cuadernos sin poder
 escribirlos ni usar una terminal, y archivar y reactivar un bot. Deja el resultado en **`artifacts/e2e/`**: `REPORTE.md`,
 `notificaciones.md` (todos los mensajes), `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`,
 `hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log` y

@@ -1,7 +1,7 @@
 """The class schedule: `horario.toml` in the data folder, hand-editable.
 
     [[clase]]
-    materia = "ESTG1034"     # código de la materia
+    materia = "ESTG1034"     # código de la materia (el mismo para el teórico y el práctico)
     dia = "lunes"            # lunes … sábado
     inicio = "10:00"         # HH:MM, 24 h, hora de Ecuador
     fin = "12:00"
@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 from aula_core.config import ConfigError, CoreConfig
 from aula_core.queries import fold
 from espol_bot import tomlfile
-from espol_bot.materias import CODE_RE, Subject
+from espol_bot.materias import CODE_RE, Subject, base_code
 
 DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
 MAX_CLASSES = 60
@@ -37,7 +37,7 @@ Tu horario de clases. Cada bot de materia te manda su brief unos minutos antes d
 (config.toml → [clases] brief_minutos_antes). Vinci lo llena desde una captura de tu horario y
 solo lo guarda cuando tú lo confirmas; también puedes editarlo a mano.
 Una sección [[clase]] por bloque de clase:
-  materia  código de la materia (ej. "ESTG1034")
+  materia  código de la materia (ej. "ESTG1034"; el mismo para el teórico y el práctico)
   dia      lunes, martes, miércoles, jueves, viernes o sábado
   inicio   hora de inicio, HH:MM en 24 h (hora de Ecuador)
   fin      hora de fin, HH:MM
@@ -98,7 +98,9 @@ def validate(rows: list[dict], subjects: list[Subject] | None = None) -> tuple[l
             errors.append(f"Clase {n}: formato inválido.")
             continue
         before = len(errors)
-        code = str(row.get("materia", "")).strip().upper()
+        # «ESTG1034 - ESTADÍSTICA Paralelo N°105» (theory or práctico) is a class of ESTG1034.
+        raw = str(row.get("materia", "")).strip()
+        code = base_code(raw) or raw.upper()
         day, start, end = _day(row.get("dia", "")), _time(row.get("inicio", "")), _time(row.get("fin", ""))
         label = f"Clase {n} ({code or 'sin materia'})"
         if not CODE_RE.fullmatch(code):

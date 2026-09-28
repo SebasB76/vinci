@@ -13,6 +13,8 @@ def _value(value) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(_value(v) for v in value) + "]"
     # A JSON string is a valid TOML basic string (same escapes).
     return json.dumps(str(value), ensure_ascii=False)
 

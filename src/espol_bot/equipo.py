@@ -4,8 +4,9 @@ The model never does it itself. Its tools (herramientas.py) only *show* a card w
 buttons; the captain's press, handled without the model by the `vinci-botones` plugin
 (`espol-bot boton`), is what creates or archives a bot:
 
-  1. `proponer_equipo` reads the courses of the aula virtual, adds one subject per course
-     to materias.toml ("pendiente") and shows the team with a «➕ Crear» button each.
+  1. `proponer_equipo` reads the courses of the aula virtual, adds one subject per ESPOL code
+     to materias.toml ("pendiente"; its theory and práctico courses go to the same subject)
+     and shows the team with a «➕ Crear» button each.
   2. «➕ Crear Vinci · X» marks the subject "esperando_bot" and sends a Telegram keyboard
      button that creates the bot for Vinci to manage (Bot API 9.6 managed bots: the captain
      confirms name and username in Telegram's own screen). If Vinci may not manage bots
@@ -57,7 +58,8 @@ def suggested_username(subject: materias.Subject) -> str:
 
 def propose(cfg: BotConfig, conn) -> tuple[list[materias.Subject], list[str], list[materias.Subject]]:
     """(team, notes, gone): the current team merged with the active aula courses. Existing
-    entries keep their name, username and state; new courses come in as 'pendiente'."""
+    entries keep their name, username and state; a course of a known subject (its práctico, say)
+    joins that subject; a course of a new subject comes in as 'pendiente'."""
     team, notes = list(materias.load(cfg.core)), []
     courses = queries.courses(conn)
     for course in courses:
@@ -67,12 +69,12 @@ def propose(cfg: BotConfig, conn) -> tuple[list[materias.Subject], list[str], li
             continue
         existing = materias.for_course(team, course["id"], course["codigo"])
         if existing:
-            if existing.course_id is None:
-                team[team.index(existing)] = replace(existing, course_id=course["id"])
+            if course["id"] not in existing.course_ids:
+                team[team.index(existing)] = replace(existing, course_ids=(*existing.course_ids, course["id"]))
             continue
-        team.append(materias.Subject(code=code, name=materias.short_name(course["nombre"]), course_id=course["id"]))
+        team.append(materias.Subject(code=code, name=materias.short_name(course["nombre"]), course_ids=(course["id"],)))
     active_ids = {c["id"] for c in courses}
-    gone = [s for s in team if s.state == "activa" and s.course_id is not None and s.course_id not in active_ids]
+    gone = [s for s in team if s.state == "activa" and s.course_ids and not active_ids & set(s.course_ids)]
     return team, notes, gone
 
 

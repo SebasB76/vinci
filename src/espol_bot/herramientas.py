@@ -1,11 +1,11 @@
 """The tools each bot gets, served over MCP by `espol-bot mcp vinci|materia`.
 
-Vinci (the main bot): read-only queries over the aula data of every course and over
-every subject notebook, the schedule (it can read it and propose one extracted from
-a screenshot; only the captain's «Guardar» button saves it), the handoff of an item
-to a subject bot, and the team (it shows cards whose «Crear» / «Archivar» buttons, pressed
-by the captain, create or archive a subject bot). No Vinci tool writes a notebook, reads
-arbitrary files, runs commands, or sees a bot token.
+Vinci (the main bot): read-only queries over the aula data of every course (it opens the outside
+links the aula shows without a login, like a subject bot) and over every subject notebook, the
+schedule (it can read it and propose one extracted from a screenshot; only the captain's «Guardar»
+button saves it), the handoff of an item to a subject bot, and the team (it shows cards whose
+«Crear» / «Archivar» buttons, pressed by the captain, create or archive a subject bot). No Vinci
+tool writes a notebook, reads arbitrary files, runs commands, or sees a bot token.
 
 A subject bot: the same queries restricted to its own courses (theory and práctico), the classes of its
 subject, and its own notebook (read and write; attachments only from the files the
@@ -13,9 +13,12 @@ captain sent it, which Hermes keeps in the profile's media cache).
 
 Material is a catalog, not a pile of text: `archivos` lists every document and outside link of the
 courses (where it is, whether it is read yet) and each document is downloaded only when a bot needs
-it (bajar_archivo). Search weighs the subject's main book (libros.py) first and runs the question in
-two languages when the material is in English. A scanned page is seen as an image by `ver_pagina`,
-a tool of the vinci-botones plugin (an MCP result cannot carry an image to the model in Hermes).
+it (bajar_archivo). An outside link (a Google Doc, a SharePoint share, a professor's page) opens
+without the student's login when a bot reads it (leer_archivo with its enlace_id), and an
+announcement shows the links it carries, which its text alone loses. Search weighs the subject's
+main book (libros.py) first and runs the question in two languages when the material is in English.
+A scanned page is seen as an image by `ver_pagina`, a tool of the vinci-botones plugin (an MCP
+result cannot carry an image to the model in Hermes).
 
 The Canvas token stays inside this process: no tool ever returns it.
 """
@@ -58,6 +61,14 @@ CATALOG_LIMIT = 60   # documents listed without a name filter; the rest is one `
 FILTERED_LIMIT = 100
 LINK_LIMIT = 25
 HIT_CHARS = 1500
+READ_WHAT = "Dime «archivo_id» (un documento de archivos) o «enlace_id» (un enlace de archivos o de un anuncio)."
+READ_PROPERTIES = {
+    "archivo_id": {"type": "integer"},
+    "enlace_id": {"type": "integer", "description": "un enlace de «enlaces» (archivos) o de un anuncio"},
+    "paginas": {"type": "string", "description": "rango, ej. 3-5"},
+    "reintentar": {"type": "boolean", "description": "con enlace_id: pruébalo otra vez aunque hace poco pidió iniciar "
+                                                     "sesión (el estudiante dice que ya lo compartieron)"},
+}
 
 
 @dataclass
@@ -218,18 +229,41 @@ def _catalog_entry(ctx: Ctx, f: dict, main: set[int], copies: Counter, several_c
     return entry
 
 
-def _link_entry(link: dict, can_fetch: bool) -> dict:
-    entry = {"enlace_id": link["enlace_id"], "titulo": link["titulo"], "tipo": link["tipo"],
-             "acceso": ("se puede bajar" if can_fetch else "público") if link["acceso"] == PUBLIC else "solo enlace"}
-    for key in ("modulo", "seccion", "origen", "archivo_id"):
+def _link_entry(link: dict) -> dict:
+    """«se puede abrir» (leer_archivo with its enlace_id tries it without a login), «abierto» (its document is
+    archivo_id), «no se abre» (it asked for a login, or is gone) or «solo enlace» (a video, a form); `motivo` says why."""
+    if link["acceso"] != PUBLIC:
+        access = "solo enlace"
+    elif link["motivo"]:
+        access = "no se abre"
+    else:
+        access = "abierto" if link["archivo_id"] is not None else "se puede abrir"
+    entry = {"enlace_id": link["enlace_id"], "titulo": link["titulo"], "tipo": link["tipo"], "acceso": access}
+    for key in ("motivo", "modulo", "seccion", "origen", "archivo_id"):
         if link[key] is not None and not (key == "origen" and str(link[key]).startswith("Módulo")):
             entry[key] = link[key]
     entry["url"] = link["url"]
     return entry
 
 
-def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: dict | None, *,
-              can_fetch: bool) -> dict:
+def _announcements(conn, course_ids: list[int] | None, n: int) -> list[dict]:
+    items = queries.announcements(conn, course_ids, limit=n)
+    for item in items:
+        item["enlaces"] = [_link_entry(link) for link in item["enlaces"]]
+        for key in ("archivos", "enlaces"):
+            if not item[key]:
+                del item[key]
+    return items
+
+
+def _open_link(ctx: Ctx, link_id: int, retry: bool) -> int:
+    try:
+        return ctx.aula.fetch_link(link_id, retry=retry)
+    except CanvasError as exc:
+        raise ToolError(str(exc)) from None
+
+
+def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: dict | None) -> dict:
     """The catalog: every document of the courses (read or not), then their outside links. Only files a
     bot can read count (a Canvas course page also holds images like anuncios.png or silabos.png, which a
     model reads as «the syllabus is uploaded»); copies of the same file are listed once."""
@@ -263,7 +297,7 @@ def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: di
                      "contenido del curso.")
     links = queries.links(ctx.conn, course_ids, name)
     if links:
-        result["enlaces"] = [_link_entry(link, can_fetch) for link in links[:LINK_LIMIT]]
+        result["enlaces"] = [_link_entry(link) for link in links[:LINK_LIMIT]]
         if len(links) > LINK_LIMIT:
             notes.append(f"Muestro {LINK_LIMIT} de {len(links)} enlaces; filtra con «nombre».")
     if notes:
@@ -428,8 +462,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
 
     def anuncios(args):
         ctx.refresh()
-        return queries.announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")),
-                                     limit=_int(args.get("n"), "n", 5, 1, 30))
+        return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30))
 
     def notas(args):
         ctx.refresh()
@@ -438,7 +471,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
     def archivos(args):
         subject = _vinci_subject(ctx, args.get("materia"))
         book = _books(ctx, [subject])[subject.code] if subject else None
-        return _material(ctx, _vinci_course_ids(ctx, args.get("materia")), args.get("nombre"), book, can_fetch=False)
+        return _material(ctx, _vinci_course_ids(ctx, args.get("materia")), args.get("nombre"), book)
 
     def buscar(args):
         subject = _vinci_subject(ctx, args.get("materia"))
@@ -447,9 +480,14 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=False)
 
     def leer(args):
+        if args.get("enlace_id") not in (None, ""):
+            fid = _open_link(ctx, _int(args["enlace_id"], "enlace_id", hi=10**12), bool(args.get("reintentar")))
+        elif args.get("archivo_id") not in (None, ""):
+            fid = _int(args["archivo_id"], "archivo_id", lo=-10**12, hi=10**12)
+        else:
+            raise ToolError(READ_WHAT)
         try:
-            return _read(ctx.conn, _int(args["archivo_id"], "archivo_id", lo=-10**12, hi=10**12), args.get("paginas"),
-                         can_fetch=False)
+            return _read(ctx.conn, fid, args.get("paginas"), can_fetch=False)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -567,21 +605,23 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
         Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,
              {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
-        Tool("anuncios", "Anuncios recientes de los profesores.", anuncios,
+        Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
+             "un SharePoint): léelos con leer_archivo.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
         Tool("notas", "Notas publicadas por materia.", notas, dict(materia)),
         Tool("archivos", "Catálogo del material de las materias: cada documento (PDF, PPTX, DOCX, páginas) con su "
              "ID, módulo, sección, carpeta, de dónde salió y su estado (leído, sin bajar, escaneado…), y los enlaces "
-             "de fuera (Dropbox, SharePoint, videos). Con «materia», también su libro principal.", archivos,
+             "de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su «enlace_id». Con «materia», también su "
+             "libro principal.", archivos,
              {**materia, "nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
         Tool("buscar_material", "Busca en el texto del material ya leído; devuelve archivo, página y fragmento, con "
              "el libro principal primero. Mucho material está en inglés: pasa también «traduccion».",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
                       **materia, "n": {"type": "integer"}}, ["pregunta"]),
-        Tool("leer_archivo", "Lee el texto de un archivo del material por páginas.", leer,
-             {"archivo_id": {"type": "integer"}, "paginas": {"type": "string", "description": "rango, ej. 3-5"}},
-             ["archivo_id"]),
+        Tool("leer_archivo", "Lee el texto de un archivo del material por páginas; con «enlace_id», el de un enlace "
+             "de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del estudiante y lo lee como "
+             "un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
         Tool("libro_principal", "El libro principal de una materia (la bibliografía BÁSICA del sílabo): cuál es y "
              "si hay PDF. Si el estudiante te dice cuál es («el libro de Estadística es Zurita»), pásalo en «titulo» "
              "y queda guardado para su bot.", libro,
@@ -675,7 +715,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         main = book()
         return {"materia": s.name, "codigo": s.code, "bot": s.display, "proximas_clases": _upcoming(ctx, 7, s.code),
                 "pendientes": queries.pending(ctx.conn, now, cids, days=14),
-                "anuncios": queries.announcements(ctx.conn, cids, limit=3), "cuaderno": notebook,
+                "anuncios": _announcements(ctx.conn, cids, 3), "cuaderno": notebook,
                 "libro_principal": {"titulo": main["titulo"], "archivos": [
                     {k: f[k] for k in ("archivo_id", "archivo", "estado")} for f in main["archivos"]]}}
 
@@ -685,28 +725,30 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def anuncios(args):
         ctx.refresh()
-        return queries.announcements(ctx.conn, course_ids(), limit=_int(args.get("n"), "n", 5, 1, 30))
+        return _announcements(ctx.conn, course_ids(), _int(args.get("n"), "n", 5, 1, 30))
 
     def notas(args):
         ctx.refresh()
         return queries.grades(ctx.conn, course_ids())
 
     def archivos(args):
-        return _material(ctx, course_ids(), args.get("nombre"), book(), can_fetch=True)
+        return _material(ctx, course_ids(), args.get("nombre"), book())
 
     def buscar(args):
         return _search(ctx, args, course_ids(), libros.file_ids(book()), can_fetch=True)
 
     def leer(args):
-        return _read(ctx.conn, own_file(args["archivo_id"]), args.get("paginas"), can_fetch=True)
+        if args.get("enlace_id") not in (None, ""):
+            fid = _open_link(ctx, own_link(args["enlace_id"]), bool(args.get("reintentar")))
+        elif args.get("archivo_id") not in (None, ""):
+            fid = own_file(args["archivo_id"])
+        else:
+            raise ToolError(READ_WHAT)
+        return _read(ctx.conn, fid, args.get("paginas"), can_fetch=True)
 
     def bajar(args):
         if args.get("enlace_id") not in (None, ""):
-            try:
-                fid = ctx.aula.fetch_link(own_link(args["enlace_id"]))
-            except CanvasError as exc:
-                raise ToolError(str(exc)) from None
-            return file_result(fid)
+            return file_result(_open_link(ctx, own_link(args["enlace_id"]), bool(args.get("reintentar"))))
         if args.get("archivo_id") in (None, ""):
             raise ToolError("Dime «archivo_id» (un documento de archivos) o «enlace_id» (uno de sus enlaces).")
         fid = own_file(args["archivo_id"])
@@ -795,24 +837,27 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
         Tool("tareas", "Entregas pendientes de tu materia.", tareas,
              {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
-        Tool("anuncios", "Anuncios recientes de tu materia.", anuncios, {"n": {"type": "integer"}}),
+        Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
+             "SharePoint): léelos con leer_archivo.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia.", notas),
         Tool("archivos", "Catálogo del material de tu materia: cada documento (PDF, PPTX, DOCX, páginas) con su ID, "
              "módulo, sección, carpeta, de dónde salió y su estado (leído, sin bajar, escaneado, muy grande…), tu "
-             "libro principal primero; y los enlaces de fuera (Dropbox, SharePoint, videos) con su «enlace_id».",
+             "libro principal primero; y los enlaces de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su "
+             "«enlace_id».",
              archivos, {"nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
         Tool("buscar_material", "Busca en el texto del material ya leído de tu materia (archivo, página, fragmento), "
              "con tu libro principal primero. Mucho material está en inglés: pasa también «traduccion».",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
                       "n": {"type": "integer"}}, ["pregunta"]),
-        Tool("leer_archivo", "Lee un archivo del material de tu materia, por páginas.", leer,
-             {"archivo_id": {"type": "integer"}, "paginas": {"type": "string", "description": "rango, ej. 3-5"}},
-             ["archivo_id"]),
+        Tool("leer_archivo", "Lee un archivo del material de tu materia, por páginas; con «enlace_id», el de un "
+             "enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del estudiante y lo lee "
+             "como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
         Tool("bajar_archivo", "Baja e indexa un documento de tu materia que está «sin bajar» (solo lectura del aula), "
-             "o abre un enlace de fuera que «se puede bajar» (un Dropbox, una página pública). Baja solo lo que "
-             "necesitas ahora.", bajar,
-             {"archivo_id": {"type": "integer"}, "enlace_id": {"type": "integer"}}, read_only=False),
+             "o abre un enlace de fuera sin la cuenta del estudiante (un Google Doc, un Dropbox, una página pública). "
+             "Baja solo lo que necesitas ahora.", bajar,
+             {"archivo_id": {"type": "integer"}, "enlace_id": {"type": "integer"},
+              "reintentar": READ_PROPERTIES["reintentar"]}, read_only=False),
         Tool("libro_principal", "Tu libro principal (la bibliografía BÁSICA del sílabo): cuál es, sus archivos y "
              "cómo pasarte el PDF. Si el estudiante te dice cuál es, guárdalo con «titulo»; si un archivo del "
              "catálogo es ese libro, con «archivo_id».", libro,

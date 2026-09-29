@@ -9,7 +9,8 @@ is, where its PDF is, and asking the captain for that PDF once.
   the main one, and once a match names an author the ones that name none drop out.
 - The ask: when the main book is known and no PDF of it can be read (none, or only one too big to
   download), the subject bot asks once, with a fixed message (no model) that says how to hand it
-  over; never again for that subject.
+  over; never again for that subject. When the aula only links it, the poll first opens that link
+  without a login: a public one is the book, and only one that does not open is asked for.
 """
 
 from __future__ import annotations
@@ -141,7 +142,7 @@ def main_book(conn: sqlite3.Connection, cfg: CoreConfig, subject: materias.Subje
         found = matching(title, (books or {}).get("complementaria", []) if not stored["titulo"] else [], documents)
     links = []
     if title and not found:
-        links = [{"enlace_id": link["enlace_id"], "titulo": link["titulo"], "tipo": link["tipo"], "url": link["url"]}
+        links = [{k: link[k] for k in ("enlace_id", "titulo", "tipo", "motivo", "url")}
                  for link in matching(title, [], [{**link, "archivo": link["titulo"] or ""}
                                                   for link in queries.links(conn, course_ids)])]
     return {
@@ -220,8 +221,9 @@ def ask_text(cfg: CoreConfig, subject: materias.Subject, book: dict) -> str:
                  f"({cfg.max_file_mb:g} MB, <code>material.tamano_maximo_mb</code> en config.toml).")
     elif book["enlaces"]:
         link = book["enlaces"][0]
-        where = (f"En el aula solo está como enlace ({e(link['tipo'])}), que yo no puedo abrir: "
-                 f"{messages.link(link['url'], link['titulo'] or 'abrir')}.")
+        where = (f"En el aula solo está como enlace ({e(link['tipo'])}) y no lo pude abrir"
+                 + (f": {e(link['motivo'])}" if link["motivo"] else "")
+                 + f". {messages.link(link['url'], link['titulo'] or 'Abrir enlace')}.")
     said = "Según el sílabo es" if (book["origen"] or "").startswith("sílabo") else "Me dijiste que es"
     return (f"📘 <b>El libro principal de {e(subject.name)}</b>\n"
             f"{said}: <i>{e(book['titulo'])}</i>\n{where}\n\n"

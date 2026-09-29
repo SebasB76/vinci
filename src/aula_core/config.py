@@ -1,8 +1,8 @@
 """Loads config.toml, secrets.env, and the clock for the core.
 
 The core only reads the sections it needs ([canvas], [general], [material],
-[almacenamiento]); layers built on top (the bot) parse their own sections from
-`CoreConfig.raw`.
+[almacenamiento], and [test], where the E2E test points outside hosts at its fakes);
+layers built on top (the bot) parse their own sections from `CoreConfig.raw`.
 
 Environment overrides (used by setup.sh's wrappers and by the E2E test):
   AULA_CONFIG   path to config.toml (default: repo root)

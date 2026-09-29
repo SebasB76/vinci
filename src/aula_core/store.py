@@ -9,8 +9,10 @@ Tables:
                  document of a course wherever the aula shows it (Files, Modules, Pages, the
                  «Programa del curso», announcements, assignments), downloaded or not, plus
                  material that never came from Canvas (negative ids: a public link fetched,
-                 a PDF the student handed over)
-  links          external links of each course (Dropbox, SharePoint, a professor's page, videos)
+                 a PDF the student handed over). An announcement keeps the files and links it
+                 points to (`material`)
+  links          external links of each course (Google Docs, SharePoint, a professor's page, videos),
+                 with what opening one anonymously gave (its file, or why it did not open)
   pages          the course Pages already read, with the files and links they point to
   unreachable    files linked somewhere that this student cannot open (retried weekly)
   bibliography   the main and complementary books parsed from each syllabus
@@ -73,7 +75,8 @@ CREATE TABLE IF NOT EXISTS announcements (
     author TEXT,
     posted_at TEXT,
     html_url TEXT,
-    first_seen TEXT NOT NULL
+    first_seen TEXT NOT NULL,
+    material TEXT
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -114,6 +117,8 @@ CREATE TABLE IF NOT EXISTS links (
     file_id INTEGER,
     active INTEGER NOT NULL DEFAULT 1,
     first_seen TEXT NOT NULL,
+    checked_at TEXT,
+    problem TEXT,
     UNIQUE (course_id, url)
 );
 
@@ -165,6 +170,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
 # Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS leaves an existing table as it was.
 ADDED_COLUMNS = {
     "courses": ["term_start TEXT"],
+    "announcements": ["material TEXT"],
+    "links": ["checked_at TEXT", "problem TEXT"],
     "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",
               "duplicate_of INTEGER", "download_url TEXT"],
 }

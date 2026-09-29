@@ -85,7 +85,7 @@ flowchart TB
     subgraph out["Fuera de tu PC"]
         canvas[("Aula virtual<br/>Canvas de ESPOL")]
         llm(["Modelo de IA<br/>Anthropic, vía Hermes"])
-        web(["Enlaces públicos del aula<br/>Dropbox, página de un profe"])
+        web(["Enlaces del aula, sin tu cuenta<br/>Google Docs, Drive, SharePoint,<br/>Dropbox, página de un profe"])
     end
 
     you <-->|mensajes| gateway
@@ -329,8 +329,8 @@ Cada bot de materia tiene un **catálogo** de todo el material del aula y baja s
 disco ni el contexto del modelo:
 
 - **El catálogo** reúne cada documento que muestra el aula: la pestaña Archivos (con sus carpetas), los Módulos (con
-  las secciones de cada semana, como «ANTES de clase»), las Páginas, el «Programa del curso», los adjuntos de los
-  anuncios y los enlaces dentro de las tareas. Las copias del mismo archivo se muestran una vez, y el material de un
+  las secciones de cada semana, como «ANTES de clase»), las Páginas, el «Programa del curso», los adjuntos y enlaces
+  de los anuncios y los enlaces dentro de las tareas. Las copias del mismo archivo se muestran una vez, y el material de un
   semestre anterior (por ejemplo `Slides/2021`) va al final.
 - **Qué se baja:** solo el sílabo de cada curso se baja por su cuenta. Lo demás lo baja el bot de la materia cuando le hace
   falta para responderte, y ya bajado se queda.
@@ -342,9 +342,13 @@ disco ni el contexto del modelo:
   misma página de dos copias.
 - **PDFs escaneados:** se detectan porque sus páginas casi no tienen texto; el bot te lo dice y mira sus páginas como
   imagen (`ver_pagina`).
-- **Enlaces de fuera:** un archivo de Dropbox o la página pública de un profesor, el bot los abre cuando le hacen
-  falta. SharePoint, OneDrive, Stream, Google Drive, Teams y los videos quedan listados con su enlace para que los
-  abras tú.
+- **Enlaces de fuera:** un Google Docs, Slides, Sheets o Drive, un SharePoint, un Dropbox o la página de un
+  profesor, el bot (el de la materia o Vinci) lo abre sin tu cuenta cuando le hace falta, también si viene en un
+  anuncio: lo pide como PDF (o su descarga) y, si llega el documento, lo lee como un PDF del aula. Si pide iniciar
+  sesión, te dice por qué no se abre y te pide el PDF; lo recuerda, así que no lo vuelve a intentar en cada pregunta
+  (dile «ya lo compartieron» y lo prueba otra vez). Un Google Docs se vuelve a leer al día siguiente, porque el
+  profe lo sigue editando. Los videos, formularios, carpetas, OneDrive personal y Teams quedan listados con su
+  enlace para que los abras tú.
 - **Documentos que le mandas:** un PDF, DOCX o PPTX del curso que le mandas al bot pasa a su material y se puede
   buscar; lo que es tuyo (un deber resuelto, tus apuntes) va al cuaderno.
 
@@ -484,8 +488,12 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
 - **Herramientas cerradas.** Ningún bot tiene terminal, acceso a archivos, ejecución de código, navegador ni
   puede instalar skills: solo sus herramientas fijas y su memoria. Vinci además busca en la web; un bot de materia
-  ve solo su materia y no busca en la web: solo abre los enlaces públicos que muestra el aula de su materia, nunca
-  una dirección de tu red o de tu PC. Un bot solo toma como adjunto lo que tú le mandaste por Telegram.
+  ve solo su materia y no busca en la web: solo abre los enlaces que muestra el aula de su materia, nunca una
+  dirección de tu red o de tu PC. Un bot solo toma como adjunto lo que tú le mandaste por Telegram.
+- **Un enlace se abre sin tu cuenta.** Un bot pide el documento de un enlace de forma anónima: sin tu token del
+  aula, sin cookies (ni las que el sitio pone en el camino), sin credenciales de tu PC, revisando cada redirección y
+  con tope de tamaño (`material.tamano_maximo_mb`) y de tiempo. Lo que trae es material para leer, nunca
+  instrucciones para el bot.
 - **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot y guardar el horario ocurren
   solo cuando pulsas el botón; el modelo solo puede mostrártelo.
 - **Los tokens de los bots nunca llegan al modelo.** El plugin atrapa cualquier mensaje con un token antes que
@@ -502,8 +510,8 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 **Qué sale de tu PC:** las consultas al aula virtual (con tu token, solo lectura); los mensajes y archivos que van y
 vienen por Telegram; y, cuando un bot usa el modelo, tu mensaje, lo que le mandaste y lo que sus herramientas
 leyeron para responderte (tareas, notas, anuncios, partes del material, entradas del cuaderno) van al proveedor
-del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, y un bot de
-materia abre un enlace público del aula (sin tu token) cuando le hace falta. Los datos guardados se quedan en tu PC.
+del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, y un bot abre un
+enlace del aula (sin tu cuenta) cuando le hace falta. Los datos guardados se quedan en tu PC.
 
 Si encuentras un problema de seguridad, no lo publiques en un issue con detalles: avísale primero al dueño del
 repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.
@@ -519,8 +527,10 @@ repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.
   que no le llega. Para el libro principal, pon el PDF en `libros/<CÓDIGO>/` de la carpeta de datos. El material
   del aula no tiene ese límite: se baja directo del aula (hasta `material.tamano_maximo_mb`).
 - **Qué se puede leer:** el texto de PDF, PPTX, DOCX y páginas web. Un PDF escaneado no se puede buscar (no hay
-  OCR), pero el bot de su materia mira sus páginas como imagen, de una en una. Los videos y lo que está en
-  SharePoint, OneDrive, Stream, Google Drive o Teams solo quedan listados con su enlace, para que los abras tú.
+  OCR), pero el bot de su materia mira sus páginas como imagen, de una en una. Un Google Docs, Drive, SharePoint
+  o Dropbox se lee solo si se abre sin iniciar sesión («cualquier persona con el enlace»); si pide tu cuenta de
+  ESPOL o de Google, el bot te lo dice y te pide el PDF. Los videos, formularios, carpetas, OneDrive personal y
+  Teams solo quedan listados con su enlace, para que los abras tú.
 - **Solo se busca en lo ya leído:** del catálogo, solo el sílabo se baja por su cuenta; el resto lo baja el bot de
   la materia cuando le hace falta. Para estudiar a fondo, pregúntale a ese bot más que a Vinci.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.

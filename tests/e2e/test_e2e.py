@@ -40,7 +40,11 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      chat (it is only a SharePoint link) and then sent as a PDF; the one Física's captain names
      in Vinci's chat, asked for once, never again, and picked up from the libros/ folder; search
      with the main book first and in two languages; a scanned reading seen as an image (the image
-     reaches the model); a professor's public page opened and a SharePoint link refused;
+     reaches the model); outside links opened without a login and without any credential: a
+     professor's page, the Google Doc that is all an announcement of Física says (the captain's
+     case), a Drive guide Vinci reads; a private Google Doc and an ESPOL-only SharePoint refused with
+     the reason, the private one not asked for again on every question (unless the captain says it is
+     shared now);
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
@@ -95,7 +99,8 @@ HERE = Path(__file__).parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
-from fake_servers import BrokenIPv6, FakeCanvas, FakeTelegram, FakeWeb, ScriptedLLM  # noqa: E402
+from fake_servers import (  # noqa: E402
+    DRIVE_FILE, ESPOL_ONLY_SHARE, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas, FakeTelegram, FakeWeb, ScriptedLLM)
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -268,10 +273,13 @@ class Script:
         called = [c["function"]["name"] for m in turn if m.get("role") == "assistant" for c in m.get("tool_calls") or []]
         results = [flatten(m.get("content")) for m in turn if m.get("role") == "tool"]
         if bot == "Vinci":
-            return self.vinci(text, results)
+            return self.vinci(text, called, results)
         return self.subject(subject_of(req) or bot, text, called, results)
 
-    def vinci(self, text: str, results: list[str]) -> dict:
+    def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
+        flow = self.vinci_material(text, called, results)
+        if flow is not None:
+            return flow
         if results:
             return {"content": self.vinci_answer(results)}
         image = IMAGE_RE.search(text)
@@ -305,6 +313,33 @@ class Script:
         if "terminal" in text:
             return _call("terminal", command=f"touch {self.pwned}")
         return {"content": "Hola, soy Vinci. ¿En qué te ayudo?"}
+
+    def vinci_material(self, text: str, called: list[str], results: list[str]) -> dict | None:
+        """Vinci reading an outside link: one an assignment carries (found in the catalog) or an announcement's."""
+        last = _json(results[-1]) if results else None
+        if "guía del laboratorio" in text:
+            if not called:
+                return _call("mcp__vinci__archivos", materia="física", nombre="laboratorio")
+            if called == ["mcp__vinci__archivos"] and isinstance(last, dict) and last.get("enlaces"):
+                return _call("mcp__vinci__leer_archivo", enlace_id=last["enlaces"][0]["enlace_id"])
+            return {"content": self.reading_answer(results[-1])}
+        if "documento de políticas" in text:
+            if not called:
+                return _call("mcp__vinci__anuncios", materia="física")
+            if called == ["mcp__vinci__anuncios"] and isinstance(last, list):
+                item = next(a for a in last if "políticas" in a["titulo"])
+                return _call("mcp__vinci__leer_archivo", enlace_id=item["enlaces"][0]["enlace_id"])
+            return {"content": self.reading_answer(results[-1])}
+        return None
+
+    @staticmethod
+    def reading_answer(raw: str) -> str:
+        """What the model says after leer_archivo: the document's first page, or why it did not open."""
+        data = _json(raw)
+        if isinstance(data, dict) and data.get("contenido"):
+            page = data["contenido"][0]
+            return f"📄 {data['archivo']}, {data['unidad']} {page['pagina']}: {page['texto'][:300]}"
+        return _problem(raw)
 
     @staticmethod
     def vinci_answer(results: list[str]) -> str:
@@ -392,6 +427,20 @@ class Script:
                 if not called:
                     return _call("mcp__materia__buscar_material", pregunta=question, traduccion=english)
                 return {"content": _problem(results[-1]) if failed else self.search_answer(last)}
+        if "documento de políticas" in text:  # an announcement's link: its text alone does not show it
+            if not called:
+                return _call("mcp__materia__anuncios")
+            if called == ["mcp__materia__anuncios"] and isinstance(last, list):
+                item = next(a for a in last if "políticas" in a["titulo"])
+                return _call("mcp__materia__leer_archivo", enlace_id=item["enlaces"][0]["enlace_id"])
+            return {"content": self.reading_answer(results[-1])}
+        if "rúbrica de la tarea" in text:  # a link an assignment carries, found in the catalog
+            if not called:
+                return _call("mcp__materia__archivos", nombre="rúbrica")
+            if called == ["mcp__materia__archivos"] and isinstance(last, dict) and last.get("enlaces"):
+                retry = {"reintentar": True} if "otra vez" in text else {}
+                return _call("mcp__materia__leer_archivo", enlace_id=last["enlaces"][0]["enlace_id"], **retry)
+            return {"content": self.reading_answer(results[-1])}
         for trigger, pick in (("guía de optimización", lambda link: "optimización" in link["titulo"]),
                               ("SharePoint", lambda link: "SharePoint" in link["tipo"])):
             if trigger in text:
@@ -548,6 +597,9 @@ def test_e2e(tmp_path):
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
         config = config.replace('modelo = "claude-sonnet-5-5"', 'modelo = "fake"')
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
+        hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
+            "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
+        config += f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here\n"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
         secrets = tmp_path / "secrets.env"
@@ -773,7 +825,7 @@ def test_e2e(tmp_path):
         assert "Ya lo leí" in by_title["Sílabo MATG1049 2026-2T.pdf"], "el sílabo se baja y se lee solo"
         assert "Lo bajo y lo leo cuando haga falta" in by_title["Semana 2 - Cinemática.pptx"], \
             "lo demás no se baja solo: queda en el catálogo"
-        assert "Es público" in texts, "el enlace de un módulo avisa si el bot lo puede abrir"
+        assert "Su bot de materia lo abre sin tu cuenta" in texts, "el enlace de un módulo avisa que el bot lo abre"
         assert len(poll2) == 8, [m["text"][:40] for m in poll2]
         assert not any(buttons(m) for m in poll1 + poll2), "sin bots de materia todavía no hay botones"
 
@@ -855,7 +907,7 @@ def test_e2e(tmp_path):
                 f"al recuperarse no se reenvía lo viejo: {[m['text'][:40] for m in poll]}"
         anuncios = json.loads(run([aula, "anuncios", "--curso", "fisica", "--sin-actualizar", "--json"],
                                   T_RESILIENCE[-1], env_extra=fresh).stdout)
-        assert len(anuncios) == 1, "al recuperarse, el anuncio existente queda guardado"
+        assert len(anuncios) == 2, "al recuperarse, los anuncios existentes quedan guardados"
         canvas.failing = set()
         assert downloads[:2] == [[5010], [5301]] and not any(downloads[2:]), downloads
         report.append("El sondeo trata el aula virtual con suavidad: espació cada consulta (con el ritmo de prueba de "
@@ -1394,10 +1446,14 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     assert [m["bot"] for m in asks] == ["vinci_calculo_bot"], [(m["bot"], m["text"][:60]) for m in asks]
     calc_ask = plain(asks[0]["text"])
     for expected in ("El libro principal de Cálculo de una Variable", "Según el sílabo es: Purcell, E., Varberg",
-                     "solo está como enlace (SharePoint de ESPOL)", "Hasta 20 MB: mándamelo aquí",
+                     "solo está como enlace (SharePoint de ESPOL) y no lo pude abrir: pide tu cuenta de ESPOL",
+                     "Hasta 20 MB: mándamelo aquí",
                      f"{data_dir}/libros/MATG1049", "No te lo vuelvo a pedir"):
         assert expected in calc_ask, f"falta «{expected}» en el pedido del libro:\n{calc_ask}"
     assert (data_dir / "libros" / "MATG1049").is_dir() and (data_dir / "libros" / "FISG1002").is_dir()
+    assert [p for _, p in web.requests if ESPOL_ONLY_SHARE in p] == [
+        f"/sites/MATG1049/_layouts/15/download.aspx?share={ESPOL_ONLY_SHARE}"], \
+        "antes de pedir el libro, el sondeo abre sin cuenta el enlace de SharePoint del aula"
     material_md += ["## El bot de Cálculo pide su libro principal (una vez, desde su chat)\n",
                     f"```\n{calc_ask}\n```\n"]
     calc_alert = next(m for m in reminders if "Taller 3" in m["text"])
@@ -1543,9 +1599,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     assert by_id[5006]["estado"] == "sin bajar" and by_id[5006]["origen"] == "Tarea «Taller 3: Derivadas»"
     assert by_id[5007]["origen"] == "Anuncio «Bienvenidos al curso»"
     links = {link["tipo"]: link for link in calc_catalog["enlaces"]}
-    assert links["SharePoint de ESPOL"]["acceso"] == links["video"]["acceso"] == "solo enlace"
-    assert links["SharePoint de ESPOL"]["origen"] == "Programa del curso"
-    assert links["archivo de Dropbox"]["acceso"] == "se puede bajar"
+    purcell_link = links["SharePoint de ESPOL"]
+    assert purcell_link["acceso"] == "no se abre" and "pide tu cuenta de ESPOL" in purcell_link["motivo"], purcell_link
+    assert links["video"]["acceso"] == "solo enlace" and links["video"]["motivo"].startswith("es un video")
+    assert purcell_link["origen"] == "Programa del curso"
+    assert links["archivo de Dropbox"]["acceso"] == "se puede abrir"
     web_links = [link for link in calc_catalog["enlaces"] if link["tipo"] == "página web"]
     assert {link["titulo"] for link in web_links} == {"Guía de optimización (página del profesor)",
                                                      "este applet de GeoGebra"}, web_links
@@ -1554,8 +1612,9 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "del módulo («ANTES de clase: lecturas»), su carpeta («Libros») y de dónde salió (una guía que solo "
                   "enlaza una tarea, el adjunto de un anuncio), la copia de 2025 del capítulo 3 una sola vez, el libro "
                   "de 250 MB como «muy grande para bajar», y los enlaces de fuera: el Purcell del «Programa del curso» "
-                  "en SharePoint y el video como «solo enlace», el Dropbox y la página del profesor como «se puede "
-                  "bajar»; nada se bajó sin pedirlo salvo los sílabos")
+                  "en SharePoint como «no se abre» (el sondeo lo intentó sin cuenta y pidió la de ESPOL), el video "
+                  "como «solo enlace», el Dropbox y la página del profesor como «se puede abrir»; nada se bajó sin "
+                  "pedirlo salvo los sílabos")
 
     purcell = (FILES / "purcell-calculo.pdf").read_bytes()
     turn(lambda: telegram.send_document(MATG, CAPTAIN, "purcell-calculo-9a-ed.pdf", purcell,
@@ -1573,23 +1632,24 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     assert len({(h["archivo"], h["pagina"]) for h in hits}) == len(hits)
     dump("`buscar_material` en Cálculo: «regla de la cadena» (y «chain rule»)", hits)
     report.append("Libro principal de Cálculo: el sílabo en PDF (BÁSICA y COMPLEMENTARIA lado a lado) dice que es el "
-                  "Purcell; como en el aula solo está como enlace de SharePoint, su bot se lo pidió al capitán una vez, "
+                  "Purcell; en el aula solo está como enlace de SharePoint, que el sondeo intentó abrir sin cuenta "
+                  "(SharePoint pidió la cuenta de ESPOL), así que su bot se lo pidió al capitán una vez, "
                   "desde su propio chat y sin el modelo, explicando cómo pasar un PDF de más de 20 MB (la carpeta "
                   "libros/MATG1049). El capitán le mandó el PDF, que quedó en su material como libro principal, y al "
                   "preguntar por la regla de la cadena el Purcell salió primero: «" + readable(chain)[:120] + "…»")
 
     guide = turn(lambda: telegram.send_text(MATG, CAPTAIN, "abre la guía de optimización del profesor"),
                  "vinci_calculo_bot", "quedó en tu material")
-    assert [p for _, p in web.requests] == ["/profesor/optimizacion.html"], web.requests
+    assert [p for _, p in web.requests if p.startswith("/profesor/")] == ["/profesor/optimizacion.html"], web.requests
     opened = db_rows("SELECT f.*, l.url FROM links l JOIN files f ON f.id = l.file_id")
     assert len(opened) == 1 and opened[0]["index_status"] == "ok" and opened[0]["source"].startswith("Enlace «Guía")
     refused = turn(lambda: telegram.send_text(MATG, CAPTAIN, "ábreme el Purcell del SharePoint"), "vinci_calculo_bot",
                    "Ábrelo tú")
     assert "pide tu cuenta de ESPOL" in readable(refused) and "sharepoint.com" in readable(refused)
-    assert len(web.requests) == 1, "un enlace de SharePoint no se intenta abrir"
     report.append("Enlaces de fuera: el bot de Cálculo abrió la guía de optimización de la página pública del profesor "
                   "cuando se la pidieron (un GET sin token, solo esa página) y quedó leída en su material; el Purcell de "
-                  "SharePoint no lo intentó abrir: «" + readable(refused)[:110].replace("\n", " ") + "…»")
+                  "SharePoint, que solo abre con cuenta de ESPOL, lo rechazó con ese motivo: «"
+                  + readable(refused)[:110].replace("\n", " ") + "…»")
     material_md += ["## Enlaces: la guía del profesor se abre, el SharePoint no\n",
                     f"```\n{readable(guide)}\n\n{readable(refused)}\n```\n"]
 
@@ -1652,6 +1712,78 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "PDF: el de Cálculo mostró su capítulo 3 y el de Física se negó: «"
                   + readable(other)[:80].replace("\n", " ") + "…»")
     take("El material de Física: búsqueda en dos idiomas y una lectura escaneada")
+
+    # 7f3. Outside links open without a login: the captain's case, an announcement that is only a Google Doc link;
+    # a private Doc an assignment links refused with its reason and not asked for again; a Drive guide Vinci reads
+    def asked(fragment: str) -> list[str]:
+        return [p for _, p in web.requests if fragment in p]
+
+    def listed(match) -> list:
+        """The newest list result (anuncios) the model got that `match` accepts."""
+        for req in reversed(llm.requests):
+            for m in reversed(req.get("messages") or []):
+                if m.get("role") == "tool" and isinstance(data := _json(flatten(m.get("content"))), list) and match(data):
+                    return data
+        return []
+
+    policies = turn(lambda: telegram.send_text(FIS, CAPTAIN, "¿qué dice el documento de políticas del curso del anuncio?"),
+                    "vinci_fisica_bot", "📄")
+    assert "la asistencia mínima para aprobar es del 70 %" in readable(policies), readable(policies)
+    news = listed(lambda d: any("políticas" in a.get("titulo", "") for a in d))
+    announcement = next(a for a in news if "políticas" in a["titulo"])
+    assert announcement["texto"].startswith("https://docs.google.com/document/d/"), "el anuncio es solo el enlace"
+    assert [(link["tipo"], link["acceso"]) for link in announcement["enlaces"]] == [("Google Docs", "se puede abrir")]
+    assert asked(PUBLIC_DOC) == [f"/document/d/{PUBLIC_DOC}/export?format=pdf", f"/export/e2e/{PUBLIC_DOC}"], \
+        "el Google Doc se pide como PDF, siguiendo la redirección de Google"
+    doc = db_rows("SELECT f.* FROM links l JOIN files f ON f.id = l.file_id WHERE l.url LIKE ?", f"%{PUBLIC_DOC}%")
+    assert len(doc) == 1 and doc[0]["display_name"] == "Políticas del curso - Física I.pdf" and doc[0]["pages"] == 2 \
+        and doc[0]["index_status"] == "ok" and doc[0]["id"] < 0, doc
+
+    rubric = turn(lambda: telegram.send_text(FIS, CAPTAIN, "ábreme la rúbrica de la tarea de vectores"),
+                  "vinci_fisica_bot", "⚠️")
+    for expected in ("Google pide iniciar sesión", "cualquier persona con el enlace", f"{PRIVATE_DOC}/edit",
+                     "descárgalo en PDF y pásamelo"):
+        assert expected in readable(rubric), f"falta «{expected}» al negar la rúbrica:\n{readable(rubric)}"
+    again = turn(lambda: telegram.send_text(FIS, CAPTAIN, "ábreme la rúbrica de la tarea de vectores"),
+                 "vinci_fisica_bot", "lo intenté")
+    assert asked(PRIVATE_DOC) == [f"/document/d/{PRIVATE_DOC}/export?format=pdf"], \
+        "un enlace privado no se vuelve a pedir en cada pregunta"
+    shared = turn(lambda: telegram.send_text(FIS, CAPTAIN, "ya la compartieron, abre la rúbrica de la tarea otra vez"),
+                  "vinci_fisica_bot", "Google pide iniciar sesión")
+    assert len(asked(PRIVATE_DOC)) == 2, "si el capitán dice que ya lo compartieron, se prueba otra vez"
+    remembered = db_rows("SELECT problem FROM links WHERE url LIKE ?", f"%{PRIVATE_DOC}%")[0]["problem"]
+    assert remembered.startswith("Google pide iniciar sesión"), remembered
+
+    guide = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué dice la guía del laboratorio de física?"),
+                 "vinci_bot", "📄")
+    assert "riel de aire" in readable(guide) and "guía del laboratorio 1.pdf" in readable(guide), readable(guide)
+    assert asked(DRIVE_FILE) == [f"/uc?export=download&id={DRIVE_FILE}", f"/download?id={DRIVE_FILE}&export=download",
+                                 f"/download?id={DRIVE_FILE}&export=download&confirm=t&uuid=e2e-uuid"], \
+        "el archivo de Drive se baja sin cuenta, pasando la página del antivirus de Drive"
+    recap = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué dice el documento de políticas del anuncio de física?"),
+                 "vinci_bot", "📄")
+    assert "70 %" in readable(recap) and len(asked(PUBLIC_DOC)) == 2, "Vinci lee la copia que ya abrió el bot de Física"
+    vinci_news = listed(lambda d: any("políticas" in a.get("titulo", "") for a in d))
+    assert next(a for a in vinci_news if "políticas" in a["titulo"])["enlaces"][0]["acceso"] == "abierto"
+    for (_, path), headers in zip(web.requests, web.headers, strict=True):
+        sent = {key.lower() for key in headers}
+        assert not sent & {"authorization", "cookie"} and "7~" not in json.dumps(headers), \
+            f"{path} llevó credenciales: {headers}"
+    dump("`anuncios` de Física: el anuncio que es solo un enlace de Google Docs, como lo ve su bot", announcement)
+    replies = "\n\n".join(readable(m) for m in (policies, rubric, again, shared, guide, recap))
+    replies = re.sub(r"lo intenté el [^;]+;", "lo intenté el <fecha>;", replies)  # the MCP server's own clock
+    material_md += ["## Enlaces que se abren sin cuenta: Google Docs, Drive; uno privado se niega\n",
+                    f"```\n{replies}\n```\n"]
+    report.append("Enlaces sin cuenta (el caso del capitán): un anuncio de Física que es solo un enlace de Google Docs; "
+                  "su bot vio el enlace en `anuncios`, lo pidió como PDF sin cuenta (siguiendo la redirección de Google) "
+                  "y lo leyó como un PDF del aula: «" + readable(policies)[:90].replace("\n", " ") + "…». La rúbrica "
+                  "que enlaza una tarea, un Google Doc privado (Google responde 401), la negó con el motivo y pidiendo "
+                  "el PDF; al preguntar "
+                  "otra vez no la volvió a pedir, y cuando el capitán dijo que ya la compartieron la probó de nuevo. "
+                  "Vinci leyó la guía de laboratorio que una tarea enlaza en Drive (pasando la página del antivirus) y "
+                  "el documento del anuncio (la copia que ya abrió el bot de Física). Ninguna de esas solicitudes llevó "
+                  "token, cookie ni credencial, aunque cada sitio puso una cookie en el camino")
+    take("Enlaces sin cuenta: Google Docs, Drive y uno privado")
 
     # 7g. Vinci reads the notebooks but cannot write them or reach a terminal
     read = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué hay en el cuaderno de cálculo?"),

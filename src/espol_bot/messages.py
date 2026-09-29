@@ -80,7 +80,8 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
     if kind == "new_link":
         where = "".join(f" · {e(ev[k])}" for k in ("modulo", "seccion") if ev.get(k))
         what = KIND_LABEL.get(ev.get("tipo"), ev.get("tipo") or "enlace")
-        how = ("Es público: su bot de materia lo abre si hace falta." if ev.get("acceso") == PUBLIC else
+        how = ("Su bot de materia lo abre sin tu cuenta cuando haga falta (si pide iniciar sesión, te lo dice)."
+               if ev.get("acceso") == PUBLIC else
                f"Ábrelo tú: {e(WHY_LINK_ONLY.get(ev.get('tipo'), 'no lo puedo abrir'))}.")
         return (f"🔗 <b>Enlace nuevo en {course}</b>{where}\n{e(ev['enlace'])} ({e(what)})\n{how}\n"
                 f"{link(ev['url'], 'Abrir enlace')}")

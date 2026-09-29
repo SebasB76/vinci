@@ -135,8 +135,10 @@ def render_announcements(rows, aula: Aula) -> str:
         text = (a["texto"] or "").strip()
         if len(text) > 400:
             text = text[:400].rstrip() + "…"
+        extra = "".join(f"\n  📎 {f['archivo']} (archivo {f['archivo_id']})" for f in a["archivos"]) + "".join(
+            f"\n  🔗 {link['titulo']} ({link['tipo']}; {_link_state(link)})" for link in a["enlaces"])
         blocks.append(f"• {timefmt.human(a['publicado'], aula.cfg.tz)} — {a['curso']}: {a['titulo']}"
-                      f"{' (' + a['autor'] + ')' if a['autor'] else ''}\n  {text}\n  {a['url']}")
+                      f"{' (' + a['autor'] + ')' if a['autor'] else ''}\n  {text}{extra}\n  {a['url']}")
     return "\n\n".join(blocks)
 
 
@@ -180,11 +182,18 @@ def render_files(rows, max_mb: float) -> str:
     return "\n".join(lines)
 
 
+def _link_state(r) -> str:
+    if r["acceso"] != "publico":
+        return f"solo enlace: {r['motivo']}"
+    if r["motivo"]:
+        return f"no se abre: {r['motivo']}"
+    return f"abierto, archivo {r['archivo_id']}" if r["archivo_id"] is not None else "un bot lo intenta sin tu cuenta"
+
+
 def render_links(rows) -> str:
     if not rows:
         return "No hay enlaces."
-    return "\n".join(f"• {r['curso']}: {r['titulo'] or r['url']} ({r['tipo']}; "
-                     f"{'público' if r['acceso'] == 'publico' else 'solo enlace'})"
+    return "\n".join(f"• {r['curso']}: {r['titulo'] or r['url']} ({r['tipo']}; {_link_state(r)})"
                      f"{' [' + r['modulo'] + ']' if r['modulo'] else ''}\n  {r['url']}" for r in rows)
 
 

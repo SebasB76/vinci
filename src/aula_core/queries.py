@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from aula_core import extract, timefmt
-from aula_core.catalog import KIND_LABEL, fold, is_old, term_year
+from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, fold, is_old, term_year
 
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
             " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review'))")
@@ -96,15 +96,29 @@ def pending(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = Non
 
 
 def announcements(conn: sqlite3.Connection, ids: list[int] | None = None, *, limit: int = 10) -> list[dict]:
+    """Newest first, each with the files and outside links it points to (its text alone loses them)."""
     extra, params = _course_filter(ids, "n.course_id")
     rows = conn.execute(
         f"""SELECT n.*, c.name AS course_name FROM announcements n JOIN courses c ON c.id = n.course_id
             WHERE c.active = 1{extra} ORDER BY n.posted_at DESC LIMIT ?""",
         [*params, limit],
     ).fetchall()
-    return [{"id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "titulo": r["title"],
-             "autor": r["author"], "publicado": r["posted_at"], "texto": r["message_text"], "url": r["html_url"]}
-            for r in rows]
+    result = []
+    for r in rows:
+        material = json.loads(r["material"] or "{}")
+        files, urls = material.get("files") or [], material.get("links") or []
+        linked = conn.execute(
+            f"""SELECT l.*, c.name AS course_name FROM links l JOIN courses c ON c.id = l.course_id
+                WHERE l.course_id = ? AND l.url IN ({','.join('?' * len(urls)) or 'NULL'})""",
+            [r["course_id"], *urls]).fetchall()
+        attached = conn.execute(f"SELECT id, display_name FROM files WHERE active = 1 AND id IN "
+                                f"({','.join('?' * len(files)) or 'NULL'})", files).fetchall()
+        result.append({"id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "titulo": r["title"],
+                       "autor": r["author"], "publicado": r["posted_at"], "texto": r["message_text"],
+                       "url": r["html_url"], "archivos": [{"archivo_id": f["id"], "archivo": f["display_name"]}
+                                                          for f in attached],
+                       "enlaces": sorted((_link(link) for link in linked), key=lambda link: urls.index(link["url"]))})
+    return result
 
 
 def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]:
@@ -163,8 +177,17 @@ def files(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | No
         needle in fold(r[k]) for k in ("display_name", "module", "section", "folder", "source"))]
 
 
+def _link(r: sqlite3.Row) -> dict:
+    why = r["problem"] if r["access"] == PUBLIC else WHY_LINK_ONLY.get(r["kind"], "no lo puedo abrir")
+    return {"enlace_id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "titulo": r["title"],
+            "tipo": KIND_LABEL.get(r["kind"], r["kind"]), "acceso": r["access"], "modulo": r["module"],
+            "seccion": r["section"], "origen": r["source"], "archivo_id": r["file_id"], "motivo": why,
+            "probado": r["checked_at"], "url": r["url"]}
+
+
 def links(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | None = None) -> list[dict]:
-    """Outside links of the courses: what they are, and whether a bot can open them (acceso «publico»)."""
+    """Outside links of the courses: what they are, whether a bot may open them (acceso «publico»: it tries
+    without a login) and what that gave: the file it opened (archivo_id), or why it does not open (motivo)."""
     extra, params = _course_filter(ids, "l.course_id")
     rows = conn.execute(
         f"""SELECT l.*, c.name AS course_name FROM links l JOIN courses c ON c.id = l.course_id
@@ -172,10 +195,8 @@ def links(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | No
         params,
     ).fetchall()
     needle = fold(name) if name else None
-    return [{"enlace_id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "titulo": r["title"],
-             "tipo": KIND_LABEL.get(r["kind"], r["kind"]), "acceso": r["access"], "modulo": r["module"],
-             "seccion": r["section"], "origen": r["source"], "archivo_id": r["file_id"], "url": r["url"]}
-            for r in rows if not needle or any(needle in fold(r[k]) for k in ("title", "module", "section", "url"))]
+    return [_link(r) for r in rows
+            if not needle or any(needle in fold(r[k]) for k in ("title", "module", "section", "source", "url"))]
 
 
 def bibliography(conn: sqlite3.Connection, ids: list[int]) -> dict | None:

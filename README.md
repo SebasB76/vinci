@@ -42,9 +42,6 @@ Además, Vinci arma **tu equipo**: lee las materias en las que estás inscrito y
 materia**, con el nombre de esa materia. Cada bot de materia se especializa en la suya: te manda un repaso antes
 de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el material del curso.
 
-**¿Para quién es?** Para estudiantes de ESPOL que usan el aula virtual y Telegram, y que tienen una PC con Linux
-que pueda quedar encendida. Vinci no es un servicio en la nube: lo instalas tú, corre en tu PC y solo te responde
-a ti. Es un proyecto independiente de un estudiante; no es un servicio oficial de ESPOL.
 
 ## Qué hace
 
@@ -62,39 +59,6 @@ a ti. Es un proyecto independiente de un estudiante; no es un servicio oficial d
 
 Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un brief) lo hacen scripts fijos que
 **no usan el modelo de IA ni gastan tokens**. Solo gastan tokens tus preguntas y lo que un bot tiene que escribir.
-
-## Cómo funciona
-
-```mermaid
-flowchart TB
-    you(["📱 Tú, en Telegram"])
-
-    subgraph pc["Tu PC"]
-        cron["Cron sin modelo<br/>sondeo, renovación, resumen,<br/>agenda de cada materia"]
-        gateway["Gateway de Hermes Agent<br/>Vinci + un bot por materia<br/>cada uno en su perfil"]
-        plugin["Plugin vinci-botones<br/>botones, tokens, /start<br/>y ver_pagina"]
-        tools["Herramientas fijas por MCP<br/>aula, material, cuadernos, horario"]
-        data[("Carpeta de datos<br/>espol.db, material,<br/>cuadernos, horario")]
-        cron -->|despierta a un bot<br/>solo si hay trabajo| gateway
-        gateway --- plugin
-        gateway --> tools
-        cron --> data
-        tools --> data
-    end
-
-    subgraph out["Fuera de tu PC"]
-        canvas[("Aula virtual<br/>Canvas de ESPOL")]
-        llm(["Modelo de IA<br/>Anthropic, vía Hermes"])
-        web(["Enlaces del aula, sin tu cuenta<br/>Google Docs, Drive, SharePoint,<br/>Dropbox, página de un profe"])
-    end
-
-    you <-->|mensajes| gateway
-    cron -->|avisos y recordatorios| you
-    cron -->|GET académico;<br/>POST/DELETE solo de sus tokens| canvas
-    tools -->|solo GET| canvas
-    gateway -->|tus preguntas y los briefs| llm
-    tools -->|solo si hace falta| web
-```
 
 - **Hermes Agent** es el agente de IA sobre el que corre todo. Cada bot es un
   [perfil de Hermes](https://hermes-agent.nousresearch.com/docs/): `vinci` para Vinci y `vinci-<código>` para
@@ -128,20 +92,9 @@ Así está organizado el repositorio:
 | `hermes/` | Las plantillas de cada bot (su `SOUL.md` y su skill), el plugin `vinci-botones`, las fotos de perfil (`avatars/`) y `characters.toml`. |
 | `claude/skills/aula/` | La skill para Claude Code. |
 
-## Requisitos
-
-- **Una PC con Linux** que quede encendida mientras quieras que los bots funcionen (se usa en Arch / Omarchy).
-- **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** instalado en `~/.local/bin/hermes` (o en la
-  ruta que pongas en `HERMES_BIN`), con un modelo de **Anthropic** configurado con `hermes model`. Vinci usa
-  `claude-sonnet-5-5` por defecto. Si a Hermes le falta su conector de Telegram, el setup lo instala.
-- **Python 3.11 o más nuevo** y, de preferencia, [uv](https://docs.astral.sh/uv/) (`sudo pacman -S uv`). Sin uv,
-  el setup usa `python -m venv`.
-- **Una cuenta de Telegram** y **tu cuenta institucional** del aula virtual.
-- Opcional: [Claude Code](https://claude.com/claude-code), para usar la skill `aula`.
 
 ## Inicio rápido
 
-Si ya tienes Hermes funcionando y sabes crear un bot con @BotFather:
 
 ```bash
 git clone https://github.com/SebasB76/espol-academic-bot.git
@@ -156,40 +109,6 @@ hermes gateway install && hermes gateway start
 Después, en Telegram: escríbele a Vinci **«arma mi equipo»**, pulsa «➕ Crear» en cada materia y mándale una
 captura de tu horario. La [instalación paso a paso](#instalación) explica cada parte.
 
-## Instalación
-
-Vas a tener un bot de Telegram para Vinci y uno por cada materia. El de Vinci lo creas tú (paso 1); los de las
-materias los crea Vinci contigo desde el chat (paso 7).
-
-### 1. Crea el bot de Vinci con @BotFather
-
-1. En Telegram abre [@BotFather](https://t.me/BotFather) y envía `/newbot`.
-2. Ponle de nombre **Vinci** y un usuario que termine en `bot` (por ejemplo `mi_vinci_bot`).
-3. BotFather te da un **token** como `123456789:ABCdef…`. Va en `TELEGRAM_BOT_TOKEN`.
-4. Usa un bot **nuevo**, distinto de cualquier otro que ya uses con Hermes: Hermes no deja que dos perfiles usen
-   el mismo token.
-5. Abre el chat con tu bot nuevo y envíale `/start` (un bot no puede escribirte primero).
-6. **Recomendado:** en @BotFather abre la Mini App, elige a Vinci y activa la opción que le permite **gestionar
-   otros bots**. Así Vinci crea cada bot de materia con un solo toque tuyo. Si no la activas (o tu Telegram no la
-   muestra), también funciona: Vinci te guía para crearlos con `/newbot`.
-
-### 2. Averigua tu ID de Telegram
-
-Escríbele a [@userinfobot](https://t.me/userinfobot): te responde con tu **ID numérico** (no es tu @usuario). Va
-en `TELEGRAM_USER_ID` y es la única persona a la que le responderán tus bots.
-
-### 3. Crea el token del aula virtual
-
-1. Entra a [aulavirtual.espol.edu.ec](https://aulavirtual.espol.edu.ec) con tu cuenta institucional.
-2. Ve a **Cuenta → Configuración** y baja hasta **Integraciones aprobadas**.
-3. Pulsa **Nuevo token de acceso**. En *Propósito* escribe, por ejemplo, «Vinci», y en *Fecha de vencimiento*
-   pon el **fin del término**: si algún día se filtra, deja de servir solo.
-4. Pulsa **Generar token** y cópialo **en ese momento** (Canvas no lo vuelve a mostrar). Va en `CANVAS_TOKEN`.
-
-Ese token puede hacer en el aula lo mismo que tú, así que trátalo como una contraseña. Vinci lo usa para leer tus
-datos académicos y para crear/borrar únicamente sus propios tokens de reemplazo. Nunca entrega, publica ni cambia
-cursos. ESPOL actualmente invalida cada token personal al cabo de una hora aunque muestre otra fecha; Vinci lo
-renueva antes de que ocurra.
 
 ### 4. Completa `secrets.env`
 

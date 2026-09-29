@@ -4,7 +4,7 @@
 
 # Vinci
 
-**Tu asistente académico de ESPOL en Telegram.** Lee tu aula virtual, te avisa lo nuevo, arma un bot por
+**Tu asistente académico en Telegram.** Lee tu aula virtual, te avisa lo nuevo, arma un bot por
 cada una de tus materias y te prepara para cada clase.
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)

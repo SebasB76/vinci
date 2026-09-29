@@ -150,7 +150,7 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
         lines.append(f"Libro principal: {book['titulo']} — " + (pdfs or "no tengo su PDF: usa el resto del material."))
     readable = {*cfg.core.material_extensions, "html"}
     new_material = [f for f in files.values() if f["extension"] in readable]
-    links = [json.loads(r["payload"]) for r in events if r["kind"] == "new_link"]
+    links = [json.loads(r["payload"]) | {"enlace_id": r["ref_id"]} for r in events if r["kind"] == "new_link"]
     news = [json.loads(r["payload"]) | {"kind": r["kind"]} for r in events
             if r["kind"] not in ("new_file", "file_updated", "new_link")]
     lines.append("Material nuevo desde la clase anterior:" if new_material or links else
@@ -162,7 +162,8 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
                      + f" · archivo {f['id']}, {queries.file_state(f, cfg.core.max_file_mb)} · {f['url'] or ''}")
     for link in links:
         where = " · ".join(v for v in (link.get("modulo"), link.get("seccion")) if v)
-        lines.append(f"  - enlace: {link['enlace']}" + (f" [{where}]" if where else "") + f" · {link['url']}")
+        lines.append(f"  - enlace: {link['enlace']}" + (f" [{where}]" if where else "")
+                     + f" · enlace_id {link['enlace_id']} · {link['url']}")
     if news:
         lines.append("Novedades del aula desde la clase anterior:")
         for n in news:
@@ -173,7 +174,8 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
         "Qué hacer: escribe el brief de esta clase para Telegram, en español, breve (máx. ~250 palabras):",
         "1) Repaso de la clase anterior (desde tu cuaderno; si no hay nada, dilo en una línea).",
         "2) Qué hay por entregar (con fecha) y si algo es para pronto.",
-        "3) Material nuevo desde la clase anterior (si uno «sin bajar» es de esta clase, bájalo con bajar_archivo).",
+        "3) Material nuevo desde la clase anterior (si uno «sin bajar» es de esta clase, bájalo con bajar_archivo; "
+        "un enlace se lee con leer_archivo y su enlace_id).",
         "4) 3 a 5 conceptos clave para esta clase (usa buscar_material, con «traduccion» si el material está en "
         "inglés, y leer_archivo; primero el libro principal; cita archivo y página).",
         "5) Una pregunta concreta para hacerle al profesor en clase.",

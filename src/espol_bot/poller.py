@@ -208,6 +208,12 @@ class Bot:
             except OSError as exc:
                 log.warning("carpeta de libros de %s: %s", subject.code, exc)
             book = libros.main_book(self.conn, self.cfg.core, subject, course_ids)
+            if libros.needs_ask(book) and book["enlaces"]:
+                try:  # the aula links it: if that opens without a login, it is the book and there is nothing to ask
+                    self.aula.fetch_link(book["enlaces"][0]["enlace_id"])
+                except CanvasError as exc:
+                    log.info("el libro de %s no se abre desde su enlace: %s", subject.code, exc)
+                book = libros.main_book(self.conn, self.cfg.core, subject, course_ids)
             if not libros.needs_ask(book):
                 continue
             text = libros.ask_text(self.cfg.core, subject, book)

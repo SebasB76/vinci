@@ -11,7 +11,13 @@ It answers 405 to anything but GET and records every request. `{{WEB}}` in a fix
 FakeWeb server's address.
 
 FakeWeb stands in for the public internet a course links to (a professor's own page): it serves
-fixtures/web/ to anyone, with no token, and records every request.
+fixtures/web/ to anyone, with no token, and records every request with its headers. Reached through
+`[test] link_hosts`, it also plays Google and SharePoint for the links the fixtures carry, the way
+they answer an anonymous request: a Google Doc shared with anyone exports as PDF (after the 307 to
+googleusercontent.com), one that is not answers 401 with Google's «you need access» page, a Drive
+file downloads after the virus-scan page Drive shows before a big file, and a SharePoint share that
+only ESPOL accounts may open sends to login.microsoftonline.com. The first hop of each sets a cookie,
+as Google's does, so a client that keeps cookies would send it on the next one.
 
 FakeTelegram stands in for the Bot API of several bots at once (Vinci and each subject
 bot, one token each): it records every call, answers getMe, keeps inline buttons, hands
@@ -47,13 +53,17 @@ from email.parser import BytesParser
 from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 FIXTURES = Path(__file__).parent / "fixtures"
 PAGE_SIZE = 2
 DOWNLOADS = {5001: "capitulo-3-derivadas.pdf", 5005: "capitulo-3-derivadas.pdf", 5101: "semana-2-cinematica.pptx",
              5010: "silabo-matg1049.pdf", 5301: "silabo-matg1049.pdf", 5102: "lectura-vectores-escaneada.pdf"}
 THROTTLE_ONCE = "/api/v1/courses/102/assignments"
+PUBLIC_DOC = "1PoliticasFisicaE2E-publico_0000000000000000"  # the Google Doc of Física's policies, shared with anyone
+PRIVATE_DOC = "1RubricaFisicaE2E-privado_00000000000000000"  # the project rubric, shared only with some accounts
+DRIVE_FILE = "1GuiaLaboratorioE2E-drive_000000000"  # the lab guide, a PDF in Drive shared with anyone
+ESPOL_ONLY_SHARE = "EQpurcell9"  # Cálculo's Purcell in SharePoint, for ESPOL accounts only
 
 
 class _Server:
@@ -146,6 +156,7 @@ class FakeWeb(_Server):
     def __init__(self):
         super().__init__(_WebHandler)
         self.requests: list[tuple[str, str]] = []
+        self.headers: list[dict[str, str]] = []  # each request's headers, in the order of `requests`
         self.lock = threading.Lock()
 
 
@@ -292,11 +303,55 @@ class _CanvasHandler(_Quiet):
         return self._json(200, chunk, {**quota, "Link": ",".join(links)})
 
 
+DRIVE_WARNING = f"""<!DOCTYPE html><html><head><title>Google Drive - Virus scan warning</title></head><body>
+<p>Google Drive can't scan this file for viruses.</p>
+<form id="download-form" action="https://drive.usercontent.google.com/download" method="get">
+<input type="submit" id="uc-download-link" value="Download anyway"/>
+<input type="hidden" name="id" value="{DRIVE_FILE}"><input type="hidden" name="export" value="download">
+<input type="hidden" name="confirm" value="t"><input type="hidden" name="uuid" value="e2e-uuid"></form></body></html>"""
+
+
 class _WebHandler(_Quiet):
+    COOKIE = {"Set-Cookie": "NID=e2e-cookie-de-google; Path=/"}
+
+    def _file(self, name: str, content_type: str, shown: str) -> None:
+        disposition = f"attachment; filename=\"{shown.encode('ascii', 'replace').decode()}\"; filename*=UTF-8''{quote(shown)}"
+        self._send(200, (FIXTURES / "files" / name).read_bytes(), content_type, {"Content-Disposition": disposition})
+
+    def _shared(self, path: str, query: dict) -> bool:
+        """Google's and SharePoint's answers to the fixtures' links; False for anything else."""
+        if path == f"/document/d/{PUBLIC_DOC}/export" and query.get("format") == "pdf":
+            self._send(307, b"", "application/binary", {
+                "Location": f"https://doc-0k-6c-docstext.googleusercontent.com/export/e2e/{PUBLIC_DOC}", **self.COOKIE})
+        elif path == f"/export/e2e/{PUBLIC_DOC}":
+            self._file("politicas-del-curso.pdf", "application/pdf", "Políticas del curso - Física I.pdf")
+        elif path == f"/document/d/{PRIVATE_DOC}/export":
+            self._send(401, b"<!DOCTYPE html><html><title>Google Docs: necesitas acceso</title><body>Solicita acceso "
+                            b"o cambia a una cuenta con acceso.</body></html>", "text/html; charset=utf-8", self.COOKIE)
+        elif path == "/uc" and query.get("id") == DRIVE_FILE:
+            self._send(303, b"", "application/binary", {
+                "Location": f"https://drive.usercontent.google.com/download?id={DRIVE_FILE}&export=download",
+                **self.COOKIE})
+        elif path == "/download" and query.get("id") == DRIVE_FILE:
+            if query.get("confirm") == "t" and query.get("uuid") == "e2e-uuid":
+                self._file("guia-laboratorio-1.pdf", "application/octet-stream", "guia-laboratorio-1.pdf")
+            else:
+                self._send(200, DRIVE_WARNING.encode(), "text/html; charset=utf-8", self.COOKIE)
+        elif path.endswith("/_layouts/15/download.aspx") and query.get("share") == ESPOL_ONLY_SHARE:
+            self._send(302, b"", "text/html", {
+                "Location": "https://login.microsoftonline.com/common/oauth2/authorize?client_id=e2e&response_mode=form_post",
+                **self.COOKIE})
+        else:
+            return False
+        return True
+
     def do_GET(self):
         web: FakeWeb = self.server.owner
         with web.lock:
             web.requests.append(("GET", self.path))
+            web.headers.append(dict(self.headers))
+        if self._shared(urlsplit(self.path).path, dict(parse_qsl(urlsplit(self.path).query))):
+            return
         path = (FIXTURES / "web" / unquote(urlsplit(self.path).path).lstrip("/")).resolve()
         if not path.is_relative_to((FIXTURES / "web").resolve()) or not path.is_file():
             return self._send(404, b"not found", "text/plain")

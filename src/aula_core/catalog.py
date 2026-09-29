@@ -102,25 +102,45 @@ def refs(body: str | None, canvas_url: str) -> Refs:
 
 # -- external links --------------------------------------------------------------------------------
 
-PUBLIC = "publico"      # a file or a page anyone can open: the bot fetches it when it needs it
-LINK_ONLY = "solo_enlace"  # needs the student's ESPOL login, or is a video or a folder: only listed
+PUBLIC = "publico"      # may open without the student's login: a bot tries it anonymously and what comes back decides
+LINK_ONLY = "solo_enlace"  # not a document (a video, a form, a folder) or only opens in a browser: only listed
 
 KIND_LABEL = {
     "dropbox": "archivo de Dropbox", "dropbox_carpeta": "carpeta de Dropbox", "sharepoint": "SharePoint de ESPOL",
-    "onedrive": "OneDrive", "stream": "video de Microsoft Stream", "video": "video", "zoom": "grabación de Zoom",
-    "google": "Google Drive / Docs", "microsoft": "Microsoft Teams / Forms", "web": "página web",
+    "sharepoint_carpeta": "carpeta de SharePoint", "onedrive": "OneDrive", "stream": "video de Microsoft Stream",
+    "video": "video", "zoom": "grabación de Zoom", "google_doc": "Google Docs", "google_slides": "Google Slides",
+    "google_sheet": "Google Sheets", "google_drawing": "dibujo de Google", "google_drive": "archivo de Google Drive",
+    "google_carpeta": "carpeta de Google Drive", "google_form": "formulario de Google", "google": "Google",
+    "microsoft": "Microsoft Teams / Forms", "web": "página web",
 }
 WHY_LINK_ONLY = {
-    "sharepoint": "pide tu cuenta de ESPOL", "onedrive": "pide tu cuenta de ESPOL", "stream": "es un video que pide tu cuenta de ESPOL",
-    "google": "solo abre con tu cuenta o si el profe lo compartió con cualquiera", "microsoft": "pide tu cuenta de ESPOL",
-    "video": "es un video (todavía no los proceso)", "zoom": "es una grabación (todavía no las proceso)",
-    "dropbox_carpeta": "es una carpeta, no un archivo",
+    "stream": "es un video que pide tu cuenta de ESPOL", "video": "es un video (todavía no los proceso)",
+    "zoom": "es una grabación (todavía no las proceso)", "dropbox_carpeta": "es una carpeta, no un archivo",
+    "sharepoint_carpeta": "es una carpeta, no un archivo", "google_carpeta": "es una carpeta, no un archivo",
+    "google_form": "es un formulario, no un documento", "google": "no es un documento que pueda bajar",
+    "onedrive": "OneDrive personal solo se abre en el navegador", "microsoft": "pide tu cuenta de ESPOL",
 }
+
+# A Google editor file and how it exports as PDF («/d/e/…» is one published to the web: a plain page).
+GOOGLE_FILE = re.compile(r"^/(document|presentation|spreadsheets|drawings)/(?:u/\d+/)?d/(?!e/)([\w-]{10,})")
+GOOGLE_EXPORT = {"document": ("google_doc", "export?format=pdf"), "presentation": ("google_slides", "export/pdf"),
+                 "spreadsheets": ("google_sheet", "export?format=pdf"), "drawings": ("google_drawing", "export/pdf")}
+DRIVE_FILE = re.compile(r"^/file/(?:u/\d+/)?d/([\w-]{10,})")
+SHAREPOINT_SITE = {"g": "", "s": "/sites", "t": "/teams"}
 
 
 def _host(url: str) -> str:
     host = (urlsplit(url).hostname or "").lower()
     return host[4:] if host.startswith("www.") else host
+
+
+def _drive_file(url: str) -> str | None:
+    parts = urlsplit(url)
+    if match := DRIVE_FILE.match(parts.path):
+        return match[1]
+    if parts.path in ("/uc", "/download"):
+        return dict(parse_qsl(parts.query)).get("id")
+    return None
 
 
 def classify(url: str) -> tuple[str, str]:
@@ -136,27 +156,60 @@ def classify(url: str) -> tuple[str, str]:
     if under("microsoftstream.com") or host == "stream.microsoft.com" or (under("sharepoint.com") and "/:v:/" in path):
         return "stream", LINK_ONLY
     if under("sharepoint.com"):
-        return "sharepoint", LINK_ONLY
+        return ("sharepoint_carpeta", LINK_ONLY) if path.startswith("/:f:/") else ("sharepoint", PUBLIC)
     if under("onedrive.live.com", "onedrive.com", "1drv.ms"):
         return "onedrive", LINK_ONLY
     if under("youtube.com", "youtu.be", "vimeo.com"):
         return "video", LINK_ONLY
     if under("zoom.us"):
         return "zoom", LINK_ONLY
-    if under("docs.google.com", "drive.google.com", "forms.gle"):
+    if under("forms.gle") or under("docs.google.com") and path.startswith("/forms/"):
+        return "google_form", LINK_ONLY
+    if host == "docs.google.com" and (match := GOOGLE_FILE.match(path)):
+        return GOOGLE_EXPORT[match[1]][0], PUBLIC
+    if host == "docs.google.com" and re.match(r"^/\w+/(?:u/\d+/)?d/e/", path):
+        return "web", PUBLIC
+    if under("drive.google.com", "docs.google.com", "drive.usercontent.google.com") and (_drive_file(url) or path == "/open"):
+        return "google_drive", PUBLIC
+    if under("drive.google.com") and "folder" in path:
+        return "google_carpeta", LINK_ONLY
+    if under("docs.google.com", "drive.google.com"):
         return "google", LINK_ONLY
     if under("teams.microsoft.com", "forms.office.com", "office.com", "microsoft365.com"):
         return "microsoft", LINK_ONLY
     return "web", PUBLIC
 
 
-def direct_url(url: str) -> str:
-    """The URL that downloads a public link's file (a Dropbox share link needs dl=1)."""
-    if classify(url)[0] != "dropbox":
-        return url
+def download_url(url: str) -> str:
+    """Where a link hands over its document without a login: a Google file's PDF export, a Drive file's
+    download, a SharePoint share's download.aspx (which needs no cookie), a Dropbox file with dl=1. Any
+    other link (a Drive «open?id=», a web page) is fetched as it is, and its redirects decide."""
     parts = urlsplit(url)
-    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "dl"] + [("dl", "1")]
-    return urlunsplit(parts._replace(query=urlencode(query)))
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    key = [(k, v) for k, v in query if k == "resourcekey"]  # a Drive file shared by link before 2021 needs it
+    kind = classify(url)[0]
+    if kind in ("google_doc", "google_slides", "google_sheet", "google_drawing"):
+        match = GOOGLE_FILE.match(parts.path)
+        export = GOOGLE_EXPORT[match[1]][1]
+        return f"https://docs.google.com/{match[1]}/d/{match[2]}/{export}" + (
+            ("&" if "?" in export else "?") + urlencode(key) if key else "")
+    if kind == "google_drive" and (file_id := _drive_file(url)):
+        return "https://drive.google.com/uc?" + urlencode([("export", "download"), ("id", file_id), *key])
+    if kind == "sharepoint":
+        # A share link (/:b:/s/<site>/<token>) downloads through its site; a path link (/:b:/r/…) as it is.
+        steps = parts.path.strip("/").split("/")
+        if len(steps) >= 3 and re.fullmatch(r":\w:", steps[0]) and steps[1] in SHAREPOINT_SITE:
+            site = "/".join(steps[2:-1])
+            if steps[1] == "g" and site:
+                site = "/" + site
+            elif site:
+                site = f"{SHAREPOINT_SITE[steps[1]]}/{site}"
+            return urlunsplit(("https", parts.netloc, f"{site}/_layouts/15/download.aspx",
+                               urlencode([("share", steps[-1])]), ""))
+        return urlunsplit(parts._replace(query=urlencode([*query, ("download", "1")])))
+    if kind == "dropbox":
+        return urlunsplit(parts._replace(query=urlencode([(k, v) for k, v in query if k != "dl"] + [("dl", "1")])))
+    return url
 
 
 # -- copies and old semesters ----------------------------------------------------------------------

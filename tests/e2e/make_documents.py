@@ -10,7 +10,8 @@ saved as a PDF with Pillow (no text at all, like a photocopy run through a scann
 - silabo-matg1049.pdf: an ESPOL «CONTENIDO DE ASIGNATURA» with BÁSICA and COMPLEMENTARIA side by side;
 - purcell-calculo.pdf: the main book of Cálculo (Spanish), which the captain sends the bot;
 - serway-physics.pdf: the main book of Física (English), which the captain drops in libros/FISG1002/;
-- lectura-vectores-escaneada.pdf: a scanned reading of Física.
+- lectura-vectores-escaneada.pdf: a scanned reading of Física;
+- politicas-del-curso.pdf, guia-laboratorio-1.pdf: what Física's Google Doc and Drive file hand over (FakeWeb).
 """
 
 from __future__ import annotations
@@ -196,6 +197,26 @@ def make_serway(path: Path) -> None:
     ])
 
 
+def make_policies(path: Path) -> None:
+    write_pdf(path, [
+        _lines(["Física I - Políticas del curso (II PAO 2026)",
+                "Asistencia: la asistencia mínima para aprobar es del 70 % de las clases.",
+                "Los deberes atrasados se reciben hasta 24 horas después, con 20 % menos.",
+                "El celular va en silencio durante la clase."]),
+        _lines(["Evaluación: primer parcial 30 %, segundo parcial 30 %, laboratorio 20 %, deberes 20 %.",
+                "La nota del laboratorio sale de los informes de cada práctica."]),
+    ])
+
+
+def make_lab_guide(path: Path) -> None:
+    write_pdf(path, [
+        _lines(["Física I - Laboratorio 1: movimiento en un plano inclinado",
+                "Materiales: riel de aire, carrito, cronómetro y cinta métrica.",
+                "Procedimiento: suelte el carrito desde 1 m de altura y mida el tiempo de bajada cinco veces.",
+                "Informe: tabla de tiempos, aceleración media y comparación con g sen(theta)."]),
+    ])
+
+
 def make_scan(path: Path) -> None:
     from PIL import Image, ImageDraw, ImageFont
 
@@ -244,4 +265,6 @@ if __name__ == "__main__":
     make_purcell(OUT / "purcell-calculo.pdf")
     make_serway(OUT / "serway-physics.pdf")
     make_scan(OUT / "lectura-vectores-escaneada.pdf")
+    make_policies(OUT / "politicas-del-curso.pdf")
+    make_lab_guide(OUT / "guia-laboratorio-1.pdf")
     print(f"Fixtures escritos en {OUT}")

@@ -132,9 +132,9 @@ class Aula:
                 _materials.index(self.conn, file_id)
             return path
 
-    def fetch_link(self, link_id: int) -> int:
-        """Open a public outside link of the catalog and index what it leads to (no Canvas read)."""
-        return _enlaces.fetch(self.conn, self.cfg, link_id)
+    def fetch_link(self, link_id: int, *, retry: bool = False) -> int:
+        """Open an outside link of the catalog without a login and index what it leads to (no Canvas read)."""
+        return _enlaces.fetch(self.conn, self.cfg, link_id, self.now(), retry=retry)
 
     def close(self) -> None:
         if self._conn is not None:

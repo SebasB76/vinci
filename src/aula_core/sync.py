@@ -226,7 +226,14 @@ class _Syncer:
         bodies = self.bodies.setdefault(course["id"], [])
         for t in raw if isinstance(raw, list) else []:
             bodies.append((f"Anuncio «{t.get('title') or '(sin título)'}»", t.get("message"), t.get("attachments") or []))
+            found = refs(t.get("message"), self.cfg.canvas_url)
+            attached = [a["id"] for a in t.get("attachments") or [] if a.get("id")]
+            material = json.dumps({"files": [fid for _, fid, _ in found.files] + attached,
+                                   "links": [url for url, _ in found.links]}, ensure_ascii=False)
             if self.conn.execute("SELECT 1 FROM announcements WHERE id = ?", (t["id"],)).fetchone():
+                # One stored before announcements kept their links, or edited since, gets them now.
+                self.conn.execute("UPDATE announcements SET material = ? WHERE id = ? AND material IS NOT ?",
+                                  (material, t["id"], material))
                 continue
             author = (t.get("author") or {}).get("display_name") or t.get("user_name")
             row = {
@@ -237,10 +244,12 @@ class _Syncer:
                 "author": author,
                 "posted_at": timefmt.normalize(t.get("posted_at")),
                 "html_url": t.get("html_url") or f"{self.cfg.canvas_url}/courses/{course['id']}/discussion_topics/{t['id']}",
+                "material": material,
             }
             self.conn.execute(
-                """INSERT INTO announcements(id, course_id, title, message_text, author, posted_at, html_url, first_seen)
-                   VALUES (:id, :course_id, :title, :message_text, :author, :posted_at, :html_url, :now)""",
+                """INSERT INTO announcements(id, course_id, title, message_text, author, posted_at, html_url, first_seen,
+                     material)
+                   VALUES (:id, :course_id, :title, :message_text, :author, :posted_at, :html_url, :now, :material)""",
                 {**row, "now": self.now_iso},
             )
             self.emit(quiet, "new_announcement", course, row["id"], {

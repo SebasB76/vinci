@@ -150,6 +150,12 @@ class Setup:
         self.bot_bin = self.bin_dir / "espol-bot"
         if not self.bot_bin.exists():
             raise ConfigError(f"Falta {self.bot_bin}; corre ./setup.sh para instalar las dependencias.")
+        switched = [*cfg.vinci_toolsets, *cfg.subject_toolsets, *(t for names in cfg.subject_toolsets_by_code.values()
+                                                                  for t in names)]
+        unknown = list(dict.fromkeys(t for t in switched if t not in SWITCHABLE_TOOLSETS))
+        if unknown:
+            raise ConfigError(f"[hermes.herramientas] no conozco {', '.join(unknown)}. Las que se pueden activar: "
+                              f"{', '.join(SWITCHABLE_TOOLSETS)}")
         self.configured: list[tuple[str, str]] = []  # (profile, its pinned skill) for check_skills
         self.secrets = load_secret_values()
         self.captain = captain_id(self.secrets)
@@ -196,10 +202,6 @@ class Setup:
                          label: str) -> tuple[list[str], list[str]]:
         """The bot's toolsets and blocked list once the captain's [hermes.herramientas] switches are applied."""
         extra = self.cfg.extra_toolsets(code)
-        unknown = [t for t in extra if t not in SWITCHABLE_TOOLSETS]
-        if unknown:
-            raise ConfigError(f"[hermes.herramientas] no conozco {', '.join(unknown)}. Las que se pueden activar: "
-                              f"{', '.join(SWITCHABLE_TOOLSETS)}")
         if extra:
             print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en el README)")
         return toolsets + [t for t in extra if t not in toolsets], [t for t in blocked if t not in extra]
@@ -520,7 +522,10 @@ class Setup:
                 found = [f"no leí su skill o su SOUL.md ({exc})"]
             if found:
                 ok = False
-                print(f"✗ {name}: su skill NO llega al modelo:" + "".join(f"\n    {line}" for line in found))
+                print(f"✗ {name}: su skill NO llega al modelo, así que el bot no sigue sus reglas:"
+                      + "".join(f"\n    {line}" for line in found)
+                      + f"\n  Arréglalo: vuelve a correr ./setup.sh y luego `hermes gateway restart`. Si sigue igual, "
+                        f"revisa que `skills` no esté en agent.disabled_toolsets de {profile / 'config.yaml'}.")
             else:
                 print(f"✓ {name}: su skill llega al modelo ({len(lines)} líneas en su prompt de Telegram)")
         return ok
@@ -529,7 +534,11 @@ class Setup:
 def provision(cfg: BotConfig, *, hermes_bin: str | None = None) -> int:
     setup = Setup(cfg, hermes_bin=hermes_bin)
     setup.vinci()
-    for subject in materias.load(cfg.core):
+    subjects = materias.load(cfg.core)
+    stray = sorted(set(cfg.subject_toolsets_by_code) - {s.code for s in subjects})
+    if stray:
+        print(f"⚠ [hermes.herramientas.por_materia] {', '.join(stray)} no es ninguna de tus materias en materias.toml; revisa el código.")
+    for subject in subjects:
         if subject.state != "pendiente":
             setup.subject(subject)
     return 0 if setup.check_skills() else 1

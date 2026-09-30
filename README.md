@@ -48,7 +48,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 
 | | |
 |---|---|
-| 🔔 **Avisos del aula virtual** | Revisa el aula cada 30 minutos y te avisa de tareas nuevas, cambios de fecha, anuncios, notas publicadas o cambiadas, material y enlaces nuevos y materias nuevas. Te recuerda cada entrega que aún no enviaste 24 h y 3 h antes, y a las 7:00 te manda el resumen de tu semana. Si la entregaste en papel, por correo o en el laboratorio (el aula no se entera), pulsa «✅ Ya lo entregué» y no insiste más. |
+| 🔔 **Avisos del aula virtual** | Revisa el aula cada 30 minutos y te avisa de tareas nuevas, cambios de fecha, anuncios, notas publicadas o cambiadas, material y enlaces nuevos y materias nuevas. Te recuerda cada entrega que aún no enviaste 24 h y 3 h antes, y a las 7:00 te manda el resumen de tu semana, con tus entregas en orden: lo que vence en 24 h y después lo que más vale en tu nota ([cómo las ordena](#el-resumen-de-las-700)). Si la entregaste en papel, por correo o en el laboratorio (el aula no se entera), pulsa «✅ Ya lo entregué» y no insiste más. |
 | 📌 **Tu lista de pendientes** | «Anota: estudiar cap. 3 de Física para el viernes»: Vinci guarda lo que el aula no trae (lecturas, trámites, lo que el profe dijo en clase y no subió), con su materia y su fecha. Sale en el resumen de las 7:00 y en «¿qué tengo esta semana?», te lo recuerda 24 h y 3 h antes, y lo cierras con «✅ Hecho». |
 | 📊 **Calculadora de notas** | «¿Cómo voy?», «¿cuánto necesito en la lección para pasar?», «¿y si saco 70 en el examen?»: aplica los pesos de cada materia a tus notas del aula (y a las que le cuentas) y te dice cuánto llevas y qué promedio necesitas en lo que falta. Los pesos los saca del sílabo, de las políticas del curso y de los anuncios, incluido cómo maneja cada materia el primer parcial sin examen por El Niño; lo que no encuentra te lo pregunta, y se guarda solo cuando pulsas «✅ Guardar esquema». Las cuentas las hace un script, no el modelo. [Más sobre la calculadora](#la-calculadora-de-notas). |
 | 🤖 **Un bot por materia** | Le dices «arma mi equipo» y Vinci te propone un bot por cada materia de tu aula, que se crea con un toque tuyo. El teórico y el práctico de una materia comparten un solo bot. |
@@ -377,6 +377,38 @@ Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puede
 - **Suposiciones.** «¿Y si saco 70 en la lección?» calcula sin guardar nada.
 - **Las cuentas son de un script.** El modelo solo te muestra el resultado; el promedio de cada parte se calcula por
   puntos (como el aula), y el mejoramiento reemplaza al parcial más bajo cuando ya tiene nota.
+- **Ordena tus entregas.** Con el esquema guardado, el resumen de las 7:00 y «¿qué tengo esta semana?» te dicen
+  cuánto vale cada entrega en tu nota y ponen primero lo que más pesa ([El resumen de las 7:00](#el-resumen-de-las-700)).
+
+### El resumen de las 7:00
+
+Cada mañana Vinci te manda tu semana: lo que tienes por entregar (tareas del aula que aún no enviaste ni marcaste con
+«✅ Ya lo entregué», y lo de tu lista que tiene fecha), lo atrasado, lo que ya entregaste, tu lista sin fecha y los
+anuncios del último día. Lo por entregar va en este orden, y cada línea dice por qué, con su fecha y su peso:
+
+```
+Por entregar (5)
+Vence en menos de 24 h
+• hoy 23:59 — Cálculo de una Variable: Taller 3: Derivadas · vale 12 % de tu nota
+• mañana 07:00 — Cálculo de una Variable (práctico): Práctica 4: Regla de la cadena · vale 6 % de tu nota
+Después, lo que más pesa en tu nota
+• vie 2 oct, 23:59 — Física I: Informe de laboratorio 1 · vale 25 % de tu nota
+• vie 2 oct, 12:00 — Física I: Tarea 3: Dinámica · vale 8,3 % de tu nota
+Sin peso conocido, por fecha
+• mañana 09:00 — Cálculo de una Variable: Lectura guiada de Cálculo · no sé a qué parte de la nota va
+```
+
+1. **Lo que vence en menos de 24 h**, por fecha: ya no hay tiempo de cambiarlo por otra cosa.
+2. **El resto de la semana, lo que más vale primero.** El peso sale del esquema de la materia que confirmaste para la
+   [calculadora](#la-calculadora-de-notas): la parte de la nota donde entra esa tarea, repartida entre las tareas de esa
+   parte según sus puntos (con 30 % para deberes y lecciones y 50 puntos en total, un taller de 20 puntos vale 12 %).
+   Si dos valen lo mismo, primero la que vence antes.
+3. **Lo que no tiene peso conocido**, por fecha: lo de una materia sin esquema guardado (el resumen las nombra una
+   vez, debajo), una tarea que no entra en ninguna parte del esquema («no sé a qué parte de la nota va») y lo de tu
+   lista (📌). Vinci no inventa un peso: cuéntale cómo se evalúa esa materia y la próxima vez entra en el orden.
+
+Lo atrasado va aparte, debajo, con su peso. «¿Qué tengo esta semana?» usa el mismo orden y los mismos pesos. El
+resumen lo arma un script, sin el modelo ni tokens.
 
 ### Qué recuerda cada bot
 

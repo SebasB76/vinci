@@ -245,7 +245,8 @@ def _round(value: float | None) -> float | None:
     return float(Decimal(repr(value)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) + 0.0
 
 
-def _component(component: dict, items: list[_Item], what_if: float | None) -> dict:
+def _points(component: dict, items: list[_Item]) -> tuple[float, float, int]:
+    """The component's graded points, its points still ungraded and how many grades it lacks in Canvas."""
     graded = [i for i in items if i.graded]
     pending = [i for i in items if i.pending]
     graded_points = sum(i.points for i in graded)
@@ -253,6 +254,12 @@ def _component(component: dict, items: list[_Item], what_if: float | None) -> di
     missing = (component.get("expected_count") or 0) - len(graded) - len(pending)
     if missing > 0:  # not created in Canvas yet: as many points as the mean known one (any unit when none is)
         pending_points += missing * ((graded_points + pending_points) / (len(graded) + len(pending)) if graded or pending else 1)
+    return graded_points, pending_points, missing
+
+
+def _component(component: dict, items: list[_Item], what_if: float | None) -> dict:
+    graded = [i for i in items if i.graded]
+    graded_points, pending_points, missing = _points(component, items)
     known = graded_points + pending_points
     share = graded_points / known if known else 0.0          # part of the component already graded
     average = sum(i.score for i in graded) / graded_points if graded_points else None
@@ -265,6 +272,13 @@ def _component(component: dict, items: list[_Item], what_if: float | None) -> di
     if what_if is not None:
         result["what_if"] = what_if
     return result
+
+
+def _items(period: dict, component: dict, slots: dict, manual: list[dict]) -> list[_Item]:
+    items = [_Item(a["name"], a["points"], a["score"], a["id"], a["due_at"], excused=bool(a["excused"]))
+             for a in slots[(period["name"], component["name"])]]
+    return items + [_Item(m["label"], m["out_of"], m["score"], manual=True) for m in manual
+                    if (fold(m["period"]), fold(m["component"])) == (fold(period["name"]), fold(component["name"]))]
 
 
 def compute(scheme: dict, assignments: list[dict], manual: list[dict], tz: ZoneInfo, *,
@@ -285,13 +299,8 @@ def compute(scheme: dict, assignments: list[dict], manual: list[dict], tz: ZoneI
         if (fold(m["period"]), fold(m["component"])) not in known:
             stray_manual.append(m)
     for p in scheme["periods"]:
-        comps = []
-        for c in p["components"]:
-            items = [_Item(a["name"], a["points"], a["score"], a["id"], a["due_at"], excused=bool(a["excused"]))
-                     for a in slots[(p["name"], c["name"])]]
-            items += [_Item(m["label"], m["out_of"], m["score"], manual=True) for m in manual
-                      if (fold(m["period"]), fold(m["component"])) == (fold(p["name"]), fold(c["name"]))]
-            comps.append(_component(c, items, what_if.get((fold(p["name"]), fold(c["name"])))))
+        comps = [_component(c, _items(p, c, slots, manual), what_if.get((fold(p["name"]), fold(c["name"]))))
+                 for c in p["components"]]
         done = sum(c["weight"] * c["graded_share"] for c in comps)                    # of the period's 100
         earned = sum(c["weight"] * c["graded_share"] * c["average"] for c in comps if c["average"] is not None)
         assumed = sum(c["weight"] * (1 - c["graded_share"]) * c["what_if"] / 100 for c in comps if "what_if" in c)
@@ -341,6 +350,23 @@ def compute(scheme: dict, assignments: list[dict], manual: list[dict], tz: ZoneI
         "unassigned_manual": stray_manual,
         "open_questions": scheme["open_questions"], "sources": scheme["sources"],
     }
+
+
+def weights(scheme: dict, assignments: list[dict], manual: list[dict], tz: ZoneInfo) -> dict[int, float | None]:
+    """How many points of the final 100 each assignment a component takes is worth: its share of the
+    component's points (graded, ungraded and not in Canvas yet) times the component's and its period's weight.
+    None for one it takes but cannot weigh (no points in Canvas, excused, an improvement exam); absent when
+    no component takes it."""
+    slots, _ = assign(scheme, assignments, tz)
+    result: dict[int, float | None] = {}
+    for p in scheme["periods"]:
+        for c in p["components"]:
+            graded_points, pending_points, _ = _points(c, _items(p, c, slots, manual))
+            total = graded_points + pending_points
+            for a in slots[(p["name"], c["name"])]:
+                weighable = not p["improvement"] and total and a["points"] and not a["excused"]
+                result[a["id"]] = p["weight"] * c["weight"] / 100 * a["points"] / total if weighable else None
+    return result
 
 
 def _improvement(periods: list[dict], regular: list[dict], secured: float, goal: float) -> dict | None:

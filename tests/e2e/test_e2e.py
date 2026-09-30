@@ -52,7 +52,10 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      esta semana?», the model-free reminder and 7:00 summary, closed with «✅ Hecho»); the grade calculator
      (Cálculo's bot reads its syllabus and shows the scheme, asking how the first partial goes without its exam;
      the captain's answer and «✅ Guardar esquema» save it; the figures, a what-if and a grade given in chat are
-     the tool's; Vinci says it does not know Física's scheme until the captain tells it);
+     the tool's; Vinci says it does not know Física's scheme until the captain tells it); the deliverables'
+     priority (with both schemes saved and a new Física homework, the model-free 7:00 summary and «¿qué tengo
+     esta semana?» put what is due within 24 h first, then the heaviest toward the grade, then, by date, what has
+     no known weight);
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
@@ -442,10 +445,11 @@ class Script:
                 todo = data["todo"]
                 when = f", para el {todo['due']}" if todo.get("due") else ""
                 parts.append(f"📌 Anotado: {todo['text']}{when}.")
-            elif isinstance(data, dict) and "todos" in data:
-                parts.append("Esta semana:\n" + "\n".join(f"- {t['tarea']} ({t['curso']})" for t in data["pendientes"])
-                             + "\nTu lista:\n" + "\n".join(f"- {t['text']}" + (f" ({t['due']})" if t.get("due") else "")
-                                                          for t in data["todos"]))
+            elif isinstance(data, dict) and "todos" in data:  # semana: its order, each with its «peso»
+                parts.append("Esta semana:\n" + "\n".join(
+                    (f"- {t['text']} ({t['due']})" if t["tipo"] == "tu_lista" else f"- {t['tarea']} ({t['curso']})")
+                    + (f" · {t['peso']}" if t.get("peso") else "") for t in data["pendientes"])
+                             + "\nTu lista:\n" + "\n".join(f"- {t['text']}" for t in data["todos"]))
             elif isinstance(data, dict) and data.get("confirmacion"):
                 parts.append(data["confirmacion"])
             elif isinstance(data, dict) and data.get("mensaje"):
@@ -1383,7 +1387,8 @@ END:VCALENDAR
         "(la página que recibió el modelo), `ocr.md` (los escaneos leídos una vez con OCR), `party.md` (con la foto "
         "de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
         "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
-        "material» y las citas de memoria que no pasaron), `notas.md` (la calculadora de notas), `estado.md` "
+        "material» y las citas de memoria que no pasaron), `notas.md` (la calculadora de notas), `prioridad.md` "
+        "(el orden de las entregas con sus pesos), `estado.md` "
         "(`espol-bot doctor` y /estado), "
         "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
         "`setup.log`.\n",
@@ -1922,10 +1927,15 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     assert len(llm.requests) == requests_before, "el recordatorio y el resumen no llaman al modelo"
     assert len(daily) == 1, [m["text"][:60] for m in daily]
     daily_text = plain(daily[0]["text"])
-    for expected in ("📌 Tu lista (3)", f"vie 2 oct — {fis_name}: Estudiar cap. 3",
-                     "mié 30 sep, 11:00 — Llevar el certificado de matrícula a secretaría",
-                     f"• {calc_name}: Leer el paper que recomendó el profe", "Ya entregaste 1 de esta semana"):
+    for expected in ("Vence en menos de 24 h\n• hoy 11:00 — 📌 Llevar el certificado de matrícula a secretaría\n"
+                     "• hoy 23:59 — Cálculo de una Variable: Taller 3: Derivadas\n",
+                     "Sin peso conocido, por fecha\n• mañana 09:00 — Cálculo de una Variable: Lectura guiada de Cálculo\n"
+                     f"• vie 2 oct — 📌 {fis_name}: Estudiar cap. 3\n",
+                     "Sin esquema de notas, por fecha: Cálculo de una Variable, Física I. Dime cómo se evalúan",
+                     f"📌 Tu lista, sin fecha (1)\n• {calc_name}: Leer el paper que recomendó el profe",
+                     "Ya entregaste 1 de esta semana"):
         assert expected in daily_text, f"falta «{expected}» en el resumen:\n{daily_text}"
+    assert "Después, lo que más pesa" not in daily_text, "sin esquema de notas no hay pesos que ordenar"
     assert "Examen parcial" not in daily_text, "el resumen no insiste con lo que ya entregó"
     done_buttons = [b for b in buttons(daily[0]) if b["callback_data"].startswith("v1:t:")]
     assert [b["callback_data"] for b in done_buttons] == [f"v1:t:{rows[i]['id']}:ok" for i in (1, 0, 2)]
@@ -2073,6 +2083,60 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "supuesta, 52 %; con la lección anotada, 46,1 %. Vinci dijo que no sabía cómo se evalúa Física hasta "
                   "que el capitán se lo contó y lo guardó (90 % en lo calificado, 55,7 % para aprobar)")
     take("Calculadora de notas")
+
+    # 7e4. With both schemes saved, the 7:00 summary orders what is pending by what it counts toward the grade:
+    # what is due within 24 h first, by date; then the heaviest; then, by date, what has no known weight. A new
+    # Física homework due before the lab report comes after it, as it counts less. «¿Qué tengo esta semana?»
+    # (Vinci's `semana`) follows the same order. Weights are the calculator's; nothing calls the model to rank.
+    canvas.state = "state3"
+    conn = sqlite3.connect(data_dir / "espol.db")
+    try:  # another morning's summary within the same test day
+        conn.execute("DELETE FROM meta WHERE key = 'bot_last_summary'")
+        conn.commit()
+    finally:
+        conn.close()
+    requests_before = len(llm.requests)
+    run([bot, "resumen"], T_VINCI)
+    ranked = take("Resumen de las 7:00 con los pesos de la calculadora")
+    assert len(llm.requests) == requests_before, "el resumen ordena sin llamar al modelo"
+    assert any("Tarea 3: Dinámica" in m["text"] and "Nueva tarea" in m["text"] for m in ranked), \
+        [m["text"][:60] for m in ranked]
+    ranked_text = plain(next(m["text"] for m in ranked if "Resumen de tu semana" in m["text"]))
+    expected_order = ("Por entregar (5)\nVence en menos de 24 h\n"
+                      "• hoy 23:59 — Cálculo de una Variable: Taller 3: Derivadas · vale 12 % de tu nota\n"
+                      "• mañana 07:00 — Cálculo de una Variable (práctico): Práctica 4: Regla de la cadena · vale 6 % de tu nota\n"
+                      "Después, lo que más pesa en tu nota\n"
+                      "• vie 2 oct, 23:59 — Física I: Informe de laboratorio 1 · vale 25 % de tu nota\n"
+                      "• vie 2 oct, 12:00 — Física I: Tarea 3: Dinámica · vale 8,3 % de tu nota\n"
+                      "Sin peso conocido, por fecha\n"
+                      "• mañana 09:00 — Cálculo de una Variable: Lectura guiada de Cálculo · no sé a qué parte de la nota va\n\n"
+                      "Atrasadas sin entregar (1)\n"
+                      "• Física I: Taller 2: Movimiento parabólico (venció mar 29 sep, 23:00) · vale 8,3 % de tu nota")
+    assert expected_order in ranked_text, f"el resumen no quedó en orden:\n{ranked_text}"
+    assert "Sin esquema de notas" not in ranked_text
+    week = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué tengo esta semana?"), "vinci_bot", "Tu lista")
+    fis, calc = "FÍSICA I - II PAO 2026", "CÁLCULO DE UNA VARIABLE - II PAO 2026"
+    lines = [line for line in readable(week).splitlines() if line.startswith("- ")]
+    assert lines[:6] == [
+        f"- Taller 2: Movimiento parabólico ({fis}) · vale 8,3 % de tu nota",
+        f"- Taller 3: Derivadas ({calc}) · vale 12 % de tu nota",
+        f"- Práctica 4: Regla de la cadena ({calc} Práctico) · vale 6 % de tu nota",
+        f"- Informe de laboratorio 1 ({fis}) · vale 25 % de tu nota",
+        f"- Tarea 3: Dinámica ({fis}) · vale 8,3 % de tu nota",
+        f"- Lectura guiada de Cálculo ({calc}) · no sé a qué parte de la nota va"], readable(week)
+    (artifact / "prioridad.md").write_text("\n".join([
+        "# Prioridad de las entregas\n",
+        "## Resumen de las 7:00 sin esquemas de notas: lo urgente por fecha y el resto por fecha, sin pesos\n",
+        f"```\n{daily_text}\n```\n",
+        "## Con los esquemas de Cálculo y Física guardados (y una tarea nueva de Física)\n",
+        f"```\n{ranked_text}\n```\n",
+        "## «¿qué tengo esta semana?»: `semana` trae el mismo orden y el peso de cada una\n",
+        f"```\n{readable(week)}\n```\n"]), encoding="utf-8")
+    report.append("Prioridad de las entregas: el resumen de las 7:00 (sin modelo) puso primero lo que vence en 24 h, "
+                  "por fecha; después lo que más pesa según la calculadora (el informe de Física, 25 %, antes que la "
+                  "tarea 3, 8,3 %, que vence antes) y al final, por fecha, lo que no tiene peso conocido (sin esquema, "
+                  "o que no calza con ninguna parte); «¿qué tengo esta semana?» trajo el mismo orden con cada peso")
+    take("Prioridad de las entregas")
 
     # 7f. notebook capture straight on the subject bots
     voice = (FILES / "nota-de-voz.ogg").read_bytes()

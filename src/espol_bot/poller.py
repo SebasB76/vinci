@@ -37,7 +37,7 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import agenda, health, libros, materias, messages, store
+from espol_bot import agenda, health, libros, materias, messages, priority, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -67,11 +67,12 @@ class Bot:
         self.aula = aula or Aula(cfg.core, background=True)
         store.ensure(self.conn)
         try:
-            self.subjects = [s for s in materias.load(cfg.core) if s.active]
+            self.team = materias.load(cfg.core)  # archived subjects too: their grading schemes still count
+            self.subjects = [s for s in self.team if s.active]
             self.team_error = None
         except ConfigError as exc:
             log.error("%s", exc)
-            self.subjects, self.team_error = [], str(exc)
+            self.team, self.subjects, self.team_error = [], [], str(exc)
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -335,10 +336,16 @@ class Bot:
         overdue = [t for t in queries.pending(self.conn, now, overdue_days=7) if t["atrasada"]]
         since = timefmt.iso(now - timedelta(hours=24))
         recent = [a for a in queries.announcements(self.conn, limit=50) if (a["publicado"] or "") >= since]
-        courses = [t["curso_id"] for t in week if not t["entregada"]] + [t["curso_id"] for t in overdue]
-        courses += [a["curso_id"] for a in recent]
-        done = [(messages.todo_done_button(t["text"]), f"v1:t:{t['id']}:ok") for t in todos[:MAX_BUTTONS]]
-        return messages.weekly_summary(week, overdue, recent, self.tz, now, todos), courses, done
+        pending = [t for t in week if not t["entregada"]]
+        entries = priority.ordered(self.conn, self.team, self.tz, now, overdue + pending, todos)
+        undated = [t for t in todos if not t["due_at"]]
+        courses = [t["curso_id"] for t in overdue + pending] + [a["curso_id"] for a in recent]
+        # The buttons in the order the to-dos show: «Por entregar», then «Atrasadas», then the undated ones.
+        shown = [e.item for e in entries if e.todo and e.tier != "overdue"] + \
+            [e.item for e in entries if e.todo and e.tier == "overdue"] + undated
+        done = [(messages.todo_done_button(t["text"]), f"v1:t:{t['id']}:ok") for t in shown[:MAX_BUTTONS]]
+        text = messages.weekly_summary(entries, len(week) - len(pending), recent, self.tz, now, undated)
+        return text, courses, done
 
     def summary(self, *, sync_first: bool = True) -> PollResult:
         result = PollResult()

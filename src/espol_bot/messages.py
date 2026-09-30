@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from aula_core import timefmt
 from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY
 from aula_core.materials import READABLE
+from espol_bot import grades
 from espol_bot.materias import short_name
 
 KIND_TITLE = {
@@ -134,38 +135,77 @@ def _day_label(day, today) -> str:
     return f"{timefmt.DAYS_LONG[day.weekday()].capitalize()} {day.day} {timefmt.MONTHS[day.month - 1]}"
 
 
-def weekly_summary(week: list[dict], overdue: list[dict], announcements_24h: list[dict],
-                   tz: ZoneInfo, now: datetime, todos: list[dict] = ()) -> str:
-    local_now = now.astimezone(tz)
-    today = local_now.date()
+def _when(due: datetime, tz: ZoneInfo, today, all_day: bool = False) -> str:
+    """«hoy 23:59», «mañana 07:00», «vie 2 oct, 23:59» (a to-do for the whole day: «vie 2 oct»)."""
+    local = due.astimezone(tz)
+    day = {today: "hoy", today + timedelta(days=1): "mañana"}.get(
+        local.date(), f"{timefmt.DAYS[local.weekday()]} {local.day} {timefmt.MONTHS[local.month - 1]}")
+    if all_day:
+        return day
+    return f"{day} {local:%H:%M}" if day in ("hoy", "mañana") else f"{day}, {local:%H:%M}"
+
+
+NO_WEIGHT = {"no_scheme": "sin esquema de notas", "no_component": "no sé a qué parte de la nota va",
+             "not_weighable": "no suma peso propio en la nota"}
+
+
+def weight_text(entry) -> str:
+    """Why a deliverable sits where it does, after its due date: what it is worth, or why that is unknown."""
+    if entry.weight is not None:
+        worth = grades.num(entry.weight)
+        return f"vale {'menos de 0,1' if worth == '0' else worth} % de tu nota"
+    return NO_WEIGHT.get(entry.unknown or "", "")
+
+
+def _deliverable(entry, tz: ZoneInfo, now: datetime) -> str:
+    item = entry.item
+    what = f"📌 {_todo_what(item)}" if entry.todo else f"{course(item['curso'])}: {link(item['url'], item['tarea'])}"
+    # A subject with no scheme is named once below the list, not on each of its lines.
+    worth = f" · {weight_text(entry)}" if weight_text(entry) and entry.unknown != "no_scheme" else ""
+    if entry.tier == "overdue":
+        late = e(timefmt.until(entry.due, now)) if entry.todo else e(timefmt.human(entry.due, tz))
+        return f"• {what} (venció {late}){worth}"
+    when = _when(entry.due, tz, now.astimezone(tz).date(), bool(entry.todo and item["all_day"]))
+    return f"• {e(when)} — {what}{worth}"
+
+
+TIER_TITLE = {"urgent": "Vence en menos de 24 h", "weighted": "Después, lo que más pesa en tu nota",
+              "unweighted": "Sin peso conocido, por fecha"}
+
+
+def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
+                   tz: ZoneInfo, now: datetime, undated_todos: list[dict] = ()) -> str:
+    """`entries`: the week's deliverables and the overdue ones, in priority.ordered's order."""
+    today = now.astimezone(tz).date()
     end = today + timedelta(days=6)
-    pending = [t for t in week if not t["entregada"]]
-    done = [t for t in week if t["entregada"]]
     head = (f"☀️ <b>Resumen de tu semana</b>\n"
             f"{_day_label(today, today)} {today.day} {timefmt.MONTHS[today.month - 1]} → "
             f"{timefmt.DAYS[end.weekday()]} {end.day} {timefmt.MONTHS[end.month - 1]}")
     blocks = [head]
-    if pending:
-        by_day: OrderedDict = OrderedDict()
-        for t in pending:
-            by_day.setdefault(timefmt.parse(t["vence"]).astimezone(tz).date(), []).append(t)
-        lines = [f"<b>Por entregar ({len(pending)})</b>"]
-        for day, items in by_day.items():
-            lines.append(f"<i>{_day_label(day, today)}</i>")
-            for t in items:
-                hour = timefmt.parse(t["vence"]).astimezone(tz).strftime("%H:%M")
-                lines.append(f"• {hour} — {course(t['curso'])}: {link(t['url'], t['tarea'])}")
+    upcoming = [x for x in entries if x.tier != "overdue"]
+    overdue = [x for x in entries if x.tier == "overdue"]
+    if upcoming:
+        lines = [f"<b>Por entregar ({len(upcoming)})</b>"]
+        for tier, title in TIER_TITLE.items():
+            items = [x for x in upcoming if x.tier == tier]
+            if items:
+                lines.append(f"<i>{title}</i>")
+                lines += [_deliverable(x, tz, now) for x in items]
         blocks.append("\n".join(lines))
     else:
         blocks.append("No tienes entregas pendientes esta semana. 🎉")
     if overdue:
         blocks.append(f"<b>Atrasadas sin entregar ({len(overdue)})</b>\n" + "\n".join(
-            f"• {course(t['curso'])}: {link(t['url'], t['tarea'])} (venció {e(timefmt.human(t['vence'], tz))})"
-            for t in overdue))
-    if done:
-        blocks.append(f"Ya entregaste {len(done)} de esta semana ✓")
-    if todos:
-        blocks.append(f"<b>📌 Tu lista ({len(todos)})</b>\n" + "\n".join(todo_line(t, tz, now) for t in todos))
+            _deliverable(x, tz, now) for x in overdue))
+    unschemed = list(dict.fromkeys(e(short_name(x.item["curso"])) for x in entries if x.unknown == "no_scheme"))
+    if unschemed:
+        blocks.append(f"Sin esquema de notas, por fecha: {', '.join(unschemed)}. Dime cómo se evalúan y las ordeno "
+                      "por lo que valen.")
+    if submitted:
+        blocks.append(f"Ya entregaste {submitted} de esta semana ✓")
+    if undated_todos:
+        blocks.append(f"<b>📌 Tu lista, sin fecha ({len(undated_todos)})</b>\n" + "\n".join(
+            todo_line(t, tz, now) for t in undated_todos))
     if announcements_24h:
         blocks.append(f"<b>Anuncios de las últimas 24 h ({len(announcements_24h)})</b>\n" + "\n".join(
             f"• {course(a['curso'])}: {link(a['url'], a['titulo'])}" for a in announcements_24h))

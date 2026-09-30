@@ -37,7 +37,7 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import agenda, libros, materias, messages, store
+from espol_bot import agenda, health, libros, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -144,6 +144,7 @@ class Bot:
         """Fast no-agent background work: renew the token and refresh token-free feeds."""
         result = PollResult()
         now = self.aula.now()
+        renewal_error = None
         try:
             renewal = TokenRenewal(self.cfg.core, self.conn, now).maintain()
             if renewal.chain_cut:
@@ -152,6 +153,7 @@ class Bot:
                 delete_meta(self.conn, "bot_fail_count_renewal", "bot_alert_renewal")
                 self.conn.commit()
         except RenewalError as exc:
+            renewal_error = str(exc)
             result.error = self._fail("renewal", f"No pude renovar el token de Canvas: {exc}. "
                                       "Si la cadena se corta, te mostraré cómo resembrarla.", threshold=1)
         floor = feeds.sync(self.conn, self.cfg.core, now)
@@ -162,10 +164,13 @@ class Bot:
             delete_meta(self.conn, "bot_fail_count_feeds")
             self.conn.commit()
         result.events = floor.events
+        health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error,
+                          feed_errors=floor.errors)
         return result
 
     def poll(self) -> PollResult:
         result = PollResult()
+        problems = []  # for /estado; the token chain has its own line there
         if self.team_error:
             self._fail("materias", f"No puedo leer tu equipo de bots: {self.team_error}. Te sigo mandando los "
                        "avisos del aula, pero sin los botones de cada materia; los bots de materia no mandan briefs "
@@ -178,6 +183,7 @@ class Bot:
             floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
             result.events += floor.events
         except CanvasError as exc:
+            problems.append(f"no pude leer el aula virtual ({exc})")
             result.error = self._fail(
                 "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=ALERT_AFTER)
             report = core_sync.SyncReport(first_sync=False)
@@ -200,8 +206,10 @@ class Bot:
             self._send_reminders(result, now)
         except TelegramError as exc:
             log.error("%s", exc)
+            problems.append(f"Telegram no aceptó un mensaje ({exc})")
             result.error = str(exc)
         self._main_books(result, now)
+        health.record_run(self.conn, health.POLL_RUN, now, error="; ".join(problems) or None)
         return result
 
     def _main_books(self, result: PollResult, now: datetime) -> None:

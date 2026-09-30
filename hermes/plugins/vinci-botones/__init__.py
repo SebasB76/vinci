@@ -11,6 +11,8 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
   from the chat and hand the token to `espol-bot token` on stdin.
 - /start: Hermes ignores it, so the bot greets with `espol-bot saludo` (who it is, and for a
   subject bot when its next brief comes).
+- The captain's vote in a subject bot's quiz poll (`poll_answer`): run `espol-bot quiz-respuesta`,
+  which records it and, after the quiz's last question, answers the score to send.
 - /estado, in Vinci's chat: the system health from `espol-bot estado` (last poll and sync, token
   chain, feeds), without waking the model.
 
@@ -108,6 +110,16 @@ def register(ctx):
         async def _intercept(update, context):
             if getattr(update, "managed_bot", None) is not None:
                 raise ApplicationHandlerStop  # handled through its service message below
+            vote = getattr(update, "poll_answer", None)
+            if vote is not None and SUBJECT:
+                if _is_captain(vote.user):
+                    try:
+                        result = await _run("quiz-respuesta", "--curso", SUBJECT, str(vote.poll_id),
+                                            *(str(o) for o in vote.option_ids))
+                        await _say(context, int(CAPTAIN), result)
+                    except Exception as exc:
+                        logger.error("quiz-respuesta: %s", exc)
+                raise ApplicationHandlerStop
             message = update.effective_message
             if message is None or update.callback_query is not None:
                 return

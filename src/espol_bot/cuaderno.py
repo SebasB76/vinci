@@ -5,6 +5,8 @@
                   with its summary (and the transcript of a voice note)
     adjuntos/     the attached files themselves
 
+The quizzes the bot sent and the captain's answers live in cuaderno.db too (quiz.py keeps those tables).
+
 Only the subject bot writes its own notebook (through its tool server or its own
 agenda). Vinci reads every notebook through `Notebook(..., read_only=True)`, which
 opens SQLite in read-only mode and never creates a file.
@@ -87,6 +89,10 @@ class Notebook:
             self._conn = None
 
     # -- writing (the subject bot only) ---------------------------------------------------
+
+    def connection(self) -> sqlite3.Connection:
+        """The writable connection, for the tables another module keeps in this notebook (quiz.py)."""
+        return self._writer()
 
     def _writer(self) -> sqlite3.Connection:
         if self.read_only:

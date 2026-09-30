@@ -83,6 +83,16 @@ class Telegram:
             # The buttons ride on the last part, right under the text they refer to.
             self._send_one(part, (reply_markup or keyboard(buttons or [])) if i == len(parts) - 1 else None)
 
+    def send_poll(self, question: str, options: list[str], correct: int, explanation: str) -> dict:
+        """A quiz poll in the captain's chat; not anonymous, so the bot receives the captain's vote (poll_answer)."""
+        message = self._call("sendPoll", {"chat_id": self._chat_id, "question": question, "type": "quiz",
+                                          "options": [{"text": option} for option in options],
+                                          "correct_option_id": correct, "explanation": explanation,
+                                          "is_anonymous": False})
+        self.sent += 1
+        self._sleep(0.4)
+        return message
+
     def get_me(self) -> dict:
         """The bot's own identity (id, username, can_manage_bots); raises TelegramError when refused."""
         return self._call("getMe", {})

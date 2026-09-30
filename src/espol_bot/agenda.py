@@ -221,6 +221,9 @@ def handoff_task(cfg: BotConfig, subject: materias.Subject, items: list[dict], n
         "- Si son apuntes, fotos o audio de clase: di en una o dos frases qué contienen y que los guardaste "
         "en tu cuaderno; si corresponden a una clase, registra lo visto con anotar (tipo «clase»).",
         "- Si es una pregunta: respóndela citando el material del curso.",
+        "- Si pide un quiz («/quiz …»): mándalo con send_quiz como dice «Quiz (/quiz)» de tu skill (el material que "
+        "venga adjunto ya está en tu cuaderno: cítalo con su entrada, o agrégalo con agregar_material si es un "
+        "documento del curso) y contesta en una línea, sin las preguntas ni las respuestas.",
         "- Si es un documento del curso (el PDF del libro principal, unas diapositivas): agrégalo al material con "
         "agregar_material (la ruta del adjunto en tu cuaderno; libro_principal si es ese libro).",
         "Empieza con «📨 De parte de Vinci:». Sé breve: 2 a 4 líneas, lo que importa primero, sin repetir el "

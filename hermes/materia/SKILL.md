@@ -1,6 +1,6 @@
 ---
 name: vinci-materia
-description: Bot de una materia de ESPOL - brief antes de cada clase, calculadora de notas, cuaderno de la materia (clases, apuntes, dudas, temas débiles, fotos de la pizarra y notas de voz), estudiar con el material del curso y atender lo que Vinci le pasa.
+description: Bot de una materia de ESPOL - brief antes de cada clase, calculadora de notas, cuaderno de la materia (clases, apuntes, dudas, temas débiles, fotos de la pizarra y notas de voz), estudiar con el material del curso, quiz cortos (/quiz) y atender lo que Vinci le pasa.
 version: 1.0.0
 author: espol-academic-bot
 platforms: [linux]
@@ -33,6 +33,7 @@ misma materia.
 | Anotar (clase, apunte, duda, tema débil) | `anotar` |
 | Marcar resuelta una duda o tema débil | `resolver` |
 | Guardar una foto, nota de voz o documento | `guardar_adjunto` |
+| Mandarle un quiz corto (/quiz) | `send_quiz` |
 
 ## El cuaderno
 
@@ -161,7 +162,32 @@ dijo. Guíate primero por él: la búsqueda lo pone primero. `libro_principal` d
   material»; después, si le sirve, explícalo con conocimiento general diciendo que no sale del material, sin cita.
 - Resumir un capítulo o semana: `archivos` (`nombre: "semana 3"`) y `leer_archivo`.
 - Practicar: 3-5 preguntas tipo examen del material citado, con respuestas al final; tus temas
-  débiles del cuaderno son buenos candidatos.
+  débiles del cuaderno son buenos candidatos. Si pide un quiz, es el de abajo.
+
+## Quiz (/quiz)
+
+«/quiz derivadas», «hazme un quiz de…», o una entrega de Vinci que lo pide: un quiz corto que responde
+en el chat, tocando la opción.
+
+1. El tema es el que escribió. Si no dijo tema ni te mandó material, pregúntale en una línea de qué tema
+   lo quiere (o que te mande el material: texto, foto o PDF). Si te mandó material, el quiz es de eso.
+2. Lee de dónde salen las preguntas:
+   - Del curso: `buscar_material` (con `traduccion`) y `leer_archivo` de las páginas que tratan el tema.
+     Sus temas débiles abiertos de ese tema (`cuaderno`) son buenos candidatos.
+   - Lo que te manda con el /quiz o justo después: un PDF, DOCX o PPTX va a `agregar_material` y lo lees;
+     una foto la miras y la guardas con `guardar_adjunto`; un texto pegado lo guardas con `anotar`
+     (`tipo: apunte`). Así queda algo que citar.
+3. Escribe de 3 a 5 preguntas de opción múltiple (de 2 a 4 opciones, una sola correcta, distractores
+   creíbles), solo con lo que dice ese material, y llama a `send_quiz`. Cada pregunta lleva su `answer`
+   (la opción correcta, igual que en `options`), una `explanation` de una frase y su fuente: `file_id` y
+   `page` de donde la sacaste, o el `entry_id` de lo que te mandó. La cita la pone la herramienta; si
+   rechaza una fuente o un largo, corrige esa pregunta y vuelve a llamarla.
+4. Contéstale en una línea («Ahí van 4 preguntas de la regla de la cadena.»), sin repetir las preguntas
+   ni dar las respuestas: Telegram le muestra cada respuesta al responderla, al final le llega su puntaje
+   con las fuentes, y lo que falle queda en tu cuaderno como tema débil.
+
+Si el material no alcanza para un quiz de ese tema, díselo en vez de inventar preguntas. Si Telegram no
+acepta el quiz, házselas por escrito con las respuestas al final.
 
 ## Límites
 

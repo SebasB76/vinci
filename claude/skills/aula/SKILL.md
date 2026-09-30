@@ -24,6 +24,7 @@ Always pass `--json` and parse the output.
 | Links outside the aula (Dropbox, SharePoint, videos) | `aula enlaces --json` (`--curso ...`) |
 | Search course material | `aula buscar "regla de la cadena" --json` (`--curso ... -n 8`) |
 | Refresh now | `aula sincronizar --json` (`--material` also downloads each course's new syllabus) |
+| OCR the scanned pages still pending | `aula ocr --json` (`--minutos N` to stop after N minutes) |
 
 `--curso` matches any fragment of the course name or code, ignoring accents and case. Data refreshes
 automatically when older than a few minutes (falling back to the local copy when the aula virtual can't be
@@ -49,4 +50,7 @@ read); `--sin-actualizar` uses only the local copy, and `--actualizar` reads it 
   tell the user to do it themselves and share the `url`.
 - Do not read `secrets.env` or call the Canvas API with curl; use `aula`.
 - Videos are not processed yet (PDF, PPTX, DOCX and web pages only). A scanned PDF (`indexado:
-  escaneado`) has next to no text: open the local file at `ruta_local` and read its pages as images.
+  escaneado`) gets its text by OCR when tesseract is installed (the bot's poll reads it a few minutes at a
+  time; `aula ocr` reads what is still pending now), and a hit or page read that way says `ocr`. For a
+  formula, a figure, handwriting or a page OCR missed, open the local file at `ruta_local` and read that page
+  as an image.

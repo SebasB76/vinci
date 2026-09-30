@@ -10,7 +10,8 @@ saved as a PDF with Pillow (no text at all, like a photocopy run through a scann
 - silabo-matg1049.pdf: an ESPOL «CONTENIDO DE ASIGNATURA» with BÁSICA and COMPLEMENTARIA side by side;
 - purcell-calculo.pdf: the main book of Cálculo (Spanish), which the captain sends the bot;
 - serway-physics.pdf: the main book of Física (English), which the captain drops in libros/FISG1002/;
-- lectura-vectores-escaneada.pdf: a scanned reading of Física;
+- lectura-vectores-escaneada.pdf: a scanned reading of Física (a formula OCR misreads);
+- ejercicios-derivadas-escaneados.pdf: a scanned exercise sheet the captain sends Cálculo (prose OCR reads well);
 - politicas-del-curso.pdf, guia-laboratorio-1.pdf: what Física's Google Doc and Drive file hand over (FakeWeb).
 """
 
@@ -217,13 +218,19 @@ def make_lab_guide(path: Path) -> None:
     ])
 
 
-def make_scan(path: Path) -> None:
+SCAN_PAGES = [["Lectura 1: suma de vectores", "Regla del paralelogramo:", "R = A + B, |R|^2 = A^2 + B^2 + 2AB cos(t)"],
+              ["Componentes de un vector", "Ax = A cos(t)   Ay = A sen(t)", "A = Ax i + Ay j"]]
+EXERCISE_PAGES = [["Hoja de ejercicios 2: derivadas", "Resuelve cada ejercicio y justifica cada paso.",
+                   "Ejercicio 4: deriva el producto de x al cubo por el seno de x.",
+                   "Ejercicio 5: con la regla de la cadena, deriva el coseno de x^2."]]
+
+
+def make_scan(path: Path, sheets: list[list[str]] = SCAN_PAGES, title: str = "Lectura 1") -> None:
     from PIL import Image, ImageDraw, ImageFont
 
     font = ImageFont.load_default(size=34)
     pages = []
-    for lines in (["Lectura 1: suma de vectores", "Regla del paralelogramo:", "R = A + B, |R|^2 = A^2 + B^2 + 2AB cos(t)"],
-                  ["Componentes de un vector", "Ax = A cos(t)   Ay = A sen(t)", "A = Ax i + Ay j"]):
+    for lines in sheets:
         page = Image.new("L", (1240, 1754), 250)
         draw = ImageDraw.Draw(page)
         for i, line in enumerate(lines):
@@ -231,7 +238,7 @@ def make_scan(path: Path) -> None:
         pages.append(page.convert("RGB"))
     moment = __import__("datetime").datetime(2026, 9, 1).timetuple()  # fixed, so the file is byte-stable
     pages[0].save(path, "PDF", resolution=150, save_all=True, append_images=pages[1:], creationDate=moment,
-                  modDate=moment, producer="scanner", title="Lectura 1")
+                  modDate=moment, producer="scanner", title=title)
 
 
 def make_pptx(path: Path) -> None:
@@ -265,6 +272,7 @@ if __name__ == "__main__":
     make_purcell(OUT / "purcell-calculo.pdf")
     make_serway(OUT / "serway-physics.pdf")
     make_scan(OUT / "lectura-vectores-escaneada.pdf")
+    make_scan(OUT / "ejercicios-derivadas-escaneados.pdf", EXERCISE_PAGES, "Hoja de ejercicios 2")
     make_policies(OUT / "politicas-del-curso.pdf")
     make_lab_guide(OUT / "guia-laboratorio-1.pdf")
     print(f"Fixtures escritos en {OUT}")

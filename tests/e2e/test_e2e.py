@@ -40,7 +40,9 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      chat (it is only a SharePoint link) and then sent as a PDF; the one Física's captain names
      in Vinci's chat, asked for once, never again, and picked up from the libros/ folder; search
      with the main book first and in two languages; a scanned reading seen as an image (the image
-     reaches the model); outside links opened without a login and without any credential: a
+     reaches the model) while tesseract looks missing, as before; then OCR at indexing: the next poll
+     reads its waiting pages once, search finds it, the same PDF sent again calls no OCR, and a new
+     scanned sheet is read as it is added (when tesseract is installed); outside links opened without a login and without any credential: a
      professor's page, the Google Doc that is all an announcement of Física says (the captain's
      case), a Drive guide Vinci reads; a private Google Doc and an ESPOL-only SharePoint refused with
      the reason, the private one not asked for again on every question (unless the captain says it is
@@ -483,9 +485,17 @@ class Script:
             if not called:
                 return _call("mcp__materia__agregar_material", ruta=doc[1], libro_principal=True)
             return {"content": self.subject_answer(results)}
+        if doc and "agrega" in text:  # a scan is read with OCR as it is added: read it back
+            if not called:
+                return _call("mcp__materia__agregar_material", ruta=doc[1])
+            if called == ["mcp__materia__agregar_material"] and not failed:
+                return _call("mcp__materia__leer_archivo", archivo_id=last["archivo_id"])
+            return {"content": self.subject_answer(results[:1]) + "\n" + self.reading_answer(results[-1])}
         for trigger, question, english in (("regla de la cadena con tu libro", "regla de la cadena", "chain rule"),
                                            ("tiro parabólico", "tiro parabólico alcance máximo",
-                                            "projectile motion maximum range")):
+                                            "projectile motion maximum range"),
+                                           ("regla del paralelogramo", "regla del paralelogramo",
+                                            "parallelogram rule")):
             if trigger in text:
                 if not called:
                     return _call("mcp__materia__buscar_material", pregunta=question, traduccion=english)
@@ -551,7 +561,7 @@ class Script:
         return "📚 Lo que dice tu material:\n" + "\n".join(
             f"📄 {h['archivo']}, {h.get('unidad') or 'página'} {h['pagina']}"
             + (f" ({h['prioridad']})" if h.get("prioridad") else "") + (f" [{h['idioma']}]" if h.get("idioma") else "")
-            for h in hits[:4])
+            + (" (texto por OCR)" if h.get("ocr") else "") for h in hits[:4])
 
     @staticmethod
     def subject_answer(results: list[str]) -> str:
@@ -711,6 +721,17 @@ def test_e2e(tmp_path):
             # checks the process ancestry). Here ~ is the temporary HOME (asserted below).
             "HERMES_STATE_DB_GUARD_BYPASS": "1",
         })
+        # OCR: the real tesseract behind a wrapper that logs each call; while `ocr_off` exists it looks missing
+        real_tesseract = shutil.which("tesseract")
+        ocr_log, ocr_off = tmp_path / "tesseract.log", tmp_path / "tesseract-off"
+        if real_tesseract:
+            (tmp_path / "bin").mkdir()
+            wrapper = tmp_path / "bin" / "tesseract"
+            wrapper.write_text(f'#!/usr/bin/env bash\n[ -e "{ocr_off}" ] && exit 127\n'
+                               f'echo "$*" >> "{ocr_log}"\nexec "{real_tesseract}" "$@"\n')
+            wrapper.chmod(0o755)
+            ocr_off.touch()
+            base_env["PATH"] = f"{wrapper.parent}:{base_env.get('PATH', '')}"
         assert Path(base_env["HOME"]).resolve().is_relative_to(tmp_path.resolve()), "la prueba usa un HOME temporal"
         if hermes:
             base_env["HERMES_BIN"] = hermes
@@ -1234,7 +1255,7 @@ END:VCALENDAR
         *[f"- {label}: {n}" for label, n in counts.items()],
         "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `material.md` (el "
         "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
-        "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
+        "(la página que recibió el modelo), `ocr.md` (los escaneos leídos una vez con OCR), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
         "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
         "material» y las citas de memoria que no pasaron), "
         "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
@@ -1245,7 +1266,7 @@ END:VCALENDAR
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
                equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env,
-               normalize, **_) -> None:
+               real_tesseract, ocr_log, ocr_off, normalize, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -1973,6 +1994,83 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "PDF: el de Cálculo mostró su capítulo 3 y el de Física se negó: «"
                   + readable(other)[:80].replace("\n", " ") + "…»")
     take("El material de Física: búsqueda en dos idiomas y una lectura escaneada")
+
+    # 7f2b. OCR at indexing. Up to here tesseract looked missing, so the scan above stayed images, as before
+    def ocr_calls() -> int:
+        return sum("stdin" in line for line in ocr_log.read_text().splitlines()) if ocr_log.exists() else 0
+
+    def waiting() -> int:
+        return db_rows("SELECT COUNT(*) AS n FROM ocr_pages o WHERE text IS NULL AND EXISTS (SELECT 1 FROM files f"
+                       " WHERE f.digest = o.digest AND f.local_path IS NOT NULL)")[0]["n"]
+
+    scan_digest = db_rows("SELECT digest FROM files WHERE id = 5102")[0]["digest"]
+    assert [(r["page"], r["text"]) for r in db_rows("SELECT page, text FROM ocr_pages WHERE digest = ? ORDER BY page",
+                                                    scan_digest)] == [(1, None), (2, None)], "sus 2 páginas esperan OCR"
+    fallback = tool_result(lambda d: d.get("archivo_id") == 5102 and "estado" in d)
+    assert "ocr" not in fallback and "OCR" not in fallback["aviso"] and ocr_calls() == 0, fallback
+    ocr_md = ["# OCR de los PDF escaneados: una vez, al indexar\n",
+              "## Sin motor de OCR, como antes\n",
+              "Con tesseract ausente, la lectura escaneada de Física quedó «escaneado» con sus 2 páginas esperando "
+              "OCR, y su bot la miró como imagen. Lo que le devolvió `bajar_archivo`:\n",
+              f"```json\n{json.dumps(fallback, ensure_ascii=False, indent=1)}\n```\n"]
+    if real_tesseract:
+        ocr_off.unlink()
+        pending = waiting()
+        run([bot, "sondeo"], T_VINCI)
+        take("Sondeo con OCR")
+        read = db_rows("SELECT page, text, confidence FROM ocr_pages WHERE digest = ? ORDER BY page", scan_digest)
+        assert waiting() == 0 and ocr_calls() == pending, (pending, ocr_calls())
+        assert "paralelogramo" in read[0]["text"] and "vector" in read[1]["text"], read
+        found = turn(lambda: telegram.send_text(FIS, CAPTAIN, "¿dónde sale la regla del paralelogramo en mi material?"),
+                     "vinci_fisica_bot", "Lo que dice tu material")
+        hits = tool_result(lambda d: "resultados" in d)["resultados"]
+        assert (hits[0]["archivo_id"], hits[0]["pagina"], hits[0].get("ocr")) == (5102, 1, True), hits[0]
+        assert "(texto por OCR)" in readable(found)
+
+        before = ocr_calls()
+        copy = turn(lambda: telegram.send_document(FIS, CAPTAIN, "lectura-vectores.pdf",
+                                                   (FILES / "lectura-vectores-escaneada.pdf").read_bytes(),
+                                                   caption="agrega esta lectura al material"),
+                    "vinci_fisica_bot", "quedó en tu material")
+        again = tool_result(lambda d: d.get("estado") == "escaneado" and d.get("archivo_id", 0) < 0)
+        after = ocr_calls()
+        assert again["ocr"]["read"] == 2 and after == before, ("la misma lectura no se vuelve a leer", again)
+        assert "paralelogramo" in readable(copy), readable(copy)
+
+        sheet = turn(lambda: telegram.send_document(MATG, CAPTAIN, "ejercicios-derivadas.pdf",
+                                                    (FILES / "ejercicios-derivadas-escaneados.pdf").read_bytes(),
+                                                    caption="agrega estos ejercicios escaneados al material"),
+                     "vinci_calculo_bot", "quedó en tu material")
+        added = tool_result(lambda d: d.get("estado") == "escaneado" and d.get("archivo_id", 0) < 0)
+        page = tool_result(lambda d: d.get("archivo_id") == added["archivo_id"] and "contenido" in d)["contenido"][0]
+        assert added["ocr"]["read"] == 1 and ocr_calls() == before + 1, added
+        assert page.get("ocr") and "Ejercicio 4" in page["texto"] and "OCR" in added["aviso"], (page, added)
+        engine = next(line for line in ocr_log.read_text().splitlines() if "stdin" in line).split(" -l ")[1].split()[0]
+        ocr_md += ["## Con tesseract: el sondeo lee lo que esperaba\n",
+                   f"El sondeo siguiente leyó con OCR las {pending} página(s) que esperaban (idiomas: {engine}). "
+                   "Lo que salió de la lectura de vectores (la fórmula sale mal: para eso sigue ver_pagina):\n",
+                   *[f"- página {r['page']} (confianza {r['confidence']}):\n\n```\n{r['text']}\n```\n" for r in read],
+                   "## La búsqueda la encuentra\n", f"```\n{readable(found)}\n```\n",
+                   "## La misma lectura otra vez: cero OCR\n",
+                   f"El capitán le mandó a Física el mismo PDF: llamadas a tesseract antes {before}, después "
+                   f"{after}; su texto salió del OCR ya hecho.\n", f"```\n{readable(copy)}\n```\n",
+                   "## Unos ejercicios escaneados nuevos: OCR al agregarlos\n",
+                   "Una llamada más a tesseract, dentro de `agregar_material`; el bot ya tiene su texto:\n",
+                   f"```json\n{json.dumps(added, ensure_ascii=False, indent=1)}\n```\n", f"```\n{readable(sheet)}\n```\n"]
+        report.append(f"OCR al indexar: sin tesseract la lectura escaneada de Física quedó como antes (imágenes para "
+                      f"ver_pagina, 2 páginas en espera); con tesseract, el sondeo siguiente leyó las {pending} "
+                      "página(s) que esperaban y la búsqueda «regla del paralelogramo» la encontró (marcada `ocr`); "
+                      "el mismo PDF mandado otra vez no llamó a tesseract (OCR guardado por el contenido del archivo), "
+                      "y unos ejercicios escaneados nuevos se leyeron al agregarlos (1 llamada) (ocr.md)")
+    else:
+        run([bot, "sondeo"], T_VINCI)
+        take("Sondeo sin OCR")
+        assert waiting() >= 2, "sin motor de OCR, las páginas siguen esperando"
+        ocr_md.append("tesseract no está instalado en esta máquina: se probó solo que todo sigue como antes.\n")
+        report.append("OCR al indexar: tesseract no está instalado aquí; la lectura escaneada siguió como antes "
+                      "(imágenes para ver_pagina) y sus páginas quedaron esperando un motor de OCR")
+    (artifact / "ocr.md").write_text(normalize("\n".join(ocr_md)), encoding="utf-8")
+    take("OCR de los escaneos")
 
     # 7f3. Outside links open without a login: the captain's case, an announcement that is only a Google Doc link;
     # a private Doc an assignment links refused with its reason and not asked for again; a Drive guide Vinci reads

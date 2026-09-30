@@ -478,6 +478,12 @@ class FakeTelegram(_Server):
         return self._push(token, {"callback_query": {"id": f"cb{time.time_ns()}", "from": user,
                                                      "chat_instance": "1", "data": data, "message": msg}})
 
+    def answer_poll(self, token: str, user_id: int, poll_id: str, option_ids: list[int]) -> int:
+        """The captain (or anyone) votes in a non-anonymous poll this bot sent."""
+        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
+        return self._push(token, {"poll_answer": {"poll_id": poll_id, "user": user, "option_ids": option_ids,
+                                                  "option_persistent_ids": [f"o{i}" for i in option_ids]}})
+
     def pending(self, token: str) -> int:
         with self.cond:
             return len(self.updates.get(token, []))
@@ -614,6 +620,28 @@ class _TelegramHandler(_Quiet):
             if isinstance(markup, dict) and "inline_keyboard" in markup:  # a Message only carries inline ones
                 result["reply_markup"] = markup
             return self._ok(result)
+        if method == "sendPoll":
+            options = params.get("options") or []
+            if (params.get("type") != "quiz" or not 1 <= len(str(params.get("question", ""))) <= 300
+                    or not 2 <= len(options) <= 10 or any(not 1 <= len(o.get("text", "")) <= 100 for o in options)
+                    or not 0 <= int(params.get("correct_option_id", -1)) < len(options)
+                    or len(str(params.get("explanation", ""))) > 200):
+                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: invalid poll"})
+            with stub.cond:
+                stub._next_message += 1
+                message_id = stub._next_message
+                poll_id = f"poll{message_id}"
+                stub.messages.append({"bot": username, "method": method, "message_id": message_id,
+                                      "poll_id": poll_id, **params})
+                stub.cond.notify_all()
+            poll = {"id": poll_id, "question": params["question"], "type": "quiz", "total_voter_count": 0,
+                    "is_closed": False, "is_anonymous": bool(params.get("is_anonymous", True)),
+                    "allows_multiple_answers": False, "correct_option_id": int(params["correct_option_id"]),
+                    "options": [{"text": o["text"], "voter_count": 0, "persistent_id": f"o{i}"}
+                                for i, o in enumerate(options)]}
+            chat = {"id": int(params.get("chat_id", 0)), "type": "private"}
+            return self._ok({"message_id": message_id, "date": int(time.time()), "chat": chat, "from": me,
+                             "poll": poll})
         if method in ("editMessageText", "editMessageReplyMarkup"):
             message_id = int(params.get("message_id", 0) or 0)
             with stub.cond:

@@ -56,7 +56,11 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      priority (with both schemes saved and a new Física homework, the model-free 7:00 summary and «¿qué tengo
      esta semana?» put what is due within 24 h first, then the heaviest toward the grade, then, by date, what has
      no known weight);
-     Vinci reading notebooks but unable to write them or reach a terminal; Física
+     Vinci reading notebooks but unable to write them or reach a terminal; /quiz: Cálculo sends a short quiz
+     as Telegram quiz polls citing its material (a citation of a page it never read refused first), the
+     captain's votes scored with no model (a stranger's and a repeated one ignored) and what was missed noted
+     as a weak topic; Física quizzes from the PDF sent after a bare /quiz; Vinci hands /quiz to Cálculo,
+     which also cites its notebook's board photo; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
      Vinci's card, the same gateway serves it again. Each agenda really runs every minute.
@@ -259,6 +263,21 @@ IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
 VOICE_RE = re.compile(r"(?:voice message: |audio is available at: )([^\s\]]+)")
 REPLY_RE = re.compile(r'\[Replying to[^:]*: "(.+?)"\]', re.S)
 DOC_RE = re.compile(r"saved at:?\s*([^\s\]'\"]+\.pdf)", re.I)
+QUIZ_SKILL = 'invoked the "quiz" skill'
+QUIZ_TOPIC = re.compile(r"instruction alongside the skill invocation: (.+)$", re.M)
+QUIZ_HANDOFF = re.compile(r"^/quiz (.+)$", re.M)
+
+
+def quiz_questions(topic: str, sources: list[dict]) -> list[dict]:
+    """What the scripted model asks, one question per source ({file_id, page} or {entry_id})."""
+    bank = [("¿Qué dice la regla de la cadena para (f∘g)'(x)?", ["f'(g(x))·g'(x)", "f'(x)·g'(x)", "f(g'(x))"],
+             "Se deriva la de afuera evaluada en la de adentro y se multiplica por la derivada de la de adentro."),
+            ("¿Cuál es la derivada de sen(x²)?", ["2x·cos(x²)", "cos(x²)", "2x·sen(x)"],
+             "Es la regla de la cadena con g(x) = x²."),
+            ("¿Qué mide la derivada de una función en un punto?", ["La pendiente de la tangente", "El área bajo la "
+             "curva", "El valor de la función"], "La derivada es la pendiente de la recta tangente en ese punto.")]
+    return [{"question": f"{q} ({topic})", "options": opts, "answer": opts[0], "explanation": why, **src}
+            for (q, opts, why), src in zip(bank, sources)]
 
 
 # -- the model's side ------------------------------------------------------------------------
@@ -359,6 +378,12 @@ class Script:
             return flow
         if results:
             return {"content": self.vinci_answer(results)}
+        if QUIZ_SKILL in text:
+            topic = QUIZ_TOPIC.search(text)
+            if not topic:
+                return {"content": "¿De qué tema y de qué materia quieres el quiz?"}
+            return _call("mcp__vinci__entregar_a_materia", materia="cálculo",
+                         mensaje=f"/quiz {topic[1].replace(' de cálculo', '')}")
         for trigger, todo in TODOS.items():
             if f"anota: {trigger}" in text:
                 return _call("mcp__vinci__add_todo", **todo)
@@ -508,6 +533,9 @@ class Script:
         return None
 
     def subject(self, name: str, text: str, called: list[str], results: list[str]) -> dict:
+        flow = self.quiz(name, text, called, results)
+        if flow is not None:
+            return flow
         if re.search(r"^TAREA: brief_de_clase", text, re.M):  # the skill quotes it mid-line
             if not called:
                 return _call("mcp__materia__buscar_material", pregunta="regla de la cadena")
@@ -565,6 +593,52 @@ class Script:
         if "qué material" in text:
             return _call("mcp__materia__archivos")
         return {"content": f"Hola, soy el bot de {name}."}
+
+    def quiz(self, name: str, text: str, called: list[str], results: list[str]) -> dict | None:
+        """/quiz on a subject bot (a topic, or the material it is sent next) and a quiz Vinci handed over."""
+        last = _json(results[-1]) if results else None
+        refused = bool(results) and not (isinstance(last, dict) and "quiz" in last)
+        doc = DOC_RE.search(text)
+        handoff = QUIZ_HANDOFF.search(text) if re.search(r"^TAREA: entrega_de_vinci", text, re.M) else None
+        if QUIZ_SKILL in text and not handoff:
+            topic = QUIZ_TOPIC.search(text)
+            if not topic:
+                return {"content": "¿De qué tema quieres el quiz? O mándame el material (texto, foto o PDF)."}
+            if not called:
+                return _call("mcp__materia__buscar_material", pregunta=topic[1], traduccion="chain rule")
+            if called[-1] == "mcp__materia__buscar_material":
+                top = last["resultados"][0]
+                sources = [{"file_id": top["archivo_id"], "page": 999},  # a page it never read: refused
+                           *({"file_id": h["archivo_id"], "page": h["pagina"]} for h in last["resultados"][:2])]
+                return _call("mcp__materia__send_quiz", topic=topic[1], questions=quiz_questions(topic[1], sources))
+            if called.count("mcp__materia__send_quiz") == 1 and refused:
+                hits = _json(results[-2])["resultados"]
+                sources = [{"file_id": h["archivo_id"], "page": h["pagina"]} for h in (hits * 3)[:3]]
+                return _call("mcp__materia__send_quiz", topic=topic[1], questions=quiz_questions(topic[1], sources))
+        elif doc and "quiz" in text:
+            if not called:
+                return _call("mcp__materia__agregar_material", ruta=doc[1])
+            if called[-1] == "mcp__materia__agregar_material" and isinstance(last, dict) and "archivo_id" in last:
+                sources = [{"file_id": last["archivo_id"], "page": 1}] * 2
+                return _call("mcp__materia__send_quiz", topic="lo que me mandaste",
+                             questions=quiz_questions("tu PDF", sources))
+        elif handoff:
+            if not called:
+                return _call("mcp__materia__cuaderno", tipo="foto")
+            if called[-1] == "mcp__materia__cuaderno":
+                return _call("mcp__materia__buscar_material", pregunta=handoff[1])
+            if called[-1] == "mcp__materia__buscar_material":
+                photo = _json(results[-2])["entradas"][0]
+                top = last["resultados"][0]
+                sources = [{"entry_id": photo["id"]}, {"file_id": top["archivo_id"], "page": top["pagina"]}]
+                return _call("mcp__materia__send_quiz", topic=handoff[1], questions=quiz_questions(handoff[1], sources))
+        else:
+            return None
+        if refused:
+            return {"content": _problem(results[-1])}
+        intro = "📨 De parte de Vinci: " if handoff else ""
+        return {"content": f"{intro}🧠 Ahí van {last['questions']} preguntas de {last['topic']}; al final te digo "
+                           "cómo te fue."}
 
     def material(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """The material requests that take several tools: the next call, or the answer."""
@@ -675,6 +749,10 @@ class Script:
 
 
 def readable(message: dict) -> str:
+    if message.get("method") == "sendPoll":
+        options = [o["text"] for o in message["options"]]
+        return (f"📊 {message['question']}\n" + "\n".join(f"( ) {o}" for o in options)
+                + f"\n[correcta al responder: {options[int(message['correct_option_id'])]}] {message['explanation']}")
     text = str(message.get("text") or message.get("caption") or "")
     if message.get("parse_mode") == "MarkdownV2":
         text = re.sub(r"\\([_*\[\]()~`>#+\-=|{}.!\\])", r"\1", text)
@@ -1272,6 +1350,9 @@ END:VCALENDAR
 
         equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
         material_md = ["# El material de cada materia (lo que vio el modelo)\n"]
+        quiz_md = ["# /quiz: un quiz corto con el material de la materia\n",
+                   "Cada pregunta es una encuesta tipo quiz de Telegram (sendPoll), tal como la recibió el Telegram "
+                   "falso; la respuesta correcta y la explicación con su cita se ven recién al responder.\n"]
         horario_md = ["# Horario desde una captura (se guarda solo con el botón del capitán)\n"]
         briefs_md = ["# Brief antes de clase\n"]
         party_md = ["# Tu party: el nombre y la foto de cada bot\n",
@@ -1300,7 +1381,9 @@ END:VCALENDAR
                                  for method, path in mutations), mutations
         assert canvas.throttled, "el 429 de prueba debió ocurrir"
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
-        assert all(str(m["chat_id"]) == CAPTAIN_ID for _, m in sent_log), "solo se escribe al capitán"
+        assert all(str(m.get("chat_id")) == CAPTAIN_ID for _, m in sent_log), \
+            ("solo se escribe al capitán", [(label, {k: v for k, v in m.items() if k != "text"})
+                                            for label, m in sent_log if str(m.get("chat_id")) != CAPTAIN_ID])
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
         assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102} if vinci_section else set()), \
@@ -1343,6 +1426,7 @@ END:VCALENDAR
     if vinci_section:
         (artifact / "equipo.md").write_text(normalize("\n".join(equipo_md)), encoding="utf-8")
         (artifact / "material.md").write_text(normalize("\n".join(material_md)), encoding="utf-8")
+        (artifact / "quiz.md").write_text(normalize("\n".join(quiz_md)), encoding="utf-8")
         (artifact / "horario.md").write_text(normalize("\n".join(horario_md)), encoding="utf-8")
         (artifact / "briefs.md").write_text(normalize("\n".join(briefs_md)), encoding="utf-8")
         (artifact / "party.md").write_text(normalize("\n".join(party_md)), encoding="utf-8")
@@ -1397,7 +1481,7 @@ END:VCALENDAR
 
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
-               equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env,
+               equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,
                real_tesseract, ocr_log, ocr_off, normalize, estado_md, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
@@ -2576,6 +2660,102 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     report.append("El primer mensaje de cada bot trae solo la presentación de Hermes: ninguno le ofrece al estudiante "
                   "«armar un perfil tuyo» (onboarding.profile_build: off)")
     take("Vinci lee cuadernos, no los escribe, sin terminal")
+
+    # 7g2. /quiz: a short quiz from the material as Telegram quiz polls, the score counted with no model
+    def polls(user: str, mark: int) -> list[dict]:
+        return [m for m in telegram.messages[mark:] if m["bot"] == user and m["method"] == "sendPoll"]
+
+    def vote(token: str, poll: dict, option: int, user: int = CAPTAIN) -> None:
+        consumed(token, telegram.answer_poll(token, user, poll["poll_id"], [option]))
+
+    def right(poll: dict) -> int:
+        return int(poll["correct_option_id"])
+
+    def quiz_rows(code: str) -> list[dict]:
+        conn = sqlite3.connect(f"file:{data_dir / 'cuadernos' / code / 'cuaderno.db'}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute("SELECT * FROM quiz_questions ORDER BY quiz_id, position")]
+        finally:
+            conn.close()
+
+    def quiz_block(title: str, messages: list[dict]) -> None:
+        quiz_md.append(f"## {title}\n\n" + "\n\n".join(f"```\n{readable(m)}\n```" for m in messages) + "\n")
+
+    # Cálculo, straight from its chat: a topic; a citation of a page it never read is refused first
+    mark = len(telegram.messages)
+    reply = turn(lambda: telegram.send_text(MATG, CAPTAIN, "/quiz regla de la cadena"), "vinci_calculo_bot", "Ahí van")
+    calc_polls = polls("vinci_calculo_bot", mark)
+    assert len(calc_polls) == 3, [readable(m) for m in calc_polls]
+    assert all(p["type"] == "quiz" and p["is_anonymous"] is False and p["question"].startswith(f"{i}/3. ")
+               for i, p in enumerate(calc_polls, 1)), calc_polls
+    hits = tool_result(lambda d: "resultados" in d)["resultados"]
+    cited = {f"📄 {h['archivo']}, {h.get('unidad') or 'página'} {h['pagina']}" for h in hits}
+    assert all(p["explanation"].endswith(tuple(cited)) for p in calc_polls), \
+        ([p["explanation"] for p in calc_polls], cited)
+    assert [p["options"][right(p)]["text"] for p in calc_polls] == [
+        "f'(g(x))·g'(x)", "2x·cos(x²)", "La pendiente de la tangente"], "la opción correcta es la que dijo el modelo"
+    tool_texts = [flatten(m.get("content")) for r in llm.requests for m in r.get("messages") or []
+                  if m.get("role") == "tool"]
+    assert any("no tiene página 999 con texto" in t for t in tool_texts), "una cita a una página que no existe se rechaza"
+    assert "f'(g(x))·g'(x)" not in readable(reply) and "2x·cos" not in readable(reply), "la respuesta no revela nada"
+    before = len(telegram.messages)
+    vote(MATG, calc_polls[0], right(calc_polls[0]), user=STRANGER)
+    assert all(r["chosen"] is None for r in quiz_rows("MATG1049")), "el voto de un extraño no cuenta"
+    vote(MATG, calc_polls[0], right(calc_polls[0]))
+    vote(MATG, calc_polls[1], (right(calc_polls[1]) + 1) % len(calc_polls[1]["options"]))
+    time.sleep(1)
+    assert len(telegram.messages) == before, "no hay puntaje hasta responder la última pregunta"
+    mark = len(telegram.messages)
+    vote(MATG, calc_polls[2], right(calc_polls[2]))
+    score = wait_msg("vinci_calculo_bot", mark, "Quiz: regla de la cadena")
+    assert "2 de 3" in readable(score) and "❌ 2." in readable(score) and "era «2x·cos(x²)»" in readable(score), \
+        readable(score)
+    assert score["parse_mode"] == "HTML" and readable(score).count("📄 ") == 3, "cada pregunta con su fuente"
+    assert '<a href="' in readable(score), "la fuente que está en el aula va con su enlace (el PDF que mandó, sin él)"
+    assert "Anoté lo que fallaste" in readable(score)
+    vote(MATG, calc_polls[2], right(calc_polls[2]))
+    time.sleep(1)
+    assert len(telegram.messages) == mark + 1, "un voto repetido no manda otro puntaje"
+    weak = [e for e in entries(data_dir, "MATG1049") if e["tipo"] == "tema_debil" and e["origen"] == "quiz"]
+    assert len(weak) == 1 and "Quiz «regla de la cadena»" in weak[0]["texto"] and "sen(x²)" in weak[0]["texto"], weak
+    quiz_block("Cálculo: «/quiz regla de la cadena» (las 3 preguntas y la respuesta del bot)", [*calc_polls, reply])
+    quiz_block("Cálculo: el puntaje al responder la última (sin el modelo; la 2 a propósito mal)", [score])
+
+    # Física: /quiz with no topic, then the material the captain sends right after it
+    ask = turn(lambda: telegram.send_text(FIS, CAPTAIN, "/quiz"), "vinci_fisica_bot", "De qué tema")
+    mark = len(telegram.messages)
+    lab = (FILES / "guia-laboratorio-1.pdf").read_bytes()
+    lab_reply = turn(lambda: telegram.send_document(FIS, CAPTAIN, "guia-laboratorio-1.pdf", lab,
+                                                    caption="hazme el quiz con esto"), "vinci_fisica_bot", "Ahí van")
+    fis_polls = polls("vinci_fisica_bot", mark)
+    assert len(fis_polls) == 2 and all(", página 1" in p["explanation"] for p in fis_polls), fis_polls
+    added = tool_result(lambda d: "archivo_id" in d and "estado" in d and "laboratorio" in str(d.get("archivo")).lower())
+    assert added and added["estado"] == "leído", "el PDF que mandó quedó en el material antes del quiz"
+    for poll in fis_polls:
+        vote(FIS, poll, right(poll))
+    perfect = wait_msg("vinci_fisica_bot", mark, "2 de 2, ¡perfecto!")
+    assert not any(e["origen"] == "quiz" for e in entries(data_dir, "FISG1002")), "sin fallas, nada al cuaderno"
+    quiz_block("Física: «/quiz» sin tema y luego el PDF que manda el capitán", [ask, *fis_polls, lab_reply, perfect])
+
+    # Vinci: /quiz in its chat goes to the subject bot, which quizzes from its material and its notebook
+    mark = len(telegram.messages)
+    confirm = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "/quiz derivadas de cálculo"), "vinci_bot",
+                   "se lo pasé a")
+    handed = wait_msg("vinci_calculo_bot", mark, "De parte de Vinci", timeout=200)
+    handed_polls = polls("vinci_calculo_bot", mark)
+    assert len(handed_polls) == 2, [readable(m) for m in handed_polls]
+    assert "tu cuaderno, foto #" in handed_polls[0]["explanation"], "la foto de la pizarra de su cuaderno, citada"
+    assert re.search(r"📄 .+, (página|diapositiva) \d+$", handed_polls[1]["explanation"]), handed_polls[1]
+    assert any(QUIZ_HANDOFF.search(t) for t in cron_tasks("entrega_de_vinci")), "el quiz llegó como entrega de Vinci"
+    quiz_block("Vinci: «/quiz derivadas de cálculo» se lo pasa al bot de Cálculo", [confirm, *handed_polls, handed])
+    report.append("/quiz: el bot de Cálculo mandó 3 encuestas tipo quiz de Telegram sobre la regla de la cadena, citando "
+                  "archivo y página del material (una cita a una página que no leyó fue rechazada antes); al responder "
+                  "la última le llegó el puntaje (2 de 3) con la fuente de cada pregunta, sin el modelo, y lo que falló "
+                  "quedó como tema débil; el voto de un extraño y uno repetido no cuentan. Física, tras «/quiz» sin "
+                  "tema, armó el quiz con el PDF que le mandó el capitán; y Vinci pasó «/quiz derivadas de cálculo» al "
+                  "bot de Cálculo, que citó la foto de la pizarra de su cuaderno")
+    take("/quiz: quiz cortos con el material")
 
     # 7h. archive Física from Vinci's card, restart the gateway: no repeated brief, Física offline
     mark = len(telegram.messages)

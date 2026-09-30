@@ -3,13 +3,14 @@
 Vinci (the main bot): read-only queries over the aula data of every course (it opens the outside links
 the aula shows without a login, like a subject bot) and over every subject notebook, the schedule (it
 can read it and propose one extracted from a screenshot; only the captain's «Guardar» button saves it),
-the captain's own to-do list (it adds items; the captain closes them with «✅ Hecho»), the handoff of an
+the captain's own to-do list (it adds items; the captain closes them with «✅ Hecho»), the grade calculator
+of every subject (grades.py; a scheme is saved only by the captain's «Guardar esquema»), the handoff of an
 item to a subject bot, and the team (it shows cards whose «Crear» / «Archivar» buttons, pressed by the
 captain, create or archive a subject bot). No Vinci tool writes a notebook, reads arbitrary files, runs
 commands, or sees a bot token.
 
 A subject bot: the same queries restricted to its own courses (theory and práctico), the classes of its
-subject, and its own notebook (read and write; attachments only from the files the
+subject, its grade calculator, and its own notebook (read and write; attachments only from the files the
 captain sent it, which Hermes keeps in the profile's media cache).
 
 Material is a catalog, not a pile of text: `archivos` lists every document and outside link of the
@@ -44,7 +45,7 @@ from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
-from espol_bot import agenda, citations, horario, libros, materias, messages, store
+from espol_bot import agenda, citations, grades, horario, libros, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -433,6 +434,159 @@ def _notebook_json(nb: Notebook, kind: str | None, n: int, open_only: bool = Fal
             "entradas": nb.entries(kind=kind, limit=n, open_only=open_only)}
 
 
+NO_SCHEME = ("No sé cómo se evalúa {name} este semestre: no hay un esquema guardado. Búscalo en el sílabo o las "
+             "políticas del curso (archivos, leer_archivo) y en los anuncios (este semestre el primer parcial no tiene "
+             "examen por El Niño y cada materia lo maneja distinto), y propónselo con propose_grading_scheme. Si no lo "
+             "encuentras, díselo así y pregúntale cómo se evalúa: nunca inventes pesos.")
+SCHEME_PROPERTIES = {
+    "periods": {"type": "array", "description": "las partes de la nota final: «Primer parcial», «Segundo parcial», "
+                                                "«Mejoramiento», o una sola («Curso») si el sílabo pesa todo junto",
+                "items": {"type": "object", "properties": {
+                    "name": {"type": "string"},
+                    "weight": {"type": "number", "description": "% de la nota final; los períodos suman 100 (el "
+                                                                "mejoramiento no lleva)"},
+                    "improvement": {"type": "boolean", "description": "true si es el mejoramiento: reemplaza al período "
+                                                                      "más bajo si sale mayor"},
+                    "replaces": {"type": "array", "items": {"type": "string"},
+                                 "description": "mejoramiento: qué períodos puede reemplazar (vacío: cualquiera)"},
+                    "start": {"type": "string", "description": "AAAA-MM-DD: desde cuándo cuentan sus tareas del aula"},
+                    "end": {"type": "string", "description": "AAAA-MM-DD: hasta cuándo"},
+                    "exception": {"type": "string", "description": "en qué cambia este semestre respecto del sílabo y "
+                                                                   "por qué (ej. sin examen por El Niño: la lección de la "
+                                                                   "semana 7 vale lo del examen)"},
+                    "components": {"type": "array", "items": {"type": "object", "properties": {
+                        "name": {"type": "string", "description": "«Examen», «Lecciones», «Talleres»…"},
+                        "weight": {"type": "number", "description": "% del período; los componentes suman 100"},
+                        "match": {"type": "array", "items": {"type": "string"},
+                                  "description": "partes del nombre de sus tareas en el aula («lección», «taller»)"},
+                        "assignment_ids": {"type": "array", "items": {"type": "integer"},
+                                           "description": "IDs de tareas del aula (de notas) que van aquí"},
+                        "expected_count": {"type": "integer", "description": "cuántas notas tendrá en total, si el "
+                                                                             "documento lo dice («4 lecciones»)"}},
+                        "required": ["name", "weight"]}}},
+                    "required": ["name", "components"]}},
+    "passing_grade": {"type": "number", "description": "nota para aprobar, sobre 100 (por defecto 60)"},
+    "sources": {"type": "array", "items": {"type": "string"},
+                "description": "de dónde sale cada peso: «Políticas del curso, pág. 2», «anuncio del 29/09», «me lo dijo "
+                               "el estudiante»"},
+    "open_questions": {"type": "array", "items": {"type": "string"},
+                       "description": "lo que no pudiste confirmar, como pregunta (ej. «¿Cómo se reemplaza el examen del "
+                                      "primer parcial?»)"},
+}
+STATUS_PROPERTIES = {
+    "what_if": {"type": "array", "description": "supón este % en lo que falta de esas partes («¿y si saco 70 en la "
+                                               "lección?»)",
+                "items": {"type": "object", "properties": {"period": {"type": "string"}, "component": {"type": "string"},
+                                                           "score": {"type": "number", "description": "0 a 100"}},
+                          "required": ["period", "component", "score"]}},
+    "target": {"type": "number", "description": "la nota final a la que apunta, si no es solo aprobar"},
+}
+GRADE_PROPERTIES = {
+    "period": {"type": "string", "description": "el período del esquema"},
+    "component": {"type": "string", "description": "el componente de ese período"},
+    "label": {"type": "string", "description": "qué fue: «Lección 2», «Examen»"},
+    "score": {"type": "number"},
+    "out_of": {"type": "number", "description": "sobre cuánto (10, 20, 100…)"},
+    "remove": {"type": "boolean", "description": "true para borrar una nota que anotaste mal"},
+}
+
+
+def _bounded(value, name: str, lo: float, hi: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ToolError(f"«{name}» debe ser un número.") from None
+    if not lo <= number <= hi:
+        raise ToolError(f"«{name}» debe estar entre {lo:g} y {hi:g}.")
+    return number
+
+
+def _saved_scheme(ctx: Ctx, subject: materias.Subject) -> dict:
+    saved = store.grading_scheme(ctx.conn, subject.code)
+    if saved is None:
+        raise ToolError(NO_SCHEME.format(name=subject.name))
+    return saved["scheme"]
+
+
+def _component(scheme: dict, subject: materias.Subject, period, component) -> tuple[str, str]:
+    found = grades.find_component(scheme, str(period or ""), str(component or ""))
+    if found is None:
+        raise ToolError(f"No hay «{period} · {component}» en el esquema de {subject.name}. Sus partes: "
+                        + "; ".join(grades.component_names(scheme)) + ".")
+    return found
+
+
+def _grade_status(ctx: Ctx, subject: materias.Subject, args: dict) -> dict:
+    saved = store.grading_scheme(ctx.conn, subject.code)
+    if saved is None:
+        return {"subject": subject.name, "scheme": None, "message": NO_SCHEME.format(name=subject.name)}
+    what_if = {}
+    for entry in args.get("what_if") or []:
+        if not isinstance(entry, dict):
+            raise ToolError("«what_if» es una lista de {period, component, score}.")
+        what_if[_component(saved["scheme"], subject, entry.get("period"), entry.get("component"))] = \
+            _bounded(entry.get("score"), "score", 0, 100)
+    target = _bounded(args["target"], "target", 1, 100) if args.get("target") not in (None, "") else None
+    data = grades.status(ctx.conn, subject, ctx.cfg.core.tz, what_if=what_if, target=target)
+    result = data["result"]
+    message = "Muéstrale «summary» tal cual: son cuentas ya hechas, no las rehagas ni las redondees distinto."
+    if result["open_questions"]:
+        message += " Hay cosas sin confirmar («open_questions»): pregúntaselas y, con su respuesta, propón el esquema corregido."
+    if result["unassigned_grades"]:
+        message += " Hay notas del aula que no van en ninguna parte del esquema: pregúntale a cuál van."
+    return {"subject": subject.name, "summary": data["summary"], "details": result, "saved_at": data["saved_at"],
+            "message": message}
+
+
+def _propose_scheme(ctx: Ctx, subject: materias.Subject, args: dict, sender: str | None) -> dict:
+    """Validates the scheme and shows it to the captain from `sender`'s chat (a subject code; None: Vinci's)."""
+    try:
+        scheme = grades.validate({k: args[k] for k in ("periods", "passing_grade", "sources", "open_questions")
+                                  if args.get(k) is not None})
+    except grades.SchemeError as exc:
+        raise ToolError("No puedo proponer ese esquema:\n- " + "\n- ".join(exc.errors)
+                        + "\nCorrígelo (con lo que dice el documento, o pregúntale) y vuelve a proponer.") from None
+    slots, loose = grades.assign(scheme, grades.assignments(ctx.conn, agenda.course_ids_for(ctx.conn, subject)),
+                                 ctx.cfg.core.tz)
+    lines = grades.scheme_text(scheme, slots)
+    if loose:
+        lines.append("❓ Notas del aula que no van en ninguna parte: " + ", ".join(a["name"] for a in loose))
+    proposal_id = store.new_scheme_proposal(ctx.conn, subject.code, scheme, ctx.now())
+    card = messages.grading_card(subject.name, lines, scheme["open_questions"], scheme["sources"])
+    try:
+        Telegram(load_telegram_secrets(sender), api=ctx.cfg.telegram_api).send(
+            card, [(messages.SCHEME_SAVE_BUTTON, f"v1:g:{proposal_id}:ok"), (messages.SCHEME_FIX_BUTTON, f"v1:g:{proposal_id}:no")])
+    except (TelegramError, ConfigError) as exc:
+        raise ToolError(f"No pude mostrarle el esquema por Telegram: {exc}") from None
+    message = (f"Le mostré el esquema en una tarjeta con «{messages.SCHEME_SAVE_BUTTON}» y «{messages.SCHEME_FIX_BUTTON}». Se "
+               "guarda solo cuando pulse Guardar; tú no puedes guardarlo. Dile en una línea de dónde lo sacaste.")
+    if scheme["open_questions"]:
+        message += " Pregúntale ahora lo que no pudiste confirmar («open_questions»), una línea por pregunta."
+    return {"proposal": proposal_id, "open_questions": scheme["open_questions"],
+            "unassigned_grades": [a["name"] for a in loose], "message": message}
+
+
+def _record_grade(ctx: Ctx, subject: materias.Subject, args: dict) -> dict:
+    scheme = _saved_scheme(ctx, subject)
+    period, component = _component(scheme, subject, args["period"], args["component"])
+    label = " ".join(str(args["label"]).split())[:80]
+    if not label:
+        raise ToolError("«label» dice qué fue: «Lección 2», «Examen».")
+    now = ctx.now()
+    if args.get("remove"):
+        if not store.set_manual_grade(ctx.conn, subject.code, period, component, label, None, None, now):
+            raise ToolError(f"No tenía anotada «{label}» en {period} · {component}.")
+        recorded = {"removed": label}
+    else:
+        if args.get("score") in (None, "") or args.get("out_of") in (None, ""):
+            raise ToolError("Dime «score» y «out_of» (8 sobre 10: score 8, out_of 10).")
+        out_of = _bounded(args["out_of"], "out_of", 0.01, 1000)
+        score = _bounded(args["score"], "score", 0, out_of)
+        store.set_manual_grade(ctx.conn, subject.code, period, component, label, score, out_of, now)
+        recorded = {"period": period, "component": component, "label": label, "score": score, "out_of": out_of}
+    return {"recorded": recorded, **_grade_status(ctx, subject, {})}
+
+
 # -- Vinci ---------------------------------------------------------------------------------
 
 
@@ -638,6 +792,30 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
                 "message": "Le mostré el pendiente anotado en una tarjeta con el botón «✅ Hecho». Confírmaselo en "
                            "una línea (qué y para cuándo), sin repetir la tarjeta."}
 
+    def one_subject(text) -> materias.Subject:
+        try:
+            return materias.resolve(ctx.subjects(), str(text))
+        except materias.Ambiguous as exc:
+            raise ToolError(str(exc)) from None
+
+    def grade_status(args):
+        ctx.refresh()
+        if str(args.get("subject") or "").strip():
+            return _grade_status(ctx, one_subject(args["subject"]), args)
+        if args.get("what_if") or args.get("target") not in (None, ""):
+            raise ToolError("Para suponer notas o apuntar a una nota, dime la materia («subject»).")
+        overview = [_grade_status(ctx, s, {}) for s in ctx.subjects()]
+        return {"subjects": [{"subject": o["subject"], **({"summary": o["summary"]} if "summary" in o else {"scheme": None})}
+                             for o in overview],
+                "message": "Muéstrale el «summary» de cada materia tal cual (son cuentas ya hechas). De las que no "
+                           "tienen esquema, dile que todavía no sé cómo se evalúan y ofrécele buscarlo."}
+
+    def propose_scheme(args):
+        return _propose_scheme(ctx, one_subject(args["subject"]), args, None)
+
+    def record_grade(args):
+        return _record_grade(ctx, one_subject(args["subject"]), args)
+
     def entregar(args):
         try:
             subject = materias.resolve(ctx.subjects(), str(args["materia"]))
@@ -716,6 +894,20 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              "un SharePoint): léelos con leer_archivo.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
         Tool("notas", "Notas publicadas por materia.", notas, dict(materia)),
+        Tool("grade_status", "La calculadora de notas: aplica el esquema de evaluación guardado de una materia (sus "
+             "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "
+             "en lo que falta para aprobar. Sin «subject», todas. Las cuentas vienen hechas en «summary».", grade_status,
+             {"subject": {"type": "string", "description": "materia (nombre o código); vacío = todas"},
+              **STATUS_PROPERTIES}),
+        Tool("propose_grading_scheme", "Le muestra en una tarjeta cómo se evalúa una materia este semestre (del sílabo, "
+             "las políticas del curso, un anuncio o lo que te dijo), con «✅ Guardar esquema» y «✏️ Corregir». Solo se "
+             "guarda si pulsa Guardar. Úsala también para corregirlo: manda el esquema completo otra vez.",
+             propose_scheme, {"subject": {"type": "string"}, **SCHEME_PROPERTIES}, ["subject", "periods", "sources"],
+             read_only=False),
+        Tool("record_grade", "Anota una nota que te dijo y que no está en el aula (una lección en papel), en su parte "
+             "del esquema; devuelve cómo va con ella.", record_grade,
+             {"subject": {"type": "string"}, **GRADE_PROPERTIES}, ["subject", "period", "component", "label"],
+             read_only=False),
         Tool("archivos", "Catálogo del material de las materias: cada documento (PDF, PPTX, DOCX, páginas) con su "
              "ID, módulo, sección, carpeta, de dónde salió y su estado (leído, sin bajar, escaneado…), y los enlaces "
              "de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su «enlace_id». Con «materia», también su "
@@ -899,6 +1091,16 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
     def horario_(args):
         return _schedule_json(ctx, ctx.code)
 
+    def grade_status(args):
+        ctx.refresh()
+        return _grade_status(ctx, ctx.subject(), args)
+
+    def propose_scheme(args):
+        return _propose_scheme(ctx, ctx.subject(), args, ctx.subject().code)
+
+    def record_grade(args):
+        return _record_grade(ctx, ctx.subject(), args)
+
     def notebook() -> Notebook:
         return Notebook(ctx.cfg.core, ctx.subject().code)
 
@@ -959,6 +1161,16 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
              "SharePoint): léelos con leer_archivo.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia.", notas),
+        Tool("grade_status", "La calculadora de notas de tu materia: aplica su esquema de evaluación guardado (los "
+             "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "
+             "en lo que falta para aprobar. Las cuentas vienen hechas en «summary».", grade_status, STATUS_PROPERTIES),
+        Tool("propose_grading_scheme", "Le muestra en una tarjeta cómo se evalúa tu materia este semestre (del sílabo, "
+             "las políticas del curso, un anuncio o lo que te dijo), con «✅ Guardar esquema» y «✏️ Corregir». Solo se "
+             "guarda si pulsa Guardar. Úsala también para corregirlo: manda el esquema completo otra vez.",
+             propose_scheme, SCHEME_PROPERTIES, ["periods", "sources"], read_only=False),
+        Tool("record_grade", "Anota una nota que te dijo y que no está en el aula (una lección en papel), en su parte "
+             "del esquema; devuelve cómo va con ella.", record_grade, GRADE_PROPERTIES,
+             ["period", "component", "label"], read_only=False),
         Tool("archivos", "Catálogo del material de tu materia: cada documento (PDF, PPTX, DOCX, páginas) con su ID, "
              "módulo, sección, carpeta, de dónde salió y su estado (leído, sin bajar, escaneado, muy grande…), tu "
              "libro principal primero; y los enlaces de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su "

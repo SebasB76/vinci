@@ -1377,7 +1377,9 @@ END:VCALENDAR
                                  for method, path in mutations), mutations
         assert canvas.throttled, "el 429 de prueba debió ocurrir"
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
-        assert all(str(m["chat_id"]) == CAPTAIN_ID for _, m in sent_log), "solo se escribe al capitán"
+        assert all(str(m.get("chat_id")) == CAPTAIN_ID for _, m in sent_log), \
+            ("solo se escribe al capitán", [(label, {k: v for k, v in m.items() if k != "text"})
+                                            for label, m in sent_log if str(m.get("chat_id")) != CAPTAIN_ID])
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
         assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102} if vinci_section else set()), \

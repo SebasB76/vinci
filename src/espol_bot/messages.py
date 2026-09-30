@@ -290,3 +290,17 @@ def schedule_card(rendered_html: str, count: int, warnings: list[str]) -> str:
     parts.append("¿Está bien? Pulsa <b>Guardar horario</b> y cada bot de materia te mandará su brief antes de "
                  "cada clase. Si algo está mal, pulsa <b>Corregir</b> y dime qué cambiar.")
     return "\n\n".join(parts)
+
+
+SCHEME_SAVE_BUTTON = "✅ Guardar esquema"
+SCHEME_FIX_BUTTON = "✏️ Corregir"
+
+
+def grading_card(name: str, lines: list[str], open_questions: list[str], sources: list[str]) -> str:
+    parts = [f"📊 <b>Así entiendo que se evalúa {e(name)}</b>", "\n".join(e(line) for line in lines)]
+    if open_questions:
+        parts.append("⚠️ <b>No lo pude confirmar</b>\n" + "\n".join(f"• {e(q)}" for q in open_questions))
+    parts.append("Fuente: " + e("; ".join(sources)))
+    parts.append(f"¿Está bien? Pulsa <b>{SCHEME_SAVE_BUTTON.split(' ', 1)[1]}</b> y calculo tus notas con esto. Si algo está mal, "
+                 f"pulsa <b>{SCHEME_FIX_BUTTON.split(' ', 1)[1]}</b> y dime qué cambiar.")
+    return "\n\n".join(parts)

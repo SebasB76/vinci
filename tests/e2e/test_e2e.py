@@ -47,7 +47,10 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      shared now);
      «✅ Ya lo entregué» under a reminder (the assignment stops being pending everywhere and gets no more
      reminders; its undo brings it back); the captain's own to-do list from «anota: …» (its card, «¿qué tengo
-     esta semana?», the model-free reminder and 7:00 summary, closed with «✅ Hecho»);
+     esta semana?», the model-free reminder and 7:00 summary, closed with «✅ Hecho»); the grade calculator
+     (Cálculo's bot reads its syllabus and shows the scheme, asking how the first partial goes without its exam;
+     the captain's answer and «✅ Guardar esquema» save it; the figures, a what-if and a grade given in chat are
+     the tool's; Vinci says it does not know Física's scheme until the captain tells it);
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
@@ -214,6 +217,35 @@ FROM_MEMORY = ("La regla de L'Hôpital sale en 📄 [Capítulo 3 - Derivadas.pdf
                "una variable.pdf, página 120. Se apoya en la derivada de una composición: 📄 [Capítulo 3 - "
                "Derivadas.pdf, página 2](https://aulavirtual.espol.edu.ec/files/5001).")
 
+# How each subject is graded, as the model reads it: Cálculo's syllabus weighs two partial exams and the class
+# work, and says nothing of El Niño (the first partial has no exam this semester); the captain then says a
+# lesson worth the same replaces it. Física's syllabus is not in the aula: the captain tells Vinci how it goes.
+CALC_ACTIVITIES = {"name": "Deberes y lecciones", "weight": 30, "match": ["deber", "lección", "taller", "práctica"]}
+CALC_SYLLABUS_SCHEME = {
+    "periods": [{"name": "Curso", "weight": 100, "components": [
+        {"name": "Examen del primer parcial", "weight": 35, "match": ["primer parcial"]},
+        {"name": "Examen del segundo parcial", "weight": 35, "match": ["segundo parcial"]}, CALC_ACTIVITIES]}],
+    "sources": ["Sílabo MATG1049 2026-2T.pdf, pág. 1 (J. EVALUACIÓN)"],
+    "open_questions": ["¿Cómo se reemplaza el examen del primer parcial, que este semestre no se toma por El Niño?"]}
+CALC_LESSON = "Lección que reemplaza el examen del primer parcial"
+CALC_SCHEME = {
+    "periods": [{"name": "Curso", "weight": 100,
+                 "exception": "Sin examen en el primer parcial por El Niño: lo reemplaza una lección que vale lo mismo.",
+                 "components": [{"name": CALC_LESSON, "weight": 35, "match": ["lección del primer parcial"]},
+                                {"name": "Examen del segundo parcial", "weight": 35, "match": ["segundo parcial"]},
+                                CALC_ACTIVITIES]}],
+    "sources": ["Sílabo MATG1049 2026-2T.pdf, pág. 1 (J. EVALUACIÓN)", "Me lo dijo el estudiante el 30 sep"]}
+FIS_SCHEME = {
+    "periods": [{"name": "Primer parcial", "weight": 50,
+                 "exception": "Sin examen por El Niño: todo el parcial son deberes y laboratorio.",
+                 "components": [{"name": "Deberes", "weight": 50, "match": ["tarea", "taller"]},
+                                {"name": "Laboratorio", "weight": 50, "match": ["informe"]}]},
+                {"name": "Segundo parcial", "weight": 50, "components": [
+                    {"name": "Examen", "weight": 60, "match": ["examen"]},
+                    {"name": "Laboratorio", "weight": 20, "match": ["informe"]},
+                    {"name": "Deberes", "weight": 20, "match": ["tarea", "taller"]}]}],
+    "sources": ["Me lo dijo el estudiante el 30 sep"]}
+
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
 SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina"} | SKILL_TOOLS
@@ -325,6 +357,10 @@ class Script:
         for trigger, todo in TODOS.items():
             if f"anota: {trigger}" in text:
                 return _call("mcp__vinci__add_todo", **todo)
+        if "cómo voy en notas" in text:
+            return _call("mcp__vinci__grade_status")
+        if "en Física no hay examen en el primer parcial" in text:
+            return _call("mcp__vinci__propose_grading_scheme", subject="física", **FIS_SCHEME)
         if "qué tengo esta semana" in text:
             return _call("mcp__vinci__semana")
         image = IMAGE_RE.search(text)
@@ -397,7 +433,10 @@ class Script:
         parts = []
         for raw in results:
             data = _json(raw)
-            if isinstance(data, dict) and data.get("todo"):
+            grade = Script.grade_answer(data)
+            if grade is not None:
+                parts.append(grade)
+            elif isinstance(data, dict) and data.get("todo"):
                 todo = data["todo"]
                 when = f", para el {todo['due']}" if todo.get("due") else ""
                 parts.append(f"📌 Anotado: {todo['text']}{when}.")
@@ -418,6 +457,49 @@ class Script:
             else:
                 parts.append(_problem(raw))
         return "\n".join(parts)
+
+    @staticmethod
+    def grade_answer(data) -> str | None:
+        """What the model says after a calculator tool: its summary as is, or that the scheme is unknown."""
+        if not isinstance(data, dict):
+            return None
+        if "subjects" in data:
+            return "\n\n".join(s.get("summary") or f"Todavía no sé cómo se evalúa {s['subject']}: ¿me dices cómo "
+                                 "se evalúa, o lo busco en su sílabo?" for s in data["subjects"])
+        if data.get("summary"):
+            return data["summary"]
+        if "scheme" in data and data["scheme"] is None:
+            return f"Todavía no sé cómo se evalúa {data['subject']}."
+        if data.get("proposal"):
+            return "📊 Te mostré cómo entiendo que se evalúa, para que lo guardes. " + " ".join(data["open_questions"])
+        return None
+
+    def grades(self, text: str, called: list[str], results: list[str]) -> dict | None:
+        """A subject bot's calculator: with no scheme it reads the syllabus and proposes one."""
+        last = _json(results[-1]) if results else None
+        if "cómo voy en la materia" in text:
+            if not called:
+                return _call("mcp__materia__grade_status")
+            if called[-1] == "mcp__materia__grade_status" and isinstance(last, dict) and last.get("scheme", 0) is None:
+                return _call("mcp__materia__archivos", nombre="sílabo")
+            if called[-1] == "mcp__materia__archivos" and isinstance(last, dict):
+                syllabus = next(f for f in last["material"] if "Sílabo" in f["archivo"])
+                return _call("mcp__materia__leer_archivo", archivo_id=syllabus["id"])
+            if called[-1] == "mcp__materia__leer_archivo":
+                pages = " ".join(p["texto"] for p in (last or {}).get("contenido", []))
+                if "Primer parcial 35%, segundo parcial 35%, deberes y lecciones 30%" not in pages:
+                    return {"content": "No encontré en el sílabo cómo se evalúa. ¿Me dices cómo se evalúa?"}
+                return _call("mcp__materia__propose_grading_scheme", **CALC_SYLLABUS_SCHEME)
+            return {"content": self.grade_answer(last) or _problem(results[-1])}
+        for trigger, call in (
+                ("lo reemplaza una lección", lambda: _call("mcp__materia__propose_grading_scheme", **CALC_SCHEME)),
+                ("y si saco 70", lambda: _call("mcp__materia__grade_status", what_if=[
+                    {"period": "curso", "component": CALC_LESSON.lower(), "score": 70}])),
+                ("saqué 16/20", lambda: _call("mcp__materia__record_grade", period="Curso", component=CALC_LESSON,
+                                               label="Lección del primer parcial", score=16, out_of=20))):
+            if trigger in text:
+                return call() if not called else {"content": self.grade_answer(last) or _problem(results[-1])}
+        return None
 
     def subject(self, name: str, text: str, called: list[str], results: list[str]) -> dict:
         if re.search(r"^TAREA: brief_de_clase", text, re.M):  # the skill quotes it mid-line
@@ -451,7 +533,9 @@ class Script:
                 return {"content": self.cited_answer(_json(results[-1]), name, general)}
         if "en qué página está la regla de L'Hôpital" in text:
             return {"content": FROM_MEMORY}
-        flow = self.material(text, called, results)
+        flow = self.grades(text, called, results)
+        if flow is None:
+            flow = self.material(text, called, results)
         if flow is not None:
             return flow
         if results:
@@ -1277,7 +1361,8 @@ END:VCALENDAR
         "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
         "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
         "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
-        "material» y las citas de memoria que no pasaron), `estado.md` (`espol-bot doctor` y /estado), "
+        "material» y las citas de memoria que no pasaron), `notas.md` (la calculadora de notas), `estado.md` "
+        "(`espol-bot doctor` y /estado), "
         "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
         "`setup.log`.\n",
     ]
@@ -1850,6 +1935,122 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "«¿qué tengo esta semana?» y en el resumen de las 7:00; el sondeo mandó su recordatorio 2 h antes, "
                   "sin llamar al modelo; «✅ Hecho» en el recordatorio y en el resumen lo cerró y ya no se recordó más")
     take("Pendientes cerrados")
+
+    # 7e3. The grade calculator. Cálculo's bot reads its syllabus and shows the scheme, asking what the syllabus
+    # cannot say (how the first partial goes without its exam, El Niño); the captain tells it and saves it with
+    # «Guardar esquema» (a discarded and a superseded card save nothing). Vinci says it does not know Física's
+    # scheme until the captain tells it. Every figure comes from the tool; the model only shows it.
+    notas_md = ["# Calculadora de notas\n"]
+
+    def scheme_rows() -> dict:
+        conn = sqlite3.connect(data_dir / "espol.db")
+        conn.row_factory = sqlite3.Row
+        try:
+            return {r["subject"]: json.loads(r["scheme"]) for r in conn.execute("SELECT * FROM grading_schemes")}
+        finally:
+            conn.close()
+
+    def keys(message: dict) -> dict:
+        return {b["text"]: b["callback_data"] for b in buttons(message)}
+
+    def show_card(title: str, card: dict, said: dict) -> None:
+        notas_md.extend([f"## {title}\n", f"```\n{plain(card['text'])}\n"
+                         + "".join(f"[{b['text']}]" for b in buttons(card)) + f"\n\n{readable(said)}\n```\n"])
+
+    def show_turn(title: str, asked: str, said: dict) -> None:
+        notas_md.extend([f"## {title}\n", f"El capitán: «{asked}»\n", f"```\n{readable(said)}\n```\n"])
+
+    from espol_bot import grades
+    mark = len(telegram.messages)
+    telegram.send_text(MATG, CAPTAIN, "¿cómo voy en la materia?")
+    card1 = wait_msg("vinci_calculo_bot", mark, "Así entiendo que se evalúa Cálculo de una Variable")
+    said = wait_msg("vinci_calculo_bot", mark, "Te mostré cómo entiendo que se evalúa")
+    for expected in ("Para aprobar: 60/100", "• Curso: 100 % de la nota",
+                     "– Examen del primer parcial: 35 % (todavía nada del aula)",
+                     "– Deberes y lecciones: 30 % (del aula: Lección 1: Límites, Deber 2: Continuidad, Taller 3: "
+                     "Derivadas, Práctica 4: Regla de la cadena)", "⚠️ No lo pude confirmar",
+                     "¿Cómo se reemplaza el examen del primer parcial, que este semestre no se toma por El Niño?",
+                     "Fuente: Sílabo MATG1049 2026-2T.pdf, pág. 1 (J. EVALUACIÓN)"):
+        assert expected in plain(card1["text"]), f"falta «{expected}» en la tarjeta del esquema:\n{plain(card1['text'])}"
+    assert list(keys(card1)) == ["✅ Guardar esquema", "✏️ Corregir"]
+    save1 = keys(card1)["✅ Guardar esquema"]
+    assert "El Niño" in readable(said), "el bot pregunta lo que el sílabo no dice"
+    assert scheme_rows() == {}, "proponer no guarda"
+    show_card("1. «¿Cómo voy en la materia?» al bot de Cálculo: no hay esquema; lee el sílabo y lo propone", card1, said)
+    fixed = turn(lambda: telegram.press(MATG, CAPTAIN, card1, keys(card1)["✏️ Corregir"]), "vinci_calculo_bot",
+                 "no lo guardé")
+    assert scheme_rows() == {}
+    notas_md.extend(["## 2. El capitán pulsa «Corregir»\n", f"```\n{plain(fixed['text'])}\n```\n"])
+    told = "no hay examen en el primer parcial por El Niño: lo reemplaza una lección que vale lo mismo"
+    mark = len(telegram.messages)
+    telegram.send_text(MATG, CAPTAIN, told)
+    card2 = wait_msg("vinci_calculo_bot", mark, "Así entiendo que se evalúa Cálculo de una Variable")
+    said = wait_msg("vinci_calculo_bot", mark, "Te mostré cómo entiendo que se evalúa")
+    for expected in ("↳ Sin examen en el primer parcial por El Niño: lo reemplaza una lección que vale lo mismo.",
+                     f"– {CALC_LESSON}: 35 % (todavía nada del aula)", "Me lo dijo el estudiante el 30 sep"):
+        assert expected in plain(card2["text"]), f"falta «{expected}» en la tarjeta corregida:\n{plain(card2['text'])}"
+    assert "No lo pude confirmar" not in plain(card2["text"])
+    show_card(f"3. «{told}»: el bot propone el esquema corregido", card2, said)
+    calls = len(telegram.calls)
+    telegram.press(MATG, CAPTAIN, card1, save1)
+    toast(calls, "Ese esquema ya fue descartado")
+    assert scheme_rows() == {}, "una tarjeta descartada no se puede guardar"
+    saved = turn(lambda: telegram.press(MATG, CAPTAIN, card2, keys(card2)["✅ Guardar esquema"]), "vinci_calculo_bot",
+                 "Guardé cómo se evalúa Cálculo de una Variable")
+    assert scheme_rows() == {"MATG1049": grades.validate(CALC_SCHEME)}
+    for expected in ("Llevas 4,8 de 6 puntos calificados (promedio 80 %). Falta calificar 94 de 100.",
+                     "Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puedes sacar 98,8).",
+                     "– Deberes y lecciones (30 %): 80 % en el 20 % calificado · Lección 1: Límites 8/10",
+                     f"– {CALC_LESSON} (35 %): sin notas todavía"):
+        assert expected in plain(saved["text"]), f"falta «{expected}» al guardar:\n{plain(saved['text'])}"
+    notas_md.extend(["## 4. «Guardar esquema» en la tarjeta descartada: «Ese esquema ya fue descartado.» y no se "
+                     "guarda. El capitán pulsa «Guardar esquema» en la corregida\n", f"```\n{plain(saved['text'])}\n```\n"])
+    asked = "¿y si saco 70 en la lección del primer parcial?"
+    what_if = turn(lambda: telegram.send_text(MATG, CAPTAIN, asked), "vinci_calculo_bot", "cómo vas")
+    assert "Falta calificar 94 de 100." in readable(what_if), readable(what_if)
+    assert "Con lo que supusiste en 35 de esos puntos, sumarías 24,5; quedan 59 sin suponer." in readable(what_if)
+    assert "Para aprobar necesitas un promedio de 52 % en lo que falta" in readable(what_if), readable(what_if)
+    show_turn("5. Una nota supuesta (no se guarda)", asked, what_if)
+    asked = "saqué 16/20 en la lección del primer parcial"
+    recorded = turn(lambda: telegram.send_text(MATG, CAPTAIN, asked), "vinci_calculo_bot", "cómo vas")
+    for expected in ("Llevas 32,8 de 41 puntos calificados (promedio 80 %). Falta calificar 59 de 100.",
+                     "Para aprobar necesitas un promedio de 46,1 % en lo que falta",
+                     f"– {CALC_LESSON} (35 %): 80 % en el 100 % calificado · Lección del primer parcial 16/20 (me lo dijiste)"):
+        assert expected in readable(recorded), f"falta «{expected}» tras anotar la nota:\n{readable(recorded)}"
+    show_turn("6. Una nota que no está en el aula, anotada", asked, recorded)
+
+    asked = "¿cómo voy en notas?"
+    overview = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, asked), "vinci_bot", "cómo vas")
+    assert "Para aprobar necesitas un promedio de 46,1 % en lo que falta" in readable(overview)
+    assert f"Todavía no sé cómo se evalúa {fis_name}" in readable(overview), "sin esquema, Vinci lo dice: no adivina"
+    show_turn("7. Vinci, todas las materias: Física todavía no tiene esquema", asked, overview)
+    told = ("en Física no hay examen en el primer parcial por El Niño: todo el parcial son deberes y laboratorio, "
+            "mitad y mitad; en el segundo, examen 60, laboratorio 20 y deberes 20")
+    mark = len(telegram.messages)
+    telegram.send_text(BOT_TOKEN, CAPTAIN, told)
+    fis_card = wait_msg("vinci_bot", mark, f"Así entiendo que se evalúa {fis_name}")
+    said = wait_msg("vinci_bot", mark, "Te mostré cómo entiendo que se evalúa")
+    for expected in ("• Primer parcial: 50 % de la nota", "↳ Sin examen por El Niño: todo el parcial son deberes y laboratorio.",
+                     "– Deberes: 50 % (del aula: Taller 2: Movimiento parabólico, Tarea 1: Vectores)",
+                     "– Examen: 60 % (del aula: Examen parcial)"):
+        assert expected in plain(fis_card["text"]), f"falta «{expected}» en la tarjeta de Física:\n{plain(fis_card['text'])}"
+    show_card(f"8. «{told}» a Vinci", fis_card, said)
+    saved = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, fis_card, keys(fis_card)["✅ Guardar esquema"]), "vinci_bot",
+                 f"Guardé cómo se evalúa {fis_name}")
+    for expected in ("Llevas 11,3 de 12,5 puntos calificados (promedio 90 %).",
+                     "Para aprobar necesitas un promedio de 55,7 % en lo que falta",
+                     "• Primer parcial (50 % de la nota): 90 % en lo calificado"):
+        assert expected in plain(saved["text"]), f"falta «{expected}» al guardar Física:\n{plain(saved['text'])}"
+    assert set(scheme_rows()) == {"MATG1049", "FISG1002"}
+    notas_md.extend(["## 9. El capitán pulsa «Guardar esquema»\n", f"```\n{plain(saved['text'])}\n```\n"])
+    (artifact / "notas.md").write_text("\n".join(notas_md), encoding="utf-8")
+    report.append("Calculadora de notas: sin esquema, el bot de Cálculo leyó su sílabo y le mostró los pesos en una "
+                  "tarjeta, preguntando lo que el sílabo no dice (el primer parcial sin examen por El Niño); con lo que "
+                  "le dijo el capitán propuso otra, y solo «✅ Guardar esquema» la guardó (ni la descartada ni proponer "
+                  "guardan). Las cuentas son del código: 4,8 de 6 puntos (80 %), 58,7 % para aprobar; con una nota "
+                  "supuesta, 52 %; con la lección anotada, 46,1 %. Vinci dijo que no sabía cómo se evalúa Física hasta "
+                  "que el capitán se lo contó y lo guardó (90 % en lo calificado, 55,7 % para aprobar)")
+    take("Calculadora de notas")
 
     # 7f. notebook capture straight on the subject bots
     voice = (FILES / "nota-de-voz.ogg").read_bytes()

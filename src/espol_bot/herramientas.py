@@ -9,8 +9,9 @@ captain, create or archive a subject bot). No Vinci tool writes a notebook, read
 commands, or sees a bot token.
 
 A subject bot: the same queries restricted to its own courses (theory and práctico), the classes of its
-subject, and its own notebook (read and write; attachments only from the files the
-captain sent it, which Hermes keeps in the profile's media cache).
+subject, its own notebook (read and write; attachments only from the files the
+captain sent it, which Hermes keeps in the profile's media cache), and short quizzes it sends as
+Telegram quiz polls, each question citing a page of its material or an entry of its notebook (quiz.py).
 
 Material is a catalog, not a pile of text: `archivos` lists every document and outside link of the
 courses (where it is, whether it is read yet) and each document is downloaded only when a bot needs
@@ -40,7 +41,7 @@ from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
-from espol_bot import agenda, horario, libros, materias, messages, store
+from espol_bot import agenda, horario, libros, materias, messages, quiz, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -897,6 +898,33 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
             entry["aviso"] = "No encontré el audio en tu caché; guardé solo la transcripción y el resumen."
         return entry
 
+    def send_quiz(args):
+        items = args.get("questions")
+        if not isinstance(items, list) or not items or not all(isinstance(q, dict) for q in items):
+            raise ToolError("«questions» debe ser una lista de preguntas (question, options, answer, explanation y "
+                            "su fuente: file_id y page, o entry_id).")
+        nb = notebook()
+        try:
+            questions = []
+            for position, item in enumerate(items, 1):
+                if item.get("file_id") not in (None, ""):
+                    source = quiz.file_source(ctx.conn, own_file(item["file_id"]), item.get("page"))
+                elif item.get("entry_id") not in (None, ""):
+                    source = quiz.entry_source(nb, item["entry_id"])
+                else:
+                    raise ToolError(f"La pregunta {position} no dice de dónde sale: «file_id» y «page» (tu material) "
+                                    "o «entry_id» (lo que te mandó, guardado en tu cuaderno).")
+                questions.append(quiz.question(item, position, source))
+            try:
+                telegram = Telegram(load_telegram_secrets(ctx.code), api=ctx.cfg.telegram_api)
+            except ConfigError as exc:
+                raise ToolError(f"No puedo mandar el quiz por Telegram: {exc}") from None
+            return quiz.send(telegram, nb, str(args["topic"]), questions, ctx.now())
+        except quiz.QuizError as exc:
+            raise ToolError(str(exc)) from None
+        finally:
+            nb.close()
+
     return [
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
         Tool("tareas", "Entregas pendientes de tu materia.", tareas,
@@ -951,6 +979,27 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
               "transcripcion": {"type": "string", "description": "texto de la nota de voz, si lo tienes"},
               "fecha_clase": {"type": "string", "description": "AAAA-MM-DD de la clase, si aplica"}},
              ["tipo", "resumen"], read_only=False),
+        Tool("send_quiz", "Manda un quiz corto (/quiz) al chat del estudiante: una encuesta tipo quiz de Telegram por "
+             "pregunta, que le muestra la respuesta correcta y tu explicación recién al responder; al terminar le llega "
+             "su puntaje con la fuente de cada pregunta. Cada pregunta sale del material que leíste (file_id y page) o "
+             "de lo que te mandó (entry_id de tu cuaderno); la cita la pongo yo.", send_quiz,
+             {"topic": {"type": "string", "description": "el tema, corto (ej. «regla de la cadena»)"},
+              "questions": {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
+                  "type": "object",
+                  "properties": {
+                      "question": {"type": "string", "description": f"hasta {quiz.QUESTION_CHARS} caracteres"},
+                      "options": {"type": "array", "items": {"type": "string"},
+                                  "description": f"de {quiz.MIN_OPTIONS} a {quiz.MAX_OPTIONS} opciones, hasta "
+                                                 f"{quiz.OPTION_CHARS} caracteres cada una (yo las mezclo)"},
+                      "answer": {"type": "string", "description": "la opción correcta, escrita igual que en options"},
+                      "explanation": {"type": "string", "description": "por qué es la correcta, en una frase de "
+                                                                       "hasta ~120 caracteres (se ve al responder)"},
+                      "file_id": {"type": "integer", "description": "el archivo de tu material de donde sale"},
+                      "page": {"type": "integer", "description": "su página o diapositiva"},
+                      "entry_id": {"type": "integer", "description": "o la entrada de tu cuaderno de donde sale "
+                                                                     "(una foto, un apunte, un texto que te pasó)"}},
+                  "required": ["question", "options", "answer", "explanation"]}}},
+             ["topic", "questions"], read_only=False),
     ]
 
 

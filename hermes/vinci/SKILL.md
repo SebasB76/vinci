@@ -1,6 +1,6 @@
 ---
 name: vinci
-description: Vinci, el bot principal de ESPOL - consultas de todas las materias, repartir fotos/PDF/audios/texto al bot de cada materia, avisos del aula con traspaso, lista de pendientes personales, horario desde una captura (se guarda solo con su confirmación), planes de estudio y crear o archivar los bots de materia.
+description: Vinci, el bot principal de ESPOL - consultas de todas las materias, repartir fotos/PDF/audios/texto al bot de cada materia, pedirle un quiz (/quiz) al bot de la materia, avisos del aula con traspaso, lista de pendientes personales, horario desde una captura (se guarda solo con su confirmación), planes de estudio y crear o archivar los bots de materia.
 version: 1.0.0
 author: espol-academic-bot
 platforms: [linux]
@@ -29,6 +29,7 @@ Todas leen datos locales ya sincronizados con el aula virtual (solo lectura) y l
 | Horario guardado | `horario` |
 | Mostrar un horario para que lo confirme | `proponer_horario` |
 | Pasarle algo a un bot de materia | `entregar_a_materia` |
+| Un quiz corto de un tema (/quiz): lo manda el bot de la materia | `entregar_a_materia` |
 | Armar o revisar el equipo de bots (tarjeta con «Crear») | `proponer_equipo` |
 | Archivar / reactivar el bot de una materia (tarjeta) | `archivar_materia`, `reactivar_materia` |
 
@@ -51,6 +52,17 @@ o nota de voz de una materia:
 3. Contesta con la `confirmacion` que devuelve: a qué bot se lo pasaste y que le responde en su chat.
 
 Si la herramienta dice que el bot está pendiente o archivado, explícale por qué no puede recibirlo.
+
+## Quiz (/quiz)
+
+«/quiz derivadas», «hazme un quiz de Física»: el quiz lo arma y lo manda el bot de la materia, en su chat,
+con su material (tú no mandas quiz).
+1. La materia: la que nombró. Si solo dijo el tema, búscalo con `buscar_material`: si sale en una sola
+   materia, es esa; si sale en dos o en ninguna, pregúntale de cuál. Sin tema, pregúntale de qué tema y
+   de qué materia.
+2. `entregar_a_materia` con `mensaje: "/quiz <tema>"` (y lo que te pidió: cuántas preguntas, qué
+   capítulo) y en `adjuntos` el material que te mandó para el quiz (foto, PDF).
+3. Contesta con la `confirmacion`: el quiz le llega en el chat de ese bot en un minuto más o menos.
 
 ## Avisos del aula virtual
 

@@ -19,6 +19,8 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   skills its job names with `--skill`), but Hermes ignores
   it unless the agent has one of the skills toolset's tools (skills_list, skill_view, skill_manage), so
   every bot gets that toolset. Its skill_manage writes files under the bot's own profile `skills/`.
+  Every skill in a profile's `skills/` is also a slash command in its Telegram chat (and in the bot's
+  command menu): the `quiz` skill is `/quiz <tema>`, whose text reaches the model with the skill.
 - Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
   `--script` runs the script first and skips the model when its last line is
   `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use. The ticker checks
@@ -419,6 +421,8 @@ class Setup:
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
+        changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "quiz" / "SKILL.md",
+                                     _render(TEMPLATES / "vinci" / "quiz" / "SKILL.md", values))
         for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen",
                                 "vinci-mantenimiento.sh": "mantenimiento"}.items():
             changed |= _write_if_changed(profile / "scripts" / script,
@@ -427,7 +431,7 @@ class Setup:
         if plugin_changed:
             self._reload_gateway_plugins(profile)
         changed |= plugin_changed | self._drop_legacy_files(profile)
-        print(f"• SOUL.md, skill vinci, plugin de botones y scripts de cron {'instalados' if changed else 'sin cambios'}")
+        print(f"• SOUL.md, skills vinci y quiz, plugin de botones y scripts de cron {'instalados' if changed else 'sin cambios'}")
         self.telegram_profile(profile, token, characters.vinci(), "Vinci")
 
         self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
@@ -504,6 +508,8 @@ class Setup:
         changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "materia" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci-materia" / "SKILL.md",
                                      _render(TEMPLATES / "materia" / "SKILL.md", values))
+        changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "quiz" / "SKILL.md",
+                                     _render(TEMPLATES / "materia" / "quiz" / "SKILL.md", values))
         if self._install_plugin(profile, values):
             changed = True
             self._reload_gateway_plugins(profile)

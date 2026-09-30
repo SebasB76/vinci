@@ -19,6 +19,9 @@
                                      a bot's answer to /start, which Hermes ignores (the plugin calls it)
     espol-bot pagina --curso CÓDIGO <archivo_id> <página>
                                      a page of the subject's PDF as a JPEG, for the plugin's ver_pagina
+    espol-bot quiz-respuesta --curso CÓDIGO <poll_id> <opción>
+                                     the captain's vote in a quiz poll; after the last question, the
+                                     score to send (the plugin calls it)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -153,6 +156,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("archivo_id", type=int)
     p.add_argument("pagina", type=int)
+    p = sub.add_parser("quiz-respuesta", help="una respuesta a un quiz (la usa el plugin vinci-botones)")
+    p.add_argument("--curso", required=True, help="código de la materia")
+    p.add_argument("poll_id")
+    p.add_argument("opciones", type=int, nargs="*")
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -185,6 +192,11 @@ def main(argv: list[str] | None = None) -> int:
             except ToolError as exc:
                 result = {"error": str(exc)}
             print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if args.cmd == "quiz-respuesta":
+            from espol_bot import quiz
+            answer = quiz.record_answer(cfg.core, args.curso, args.poll_id, args.opciones, now_utc())
+            print(json.dumps({"respuesta": answer}, ensure_ascii=False))
             return 0
         if args.cmd in ("bot-creado", "token"):
             from espol_bot import equipo

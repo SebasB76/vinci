@@ -1,6 +1,7 @@
 """`espol-bot`: the plumbing behind Vinci and the subject bots (Hermes calls it; you rarely do).
 
-    espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes)
+    espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes), then OCR
+                                     of the scanned pages still waiting, for a few minutes
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
     espol-bot mantenimiento          renew Canvas access and refresh token-free feeds (no model)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
@@ -263,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = bot.summary()
         logging.info("%s: %d mensajes, %d eventos, %d recordatorios, error=%s",
                      args.cmd, len(result.sent), result.events, result.reminders, result.error)
+        if args.cmd == "sondeo":  # after bot.lock: the token renewal never waits for a scanned book
+            bot.read_scans()
         return 0
     except (ConfigError, TelegramError) as exc:
         if args.cmd == "agenda":  # never wake the model over a config problem

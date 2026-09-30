@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from aula_core import extract, timefmt
+from aula_core import extract, ocr, timefmt
 from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, fold, is_old, term_year
 
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
@@ -214,6 +214,29 @@ def bibliography(conn: sqlite3.Connection, ids: list[int]) -> dict | None:
             "silabo": row["display_name"], "silabo_id": row["file_id"], "url": row["html_url"]}
 
 
+def ocr_state(conn: sqlite3.Connection, digest: str | None) -> dict | None:
+    """The pages of a file that are only an image: how many OCR read, how many wait, which read poorly."""
+    rows = conn.execute("SELECT page, text, confidence FROM ocr_pages WHERE digest = ? ORDER BY page",
+                        (digest,)).fetchall() if digest else []
+    if not rows:
+        return None
+    return {"pages": len(rows), "read": sum(1 for r in rows if r["text"]),
+            "pending": sum(1 for r in rows if r["text"] is None),
+            "doubtful": [r["page"] for r in rows if r["text"] and ocr.doubtful(r["text"], r["confidence"])]}
+
+
+def ocr_waiting(conn: sqlite3.Connection) -> int:
+    """Scanned pages of downloaded files that OCR has not read yet."""
+    return conn.execute("SELECT COUNT(*) FROM ocr_pages o WHERE o.text IS NULL AND EXISTS (SELECT 1 FROM files f"
+                        " WHERE f.digest = o.digest AND f.local_path IS NOT NULL)").fetchone()[0]
+
+
+def ocr_pages(conn: sqlite3.Connection, file_id: int) -> set[int]:
+    """The pages of a file whose indexed text came from OCR."""
+    return {r["page"] for r in conn.execute("SELECT o.page FROM ocr_pages o JOIN files f ON f.digest = o.digest"
+                                            " WHERE f.id = ? AND o.text != ''", (file_id,))}
+
+
 def file_by_id(conn: sqlite3.Connection, file_id: int) -> dict:
     row = conn.execute(
         "SELECT f.*, c.name AS course_name, c.term_start, c.term FROM files f JOIN courses c ON c.id = f.course_id"
@@ -222,11 +245,11 @@ def file_by_id(conn: sqlite3.Connection, file_id: int) -> dict:
     ).fetchone()
     if row is None:
         raise NotFound(f"No conozco el archivo {file_id}. Prueba `aula archivos`.")
-    return _file(row)
+    return {**_file(row), "ocr": ocr_state(conn, row["digest"])}
 
 
 def read_pages(conn: sqlite3.Connection, file_id: int, first: int | None = None, last: int | None = None) -> dict:
-    """Text of an indexed file, page by page (optionally a page range)."""
+    """Text of an indexed file, page by page (optionally a page range); a page read with OCR says so."""
     info = file_by_id(conn, file_id)
     rows = conn.execute(
         "SELECT page, text FROM chunks WHERE file_id = ? ORDER BY CAST(page AS INTEGER), rowid", (file_id,)
@@ -237,5 +260,7 @@ def read_pages(conn: sqlite3.Connection, file_id: int, first: int | None = None,
         if (first is None or number >= first) and (last is None or number <= last):
             pages.setdefault(number, []).append(r["text"])
     unit = extract.UNIT.get(Path(info["descargado"] or info["archivo"]).suffix.lower().lstrip("."), "página")
+    read = ocr_pages(conn, file_id)
     return {**info, "unidad": unit,
-            "contenido": [{"pagina": n, "texto": "".join(parts)} for n, parts in sorted(pages.items())]}
+            "contenido": [{"pagina": n, "texto": "".join(parts), **({"ocr": True} if n in read else {})}
+                          for n, parts in sorted(pages.items())]}

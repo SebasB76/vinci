@@ -22,6 +22,9 @@ Tables:
                  assignments the student says were handed in outside Canvas (on paper, by email, in
                  the lab): counted as submitted everywhere, since Canvas never learns about them
   chunks         full-text index (FTS5) of downloaded course material, one row per page
+  ocr_pages      the PDF pages that are only an image, by the SHA-256 of their file (`files.digest`), with
+                 the text OCR read from them; NULL text: not read yet. Keyed by content, so a copy of
+                 a file or the same file downloaded again is never read twice
 """
 
 from __future__ import annotations
@@ -104,7 +107,8 @@ CREATE TABLE IF NOT EXISTS files (
     created_at TEXT,
     language TEXT,
     duplicate_of INTEGER,
-    download_url TEXT
+    download_url TEXT,
+    digest TEXT
 );
 
 CREATE TABLE IF NOT EXISTS links (
@@ -165,6 +169,16 @@ CREATE TABLE IF NOT EXISTS marked_submitted (
     marked_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ocr_pages (
+    digest TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    text TEXT,
+    confidence REAL,
+    read_at TEXT,
+    PRIMARY KEY (digest, page)
+);
+CREATE INDEX IF NOT EXISTS ocr_pages_pending ON ocr_pages(digest) WHERE text IS NULL;
+
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
     text,
     file_id UNINDEXED,
@@ -181,7 +195,7 @@ ADDED_COLUMNS = {
     "announcements": ["material TEXT"],
     "links": ["checked_at TEXT", "problem TEXT"],
     "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",
-              "duplicate_of INTEGER", "download_url TEXT"],
+              "duplicate_of INTEGER", "download_url TEXT", "digest TEXT"],
 }
 
 

@@ -80,8 +80,11 @@ carpeta, de dónde salió y su `estado`:
 - `leído`: ya lo puedes buscar y leer.
 - `sin bajar`: solo el sílabo se baja solo. Baja un documento con `bajar_archivo` cuando lo necesites
   para responder, uno a la vez; no bajes todo «por si acaso».
-- `escaneado`: sus páginas son imágenes y `leer_archivo` casi no trae texto. Míralas con
-  `ver_pagina` (una página por llamada) y díselo: «es un escaneo, lo leo como imagen».
+- `escaneado`: sus páginas son imágenes. Al bajarlo se leen con OCR (`ocr` dice cuántas), así que
+  `buscar_material` y `leer_archivo` traen su texto marcado `ocr`, que puede traer errores. Una fórmula,
+  una figura, una tabla, letra a mano o una página de OCR dudoso: mírala con `ver_pagina` (una página por
+  llamada) antes de citarla. Si todavía no tiene texto (lo dice su `aviso`), míralo con `ver_pagina` y
+  díselo: «es un escaneo, lo leo como imagen».
 - `muy grande para bajar`: pesa más del tope; dale su enlace.
 - `semestre_anterior`: material de otro año (Slides/2021): úsalo si no hay nada de este semestre, y dilo.
 - `copias`: el mismo archivo está en otras carpetas; se lista una vez.

@@ -11,6 +11,7 @@
      captain's own to-dos (store.todos, each with «✅ Hecho»);
   5. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
      that bot's chat, for its main book's PDF when there is none it can read (libros.py).
+Then (`read_scans`, outside the poll's lock) OCR of the scanned pages still waiting, OCR_MINUTES a run.
 `summary()` runs at `resumen_diario` and sends the week at a glance, the open to-dos included.
 
 Events stay undelivered, and reminders unmarked, until Telegram accepts the
@@ -45,6 +46,7 @@ log = logging.getLogger(__name__)
 
 MAX_BUTTONS = 6
 
+OCR_MINUTES = 10  # of each poll: a 300-page scanned book is searchable after a few polls
 ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
 
@@ -314,6 +316,15 @@ class Bot:
                 "INSERT OR IGNORE INTO todo_reminders(todo_id, hours, due_at, sent_at) VALUES (?, ?, ?, ?)",
                 [(todo["id"], h, todo["due_at"], timefmt.iso(now)) for h in applicable])
             self.conn.commit()
+
+    def read_scans(self) -> None:
+        try:
+            read = self.aula.read_scans(seconds=OCR_MINUTES * 60)
+        except Exception:  # never a failed poll (Hermes would forward it to the captain) over OCR
+            log.exception("OCR")
+            return
+        if read:
+            log.info("OCR: %d página(s) escaneada(s) leída(s)", read)
 
     # -- daily summary ---------------------------------------------------------------
 

@@ -132,6 +132,16 @@ class Aula:
                 _materials.index(self.conn, file_id)
             return path
 
+    def read_scans(self, *, seconds: float | None = None, file_id: int | None = None) -> int | None:
+        """OCR the scanned pages still waiting (materials.read_scans), one run at a time: None while another
+        is going. The pages of one file (a bot just downloaded it and wants its text now) do not wait for it."""
+        if file_id is not None:
+            return _materials.read_scans(self.conn, self.cfg, seconds=seconds, file_id=file_id)
+        with _store.file_lock(self.cfg.data_dir, "ocr.lock", wait=False) as locked:
+            if not locked:
+                return None
+            return _materials.read_scans(self.conn, self.cfg, seconds=seconds, background=self.background)
+
     def fetch_link(self, link_id: int, *, retry: bool = False) -> int:
         """Open an outside link of the catalog without a login and index what it leads to (no Canvas read)."""
         return _enlaces.fetch(self.conn, self.cfg, link_id, self.now(), retry=retry)

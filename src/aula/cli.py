@@ -10,9 +10,11 @@
     aula enlaces   [--curso X] [--nombre Y]
     aula buscar    "pregunta" [--curso X] [-n N]
     aula sincronizar [--material]
+    aula ocr       [--minutos N]
 
 `archivos` is the catalog: every document the aula shows, read or not; a document is downloaded
-when it is asked for (only syllabi come down on their own, with `sincronizar --material`).
+when it is asked for (only syllabi come down on their own, with `sincronizar --material`). `ocr` reads
+now the scanned pages the poll would read a few minutes at a time (it needs tesseract).
 
 Human-readable Spanish by default; `--json` for agents. Nothing here can submit,
 post, or change anything on Canvas: the core client only issues GET requests.
@@ -24,7 +26,7 @@ import argparse
 import json
 import sys
 
-from aula_core import Aula, queries, search, timefmt
+from aula_core import Aula, materials, ocr, queries, search, timefmt
 from aula_core.canvas import CanvasError
 from aula_core.config import ConfigError
 
@@ -76,6 +78,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("sincronizar", parents=[common], help="leer el aula virtual ahora")
     p.add_argument("--material", action="store_true", help="también bajar e indexar el sílabo nuevo de cada curso")
+
+    p = sub.add_parser("ocr", parents=[common], help="leer con OCR las páginas escaneadas que faltan (usa tesseract)")
+    p.add_argument("--minutos", type=float, help="parar después de N minutos (por defecto, hasta terminar)")
     return parser
 
 
@@ -230,6 +235,17 @@ def render_sync(report) -> str:
     return text
 
 
+def render_ocr(data) -> str:
+    if data["engine"] is None:
+        return ("No hay motor de OCR: instala tesseract con su modelo en español (sudo pacman -S tesseract "
+                "tesseract-data-spa) o corre ./setup.sh si tesseract ya está. Las páginas escaneadas siguen "
+                f"como imagen; {data['pending']} esperan su OCR.")
+    if data["read"] is None:
+        return "Otro OCR está corriendo (el del sondeo); prueba en unos minutos."
+    return (f"Leí {data['read']} página(s) escaneada(s) con OCR ({data['engine']})"
+            + (f"; faltan {data['pending']}." if data["pending"] else "; no falta ninguna."))
+
+
 # -- commands -------------------------------------------------------------------------
 
 
@@ -265,6 +281,15 @@ def run(args, aula: Aula) -> int:
         data = {"cursos": report.courses, "cambios": report.events, "solicitudes": report.requests,
                 "primera_vez": report.first_sync, "avisos": report.warnings}
         _out(data, as_json, render_sync)
+        return 0
+
+    if cmd == "ocr":
+        materials.backfill(aula.conn)  # what was indexed before OCR existed
+        eng = ocr.engine(aula.cfg.data_dir)
+        read = aula.read_scans(seconds=args.minutos * 60 if args.minutos else None) if eng else 0
+        data = {"engine": f"tesseract, {eng.languages}" if eng else None, "read": read,
+                "pending": queries.ocr_waiting(aula.conn)}
+        _out(data, as_json, render_ocr)
         return 0
 
     if cmd not in ("buscar",) and not (cmd == "archivos" and args.accion == "leer"):

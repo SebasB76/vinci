@@ -56,6 +56,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 📓 **Cuaderno de cada materia** | Cuéntale al bot lo que vieron o mándale una foto de la pizarra, una nota de voz o un PDF: lo guarda con un resumen. Lleva tus dudas y los temas que te cuestan, y los usa en los briefs. |
 | 📄 **Preguntas sobre el material** | Cada bot tiene el catálogo de todo el material de su materia y baja lo que necesita. Se guía primero por el **libro principal** (el del sílabo, o el que tú le digas), busca en español y en inglés y te explica un tema, resume un capítulo o te hace preguntas tipo examen, citando archivo, página y el enlace del aula. [Más sobre el material](#el-material-de-cada-materia). |
 | 🔎 **Citas que se comprueban** | Cada respuesta con material cita archivo, página (o diapositiva) y el enlace del aula, copiados de lo que el bot leyó. Antes de enviarla se revisa cada cita: una página que el bot no leyó o un archivo que no está en el material se cambia por un aviso, y un enlace que falta o está mal se corrige. Si el material no trae lo que preguntas, te dice «No está en el material» y recién después te lo explica con lo que sabe, avisando que eso no sale del material. |
+| 📑 **PDFs escaneados que se pueden buscar** | Un PDF escaneado (una fotocopia, una hoja de ejercicios) se lee con OCR una sola vez, al bajarlo, y desde ahí la búsqueda lo encuentra como cualquier PDF. Las fórmulas, figuras y la letra a mano, que el OCR lee mal, el bot las sigue mirando como imagen. Necesita `tesseract` ([cómo](#pdfs-escaneados-ocr)). |
 | 🧭 **Vinci ve todo junto** | Contesta sobre cualquier materia, arma planes de estudio con tus entregas y tus clases, lee los cuadernos de todos los bots y busca en la web. Le mandas «tengo esto de Física» con una foto y se lo pasa al bot correcto. |
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
@@ -71,7 +72,8 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
   cerrada de herramientas. Un solo gateway de Hermes los atiende a todos. Tu perfil por defecto de Hermes no se
   toca.
 - **El sondeo** (`espol-bot sondeo`) es un cron de Hermes sin modelo: lee el aula, compara con lo que ya tenía,
-  actualiza el catálogo del material, baja los sílabos nuevos y te manda los avisos por el chat de Vinci. La
+  actualiza el catálogo del material, baja los sílabos nuevos y te manda los avisos por el chat de Vinci. Después
+  lee con OCR, unos minutos, las páginas escaneadas que esperan. La
   primera vez solo guarda cómo está el aula, así que no te llega todo lo viejo de golpe.
 - **El mantenimiento** (`espol-bot mantenimiento`) corre cada 10 minutos, sin modelo. Como el Canvas de ESPOL
   invalida en silencio los tokens personales tras una hora, crea y verifica un sucesor a los 40 minutos, lo guarda
@@ -147,6 +149,8 @@ si la PC estuvo apagada más de una hora y se rompió la cadena de renovación.
 Puedes correrlo las veces que quieras: si no cambiaste nada, no cambia nada. Hace esto:
 
 - revisa Python y Hermes, e instala las dependencias en `.venv/`;
+- si tienes `tesseract`, le baja los modelos de español e inglés a la carpeta de datos para el OCR de los PDF
+  escaneados (si no, te dice cómo instalarlo; es opcional);
 - si a Hermes le falta su conector de Telegram, lo instala (`hermes pm install --extra telegram`);
 - instala el comando `aula` en `~/.local/bin/` y la skill de Claude Code en `~/.claude/skills/aula/`;
 - crea o actualiza el perfil `vinci` de Hermes (modelo, zona horaria, Telegram solo para tu ID, sus
@@ -299,8 +303,8 @@ disco ni el contexto del modelo:
   `~/.local/share/espol-academic-bot/libros/<CÓDIGO>/` y lo toma en la siguiente revisión del aula.
 - **Buscar:** en el texto de lo ya leído, en español y en inglés (mucho material está en inglés), sin repetir la
   misma página de dos copias.
-- **PDFs escaneados:** se detectan porque sus páginas casi no tienen texto; el bot te lo dice y mira sus páginas como
-  imagen (`ver_pagina`).
+- **PDFs escaneados:** se detectan porque sus páginas casi no tienen texto, y esas páginas se leen con OCR una sola
+  vez (mira [PDFs escaneados (OCR)](#pdfs-escaneados-ocr)).
 - **Enlaces de fuera:** un Google Docs, Slides, Sheets o Drive, un SharePoint, un Dropbox o la página de un
   profesor, el bot (el de la materia o Vinci) lo abre sin tu cuenta cuando le hace falta, también si viene en un
   anuncio: lo pide como PDF (o su descarga) y, si llega el documento, lo lee como un PDF del aula. Si pide iniciar
@@ -327,6 +331,24 @@ material es un documento que le mandaste, la cita va sin enlace.
 - **«No está en el material».** Si la búsqueda no encuentra el tema, el bot de la materia primero baja del catálogo
   lo que podría tratarlo; si nada lo trae, empieza su respuesta con «No está en el material». Después te lo puede
   explicar con lo que sabe (o Vinci, con la web), diciendo que eso no sale del material y sin cita.
+
+### PDFs escaneados (OCR)
+
+Una página de PDF sin texto (un escaneo, una foto de una hoja) se lee con OCR **una sola vez**, al indexar el
+archivo, y su texto entra al índice: `buscar_material` la encuentra y `leer_archivo` la trae, marcada `ocr`.
+
+- **Cuándo:** un archivo que el bot acaba de bajar, o que le mandaste, se lee en ese momento (hasta un minuto,
+  unas 20 páginas); lo que falte, y lo que ya estaba bajado antes, lo lee el sondeo, 10 minutos por revisión, sin
+  el modelo y con prioridad baja para no trabar tu PC. `aula ocr` lo lee todo ya.
+- **Una vez:** el texto se guarda por el contenido del archivo, así que una copia en otra carpeta o el mismo
+  archivo bajado otra vez no se vuelven a leer.
+- **Lo que el OCR lee mal:** fórmulas, figuras, tablas, diagramas y letra a mano. El bot las mira como imagen
+  (`ver_pagina`) antes de citarlas; una página que salió dudosa (poca confianza, o más símbolos que palabras,
+  como un diagrama UML) se lo dice.
+- **Qué necesita:** `tesseract`, un programa del sistema: `sudo pacman -S tesseract`. Los modelos de español e
+  inglés (~6 MB) los baja `./setup.sh` a la carpeta de datos, sin sudo (o instálalos del sistema con
+  `sudo pacman -S tesseract-data-spa tesseract-data-eng`). Sin `tesseract` todo sigue como antes: el bot mira las
+  páginas escaneadas como imagen, y las que esperan su OCR se leen solas cuando lo instales.
 
 ### La calculadora de notas
 
@@ -387,6 +409,7 @@ aula archivos leer 5001 --paginas 2-3
 aula enlaces --curso fisica            # lo que está fuera del aula: Dropbox, SharePoint, videos…
 aula buscar "regla de la cadena"
 aula sincronizar --material            # leer el aula ahora y bajar los sílabos nuevos
+aula ocr                               # leer ya con OCR las páginas escaneadas que esperan (--minutos N)
 ```
 
 `--curso` acepta cualquier parte del nombre o del código, sin tildes. `aula` reutiliza los datos guardados si
@@ -473,6 +496,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 | `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas y las páginas del material que leyó cada bot (con eso se revisan sus citas) |
 | `materiales/<curso>/` | Los archivos descargados del aula, una carpeta por curso (y en `recibidos/`, el material que le mandaste a un bot) |
 | `libros/<CÓDIGO>/` | Donde pones el PDF del libro principal de una materia si pesa más de 20 MB |
+| `tessdata/` | Los modelos de OCR de español e inglés que bajó `setup.sh` |
 | `materias.toml` | Tu equipo de bots, con los cursos del aula de cada materia |
 | `horario.toml` | Tu horario (y sus copias anteriores, `horario.anterior-*.toml`) |
 | `cuadernos/<CÓDIGO>/` | El cuaderno de cada materia (`cuaderno.db`) y sus adjuntos |
@@ -566,8 +590,10 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 - **Archivos de más de 20 MB:** un bot de Telegram no puede descargar lo que le mandas si pesa más de 20 MB, así
   que no le llega. Para el libro principal, pon el PDF en `libros/<CÓDIGO>/` de la carpeta de datos. El material
   del aula no tiene ese límite: se baja directo del aula (hasta `material.tamano_maximo_mb`).
-- **Qué se puede leer:** el texto de PDF, PPTX, DOCX y páginas web. Un PDF escaneado no se puede buscar (no hay
-  OCR), pero el bot de su materia mira sus páginas como imagen, de una en una. Un Google Docs, Drive, SharePoint
+- **Qué se puede leer:** el texto de PDF, PPTX, DOCX y páginas web. Un PDF escaneado se busca por su texto de OCR
+  (con `tesseract` instalado), que falla en fórmulas, figuras y letra a mano: eso el bot de su materia lo mira
+  como imagen, de una en una. Un libro escaneado de 300 páginas tarda unos 10 a 15 minutos de OCR, repartidos en
+  los sondeos. Un Google Docs, Drive, SharePoint
   o Dropbox se lee solo si se abre sin iniciar sesión («cualquier persona con el enlace»); si pide tu cuenta de
   ESPOL o de Google, el bot te lo dice y te pide el PDF. Los videos, formularios, carpetas, OneDrive personal y
   Teams solo quedan listados con su enlace, para que los abras tú.
@@ -604,6 +630,7 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 | No te llegan avisos del aula | Mándale `/estado` a Vinci o corre `.venv/bin/espol-bot doctor`: te dice si el sondeo dejó de correr, si la cadena del token se cortó o si un feed falla, y qué hacer. |
 | Ningún bot responde | `hermes gateway status`; si está apagado, `hermes gateway start`. Si se apaga al cerrar sesión: `sudo loginctl enable-linger "$USER"`. |
 | El modelo no responde o falta la credencial | Configura el modelo en Hermes (`hermes model`). Si usas una `ANTHROPIC_API_KEY` y no el login de Anthropic, cada perfil lee su propio `.env`: agrégala al `.env` de `~/.hermes/profiles/vinci/` y de cada `vinci-<código>` (el setup conserva esa línea). |
+| `⚠ Sin OCR (opcional)` o `A tesseract le falta el español` | `sudo pacman -S tesseract` y vuelve a correr `./setup.sh` (sin `--skip-deps`): baja los modelos de español e inglés. Hasta entonces los escaneos se miran como imagen. |
 | `⚠ No pude ponerle su foto …` o `… el nombre …` | Telegram pidió esperar o no hubo conexión. `./setup.sh` lo reintenta la próxima vez; también puedes hacerlo en @BotFather con `/setuserpic` o `/setname`. |
 
 Para ver qué pasa:
@@ -644,7 +671,7 @@ Integraciones aprobadas**.
 ## Hoja de ruta
 
 - Videos de las clases: transcribirlos para poder preguntar sobre ellos.
-- OCR para fotos de la pizarra y PDFs escaneados, para poder buscar en su texto.
+- OCR para las fotos de la pizarra del cuaderno, para poder buscar en su texto.
 - Buscar por significado (búsqueda semántica local), además de por palabras.
 - Dejar instalado desde el setup un modelo local para transcribir notas de voz (faster-whisper).
 - Contador de tareas pendientes en la barra de Omarchy y notificaciones de escritorio.

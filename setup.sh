@@ -53,6 +53,35 @@ fi
 [ -x "$VENV/bin/aula" ] && [ -x "$VENV/bin/espol-bot" ] \
   || { echo "Falta el entorno .venv; corre ./setup.sh sin --skip-deps" >&2; exit 1; }
 
+say "Revisando el OCR de los PDF escaneados (tesseract)"
+# Opcional: sin tesseract, una página escaneada sigue siendo una imagen que el bot mira con ver_pagina.
+# Sus modelos de español e inglés (tessdata_fast, ~6 MB) van a la carpeta de datos, sin sudo.
+TESSDATA_COMMIT=87416418657359cb625c412a48b6e1d6d41c29bd
+declare -A TESSDATA_SHA256=(
+  [spa]=6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464
+  [eng]=7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+)
+TESSDATA="$("$VENV/bin/python" -c 'from aula_core.config import load_config; from aula_core.ocr import tessdata_dir
+print(tessdata_dir(load_config().data_dir))')"
+if ! command -v tesseract >/dev/null; then
+  echo "⚠ Sin OCR (opcional): para poder buscar en los PDF escaneados, instala tesseract con"
+  echo "  sudo pacman -S tesseract tesseract-data-spa   y vuelve a correr ./setup.sh"
+elif [ -f "$TESSDATA/spa.traineddata" ] || tesseract --list-langs 2>/dev/null | grep -qx spa; then
+  echo "tesseract listo, con español"
+elif [ "$SKIP_DEPS" = 1 ]; then
+  echo "⚠ A tesseract le falta el español: corre ./setup.sh sin --skip-deps para bajarlo"
+else
+  mkdir -p "$TESSDATA"
+  for lang in spa eng; do
+    curl -fsSL -o "$TESSDATA/$lang.traineddata.part" \
+      "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$TESSDATA_COMMIT/$lang.traineddata" \
+      && echo "${TESSDATA_SHA256[$lang]}  $TESSDATA/$lang.traineddata.part" | sha256sum -c --quiet \
+      && mv "$TESSDATA/$lang.traineddata.part" "$TESSDATA/$lang.traineddata" \
+      || { rm -f "$TESSDATA/$lang.traineddata.part"; echo "⚠ No pude bajar el modelo $lang de tesseract" >&2; }
+  done
+  if [ -f "$TESSDATA/spa.traineddata" ]; then echo "Modelos de OCR en español e inglés instalados en $TESSDATA"; fi
+fi
+
 say "Revisando el conector de Telegram de Hermes"
 # Vinci y los bots de materia conversan por el gateway de Hermes, que necesita python-telegram-bot.
 hermes_has_telegram() {

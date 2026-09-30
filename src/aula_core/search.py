@@ -4,7 +4,8 @@ Pages matching every meaningful word of the question come first; pages matching 
 rest and say so (`coincide: parcial`), since one common word («model», «software») is enough for a
 match. Within that, the main book (`prefer`) weighs more and material of an earlier semester less,
 and a page that is a copy of one already listed (the same slides in Slides/2021 and Slides/2026)
-is left out. Each hit carries its file's language: the question is in Spanish, many books are not.
+is left out. Each hit carries its file's language: the question is in Spanish, many books are not, and
+says when its text came from OCR (a scanned page), which may misread a formula or a figure.
 """
 
 from __future__ import annotations
@@ -65,7 +66,9 @@ def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | N
             f"""SELECT chunks.file_id, chunks.page, chunks.text,
                        snippet(chunks, 0, '«', '»', ' … ', 24) AS snippet, bm25(chunks) AS score,
                        f.display_name, f.module, f.section, f.folder, f.html_url, f.local_path, f.language,
-                       c.name AS course_name, c.term_start, c.term
+                       c.name AS course_name, c.term_start, c.term,
+                       EXISTS(SELECT 1 FROM ocr_pages o WHERE o.digest = f.digest AND o.page = chunks.page
+                              AND o.text != '') AS ocr
                 FROM chunks JOIN files f ON f.id = chunks.file_id JOIN courses c ON c.id = f.course_id
                 WHERE chunks MATCH ?{extra} AND f.active = 1
                 ORDER BY score LIMIT ?""",
@@ -89,7 +92,7 @@ def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | N
                 "pagina": int(r["page"]), "fragmento": " ".join(r["snippet"].split()), "texto": r["text"],
                 "url": r["html_url"], "ruta_local": r["local_path"], "idioma": r["language"] or None,
                 "prioridad": "libro principal" if r["file_id"] in prefer else "semestre anterior" if old else None,
-                "coincide": match_kind, "puntaje": round(relevance, 3),
+                "coincide": match_kind, "ocr": True if r["ocr"] else None, "puntaje": round(relevance, 3),
             })
             if len(hits) >= limit:
                 return hits

@@ -4,21 +4,28 @@ Only each course's syllabus downloads on its own (`sync_materials`): it is small
 main book. Everything else in the catalog stays metadata until a bot or the student asks for it
 (`download`). Material that did not come from Canvas (a public link, a PDF the student handed
 over) joins the catalog with a negative id (`add_local`) and is indexed the same way.
+
+A PDF page with no text (a scan) is read with OCR once per file content (`read_scans`): indexing only
+registers it and puts in the text already read for the same bytes, so a copy or a download of the same
+file again costs nothing. What is not read yet (no OCR engine, or the time a run had ran out) stays
+an image for ver_pagina until a later run reads it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 import shutil
 import sqlite3
+import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from aula_core import catalog, extract, syllabus, timefmt
+from aula_core import catalog, extract, ocr, syllabus, timefmt
 from aula_core.canvas import (
     CanvasClient,
     CanvasError,
@@ -128,6 +135,29 @@ def _status(pages: list[tuple[int, str]], ext: str) -> str:
     return "ok" if any(text for _, text in pages) else "sin_texto"
 
 
+def file_digest(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            sha.update(block)
+    return sha.hexdigest()
+
+
+def _store_page(conn: sqlite3.Connection, file_id: int, course_id: int, number: int, text: str) -> None:
+    for start in range(0, len(text), CHUNK_CHARS):
+        piece = text[start:start + CHUNK_CHARS]
+        if piece.strip():
+            conn.execute("INSERT INTO chunks(text, file_id, course_id, page) VALUES (?, ?, ?, ?)",
+                         (piece, file_id, course_id, number))
+
+
+def _register_scanned(conn: sqlite3.Connection, digest: str, numbers) -> dict[int, str]:
+    """Queue for OCR the pages of this content not seen before; the text already read for the others."""
+    conn.executemany("INSERT OR IGNORE INTO ocr_pages(digest, page) VALUES (?, ?)", [(digest, n) for n in numbers])
+    return {r["page"]: r["text"] for r in conn.execute(
+        "SELECT page, text FROM ocr_pages WHERE digest = ? AND text != ''", (digest,))}
+
+
 def index(conn: sqlite3.Connection, file_id: int) -> str:
     row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
     path = Path(row["local_path"] or "")
@@ -142,20 +172,18 @@ def index(conn: sqlite3.Connection, file_id: int) -> str:
         pages = []
     else:
         status = _status(pages, path.suffix.lower().lstrip("."))
-    language = catalog.language("\n".join(text for _, text in pages[:40])) or "" if pages else ""
+    scanned = [n for n, text in pages if len(text) < SCANNED_CHARS] if path.suffix.lower() == ".pdf" else []
+    digest = file_digest(path) if pages and path.suffix.lower() == ".pdf" else None
     books = _bibliography(path, pages) if pages and is_syllabus(row) else None
     # Write only after the (slow) extraction, so a sync running meanwhile never waits on this transaction.
+    read = _register_scanned(conn, digest, scanned) if digest else {}
+    pages = [(n, read.get(n) or text) for n, text in pages]
+    language = catalog.language("\n".join(text for _, text in pages[:40])) or "" if pages else ""
     conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
     for number, text in pages:
-        for start in range(0, len(text), CHUNK_CHARS):
-            piece = text[start:start + CHUNK_CHARS]
-            if piece.strip():
-                conn.execute(
-                    "INSERT INTO chunks(text, file_id, course_id, page) VALUES (?, ?, ?, ?)",
-                    (piece, file_id, row["course_id"], number),
-                )
-    conn.execute("UPDATE files SET index_status = ?, pages = ?, language = ? WHERE id = ?",
-                 (status, len(pages), language, file_id))
+        _store_page(conn, file_id, row["course_id"], number, text)
+    conn.execute("UPDATE files SET index_status = ?, pages = ?, language = ?, digest = ? WHERE id = ?",
+                 (status, len(pages), language, digest, file_id))
     if books is not None:
         _store_bibliography(conn, row, books)
     conn.commit()
@@ -180,8 +208,9 @@ def _store_bibliography(conn: sqlite3.Connection, row: sqlite3.Row, books: dict)
 
 
 def backfill(conn: sqlite3.Connection) -> None:
-    """What files indexed by an earlier version lack: their language, whether they are a scan, and a
-    syllabus' books. From the index already there: nothing is read again from Canvas."""
+    """What files indexed by an earlier version lack: their language, whether they are a scan, a
+    syllabus' books, and their pages with no text queued for OCR. From the index already there: nothing
+    is read again from Canvas."""
     rows = conn.execute("SELECT * FROM files WHERE index_status IN ('ok', 'sin_texto') AND language IS NULL").fetchall()
     for row in rows:
         by_page: dict[int, int] = {}
@@ -202,7 +231,74 @@ def backfill(conn: sqlite3.Connection) -> None:
             pages = [(int(c["page"]), c["text"]) for c in
                      conn.execute("SELECT page, text FROM chunks WHERE file_id = ? ORDER BY rowid", (row["id"],))]
             _store_bibliography(conn, row, _bibliography(Path(row["local_path"]), pages))
+    for row in conn.execute("SELECT * FROM files WHERE digest IS NULL AND pages > 0 AND local_path LIKE '%.pdf'"
+                            " AND index_status IN ('ok', 'escaneado')").fetchall():
+        path = Path(row["local_path"])
+        if not path.exists():
+            continue
+        size: dict[int, int] = {}
+        for chunk in conn.execute("SELECT page, length(text) AS n FROM chunks WHERE file_id = ?", (row["id"],)):
+            size[int(chunk["page"])] = size.get(int(chunk["page"]), 0) + chunk["n"]
+        digest = file_digest(path)
+        _register_scanned(conn, digest, [n for n in range(1, row["pages"] + 1) if size.get(n, 0) < SCANNED_CHARS])
+        conn.execute("UPDATE files SET digest = ? WHERE id = ?", (digest, row["id"]))
+        _apply_read(conn, digest)
     conn.commit()
+
+
+def _apply_read(conn: sqlite3.Connection, digest: str, pages: list[int] | None = None) -> None:
+    """Put the OCR text of `digest` (only `pages`, if given) into the index of every file with that content."""
+    marks = f" AND page IN ({','.join('?' * len(pages))})" if pages else ""
+    read = conn.execute(f"SELECT page, text FROM ocr_pages WHERE digest = ? AND text != ''{marks}",
+                        [digest, *(pages or [])]).fetchall()
+    for f in conn.execute("SELECT id, course_id, language FROM files WHERE digest = ?", (digest,)).fetchall():
+        for r in read:
+            conn.execute("DELETE FROM chunks WHERE file_id = ? AND page = ?", (f["id"], r["page"]))
+            _store_page(conn, f["id"], f["course_id"], r["page"], r["text"])
+        if read and not f["language"]:
+            text = [c["text"] for c in conn.execute("SELECT text FROM chunks WHERE file_id = ? ORDER BY rowid LIMIT 30",
+                                                    (f["id"],))]
+            conn.execute("UPDATE files SET language = ? WHERE id = ?", (catalog.language("\n".join(text)) or "", f["id"]))
+
+
+def read_scans(conn: sqlite3.Connection, cfg: CoreConfig, *, seconds: float | None = None,
+               file_id: int | None = None, background: bool = False) -> int:
+    """OCR the pages still waiting (only those of `file_id`, if given) until `seconds` run out; the smallest
+    files first, so a handout never waits behind a scanned book. Returns how many pages it read."""
+    eng = ocr.engine(cfg.data_dir)
+    if eng is None:
+        return 0
+    deadline = time.monotonic() + seconds if seconds is not None else None
+    extra, params = (" AND f.id = ?", [file_id]) if file_id is not None else ("", [])
+    waiting = conn.execute(
+        f"""SELECT o.digest, COUNT(DISTINCT o.page) AS n FROM ocr_pages o JOIN files f ON f.digest = o.digest
+            WHERE o.text IS NULL{extra} GROUP BY o.digest ORDER BY n, o.digest""", params).fetchall()
+    done = 0
+    for item in waiting:
+        copies = conn.execute("SELECT local_path FROM files WHERE digest = ? AND local_path IS NOT NULL", (item["digest"],))
+        path = next((p for p in (Path(r["local_path"]) for r in copies) if p.exists()), None)
+        if path is None:
+            continue
+        numbers = [r["page"] for r in conn.execute(
+            "SELECT page FROM ocr_pages WHERE digest = ? AND text IS NULL ORDER BY page", (item["digest"],))]
+        for number in numbers:
+            if deadline is not None and time.monotonic() >= deadline:
+                return done
+            try:
+                text, confidence = ocr.read_page(eng, path, number, background=background)
+            except Exception as exc:  # a page tesseract cannot read stays an image for ver_pagina
+                log.warning("OCR de %s p.%d: %s", path.name, number, exc)
+                text, confidence = "", None
+            if len(text) < SCANNED_CHARS:
+                text = ""  # a blank page, or a figure with a stray letter: nothing to search
+            cur = conn.execute("UPDATE ocr_pages SET text = ?, confidence = ?, read_at = ? WHERE digest = ? AND page = ?"
+                               " AND text IS NULL", (text, confidence, timefmt.iso(datetime.now().astimezone()),
+                                                     item["digest"], number))
+            if cur.rowcount:  # another run may have read it meanwhile
+                _apply_read(conn, item["digest"], [number])
+                done += 1
+            conn.commit()
+    return done
 
 
 def sync_materials(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, *,

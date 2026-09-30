@@ -19,9 +19,12 @@ it (bajar_archivo). An outside link (a Google Doc, a SharePoint share, a profess
 without the student's login when a bot reads it (leer_archivo with its enlace_id), and an
 announcement shows the links it carries, which its text alone loses. Search weighs the subject's
 main book (libros.py) first and runs the question in two languages when the material is in English.
-A scanned page is seen as an image by `ver_pagina`, a tool of the vinci-botones plugin (an MCP
-result cannot carry an image to the model in Hermes). Each page a tool shows comes with its citation
-and is recorded, so the answer's citations can be checked before they are sent (citations.py).
+A scanned page is read with OCR once, when it is indexed (right away for a file a bot just brought, the rest
+in the poll), so search finds it; `ver_pagina`, a tool of the vinci-botones plugin (an MCP result cannot
+carry an image to the model in Hermes), shows it as an image for what OCR misreads: formulas, figures,
+handwriting.
+Each page a tool shows comes with its citation and is recorded, so the answer's citations can be
+checked before they are sent (citations.py).
 
 The Canvas token stays inside this process: no tool ever returns it.
 """
@@ -37,7 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from aula_core import Aula, extract, queries, search, timefmt
+from aula_core import Aula, extract, ocr, queries, search, timefmt
 from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
@@ -64,6 +67,7 @@ CATALOG_LIMIT = 60   # documents listed without a name filter; the rest is one `
 FILTERED_LIMIT = 100
 LINK_LIMIT = 25
 HIT_CHARS = 1500
+INLINE_OCR_SECONDS = 60  # of OCR for a file a bot just brought, well inside Hermes' 180 s for a tool call
 READ_WHAT = "Dime «archivo_id» (un documento de archivos) o «enlace_id» (un enlace de archivos o de un anuncio)."
 READ_PROPERTIES = {
     "archivo_id": {"type": "integer"},
@@ -202,6 +206,34 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
     return result
 
 
+def _read_now(ctx: Ctx, file_id: int) -> None:
+    """OCR what a file just brought still lacks, for a while; the poll reads the rest."""
+    try:
+        ctx.aula.read_scans(seconds=INLINE_OCR_SECONDS, file_id=file_id)
+    except Exception:  # OCR is extra: the file is there and ver_pagina still shows it
+        log.exception("OCR del archivo %s", file_id)
+
+
+def _scan_notice(ctx: Ctx, state: dict | None, *, can_fetch: bool) -> str:
+    """What a bot is told about a scanned file: what OCR made of its pages, and when to look at one instead."""
+    look = ("mírala con ver_pagina(archivo_id, pagina)" if can_fetch else "el bot de la materia la mira como imagen")
+    if not state or not state["read"]:
+        waiting = bool(state and state["pending"]) and ocr.engine(ctx.cfg.core.data_dir) is not None
+        return ("Es un escaneo: sus páginas son imágenes y casi no tienen texto. "
+                + ("Mira la página que necesites con ver_pagina(archivo_id, pagina)." if can_fetch else
+                   "El bot de la materia puede mirar sus páginas como imagen.")
+                + (" Su texto por OCR llega en el próximo sondeo." if waiting else ""))
+    notes = [f"Es un escaneo: el texto de {state['read']} de sus {state['pages']} páginas de imagen salió por OCR y "
+             f"puede traer errores. Una fórmula, una figura, una tabla o letra a mano: {look} antes de citarla."]
+    if state["doubtful"]:
+        notes.append(f"OCR dudoso en {'la página' if len(state['doubtful']) == 1 else 'las páginas'} "
+                     f"{', '.join(map(str, state['doubtful']))}: esas, míralas como imagen.")
+    if state["pending"]:
+        notes.append(f"A {state['pending']} página(s) todavía les falta el OCR (llega en el próximo sondeo): "
+                     f"mientras, {look}.")
+    return " ".join(notes)
+
+
 def _read(ctx: Ctx, file_id: int, pages, *, can_fetch: bool) -> dict:
     first, last = _pages(pages)
     data = queries.read_pages(ctx.conn, file_id, first, last)
@@ -219,9 +251,7 @@ def _read(ctx: Ctx, file_id: int, pages, *, can_fetch: bool) -> dict:
     if kept:  # a blank page inside the range was read too
         citations.record(ctx.conn, ctx.bot, data["id"], range(kept[0]["pagina"], kept[-1]["pagina"] + 1), ctx.now())
     if data["indexado"] == "escaneado":
-        result["aviso"] = ("Es un escaneo: sus páginas son imágenes y casi no tienen texto. "
-                           + ("Mira la página que necesites con ver_pagina(archivo_id, pagina)." if can_fetch else
-                              "El bot de la materia puede mirar sus páginas como imagen."))
+        result["aviso"] = _scan_notice(ctx, data["ocr"], can_fetch=can_fetch)
     elif not data["descargado"]:
         result["aviso"] = ("Todavía no lo bajé del aula: " + ("usa bajar_archivo y vuelve a leerlo." if can_fetch else
                                                                "el bot de la materia lo baja cuando lo necesita."))
@@ -279,9 +309,11 @@ def _announcements(conn, course_ids: list[int] | None, n: int) -> list[dict]:
 
 def _open_link(ctx: Ctx, link_id: int, retry: bool) -> int:
     try:
-        return ctx.aula.fetch_link(link_id, retry=retry)
+        file_id = ctx.aula.fetch_link(link_id, retry=retry)
     except CanvasError as exc:
         raise ToolError(str(exc)) from None
+    _read_now(ctx, file_id)
+    return file_id
 
 
 def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: dict | None) -> dict:
@@ -975,9 +1007,10 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         info = queries.file_by_id(ctx.conn, fid)
         result = {"archivo_id": fid, "archivo": info["archivo"], "estado": queries.file_state(info, ctx.cfg.core.max_file_mb),
                   "paginas": info["paginas"], "idioma": info["idioma"], "url": info["url"]}
+        if info["ocr"] and info["ocr"]["read"]:
+            result["ocr"] = {k: v for k, v in info["ocr"].items() if v}
         if info["indexado"] == "escaneado":
-            result["aviso"] = ("Es un escaneo: sus páginas son imágenes. Mira la que necesites con "
-                               "ver_pagina(archivo_id, pagina).")
+            result["aviso"] = _scan_notice(ctx, info["ocr"], can_fetch=True)
         return {k: v for k, v in result.items() if v is not None}
 
     def resumen(args):
@@ -1034,6 +1067,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
             url = queries.file_by_id(ctx.conn, fid)["url"]
             raise ToolError(f"No pude bajar el archivo: {exc}." + (f" Puede abrirlo en el aula: {url}" if url else "")) \
                 from None
+        _read_now(ctx, fid)
         return file_result(fid)
 
     def libro(args):
@@ -1051,6 +1085,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
                             "con guardar_adjunto.")
         fid = libros.add_sent(ctx.conn, ctx.cfg.core, ctx.subject(), course_ids(), source, ctx.now(),
                               main=bool(args.get("libro_principal")))
+        _read_now(ctx, fid)
         return {**file_result(fid), "libro_principal": bool(args.get("libro_principal"))}
 
     def horario_(args):

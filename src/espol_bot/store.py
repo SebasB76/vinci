@@ -13,6 +13,8 @@
   todos                the captain's own to-do list (readings, paperwork, what a professor said in
                        class): text, subject and due date when given, and when it was done
   todo_reminders       which to-do reminders were already sent (like bot_reminders)
+  shown_pages          each page of the material a tool showed a bot (Vinci or a subject): what a citation
+                       in its answers may point at (citations.py)
 """
 
 from __future__ import annotations
@@ -83,6 +85,13 @@ CREATE TABLE IF NOT EXISTS horario_propuestas (
     creado TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'pendiente',
     resuelto TEXT
+);
+CREATE TABLE IF NOT EXISTS shown_pages (
+    bot TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    page INTEGER NOT NULL,
+    shown_at TEXT NOT NULL,
+    PRIMARY KEY (bot, file_id, page)
 );
 """
 

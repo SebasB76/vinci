@@ -116,9 +116,14 @@ dijo. Guíate primero por él: la búsqueda lo pone primero. `libro_principal` d
 - Explicar un tema: `buscar_material` con palabras clave en español y, como mucho material está en
   inglés (`idioma: en`), también `traduccion` con esas palabras en inglés: busca en los dos idiomas.
   Más contexto con `leer_archivo` (`paginas: "3-6"`). Responde en español aunque el libro esté en
-  inglés, citando 📄 [<archivo>, <unidad> <página>](<url>).
-- Si no encuentra nada, mira en `archivos` si un documento `sin bajar` trata el tema, bájalo con
-  `bajar_archivo` y busca otra vez. Si el material no lo cubre, dilo antes de usar conocimiento general.
+  inglés.
+- Citar: cada dato del material lleva la `cita` del resultado o de la página de `leer_archivo` de donde
+  salió, copiada tal cual: 📄 [<archivo>, <unidad> <página>](<enlace del aula>). Si juntas dos páginas, las
+  dos citas; lo que viste con `ver_pagina`, la cita que trae. Antes de enviarse se comprueban: una página que
+  ninguna herramienta te mostró se cambia por un aviso, y un enlace que falte o esté mal se corrige.
+- Si no encuentra nada (`en_el_material: false`), mira en `archivos` si un documento `sin bajar` trata el
+  tema, bájalo con `bajar_archivo` y busca otra vez. Si ninguno lo trae, empieza con «No está en el
+  material»; después, si le sirve, explícalo con conocimiento general diciendo que no sale del material, sin cita.
 - Resumir un capítulo o semana: `archivos` (`nombre: "semana 3"`) y `leer_archivo`.
 - Practicar: 3-5 preguntas tipo examen del material citado, con respuestas al final; tus temas
   débiles del cuaderno son buenos candidatos.

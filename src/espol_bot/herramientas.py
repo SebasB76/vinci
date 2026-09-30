@@ -19,7 +19,8 @@ without the student's login when a bot reads it (leer_archivo with its enlace_id
 announcement shows the links it carries, which its text alone loses. Search weighs the subject's
 main book (libros.py) first and runs the question in two languages when the material is in English.
 A scanned page is seen as an image by `ver_pagina`, a tool of the vinci-botones plugin (an MCP
-result cannot carry an image to the model in Hermes).
+result cannot carry an image to the model in Hermes). Each page a tool shows comes with its citation
+and is recorded, so the answer's citations can be checked before they are sent (citations.py).
 
 The Canvas token stays inside this process: no tool ever returns it.
 """
@@ -40,7 +41,7 @@ from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
-from espol_bot import agenda, horario, libros, materias, messages, store
+from espol_bot import agenda, citations, horario, libros, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -92,6 +93,11 @@ class Ctx:
 
     def now(self) -> datetime:
         return self.aula.now()
+
+    @property
+    def bot(self) -> str:
+        """Whose shown pages a citation may point at (citations.py)."""
+        return self.code or citations.VINCI
 
     def subjects(self) -> list[materias.Subject]:
         try:
@@ -164,6 +170,9 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
             if key not in found or hit["puntaje"] > found[key]["puntaje"]:
                 found[key] = hit
     hits = sorted(found.values(), key=lambda h: (h["coincide"] != "todas", -h["puntaje"]))[:n]
+    for hit in hits:
+        hit["cita"] = citations.cite(hit["archivo"], hit["unidad"], hit["pagina"], url=hit["url"])
+        citations.record(ctx.conn, ctx.bot, hit["archivo_id"], [hit["pagina"]], ctx.now())
     result: dict = {"resultados": _trim_hits(hits)}
     ids = course_ids if course_ids is not None else [c["id"] for c in queries.courses(ctx.conn)]
     marks = ",".join("?" * len(ids)) or "NULL"
@@ -172,21 +181,29 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
     unread = sum(1 for f in queries.files(ctx.conn, course_ids)
                  if f["extension"] in _kinds(ctx) and not f["descargado"] and not f["copia_de"])
     notes = []
+    if not hits:
+        result["en_el_material"] = False
+        if not (unread and can_fetch):
+            notes.append("Nada del material leído trata esto: empieza tu respuesta con «No está en el material», sin "
+                         "cita ni página. Después, si le sirve, explícalo con conocimiento general"
+                         + ("" if can_fetch else " (o con la web, dando su enlace)")
+                         + " diciendo que no sale del material.")
     if english and not args.get("traduccion"):
         notes.append(f"{english} documento(s) del material están en inglés: repite la búsqueda con «traduccion» "
                      "(la pregunta en inglés) para no perdértelos.")
     if unread and len(hits) < n:
-        notes.append(f"Solo busco en lo ya leído; {unread} documento(s) del catálogo siguen sin bajar: "
-                     + ("si uno de archivos parece tener el tema, bájalo con bajar_archivo y busca otra vez."
-                        if can_fetch else "el bot de la materia los baja cuando le hacen falta."))
+        fetch = ("si uno de archivos parece tener el tema, bájalo con bajar_archivo y busca otra vez."
+                 + ("" if hits else " Si ninguno lo trae, empieza tu respuesta con «No está en el material», sin cita.")
+                 if can_fetch else "el bot de la materia los baja cuando le hacen falta.")
+        notes.append(f"Solo busco en lo ya leído; {unread} documento(s) del catálogo siguen sin bajar: {fetch}")
     if notes:
         result["nota"] = " ".join(notes)
     return result
 
 
-def _read(conn, file_id: int, pages, *, can_fetch: bool) -> dict:
+def _read(ctx: Ctx, file_id: int, pages, *, can_fetch: bool) -> dict:
     first, last = _pages(pages)
-    data = queries.read_pages(conn, file_id, first, last)
+    data = queries.read_pages(ctx.conn, file_id, first, last)
     result = {"archivo_id": data["id"], "archivo": data["archivo"], "curso": data["curso"], "unidad": data["unidad"],
               "paginas": data["paginas"], "idioma": data["idioma"], "url": data["url"]}
     total = 0
@@ -196,8 +213,10 @@ def _read(conn, file_id: int, pages, *, can_fetch: bool) -> dict:
         if total > MAX_READ_CHARS and kept:
             result["aviso"] = f"Texto recortado en la {data['unidad']} {kept[-1]['pagina']}; pide un rango más corto."
             break
-        kept.append(page)
+        kept.append({**page, "cita": citations.cite(data["archivo"], data["unidad"], page["pagina"], url=data["url"])})
     result["contenido"] = kept
+    if kept:  # a blank page inside the range was read too
+        citations.record(ctx.conn, ctx.bot, data["id"], range(kept[0]["pagina"], kept[-1]["pagina"] + 1), ctx.now())
     if data["indexado"] == "escaneado":
         result["aviso"] = ("Es un escaneo: sus páginas son imágenes y casi no tienen texto. "
                            + ("Mira la página que necesites con ver_pagina(archivo_id, pagina)." if can_fetch else
@@ -519,7 +538,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         else:
             raise ToolError(READ_WHAT)
         try:
-            return _read(ctx.conn, fid, args.get("paginas"), can_fetch=False)
+            return _read(ctx, fid, args.get("paginas"), can_fetch=False)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -670,14 +689,15 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              "de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su «enlace_id». Con «materia», también su "
              "libro principal.", archivos,
              {**materia, "nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
-        Tool("buscar_material", "Busca en el texto del material ya leído; devuelve archivo, página y fragmento, con "
-             "el libro principal primero. Mucho material está en inglés: pasa también «traduccion».",
+        Tool("buscar_material", "Busca en el texto del material ya leído; devuelve archivo, página, fragmento y la "
+             "«cita» lista para copiar, con el libro principal primero. Mucho material está en inglés: pasa también "
+             "«traduccion».",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
                       **materia, "n": {"type": "integer"}}, ["pregunta"]),
-        Tool("leer_archivo", "Lee el texto de un archivo del material por páginas; con «enlace_id», el de un enlace "
-             "de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del estudiante y lo lee como "
-             "un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
+        Tool("leer_archivo", "Lee el texto de un archivo del material por páginas, cada una con su «cita»; con "
+             "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del "
+             "estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
         Tool("libro_principal", "El libro principal de una materia (la bibliografía BÁSICA del sílabo): cuál es y "
              "si hay PDF. Si el estudiante te dice cuál es («el libro de Estadística es Zurita»), pásalo en «titulo» "
              "y queda guardado para su bot.", libro,
@@ -808,7 +828,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
             fid = own_file(args["archivo_id"])
         else:
             raise ToolError(READ_WHAT)
-        return _read(ctx.conn, fid, args.get("paginas"), can_fetch=True)
+        return _read(ctx, fid, args.get("paginas"), can_fetch=True)
 
     def bajar(args):
         if args.get("enlace_id") not in (None, ""):
@@ -909,14 +929,15 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              "libro principal primero; y los enlaces de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su "
              "«enlace_id».",
              archivos, {"nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
-        Tool("buscar_material", "Busca en el texto del material ya leído de tu materia (archivo, página, fragmento), "
-             "con tu libro principal primero. Mucho material está en inglés: pasa también «traduccion».",
+        Tool("buscar_material", "Busca en el texto del material ya leído de tu materia (archivo, página, fragmento y "
+             "la «cita» lista para copiar), con tu libro principal primero. Mucho material está en inglés: pasa "
+             "también «traduccion».",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
                       "n": {"type": "integer"}}, ["pregunta"]),
-        Tool("leer_archivo", "Lee un archivo del material de tu materia, por páginas; con «enlace_id», el de un "
-             "enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del estudiante y lo lee "
-             "como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
+        Tool("leer_archivo", "Lee un archivo del material de tu materia, por páginas, cada una con su «cita»; con "
+             "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta "
+             "del estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
         Tool("bajar_archivo", "Baja e indexa un documento de tu materia que está «sin bajar» (solo lectura del aula), "
              "o abre un enlace de fuera sin la cuenta del estudiante (un Google Doc, un Dropbox, una página pública). "
              "Baja solo lo que necesitas ahora.", bajar,
@@ -969,9 +990,25 @@ def page_image(cfg: BotConfig, code: str, file_id: int, page: int) -> dict:
             jpeg = extract.render_page(Path(info["descargado"]), page)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
+        citations.record(ctx.conn, ctx.bot, file_id, [page], ctx.now())
         return {"archivo_id": file_id, "archivo": info["archivo"], "pagina": page, "paginas": info["paginas"],
+                "cita": citations.cite(info["archivo"], "página", page, url=info["url"]),
                 "tipo": "image/jpeg", "imagen": base64.b64encode(jpeg).decode()}
     except queries.NotFound as exc:
         raise ToolError(str(exc)) from None
     finally:
         ctx.aula.close()
+
+
+def check_citations(cfg: BotConfig, code: str | None, text: str) -> dict:
+    """An answer of Vinci (no `code`) or of a subject bot with its citations checked (citations.py): what the
+    plugin sends instead, when something changed."""
+    ctx = Ctx(cfg, code=code.upper() if code else None)
+    try:
+        course_ids = agenda.course_ids_for(ctx.conn, ctx.subject()) if code else None
+        checked, changes = citations.check(ctx.conn, ctx.bot, course_ids, text)
+    finally:
+        ctx.aula.close()
+    for change in changes:
+        log.info("citas %s: %s «%s»", ctx.bot, change["cambio"], change["cita"])
+    return {"respuesta": checked, "cambios": changes} if changes else {}

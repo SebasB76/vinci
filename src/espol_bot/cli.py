@@ -19,6 +19,8 @@
                                      a bot's answer to /start, which Hermes ignores (the plugin calls it)
     espol-bot pagina --curso CÓDIGO <archivo_id> <página>
                                      a page of the subject's PDF as a JPEG, for the plugin's ver_pagina
+    espol-bot citas [--curso CÓDIGO] an answer read from stdin with its citations checked against the pages
+                                     that bot was shown (the plugin runs it before an answer is sent)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -153,6 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("archivo_id", type=int)
     p.add_argument("pagina", type=int)
+    p = sub.add_parser("citas", help="comprobar las citas de una respuesta leída por stdin (la usa el plugin "
+                                     "vinci-botones)")
+    p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -184,6 +189,16 @@ def main(argv: list[str] | None = None) -> int:
                 result = herramientas.page_image(cfg, args.curso, args.archivo_id, args.pagina)
             except ToolError as exc:
                 result = {"error": str(exc)}
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if args.cmd == "citas":
+            from espol_bot import herramientas
+            from espol_bot.mcp_server import ToolError
+            try:
+                result = herramientas.check_citations(cfg, args.curso, sys.stdin.read())
+            except ToolError as exc:  # a subject no longer in materias.toml: the answer goes as it is
+                logging.warning("citas: %s", exc)
+                result = {}
             print(json.dumps(result, ensure_ascii=False))
             return 0
         if args.cmd in ("bot-creado", "token"):

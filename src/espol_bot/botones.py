@@ -18,9 +18,13 @@ plugin should show:
                           its button turns into «↩️ Aún no lo entregué», which undoes it
   v1:t:<pendiente>:ok|no  «✅ Hecho» under a to-do (its card, a reminder, the summary): closes it;
                           the button turns into «↩️ Deshacer: <pendiente>», which undoes it
+  v1:g:<propuesta>:ok     «Guardar esquema» under a grading scheme a bot proposed (in Vinci's chat or the
+                          subject bot's): saves it as how that subject is graded and answers how the captain
+                          is doing under it
+  v1:g:<propuesta>:no     «Corregir»: discards it
 
-No model is involved: the schedule is saved, and a bot created or archived, only by the
-captain's own press.
+No model is involved: the schedule and a grading scheme are saved, and a bot created or archived,
+only by the captain's own press.
 """
 
 from __future__ import annotations
@@ -31,11 +35,11 @@ from datetime import datetime, timedelta
 
 from aula_core import Aula, timefmt
 from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
-from espol_bot import equipo, horario, materias, messages, store
+from espol_bot import equipo, grades, horario, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([ahcxrnst]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
+PATTERN = re.compile(r"v1:([aghcxrnst]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
@@ -66,6 +70,8 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
             return _submitted(conn, ref, arg == "ok", now)
         if kind == "t":
             return _todo_done(conn, ref, arg == "ok", now)
+        if kind == "g":
+            return _grading_scheme(cfg, conn, ref, arg == "ok", now)
         return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()
@@ -104,6 +110,25 @@ def _todo_done(conn, todo_id: int, done: bool, now: datetime) -> dict:
         return _answer(f"✅ Hecho: «{todo['text']}».", replace_button=(messages.todo_undo_button(todo["text"]), f"v1:t:{todo_id}:no"))
     return _answer(f"«{todo['text']}» vuelve a tu lista.",
                    replace_button=(messages.todo_done_button(todo["text"]), f"v1:t:{todo_id}:ok"))
+
+
+def _grading_scheme(cfg: BotConfig, conn, proposal_id: int, save: bool, now: datetime) -> dict:
+    proposal = store.scheme_proposal(conn, proposal_id)
+    if proposal is None:
+        return _answer("No encuentro ese esquema.")
+    if not store.resolve_scheme_proposal(conn, proposal_id, save, now):
+        state = {"saved": "guardado", "discarded": "descartado"}.get(proposal["state"], proposal["state"])
+        return _answer(f"Ese esquema ya fue {state}.", remove_buttons=True)
+    subject = materias.by_code(materias.load(cfg.core), proposal["subject"])
+    name = subject.name if subject else proposal["subject"]
+    if not save:
+        return _answer("No lo guardé", (
+            f"✏️ Listo, no lo guardé. Dime qué cambiar de cómo se evalúa {messages.e(name)} (por ejemplo «el examen del "
+            "primer parcial lo reemplaza una lección que vale lo mismo») y te muestro otro."), remove_buttons=True)
+    reply = f"✅ <b>Guardé cómo se evalúa {messages.e(name)}</b>."
+    if subject is not None:
+        reply += "\n\n" + messages.e(grades.status(conn, subject, cfg.core.tz)["summary"])
+    return _answer("Esquema guardado", reply, remove_buttons=True)
 
 
 def _team(cfg: BotConfig, kind: str, code: str, now: datetime) -> dict:

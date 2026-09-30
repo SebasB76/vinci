@@ -18,6 +18,9 @@ Tables:
   bibliography   the main and complementary books parsed from each syllabus
   events         changes detected by a sync (new assignment, grade posted, ...);
                  consumers such as the bot mark them delivered
+  marked_submitted
+                 assignments the student says were handed in outside Canvas (on paper, by email, in
+                 the lab): counted as submitted everywhere, since Canvas never learns about them
   chunks         full-text index (FTS5) of downloaded course material, one row per page
 """
 
@@ -157,6 +160,11 @@ CREATE TABLE IF NOT EXISTS events (
     delivered_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS marked_submitted (
+    assignment_id INTEGER PRIMARY KEY,
+    marked_at TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
     text,
     file_id UNINDEXED,
@@ -207,6 +215,17 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 def delete_meta(conn: sqlite3.Connection, *keys: str) -> None:
     conn.execute(f"DELETE FROM meta WHERE key IN ({','.join('?' * len(keys))})", keys)
+
+
+def set_marked_submitted(conn: sqlite3.Connection, assignment_id: int, marked: bool, now: str) -> bool:
+    """Record (or undo) that the student handed an assignment in outside Canvas; False when nothing changed."""
+    if marked:
+        cur = conn.execute("INSERT OR IGNORE INTO marked_submitted(assignment_id, marked_at) VALUES (?, ?)",
+                           (assignment_id, now))
+    else:
+        cur = conn.execute("DELETE FROM marked_submitted WHERE assignment_id = ?", (assignment_id,))
+    conn.commit()
+    return cur.rowcount == 1
 
 
 @contextmanager

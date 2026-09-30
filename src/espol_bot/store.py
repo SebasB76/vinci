@@ -10,6 +10,9 @@
                        captain to press «Guardar»
   libros               per subject: the main book the captain named, the files given as its PDF,
                        and when the subject bot asked the captain for that PDF (once)
+  todos                the captain's own to-do list (readings, paperwork, what a professor said in
+                       class): text, subject and due date when given, and when it was done
+  todo_reminders       which to-do reminders were already sent (like bot_reminders)
 """
 
 from __future__ import annotations
@@ -57,6 +60,22 @@ CREATE TABLE IF NOT EXISTS libros (
     archivos TEXT NOT NULL DEFAULT '[]',
     pedido TEXT,
     actualizado TEXT
+);
+CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    subject TEXT,
+    due_at TEXT,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    done_at TEXT
+);
+CREATE TABLE IF NOT EXISTS todo_reminders (
+    todo_id INTEGER NOT NULL,
+    hours INTEGER NOT NULL,
+    due_at TEXT NOT NULL,
+    sent_at TEXT NOT NULL,
+    PRIMARY KEY (todo_id, hours, due_at)
 );
 CREATE TABLE IF NOT EXISTS horario_propuestas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,3 +191,44 @@ def resolve_proposal(conn: sqlite3.Connection, proposal_id: int, state: str, now
                      "WHERE estado = 'pendiente' AND id < ?", (timefmt.iso(now), proposal_id))
     conn.commit()
     return cur.rowcount == 1
+
+
+# -- todos -------------------------------------------------------------------------------
+
+
+def _todo(row: sqlite3.Row) -> dict:
+    return {"id": row["id"], "text": row["text"], "subject": row["subject"], "due_at": row["due_at"],
+            "all_day": bool(row["all_day"]), "created_at": row["created_at"], "done_at": row["done_at"]}
+
+
+def add_todo(conn: sqlite3.Connection, text: str, subject: str | None, due: datetime | None, all_day: bool,
+             now: datetime) -> dict:
+    cur = conn.execute("INSERT INTO todos(text, subject, due_at, all_day, created_at) VALUES (?, ?, ?, ?, ?)",
+                       (text, subject, timefmt.iso(due) if due else None, int(all_day), timefmt.iso(now)))
+    conn.commit()
+    return todo(conn, int(cur.lastrowid))
+
+
+def todo(conn: sqlite3.Connection, todo_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
+    return _todo(row) if row else None
+
+
+def delete_todo(conn: sqlite3.Connection, todo_id: int) -> None:
+    conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+    conn.commit()
+
+
+def set_todo_done(conn: sqlite3.Connection, todo_id: int, done: bool, now: datetime) -> bool:
+    """Mark a to-do done (or open again); False when it already was."""
+    cur = conn.execute("UPDATE todos SET done_at = ? WHERE id = ? AND done_at IS " + ("NULL" if done else "NOT NULL"),
+                       (timefmt.iso(now) if done else None, todo_id))
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def open_todos(conn: sqlite3.Connection, until: datetime | None = None) -> list[dict]:
+    """Open to-dos by due date (overdue first), then the ones with no date; `until` drops those due later."""
+    rows = conn.execute("SELECT * FROM todos WHERE done_at IS NULL ORDER BY due_at IS NULL, due_at, id").fetchall()
+    limit = timefmt.iso(until) if until else None
+    return [_todo(r) for r in rows if not (limit and r["due_at"] and r["due_at"] >= limit)]

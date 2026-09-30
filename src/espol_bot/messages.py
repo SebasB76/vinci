@@ -128,7 +128,7 @@ def _day_label(day, today) -> str:
 
 
 def weekly_summary(week: list[dict], overdue: list[dict], announcements_24h: list[dict],
-                   tz: ZoneInfo, now: datetime) -> str:
+                   tz: ZoneInfo, now: datetime, todos: list[dict] = ()) -> str:
     local_now = now.astimezone(tz)
     today = local_now.date()
     end = today + timedelta(days=6)
@@ -157,10 +157,64 @@ def weekly_summary(week: list[dict], overdue: list[dict], announcements_24h: lis
             for t in overdue))
     if done:
         blocks.append(f"Ya entregaste {len(done)} de esta semana ✓")
+    if todos:
+        blocks.append(f"<b>📌 Tu lista ({len(todos)})</b>\n" + "\n".join(todo_line(t, tz, now) for t in todos))
     if announcements_24h:
         blocks.append(f"<b>Anuncios de las últimas 24 h ({len(announcements_24h)})</b>\n" + "\n".join(
             f"• {e(a['curso'])}: {link(a['url'], a['titulo'])}" for a in announcements_24h))
     return "\n\n".join(blocks)
+
+
+SUBMITTED_BUTTON = "✅ Ya lo entregué"
+UNSUBMITTED_BUTTON = "↩️ Aún no lo entregué"
+TODO_DONE_BUTTON = "✅ Hecho"
+
+
+def _todo_short(text: str) -> str:
+    return text if len(text) <= 28 else text[:27].rstrip() + "…"
+
+
+def todo_done_button(text: str) -> str:
+    """The summary lists several to-dos: each button says which one it closes."""
+    return f"✅ {_todo_short(text)}"
+
+
+def todo_undo_button(text: str) -> str:
+    return f"↩️ Deshacer: {_todo_short(text)}"
+
+
+def todo_due(todo: dict, tz: ZoneInfo) -> str:
+    due = timefmt.parse(todo["due_at"])
+    if due is None:
+        return "sin fecha"
+    local = due.astimezone(tz)
+    return f"{timefmt.DAYS[local.weekday()]} {local.day} {timefmt.MONTHS[local.month - 1]}" if todo["all_day"] \
+        else timefmt.human(due, tz)
+
+
+def _todo_what(todo: dict) -> str:
+    return f"{e(todo['subject'])}: {e(todo['text'])}" if todo["subject"] else e(todo["text"])
+
+
+def todo_line(todo: dict, tz: ZoneInfo, now: datetime) -> str:
+    due = timefmt.parse(todo["due_at"])
+    if due is None:
+        return f"• {_todo_what(todo)}"
+    late = f" (venció {e(timefmt.until(due, now))})" if due < now else ""
+    return f"• {e(todo_due(todo, tz))} — {_todo_what(todo)}{late}"
+
+
+def todo_card(todo: dict, tz: ZoneInfo, reminder_hours: list[int]) -> str:
+    when = (f"Para: <b>{e(todo_due(todo, tz))}</b>\nTe lo recuerdo "
+            + " y ".join(f"{h} h" for h in sorted(reminder_hours, reverse=True)) + " antes y sale en tu resumen de "
+            "las 7:00." if todo["due_at"] else "Sin fecha: sale en tu resumen de las 7:00 hasta que lo marques.")
+    return (f"📌 <b>Anotado en tu lista</b>\n{_todo_what(todo)}\n{when}\n"
+            f"Cuando lo termines, pulsa <b>{TODO_DONE_BUTTON}</b>.")
+
+
+def todo_reminder(todo: dict, tz: ZoneInfo, now: datetime) -> str:
+    return (f"⏰ <b>Recordatorio: vence {e(timefmt.until(todo['due_at'], now))}</b>\n"
+            f"📌 {_todo_what(todo)}\nPara: {e(todo_due(todo, tz))}")
 
 
 def welcome(courses: list[dict], pending_week: int, poll_minutes: int) -> str:

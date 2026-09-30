@@ -3,7 +3,8 @@
 Model-free Telegram handlers of Vinci and its subject bots, answering only the captain:
 
 - Inline buttons (callback data `v1:...`): run `espol-bot boton <data>`, which queues a
-  handoff, saves or discards a schedule proposal, or creates / archives a subject bot.
+  handoff, saves or discards a schedule proposal, creates / archives a subject bot, marks an
+  assignment as handed in or closes a to-do (the pressed button then turns into its undo).
 - A bot created for Vinci to manage (`managed_bot_created`): run `espol-bot bot-creado <id>`,
   which fetches its token from Telegram and provisions it.
 - Any message carrying a bot token (for example BotFather's reply, forwarded): delete it
@@ -57,7 +58,7 @@ def _is_captain(user):
 
 def register(ctx):
     def _wire(application, adapter):
-        from telegram import ReplyKeyboardRemove, Update
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
         from telegram.ext import ApplicationHandlerStop, CallbackQueryHandler, TypeHandler
 
         async def _say(context, chat_id, result):
@@ -147,6 +148,15 @@ def register(ctx):
                 return
             if not late:
                 await _answer(query, (result.get("aviso") or "Listo")[:190])
+            replacement = result.get("replace_button")
+            markup = getattr(query.message, "reply_markup", None)
+            if replacement and markup is not None:
+                rows = [[InlineKeyboardButton(replacement[0], callback_data=replacement[1])
+                         if b.callback_data == query.data else b for b in row] for row in markup.inline_keyboard]
+                try:
+                    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(rows))
+                except Exception as exc:  # already edited, too old: harmless
+                    logger.info("no pude cambiar el botón: %s", exc)
             if result.get("quitar_botones"):
                 try:
                     await query.edit_message_reply_markup(reply_markup=None)

@@ -45,6 +45,9 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      case), a Drive guide Vinci reads; a private Google Doc and an ESPOL-only SharePoint refused with
      the reason, the private one not asked for again on every question (unless the captain says it is
      shared now);
+     «✅ Ya lo entregué» under a reminder (the assignment stops being pending everywhere and gets no more
+     reminders; its undo brings it back); the captain's own to-do list from «anota: …» (its card, «¿qué tengo
+     esta semana?», the model-free reminder and 7:00 summary, closed with «✅ Hecho»);
      Vinci reading notebooks but unable to write them or reach a terminal; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
@@ -153,6 +156,7 @@ T_VINCI = "2026-09-30T08:30:00-05:00"   # sesión del gateway: miércoles, 30 mi
 T_EARLY = "2026-09-30T08:29:00-05:00"   # un minuto antes: todavía no toca el brief
 T_MONDAY = "2026-10-05T08:30:00-05:00"  # lunes: teórico 09:00–11:00 y práctico 11:00–12:00 seguidos
 T_MIDCLASS = "2026-10-05T10:30:00-05:00"  # en pleno teórico, 30 min antes del práctico
+T_EXAM = "2026-10-01T06:00:00-05:00"    # 2 h antes del examen parcial de Física (08:00)
 T_RENEW_0 = "2026-09-29T21:00:00-05:00"
 T_RENEW_1 = "2026-09-29T21:41:00-05:00"
 T_RENEW_2 = "2026-09-29T22:22:00-05:00"
@@ -175,6 +179,17 @@ SCHEDULE_V1 = [
     {"materia": "FISG1002", "dia": "jueves", "inicio": "14:30", "fin": "16:30", "aula": "L204", "paralelo": "3"},
 ]
 SCHEDULE_V2 = [dict(c, inicio="09:00", fin="11:00") if c["dia"] == "miércoles" else c for c in SCHEDULE_V1]
+
+# What the captain asks Vinci to note («anota: …») and what the model makes of it (today is Wednesday 30 Sep).
+TODOS = {
+    "estudiar cap. 3 de Física para el viernes": {"text": "Estudiar cap. 3", "subject": "Física", "due": "2026-10-02"},
+    "llevar el certificado de matrícula a secretaría hoy a las 11:00": {
+        "text": "Llevar el certificado de matrícula a secretaría", "due": "2026-09-30 11:00"},
+    "leer el paper que recomendó el profe de Cálculo": {"text": "Leer el paper que recomendó el profe",
+                                                        "subject": "cálculo"},
+    "devolver el libro a la biblioteca el lunes": {"text": "Devolver el libro a la biblioteca", "due": "2026-09-28"},
+}
+SUBMITTED = "✅ Ya lo entregué"
 
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
@@ -284,6 +299,11 @@ class Script:
             return flow
         if results:
             return {"content": self.vinci_answer(results)}
+        for trigger, todo in TODOS.items():
+            if f"anota: {trigger}" in text:
+                return _call("mcp__vinci__add_todo", **todo)
+        if "qué tengo esta semana" in text:
+            return _call("mcp__vinci__semana")
         image = IMAGE_RE.search(text)
         replying = REPLY_RE.search(text)
         if "horario" in text and image:
@@ -348,7 +368,15 @@ class Script:
         parts = []
         for raw in results:
             data = _json(raw)
-            if isinstance(data, dict) and data.get("confirmacion"):
+            if isinstance(data, dict) and data.get("todo"):
+                todo = data["todo"]
+                when = f", para el {todo['due']}" if todo.get("due") else ""
+                parts.append(f"📌 Anotado: {todo['text']}{when}.")
+            elif isinstance(data, dict) and "todos" in data:
+                parts.append("Esta semana:\n" + "\n".join(f"- {t['tarea']} ({t['curso']})" for t in data["pendientes"])
+                             + "\nTu lista:\n" + "\n".join(f"- {t['text']}" + (f" ({t['due']})" if t.get("due") else "")
+                                                          for t in data["todos"]))
+            elif isinstance(data, dict) and data.get("confirmacion"):
                 parts.append(data["confirmacion"])
             elif isinstance(data, dict) and data.get("mensaje"):
                 parts.append(data["mensaje"])
@@ -854,7 +882,8 @@ def test_e2e(tmp_path):
             "lo demás no se baja solo: queda en el catálogo"
         assert "Su bot de materia lo abre sin tu cuenta" in texts, "el enlace de un módulo avisa que el bot lo abre"
         assert len(poll2) == 8, [m["text"][:40] for m in poll2]
-        assert not any(buttons(m) for m in poll1 + poll2), "sin bots de materia todavía no hay botones"
+        for m in poll1 + poll2:  # no subject bots yet: no handoff buttons, only «Ya lo entregué» under a reminder
+            assert [b["text"] for b in buttons(m)] == ([SUBMITTED] if "Recordatorio" in m["text"] else []), m
 
         run([bot, "sondeo"], T_POLL3)
         assert take("Sondeo 3 · mar 29 sep 01:00 (sin cambios)") == [], "no debe repetir avisos"
@@ -1136,7 +1165,8 @@ END:VCALENDAR
         *[f"- {label}: {n}" for label, n in counts.items()],
         "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `material.md` (el "
         "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
-        "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), "
+        "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
+        "(«Ya lo entregué» y la lista de pendientes), "
         "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
         "`setup.log`.\n",
     ]
@@ -1151,7 +1181,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     telegram.managers.add(BOT_TOKEN)  # Vinci has "manage other bots" on in BotFather
 
     def patch_profile(name: str) -> None:
-        """Test-only: the scripted model, images passed natively, and no speech-to-text engine."""
+        """Test-only: the scripted model, images passed natively, no speech-to-text engine, and Vinci's clock."""
         cfg_file = profiles / name / "config.yaml"
         data = yaml.safe_load(cfg_file.read_text())
         data["providers"] = {"fakellm": {"api": f"{llm.base}/v1", "api_key": "e2e", "discover_models": False,
@@ -1159,6 +1189,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
         data.setdefault("agent", {})["image_input_mode"] = "native"
         data.setdefault("model", {})["supports_vision"] = True  # the fake model: ver_pagina's image goes to it
         data.setdefault("stt", {})["enabled"] = False
+        if name == "vinci":  # Vinci's tools on the test clock: its to-do dates are checked against «today»
+            data["mcp_servers"]["vinci"]["env"]["AULA_NOW"] = T_VINCI
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
     patch_profile("vinci")
@@ -1490,14 +1522,15 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     fis_alert = next(m for m in reminders if "Examen parcial" in m["text"])
     assert "CÁLCULO DE UNA VARIABLE - II PAO 2026 Práctico" in practico_alert["text"]
     for alert in (calc_alert, practico_alert):  # theory and práctico: the same one bot
-        assert [b["text"] for b in buttons(alert)] == ["🎓 Consultar con Cálculo de una Variable"]
+        assert [b["text"] for b in buttons(alert)] == ["🎓 Consultar con Cálculo de una Variable", SUBMITTED]
         assert re.fullmatch(r"v1:a:\d+:MATG1049", buttons(alert)[0]["callback_data"])
+        assert re.fullmatch(r"v1:s:\d+:ok", buttons(alert)[1]["callback_data"])
         passed = turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, alert, buttons(alert)[0]["callback_data"]),
                       "vinci_bot", "Le pasé el aviso")
         assert "Le pasé el aviso a Cálculo de una Variable" in plain(passed["text"])
     calc_avisos = [h for h in handoffs() if h["materia"] == "MATG1049" and h["origen"] == "aviso"]
     assert len(calc_avisos) == 2 and "Taller 3" in calc_avisos[0]["texto"] and "Práctica 4" in calc_avisos[1]["texto"]
-    assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Física I"]
+    assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Física I", SUBMITTED]
     fis_data = buttons(fis_alert)[0]["callback_data"]
     assert re.fullmatch(r"v1:a:\d+:FISG1002", fis_data)
     turn(lambda: telegram.press(BOT_TOKEN, CAPTAIN, fis_alert, fis_data), "vinci_bot", "Le pasé el aviso")
@@ -1557,6 +1590,133 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "material y una pregunta) y después respondió lo que le pasó Vinci; el de Física respondió el "
                   "aviso; las fotos quedaron en el cuaderno")
     take("Agenda de los bots de materia")
+
+    # 7e2. «✅ Ya lo entregué» under a reminder, and the captain's own to-do list («anota: …»)
+    pendientes_md = ["# «Ya lo entregué» y tu lista de pendientes\n"]
+
+    def fis_pending() -> list[str]:
+        out = run([str(VENV_BIN / "aula"), "tareas", "--curso", "fisica", "--sin-actualizar", "--json"], T_VINCI).stdout
+        return [t["tarea"] for t in json.loads(out)]
+
+    def todo_rows() -> list[dict]:
+        conn = sqlite3.connect(data_dir / "espol.db")
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute("SELECT * FROM todos ORDER BY id")]
+        finally:
+            conn.close()
+
+    def press(message: dict, data: str, expected: str) -> str:
+        """Press a button and wait for its toast and for the pressed button to be swapped; the keyboard after."""
+        before = buttons(message)
+        label = next(b["text"] for b in before if b["callback_data"] == data)
+        calls = len(telegram.calls)
+        telegram.press(BOT_TOKEN, CAPTAIN, message, data)
+        said = toast(calls, expected)["params"]["text"]
+        assert telegram.wait_for(lambda _: buttons(message) != before, 30), fail(f"el botón «{label}» no cambió")
+        return f"[{label}] → «{said}»; quedan: " + " ".join(f"[{b['text']}]" for b in buttons(message))
+
+    assert "Examen parcial" in fis_pending()
+    submit = buttons(fis_alert)[1]["callback_data"]
+    assert re.fullmatch(r"v1:s:\d+:ok", submit)
+    steps = [press(fis_alert, submit, "cuenta como entregada")]
+    assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Física I", "↩️ Aún no lo entregué"]
+    assert "Examen parcial" not in fis_pending(), "lo que se entregó fuera del aula ya no está pendiente"
+    exam_undo = buttons(fis_alert)[1]["callback_data"]
+    assert exam_undo == submit.replace(":ok", ":no")
+    steps.append(press(fis_alert, exam_undo, "vuelve a tus pendientes"))
+    assert [b["text"] for b in buttons(fis_alert)] == ["🎓 Consultar con Física I", SUBMITTED]
+    assert "Examen parcial" in fis_pending(), "deshacer lo devuelve a los pendientes"
+    steps.append(press(fis_alert, submit, "cuenta como entregada"))
+    assert "Examen parcial" not in fis_pending()
+    pendientes_md += ["## «✅ Ya lo entregué» bajo el recordatorio del examen de Física\n",
+                      f"```\n{plain(fis_alert['text'])}\n```\n",
+                      "El capitán pulsa «✅ Ya lo entregué», después «↩️ Aún no lo entregué» y otra vez «✅ Ya lo "
+                      "entregué»:\n", "```\n" + "\n".join(steps) + "\n```\n"]
+
+    cards, replies = {}, {}
+    for trigger in TODOS:
+        mark = len(telegram.messages)
+        telegram.send_text(BOT_TOKEN, CAPTAIN, f"anota: {trigger}")
+        refused = "lunes" in trigger
+        replies[trigger] = wait_msg("vinci_bot", mark, "Esa fecha ya pasó" if refused else "📌 Anotado:")
+        card = [m for m in telegram.messages[mark:] if m["bot"] == "vinci_bot" and "Anotado en tu lista" in m["text"]]
+        assert len(card) == (0 if refused else 1), card
+        cards[trigger] = card[0] if card else None
+    rows = todo_rows()
+    fis_name, calc_name = team()["FISG1002"]["nombre"], team()["MATG1049"]["nombre"]
+    assert [(r["text"], r["subject"], r["due_at"], r["all_day"], r["done_at"]) for r in rows] == [
+        ("Estudiar cap. 3", fis_name, "2026-10-03T04:59:00Z", 1, None),
+        ("Llevar el certificado de matrícula a secretaría", None, "2026-09-30T16:00:00Z", 0, None),
+        ("Leer el paper que recomendó el profe", calc_name, None, 0, None)], rows
+    study, errand, paper = (cards[t] for t in list(TODOS)[:3])
+    assert f"{fis_name}: Estudiar cap. 3" in plain(study["text"]) and "Para: vie 2 oct" in plain(study["text"])
+    assert "Te lo recuerdo 24 h y 3 h antes" in plain(study["text"])
+    assert "Para: mié 30 sep, 11:00" in plain(errand["text"]) and "Sin fecha" in plain(paper["text"])
+    for card, row in zip((study, errand, paper), rows):
+        assert [(b["text"], b["callback_data"]) for b in buttons(card)] == [("✅ Hecho", f"v1:t:{row['id']}:ok")]
+    pendientes_md.append("## «anota: …» en el chat de Vinci\n")
+    for trigger in TODOS:
+        card = cards[trigger]
+        pendientes_md.append(f"El capitán: «anota: {trigger}»\n\n```\n"
+                             + (plain(card["text"]) + "\n" + "".join(f"[{b['text']}]" for b in buttons(card)) + "\n\n"
+                                if card else "") + f"Vinci: {readable(replies[trigger])}\n```\n")
+
+    week = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué tengo esta semana?"), "vinci_bot", "Tu lista")
+    for expected in ("Estudiar cap. 3 (vie 2 oct)",
+                     "Llevar el certificado de matrícula a secretaría (mié 30 sep, 11:00)", "Leer el paper que recomendó el profe", "Informe de laboratorio 1"):
+        assert expected in readable(week), f"falta «{expected}» en «¿qué tengo esta semana?»:\n{readable(week)}"
+    assert "Examen parcial" not in readable(week), "lo marcado como entregado no sale en la semana"
+    pendientes_md += ["## «¿qué tengo esta semana?»\n", f"```\n{readable(week)}\n```\n"]
+    take("Ya lo entregué y la lista de pendientes")
+
+    run([bot, "sondeo"], T_VINCI)
+    reminded = take("Sondeo: recordatorio de un pendiente (sin modelo)")
+    assert len(reminded) == 1, [m["text"][:60] for m in reminded]
+    assert "Llevar el certificado de matrícula a secretaría" in reminded[0]["text"] and \
+        "vence en 2 h" in reminded[0]["text"]
+    assert [(b["text"], b["callback_data"]) for b in buttons(reminded[0])] == [("✅ Hecho", f"v1:t:{rows[1]['id']}:ok")]
+    requests_before = len(llm.requests)
+    run([bot, "resumen"], T_VINCI)
+    daily = take("Resumen de las 7:00 con tu lista")
+    assert len(llm.requests) == requests_before, "el recordatorio y el resumen no llaman al modelo"
+    assert len(daily) == 1, [m["text"][:60] for m in daily]
+    daily_text = plain(daily[0]["text"])
+    for expected in ("📌 Tu lista (3)", f"vie 2 oct — {fis_name}: Estudiar cap. 3",
+                     "mié 30 sep, 11:00 — Llevar el certificado de matrícula a secretaría",
+                     f"• {calc_name}: Leer el paper que recomendó el profe", "Ya entregaste 1 de esta semana"):
+        assert expected in daily_text, f"falta «{expected}» en el resumen:\n{daily_text}"
+    assert "Examen parcial" not in daily_text, "el resumen no insiste con lo que ya entregó"
+    done_buttons = [b for b in buttons(daily[0]) if b["callback_data"].startswith("v1:t:")]
+    assert [b["callback_data"] for b in done_buttons] == [f"v1:t:{rows[i]['id']}:ok" for i in (1, 0, 2)]
+    assert done_buttons[1]["text"] == "✅ Estudiar cap. 3" and done_buttons[0]["text"].endswith("…")
+    pendientes_md += ["## Recordatorio del sondeo (2 h antes, sin modelo)\n",
+                      f"```\n{plain(reminded[0]['text'])}\n[✅ Hecho]\n```\n",
+                      "## Resumen de las 7:00 (sin el examen marcado como entregado)\n",
+                      f"```\n{daily_text}\n" + "".join(f"[{b['text']}]" for b in buttons(daily[0])) + "\n```\n"]
+
+    steps = [press(reminded[0], f"v1:t:{rows[1]['id']}:ok", "Hecho"),
+             press(daily[0], done_buttons[1]["callback_data"], "Hecho")]
+    assert [b["text"] for b in buttons(reminded[0])] == ["↩️ Deshacer: Llevar el certificado de ma…"]
+    assert [b["text"] for b in buttons(daily[0]) if b["callback_data"].startswith("v1:t:")][:2] == \
+        [done_buttons[0]["text"], "↩️ Deshacer: Estudiar cap. 3"], "solo cambia el botón pulsado"
+    steps.append(press(daily[0], f"v1:t:{rows[0]['id']}:no", "vuelve a tu lista"))
+    assert [b["text"] for b in buttons(daily[0]) if b["callback_data"].startswith("v1:t:")][1] == \
+        "✅ Estudiar cap. 3", "deshacer en el resumen devuelve el botón con su pendiente"
+    steps.append(press(daily[0], done_buttons[1]["callback_data"], "Hecho"))
+    assert [bool(r["done_at"]) for r in todo_rows()] == [True, True, False]
+    run([bot, "sondeo"], T_VINCI)
+    assert take("Sondeo: nada que recordar") == []
+    pendientes_md += ["## El capitán pulsa «✅ Hecho» en el recordatorio y en el resumen\n",
+                      "```\n" + "\n".join(steps) + "\n```\n"]
+    report.append("«✅ Ya lo entregué»: cada recordatorio de una entrega lo trae; al pulsarlo en el del examen de "
+                  "Física (en papel) dejó de estar pendiente para `aula tareas`, «¿qué tengo esta semana?» y el "
+                  "resumen de las 7:00, y el botón pasó a «↩️ Aún no lo entregué», que lo deshace")
+    report.append("Lista de pendientes: «anota: …» en el chat de Vinci guardó cada pendiente con su materia y su fecha "
+                  "(«el viernes» → vie 2 oct; una fecha pasada se rechaza) y mostró su tarjeta con «✅ Hecho»; salió en "
+                  "«¿qué tengo esta semana?» y en el resumen de las 7:00; el sondeo mandó su recordatorio 2 h antes, "
+                  "sin llamar al modelo; «✅ Hecho» en el recordatorio y en el resumen lo cerró y ya no se recordó más")
+    take("Pendientes cerrados")
 
     # 7f. notebook capture straight on the subject bots
     voice = (FILES / "nota-de-voz.ogg").read_bytes()
@@ -1952,6 +2112,24 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
 
     for job_id in vinci_jobs.values():
         run([hermes, "-p", "vinci", "cron", "resume", job_id], T_VINCI)
+
+    # 7j. The next morning, 2 h before Física's exam: marked as handed in, it gets no 3 h reminder; undone, it does
+    run([bot, "sondeo"], T_EXAM)
+    quiet = take("Sondeo · jue 1 oct 06:00, con el examen marcado como entregado")
+    assert not [m for m in quiet if "Examen parcial" in readable(m)], [readable(m)[:60] for m in quiet]
+    undone = json.loads(run([bot, "boton", exam_undo], T_EXAM).stdout)
+    assert "vuelve a tus pendientes" in undone["aviso"], undone
+    run([bot, "sondeo"], T_EXAM)
+    loud = [m for m in take("Sondeo · jue 1 oct 06:00, tras «↩️ Aún no lo entregué»") if "Examen parcial" in readable(m)]
+    assert len(loud) == 1 and "vence en 2 h" in loud[0]["text"] and SUBMITTED in [b["text"] for b in buttons(loud[0])]
+    pendientes_md += ["## Al día siguiente, 2 h antes del examen\n",
+                      "Marcado como entregado, el sondeo de las 06:00 no manda el recordatorio de 3 h. Tras "
+                      f"«↩️ Aún no lo entregué» (aviso: «{undone['aviso']}»), el siguiente sondeo sí:\n",
+                      f"```\n{plain(loud[0]['text'])}\n"
+                      + "".join(f"[{b['text']}]" for b in buttons(loud[0])) + "\n```\n"]
+    (artifact / "pendientes.md").write_text("\n".join(pendientes_md), encoding="utf-8")
+    report.append("«Ya lo entregué» detiene de verdad los recordatorios: al día siguiente, 2 h antes del examen de "
+                  "Física, el sondeo no mandó el de 3 h mientras estaba marcado; tras «↩️ Aún no lo entregué», sí")
 
     # 8. setup.sh with the team in place (idempotent), just as the aula virtual stops taking the token -------
     canvas.token = "7~otro-token-que-el-aula-si-acepta"

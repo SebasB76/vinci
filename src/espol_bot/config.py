@@ -12,6 +12,15 @@ from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_v
 
 PROFILE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 DEFAULT_TELEGRAM_API = "https://api.telegram.org"
+# Removed everywhere, whatever a platform list says (Hermes applies this last).
+BLOCKED_TOOLSETS = [
+    "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
+    "vision", "video", "image_gen", "video_gen", "tts", "todo", "connections", "homeassistant",
+    "spotify", "x_search", "a2a",
+]
+# Blocked by default and switched on per bot in config.toml ([hermes.herramientas]); a subject bot also has
+# web and search off.
+SWITCHABLE_TOOLSETS = [*BLOCKED_TOOLSETS, "web", "search"]
 
 
 @dataclass(frozen=True)
@@ -101,6 +110,10 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
 def _names(value: object, key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
         raise ConfigError(f"[hermes.herramientas] {key} debe ser una lista de nombres de herramientas, ej. [\"terminal\"]")
+    unknown = [v.strip() for v in value if v.strip() not in SWITCHABLE_TOOLSETS]
+    if unknown:
+        raise ConfigError(f"[hermes.herramientas] {key}: no conozco {', '.join(unknown)}. Las que se pueden activar: "
+                          f"{', '.join(SWITCHABLE_TOOLSETS)}")
     return tuple(dict.fromkeys(v.strip() for v in value))
 
 

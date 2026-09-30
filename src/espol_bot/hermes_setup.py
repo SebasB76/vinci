@@ -65,7 +65,14 @@ from aula_core.config import (
     update_secret_values,
 )
 from espol_bot import characters, materias, skill_check
-from espol_bot.config import DEFAULT_TELEGRAM_API, BotConfig, TelegramSecrets, captain_id, token_key
+from espol_bot.config import (
+    BLOCKED_TOOLSETS,
+    DEFAULT_TELEGRAM_API,
+    BotConfig,
+    TelegramSecrets,
+    captain_id,
+    token_key,
+)
 from espol_bot.telegram import Telegram, TelegramError
 
 MARKER = "Generado por setup.sh de espol-academic-bot"
@@ -77,15 +84,6 @@ TEMPLATES = REPO_ROOT / "hermes"
 # `skills` is what makes skills.auto_load pin each bot's own skill (see the docstring).
 VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-vinci"]
 SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "skills", "mcp-materia", "vinci-paginas"]
-# Removed everywhere, whatever a platform list says (Hermes applies this last).
-BLOCKED_TOOLSETS = [
-    "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
-    "vision", "video", "image_gen", "video_gen", "tts", "todo", "connections", "homeassistant",
-    "spotify", "x_search", "a2a",
-]
-# Blocked by default and switched on per bot in config.toml ([hermes.herramientas]); a subject bot also has
-# web and search off.
-SWITCHABLE_TOOLSETS = [*BLOCKED_TOOLSETS, "web", "search"]
 APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 # Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
 # 25K verbatim tail already weigh ~50K, so a lower trigger would summarize again every question or two.
@@ -150,12 +148,6 @@ class Setup:
         self.bot_bin = self.bin_dir / "espol-bot"
         if not self.bot_bin.exists():
             raise ConfigError(f"Falta {self.bot_bin}; corre ./setup.sh para instalar las dependencias.")
-        switched = [*cfg.vinci_toolsets, *cfg.subject_toolsets, *(t for names in cfg.subject_toolsets_by_code.values()
-                                                                  for t in names)]
-        unknown = list(dict.fromkeys(t for t in switched if t not in SWITCHABLE_TOOLSETS))
-        if unknown:
-            raise ConfigError(f"[hermes.herramientas] no conozco {', '.join(unknown)}. Las que se pueden activar: "
-                              f"{', '.join(SWITCHABLE_TOOLSETS)}")
         self.configured: list[tuple[str, str]] = []  # (profile, its pinned skill) for check_skills
         self.secrets = load_secret_values()
         self.captain = captain_id(self.secrets)

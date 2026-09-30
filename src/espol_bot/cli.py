@@ -6,6 +6,8 @@
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
     espol-bot feeds                  securely save the iCal and announcement feed URLs
     espol-bot probar                 send a test message from Vinci to your Telegram
+    espol-bot doctor                 system health: last poll and sync, token chain, feeds (read-only;
+                                     exits 1 when something is broken)
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
     espol-bot agenda --curso CÓDIGO  a subject bot's cron gate: prints {"wakeAgent": false} unless a
                                      class brief is due or Vinci handed something over
@@ -17,6 +19,7 @@
                                      the captain forwarded; the plugin deleted it from the chat)
     espol-bot saludo [--curso CÓDIGO]
                                      a bot's answer to /start, which Hermes ignores (the plugin calls it)
+    espol-bot estado                 the same health report for Vinci's /estado (the plugin calls it)
     espol-bot pagina --curso CÓDIGO <archivo_id> <página>
                                      a page of the subject's PDF as a JPEG, for the plugin's ver_pagina
 
@@ -88,6 +91,22 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
     return server.serve()
 
 
+def _health(cfg, *, telegram: bool) -> int:
+    from espol_bot import health
+    now = now_utc()
+    conn = health.open_readonly(cfg.core.db_path)
+    try:
+        found = health.checks(cfg, conn, now)
+    finally:
+        if conn is not None:
+            conn.close()
+    if telegram:
+        print(json.dumps({"respuesta": health.telegram_report(found, now, cfg.core.tz)}, ensure_ascii=False))
+        return 0
+    print(health.terminal_report(found, now, cfg.core.tz))
+    return 1 if any(c.level == health.FAIL for c in found) else 0
+
+
 def _reseed(cfg, *, from_stdin: bool = False) -> int:
     from aula_core import Aula
     from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -134,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("feeds", help="guardar de forma privada los feeds iCal y RSS/Atom")
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu Telegram")
+    sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización, token y feeds (solo lectura)")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
     p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia")
@@ -149,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("token", help="configurar el bot de un token leído por stdin (lo usa el plugin vinci-botones)")
     p = sub.add_parser("saludo", help="la respuesta de un bot a /start (la usa el plugin vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
+    sub.add_parser("estado", help="la respuesta de Vinci a /estado (la usa el plugin vinci-botones)")
     p = sub.add_parser("pagina", help="una página de un PDF como imagen (la usa ver_pagina, del plugin vinci-botones)")
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("archivo_id", type=int)
@@ -161,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "hermes-perfil":
             from espol_bot import hermes_setup
             return hermes_setup.provision(cfg, hermes_bin=args.hermes)
+        if args.cmd in ("doctor", "estado"):
+            return _health(cfg, telegram=args.cmd == "estado")
         _logging(cfg)
         if args.cmd == "resembrar":
             return _reseed(cfg, from_stdin=args.stdin)

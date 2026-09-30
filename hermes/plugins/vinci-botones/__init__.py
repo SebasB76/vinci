@@ -11,6 +11,8 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
   from the chat and hand the token to `espol-bot token` on stdin.
 - /start: Hermes ignores it, so the bot greets with `espol-bot saludo` (who it is, and for a
   subject bot when its next brief comes).
+- /estado, in Vinci's chat: the system health from `espol-bot estado` (last poll and sync, token
+  chain, feeds), without waking the model.
 
 A subject bot also gets the tool `ver_pagina` (toolset vinci-paginas): a page of one of its own
 downloaded PDFs, from `espol-bot pagina`, handed to the model as an image. A scanned book has
@@ -36,6 +38,7 @@ SUBJECT = "{{CODIGO}}"  # this bot's subject code; empty for Vinci
 PATTERN = r"^v1:"
 TOKEN_RE = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}\b")
 START_RE = re.compile(r"^/start(?:@\w+)?(?:\s|$)")
+STATUS_RE = re.compile(r"^/estado(?:@\w+)?(?:\s|$)")
 # Telegram gives up on a press left unanswered for a few seconds (the spinner times out, the toast is
 # lost): a press whose work takes longer than this is answered first and done after.
 QUICK = 3
@@ -105,7 +108,8 @@ def register(ctx):
             created = getattr(message, "managed_bot_created", None)
             match = None if created is not None else TOKEN_RE.search(message.text or message.caption or "")
             start = created is None and match is None and START_RE.match(message.text or "")
-            if created is None and match is None and not start:
+            status = not SUBJECT and created is None and match is None and STATUS_RE.match(message.text or "")
+            if created is None and match is None and not start and not status:
                 return
             try:
                 if created is not None:
@@ -113,8 +117,8 @@ def register(ctx):
                 elif match is not None:
                     await _on_token(context, message, match.group(0))
                 elif _is_captain(message.from_user):
-                    await _say(context, message.chat_id,
-                               await _run("saludo", *(("--curso", SUBJECT) if SUBJECT else ())))
+                    command = ("estado",) if status else ("saludo", *(("--curso", SUBJECT) if SUBJECT else ()))
+                    await _say(context, message.chat_id, await _run(*command))
             except Exception as exc:  # a failed reply must not let the update through to Hermes
                 logger.error("filtro: %s", exc)
             raise ApplicationHandlerStop

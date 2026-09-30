@@ -55,7 +55,10 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
   8. Canvas tokens rotate through three generations without interrupting polls. When every
      token dies, maintenance says the chain is cut (never that a replacement works) and stops
      calling Canvas with the dead tokens; the token-free calendar and announcement feeds still
-     deliver useful alerts; a hidden CLI reseed restores the renewal chain. setup.sh then runs
+     deliver useful alerts; a hidden CLI reseed restores the renewal chain. `espol-bot doctor` reads
+     each of those moments (all healthy, three hours with nothing running, the chain cut, reseeded)
+     without calling Canvas or the chat, and the captain's /estado in Vinci's chat, served by the
+     plugin and never by the model, shows a night without poll or maintenance. setup.sh then runs
      a third time with the team in place and reports the refused token instead of «✓ Canvas
      responde».
   9. the party: Vinci got its wizard as its Telegram photo at setup (once), and no bot plays a
@@ -849,6 +852,21 @@ def test_e2e(tmp_path):
 
         # 3. polls -----------------------------------------------------------------------
         bot = str(VENV_BIN / "espol-bot")
+        estado_md = ["# Estado del sistema: `espol-bot doctor` y /estado\n",
+                     "Lo que ve el capitán en cada momento de la prueba. Solo lee lo que dejaron el sondeo y el "
+                     "mantenimiento: ninguna consulta al aula, ningún mensaje, ningún modelo.\n"]
+
+        def doctor(label: str, now: str, broken: bool) -> str:
+            mark_canvas = len(canvas.requests)
+            proc = run([bot, "doctor"], now, check=False)
+            assert proc.returncode == (1 if broken else 0), f"doctor ({label}): {proc.returncode}\n{proc.stdout}{proc.stderr}"
+            assert len(canvas.requests) == mark_canvas and take(f"doctor · {label}") == [], "doctor no toca el aula ni el chat"
+            estado_md.append(f"## `espol-bot doctor` · {label}\n\n```\n{normalize(proc.stdout).rstrip()}\n```\n")
+            return proc.stdout
+
+        installed = doctor("recién instalado, antes del primer sondeo", T_POLL1, broken=False)
+        assert "⚠️ Sondeo: todavía no registra ninguna corrida" in installed, installed
+        assert "⚠️ Token de Canvas: todavía no sé su edad" in installed, installed
         run([bot, "sondeo"], T_POLL1)
         poll1 = take("Sondeo 1 · lun 28 sep 07:40")
         assert len(poll1) == 2, poll1
@@ -998,6 +1016,17 @@ def test_e2e(tmp_path):
         assert canvas.token_ids[first] in canvas.deleted, "el antecesor ya reemplazado se borró de Canvas"
         run([bot, "sondeo"], T_RENEW_2)
         assert take("Renovación automática · tres generaciones") == [], "renovar no manda ruido al chat"
+        healthy = doctor("todo al día (tercera generación del token)", T_RENEW_2, broken=False)
+        assert "✅ todo en orden" in healthy and "⚠️" not in healthy and "❌" not in healthy, healthy
+        for line in ("✅ Sondeo: corrió hace un momento", "✅ Mantenimiento: corrió hace un momento",
+                     "✅ Token de Canvas: renovado hace un momento (22:22); la cadena está sana",
+                     "✅ Calendario (iCal): activo", "✅ Anuncios (RSS/Atom): activo"):
+            assert line in healthy, f"falta «{line}»:\n{healthy}"
+        stale = doctor("tres horas después, con la PC apagada (nada corrió)", "2026-09-30T01:22:00-05:00", broken=True)
+        for line in ("❌ Sondeo: no corre desde hace 3 h (mar 29 sep, 22:22); debería cada 30 min", "❌ Mantenimiento: no corre desde",
+                     "❌ Token de Canvas: se creó hace 3 h", "⚠️ Aula virtual: leída por última vez hace 3 h",
+                     "⚠️ Calendario (iCal): leído por última vez hace 3 h", "→ hermes gateway status"):
+            assert line in stale, f"falta «{line}»:\n{stale}"
         report.append("La renovación creó y verificó tres generaciones de token en segundo plano (leyendo el valor "
                       "de visible_token, como lo devuelve Canvas); después de expirar cada antecesor, el sondeo "
                       "siguió leyendo con el sucesor, borró el huérfano de una renovación rota sin tocar otros "
@@ -1025,6 +1054,10 @@ def test_e2e(tmp_path):
         assert take("Cadena cortada · mantenimiento y sondeo siguientes") == [], "el aviso no se repite"
         assert all(path.startswith("/feeds/") for _, path in canvas.requests[mark:]), \
             "con la cadena cortada, nadie vuelve a llamar a Canvas con un token muerto"
+        cut_health = doctor("la cadena del token se cortó", T_RENEW_5, broken=True)
+        assert "❌ Token de Canvas: la cadena de renovación está cortada" in cut_health, cut_health
+        assert "espol-bot resembrar" in cut_health and "✅ Calendario (iCal): activo" in cut_health, cut_health
+        assert "✅ Sondeo" in cut_health and "✅ Mantenimiento" in cut_health, cut_health
         report.append("Con el token actual y la sonda vencidos, el mantenimiento avisó que la cadena se cortó y cómo "
                       "resembrarla (no que el reemplazo funciona), y desde entonces ni el mantenimiento ni el sondeo "
                       "llamaron a Canvas con esos tokens")
@@ -1078,6 +1111,13 @@ END:VCALENDAR
         run([bot, "sondeo"], T_RENEW_5)
         after_reseed = take("Cadena resembrada")
         assert not any("cadena automática del token" in message["text"] for message in after_reseed)
+        reseeded_health = doctor("después de resembrar", T_RENEW_5, broken=False)
+        assert "✅ Token de Canvas: renovado hace un momento" in reseeded_health, reseeded_health
+        report.append("`espol-bot doctor` mostró sondeo, lectura del aula, mantenimiento, edad del token y feeds sin "
+                      "consultar el aula ni escribir al chat: todo ✅ con la cadena sana; tres horas sin que nada "
+                      "corriera, ❌ en el sondeo, el mantenimiento y el token vencido (con qué revisar); con la "
+                      "cadena cortada, ❌ en el token y cómo resembrarlo, con los feeds todavía activos; y ✅ otra "
+                      "vez tras resembrar")
         report.append("Tras el corte total, `espol-bot resembrar` leyó el token con entrada oculta, lo verificó y "
                       "reactivó la cadena sin imprimirlo ni enviarlo por Telegram")
 
@@ -1150,6 +1190,7 @@ END:VCALENDAR
 
     requests_log = "\n".join(f"{method} {safe_canvas_path(path)}" for method, path in canvas.requests)
     (artifact / "canvas_requests.log").write_text(requests_log + "\n", encoding="utf-8")
+    (artifact / "estado.md").write_text(normalize("\n".join(estado_md)), encoding="utf-8")
     if vinci_section:
         (artifact / "equipo.md").write_text(normalize("\n".join(equipo_md)), encoding="utf-8")
         (artifact / "material.md").write_text(normalize("\n".join(material_md)), encoding="utf-8")
@@ -1196,14 +1237,15 @@ END:VCALENDAR
         "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
         "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
         "(«Ya lo entregué» y la lista de pendientes), "
-        "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
+        "`estado.md` (`espol-bot doctor` y /estado), `hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
         "`setup.log`.\n",
     ]
     (artifact / "REPORTE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
-               equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env, **_) -> None:
+               equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env, estado_md,
+               **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -1317,6 +1359,26 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     gateway.start()
     polling({"vinci_bot"}, mark_calls)
     take("Gateway encendido (solo Vinci)")
+
+    # /estado: the health report, from the plugin and never from the model; nothing ran overnight
+    status = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "/estado"), "vinci_bot", "Estado de Vinci")
+    status_text = plain(status["text"])
+    for line in ("❌ Sondeo: no corre desde hace 9 h (mar 29 sep, 23:43)", "❌ Mantenimiento: no corre desde hace 9 h",
+                 "❌ Token de Canvas: se creó hace 9 h", "⚠️ Aula virtual: leída por última vez hace 9 h",
+                 "En una terminal: hermes gateway status"):
+        assert line in status_text, f"falta «{line}» en /estado:\n{status_text}"
+    assert "<b>Sondeo</b>" in status["text"] and "<code>" in status["text"]
+    consumed(BOT_TOKEN, telegram.send_text(BOT_TOKEN, STRANGER, "/estado"))
+    time.sleep(1)
+    assert not [m for m in telegram.messages if str(m.get("chat_id")) == str(STRANGER)], "/estado solo para el capitán"
+    asked = [r for r in llm.requests for m in r.get("messages") or []
+             if m.get("role") == "user" and flatten(m.get("content")).strip() == "/estado"]
+    assert not asked, "/estado no pasa por el modelo"
+    estado_md.append(f"## /estado en el chat de Vinci · mié 30 sep 08:30, tras una noche sin sondeo ni mantenimiento"
+                     f"\n\n```\n{status_text}\n```\n\nUn extraño que manda /estado no recibe nada.\n")
+    report.append("/estado en el chat de Vinci contestó sin el modelo, con el sondeo, el mantenimiento y el token en ❌ "
+                  "tras una noche sin correr (y qué revisar); a un extraño no le contestó nada")
+    take("/estado")
 
     # 6. Vinci builds the team from chat ---------------------------------------------------------
     mark = len(telegram.messages)

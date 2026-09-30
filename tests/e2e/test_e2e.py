@@ -1380,7 +1380,8 @@ END:VCALENDAR
         *[f"- {label}: {n}" for label, n in counts.items()],
         "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `material.md` (el "
         "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
-        "(la página que recibió el modelo), `ocr.md` (los escaneos leídos una vez con OCR), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
+        "(la página que recibió el modelo), `ocr.md` (los escaneos leídos una vez con OCR), `party.md` (con la foto "
+        "de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
         "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
         "material» y las citas de memoria que no pasaron), `notas.md` (la calculadora de notas), `estado.md` "
         "(`espol-bot doctor` y /estado), "

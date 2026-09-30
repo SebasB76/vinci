@@ -199,6 +199,21 @@ TODOS = {
 }
 SUBMITTED = "✅ Ya lo entregué"
 
+# «cítame el material sobre …» (to a subject bot, or «… de Cálculo sobre …» to Vinci): (search, its English,
+# what the model knows when the material has nothing on it)
+CITED = {
+    "la regla de la cadena": ("regla de la cadena", "chain rule", None),
+    "la transformada de Laplace": ("transformada de Laplace", "Laplace transform",
+                                   "la transformada de Laplace convierte una función del tiempo en una función de s "
+                                   "y sirve para resolver ecuaciones diferenciales."),
+}
+# A model citing from memory, with no tool in its turn: a page the file does not have, a book that is not in
+# the material, and a real page it read before with an invented link.
+FROM_MEMORY = ("La regla de L'Hôpital sale en 📄 [Capítulo 3 - Derivadas.pdf, página 9]"
+               "(https://aulavirtual.espol.edu.ec/courses/101/files/5001), con más ejemplos en 📄 Stewart - Cálculo de "
+               "una variable.pdf, página 120. Se apoya en la derivada de una composición: 📄 [Capítulo 3 - "
+               "Derivadas.pdf, página 2](https://aulavirtual.espol.edu.ec/files/5001).")
+
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
 SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina"} | SKILL_TOOLS
@@ -345,8 +360,14 @@ class Script:
         return {"content": "Hola, soy Vinci. ¿En qué te ayudo?"}
 
     def vinci_material(self, text: str, called: list[str], results: list[str]) -> dict | None:
-        """Vinci reading an outside link: one an assignment carries (found in the catalog) or an announcement's."""
+        """Vinci reading an outside link: one an assignment carries (found in the catalog) or an announcement's;
+        or citing the material."""
         last = _json(results[-1]) if results else None
+        for topic, (question, english, general) in CITED.items():
+            if f"cítame el material de Cálculo sobre {topic}" in text:
+                if not called:
+                    return _call("mcp__vinci__buscar_material", pregunta=question, traduccion=english, materia="cálculo")
+                return {"content": self.cited_answer(last, "Cálculo", general)}
         if "guía del laboratorio" in text:
             if not called:
                 return _call("mcp__vinci__archivos", materia="física", nombre="laboratorio")
@@ -423,6 +444,13 @@ class Script:
             extra = f", con {photos} foto(s) ya guardada(s) en tu cuaderno" if photos else ""
             return {"content": f"📨 De parte de Vinci: recibí {count} cosa(s){extra}. "
                                "Empieza por repasar la regla de la cadena."}
+        for topic, (question, english, general) in CITED.items():
+            if f"cítame el material sobre {topic}" in text:
+                if not called:
+                    return _call("mcp__materia__buscar_material", pregunta=question, traduccion=english)
+                return {"content": self.cited_answer(_json(results[-1]), name, general)}
+        if "en qué página está la regla de L'Hôpital" in text:
+            return {"content": FROM_MEMORY}
         flow = self.material(text, called, results)
         if flow is not None:
             return flow
@@ -505,6 +533,18 @@ class Script:
             return {"content": "🖼️ La lectura es un escaneo, así que miré su página 1 como imagen: la suma de "
                                "vectores por el método del paralelogramo. " + str(results[-1])[:200]}
         return None
+
+    @staticmethod
+    def cited_answer(data, subject: str, general: str | None) -> str:
+        """A model that copies the tools' citations, and says so when the material has nothing."""
+        if not isinstance(data, dict):
+            return _problem(json.dumps(data))
+        hits = data.get("resultados") or []
+        if not hits:
+            said = (f"No está en el material de {subject}." if data.get("en_el_material") is False
+                    else "[la búsqueda no dijo si está en el material]")
+            return f"{said} Por conocimiento general (no sale del material): {general}"
+        return f"Según tu material: {hits[0]['fragmento'][:140]} " + " ".join(h["cita"] for h in hits[:2])
 
     @staticmethod
     def search_answer(data: dict) -> str:
@@ -1236,16 +1276,17 @@ END:VCALENDAR
         "\nArchivos: `notificaciones.md`, `equipo.md`, `horario.md`, `briefs.md`, `cuadernos.md`, `material.md` (el "
         "catálogo, el libro principal, las búsquedas y los enlaces, como los vio el modelo), `pagina-escaneada.jpg` "
         "(la página que recibió el modelo), `party.md` (con la foto de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
-        "(«Ya lo entregué» y la lista de pendientes), "
-        "`estado.md` (`espol-bot doctor` y /estado), `hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
+        "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
+        "material» y las citas de memoria que no pasaron), `estado.md` (`espol-bot doctor` y /estado), "
+        "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
         "`setup.log`.\n",
     ]
     (artifact / "REPORTE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
-               equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env, estado_md,
-               **_) -> None:
+               equipo_md, horario_md, briefs_md, party_md, material_md, tools_seen, pwned, secrets, base_env,
+               normalize, estado_md, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -1656,8 +1697,9 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                      "  - enlace: Guía de optimización (página del profesor) [Semana 4: Aplicaciones de la derivada · "
                      "ANTES de clase en vivo]", "con «traduccion» si el material está en inglés"):
         assert expected in task, f"falta «{expected}» en la tarea del brief:\n{task}"
-    assert "Taller 3: Derivadas" in readable(brief) and "📄 Capítulo 3 - Derivadas.pdf" in readable(brief), \
-        "el brief cita el material del curso"
+    assert "Taller 3: Derivadas" in readable(brief) and "📄 [Capítulo 3 - Derivadas.pdf, página 2]" \
+        f"({canvas.base}/courses/101/files/5001)" in readable(brief), \
+        "el brief cita el material del curso, con el enlace del aula que le puso la revisión de citas"
     assert "Práctica 4: Regla de la cadena" in readable(brief), "el brief incluye lo que vence en el práctico"
     handoff_tasks = cron_tasks("entrega_de_vinci")
     assert any("foto #" in t for t in handoff_tasks) and any("Examen parcial" in t for t in handoff_tasks)
@@ -2064,6 +2106,72 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "el documento del anuncio (la copia que ya abrió el bot de Física). Ninguna de esas solicitudes llevó "
                   "token, cookie ni credencial, aunque cada sitio puso una cookie en el camino")
     take("Enlaces sin cuenta: Google Docs, Drive y uno privado")
+
+    # 7f4. Verifiable citations: the tools hand out each page's citation and record what each bot was shown; an
+    # answer's citations are checked against that record before it is sent (the plugin), and a question the material
+    # does not cover is answered «No está en el material»
+    citas_md = ["# Citas verificables: archivo, página y enlace del aula\n"]
+    calc_url = f"{canvas.base}/courses/101/files/5001"
+    for chat, user, who, ask in ((MATG, "vinci_calculo_bot", "El bot de Cálculo", "cítame el material sobre"),
+                                 (BOT_TOKEN, "vinci_bot", "Vinci", "cítame el material de Cálculo sobre")):
+        cited = turn(lambda: telegram.send_text(chat, CAPTAIN, f"{ask} la regla de la cadena"), user, "Según tu material")
+        found = tool_result(lambda d: "resultados" in d and d["resultados"])["resultados"]
+        assert all(h["cita"] == (f"📄 [{h['archivo']}, {h['unidad']} {h['pagina']}]({h['url']})" if h.get("url")
+                                 else f"📄 {h['archivo']}, {h['unidad']} {h['pagina']}") for h in found), found
+        chapter = next(h for h in found if h["archivo_id"] == 5001)
+        assert chapter["cita"] == f"📄 [Capítulo 3 - Derivadas.pdf, página 2]({calc_url})", chapter
+        assert chapter in found[:2] and all(h["cita"] in readable(cited) for h in found[:2]), readable(cited)
+        assert "⚠️" not in readable(cited), "una cita que salió de las herramientas pasa tal cual"
+        missing = turn(lambda: telegram.send_text(chat, CAPTAIN, f"{ask} la transformada de Laplace"), user,
+                       "No está en el material")
+        empty = tool_result(lambda d: "resultados" in d and not d["resultados"])
+        assert empty["en_el_material"] is False and "«No está en el material»" in empty["nota"], empty
+        assert readable(missing).startswith("No está en el material") and "📄" not in readable(missing)
+        hits = [{k: h[k] for k in ("archivo", "pagina", "fragmento", "cita")} for h in found[:3]]
+        citas_md += [f"## {who}: una respuesta con material\n",
+                     f"El capitán: «{ask} la regla de la cadena». `buscar_material` devolvió (fragmento y cita):\n",
+                     f"```json\n{json.dumps(hits, ensure_ascii=False, indent=1)}\n```\n",
+                     f"Llegó a Telegram:\n\n```\n{readable(cited)}\n```\n",
+                     f"## {who}: lo que el material no trae\n",
+                     f"El capitán: «{ask} la transformada de Laplace». `buscar_material` devolvió:\n",
+                     f"```json\n{json.dumps(empty, ensure_ascii=False, indent=1)}\n```\n",
+                     f"Llegó a Telegram:\n\n```\n{readable(missing)}\n```\n"]
+    shown = {(r["bot"], r["file_id"], r["page"]) for r in db_rows("SELECT * FROM shown_pages")}
+    assert ("MATG1049", 5001, 2) in shown and ("vinci", 5001, 2) in shown, shown
+
+    memory = turn(lambda: telegram.send_text(MATG, CAPTAIN, "¿en qué página está la regla de L'Hôpital?"),
+                  "vinci_calculo_bot", "L'Hôpital")
+    checked = readable(memory)
+    assert "⚠️ «Capítulo 3 - Derivadas.pdf, página 9» (esa página no salió del material que leí" in checked, checked
+    assert "⚠️ «Stewart - Cálculo de una variable.pdf, página 120» (ese archivo no está en el material" in checked
+    assert f"📄 [Capítulo 3 - Derivadas.pdf, página 2]({calc_url})" in checked, checked
+    assert "aulavirtual.espol.edu.ec" not in checked, "ningún enlace inventado llega al capitán"
+    log = [line.split(": ", 1)[-1] for line in (data_dir / "bot.log").read_text(encoding="utf-8").splitlines()
+           if ": citas MATG1049: " in line]
+    assert [line.split(" «")[0] for line in log[-3:]] == [
+        "citas MATG1049: página no leída", "citas MATG1049: archivo desconocido", "citas MATG1049: enlace corregido"], log
+    mark = len(llm.requests)
+    turn(lambda: telegram.send_text(MATG, CAPTAIN, "gracias"), "vinci_calculo_bot", "Hola")
+    replayed = [flatten(m.get("content")) for req in llm.requests[mark:] for m in req.get("messages") or []
+                if m.get("role") == "assistant" and "L'Hôpital" in flatten(m.get("content"))]
+    assert replayed and all("página 9](" not in text and "⚠️" in text for text in replayed), \
+        "la conversación guarda lo que se envió, no la cita inventada"
+    citas_md += ["## Citas de memoria, sin herramientas en ese turno\n",
+                 "El capitán: «¿en qué página está la regla de L'Hôpital?». El modelo contestó de memoria:\n",
+                 f"```\n{FROM_MEMORY}\n```\n",
+                 "Antes de enviarse, el plugin corrió `espol-bot citas`: el capítulo 3 tiene 3 páginas (la 9 no se la "
+                 "mostró ninguna herramienta), el Stewart no está en el material, y la página 2 sí la leyó, pero con "
+                 "otro enlace. Llegó a Telegram (y así quedó en la conversación):\n",
+                 f"```\n{checked}\n```\n", "Lo que anotó `bot.log`:\n", "```\n" + "\n".join(log[-3:]) + "\n```\n"]
+    (artifact / "citas.md").write_text(normalize("\n".join(citas_md)), encoding="utf-8")
+    report.append("Citas verificables: `buscar_material` y `leer_archivo` traen la cita de cada página lista para "
+                  "copiar (archivo, página o diapositiva y el enlace del aula) y guardan qué páginas vio cada bot. El "
+                  "bot de Cálculo y Vinci citaron el capítulo 3 con su enlace; sobre la transformada de Laplace, que el "
+                  "material no trae, la búsqueda dijo `en_el_material: false` y ambos contestaron «No está en el "
+                  "material» antes del conocimiento general, sin cita. Un modelo que cita de memoria no llega así al "
+                  "capitán: antes de enviarse, la página 9 que el capítulo no tiene y un libro que no está en el "
+                  "material se cambiaron por un aviso, y el enlace inventado de la página 2 se corrigió al del aula")
+    take("Citas verificables")
 
     # 7g. Vinci reads the notebooks but cannot write them or reach a terminal
     read = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué hay en el cuaderno de cálculo?"),

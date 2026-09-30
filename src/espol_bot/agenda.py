@@ -171,13 +171,14 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
             lines.append(f"  - {n['kind']}: {what}")
     lines += [
         "",
-        "Qué hacer: escribe el brief de esta clase para Telegram, en español, breve (máx. ~250 palabras):",
+        "Qué hacer: escribe el brief de esta clase para Telegram, en español, corto (máx. ~150 palabras): una o "
+        "dos líneas por parte, sin títulos ni secciones, sin repetir lo que no cambió:",
         "1) Repaso de la clase anterior (desde tu cuaderno; si no hay nada, dilo en una línea).",
         "2) Qué hay por entregar (con fecha) y si algo es para pronto.",
         "3) Material nuevo desde la clase anterior (si uno «sin bajar» es de esta clase, bájalo con bajar_archivo; "
-        "un enlace se lee con leer_archivo y su enlace_id).",
-        "4) 3 a 5 conceptos clave para esta clase (usa buscar_material, con «traduccion» si el material está en "
-        "inglés, y leer_archivo; primero el libro principal; cita archivo y página).",
+        "un enlace se lee con leer_archivo y su enlace_id). Si no hay, sáltalo.",
+        "4) 2 o 3 conceptos clave para esta clase, uno por línea (usa buscar_material, con «traduccion» si el "
+        "material está en inglés, y leer_archivo; primero el libro principal; cita archivo y página).",
         "5) Una pregunta concreta para hacerle al profesor en clase.",
         "Empieza con «📚 Brief de " + subject.name + "» y la hora. No inventes fechas ni material.",
     ]
@@ -217,12 +218,13 @@ def handoff_task(cfg: BotConfig, subject: materias.Subject, items: list[dict], n
         "Qué hacer: respóndele directamente al estudiante en un solo mensaje (le llega a tu chat).",
         "- Si es un aviso del aula: explica qué implica en esta materia y qué debería hacer, "
         "usando tu material y tu cuaderno.",
-        "- Si son apuntes, fotos o audio de clase: di en 2-4 viñetas qué contienen y confirma que los guardaste "
+        "- Si son apuntes, fotos o audio de clase: di en una o dos frases qué contienen y que los guardaste "
         "en tu cuaderno; si corresponden a una clase, registra lo visto con anotar (tipo «clase»).",
         "- Si es una pregunta: respóndela citando el material del curso.",
         "- Si es un documento del curso (el PDF del libro principal, unas diapositivas): agrégalo al material con "
         "agregar_material (la ruta del adjunto en tu cuaderno; libro_principal si es ese libro).",
-        "Empieza con «📨 De parte de Vinci:». Sé breve.",
+        "Empieza con «📨 De parte de Vinci:». Sé breve: 2 a 4 líneas, lo que importa primero, sin repetir el "
+        "aviso que ya leyó.",
     ]
     return "\n".join(lines)
 

@@ -104,15 +104,18 @@ Si no puede usar los botones, puede editar a mano el archivo que indica `horario
 1. `semana` (con `dias` si pide otro plazo; trae también su lista, `todos`) y, si hace falta,
    `cuaderno` de las materias clave
    (`tipo: duda` o `tema_debil` para lo que le cuesta).
-2. Ordena por fecha de entrega y peso (`puntos`), marca lo atrasado, y reparte el estudio en bloques
-   concretos por día, teniendo en cuenta sus clases.
-3. Si una materia necesita trabajo a fondo, sugiérele hablar con su bot (dale el @usuario).
+2. «¿Qué tengo…?»: primero una línea con cuántas entregas son y lo urgente (lo atrasado y lo que vence hoy o
+   mañana). Debajo, una línea por entrega o pendiente de su lista, en orden de fecha: día y hora, materia
+   corta, tarea. Las clases de siempre no hacen falta, salvo que las pida.
+3. Solo si pide un plan: ordena por fecha de entrega y peso (`puntos`), marca lo atrasado, y reparte el
+   estudio en bloques concretos por día, teniendo en cuenta sus clases (una línea por bloque).
+4. Si una materia necesita trabajo a fondo, sugiérele hablar con su bot (dale el @usuario).
 
 ## Preguntas sobre el material
 
 1. `buscar_material` con palabras clave (y `materia` si la menciona), y en `traduccion` las mismas en
    inglés: mucho material está en inglés. Lee más contexto con `leer_archivo` (`paginas: "3-6"`).
-2. Responde con base en ese texto y cita: 📄 <archivo>, <unidad> <página> — <url>.
+2. Responde con base en ese texto y cita: 📄 [<archivo>, <unidad> <página>](<url>).
 3. Solo se busca en lo ya leído. Un documento `sin bajar` o `escaneado` lo baja y lo mira el bot de la
    materia: para estudiar a fondo, sugiérele hablar con él (o pásale la pregunta con `entregar_a_materia`).
 4. Los enlaces de fuera (`enlaces` en `archivos`, o los de un anuncio) tienen su `enlace_id`. Si su `acceso` es

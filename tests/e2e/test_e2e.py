@@ -53,9 +53,11 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
      Vinci's card, the same gateway serves it again. Each agenda really runs every minute.
   8. Canvas tokens rotate through three generations without interrupting polls. When every
-     token dies, the token-free calendar and announcement feeds still deliver useful alerts;
-     a hidden CLI reseed restores the renewal chain. setup.sh then runs a third time with the
-     team in place and reports the refused token instead of «✓ Canvas responde».
+     token dies, maintenance says the chain is cut (never that a replacement works) and stops
+     calling Canvas with the dead tokens; the token-free calendar and announcement feeds still
+     deliver useful alerts; a hidden CLI reseed restores the renewal chain. setup.sh then runs
+     a third time with the team in place and reports the refused token instead of «✓ Canvas
+     responde».
   9. the party: Vinci got its wizard as its Telegram photo at setup (once), and no bot plays a
      character. Cálculo and Física, with no photo in the party, keep theirs. Four of the
      captain's real subjects already have bots: two still named «Vinci · <materia>», two with
@@ -160,6 +162,9 @@ T_EXAM = "2026-10-01T06:00:00-05:00"    # 2 h antes del examen parcial de Físic
 T_RENEW_0 = "2026-09-29T21:00:00-05:00"
 T_RENEW_1 = "2026-09-29T21:41:00-05:00"
 T_RENEW_2 = "2026-09-29T22:22:00-05:00"
+T_RENEW_3 = "2026-09-29T23:03:00-05:00"
+T_RENEW_4 = "2026-09-29T23:33:00-05:00"  # the probe (born 22:22) turns 70 minutes old
+T_RENEW_5 = "2026-09-29T23:43:00-05:00"
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -998,9 +1003,33 @@ def test_e2e(tmp_path):
                       "siguió leyendo con el sucesor, borró el huérfano de una renovación rota sin tocar otros "
                       "tokens del capitán, y ningún token apareció en el chat")
 
-        # 6c. With every token dead, public feeds still update due dates and announcements ------------------
+        # 6c. The current token and the probe both die: the chain is cut, and Canvas is left alone -----------
+        run([bot, "mantenimiento"], T_RENEW_3)
+        fourth = parse_env_file(secrets)["CANVAS_TOKEN"]
+        assert parse_env_file(secrets).get("CANVAS_TOKEN_PROBE") == third, "el antecesor queda como sonda"
         for token in list(canvas.valid_tokens):
             canvas.expire(token)
+        mark = len(canvas.requests)
+        run([bot, "mantenimiento"], T_RENEW_4)
+        cut = take("Cadena cortada · sonda y token actual vencidos")
+        cut_text = "\n".join(message["text"] for message in cut)
+        assert "cadena automática del token" in cut_text and "resembrar" in cut_text, cut_text
+        assert "Crear token nuevo" in json.dumps(cut, ensure_ascii=False)
+        assert "reemplazo funciona" not in cut_text, "no hay reemplazo: la cadena está cortada"
+        api = [request for request in canvas.requests[mark:] if not request[1].startswith("/feeds/")]
+        assert [method for method, _ in api] == ["GET", "DELETE"], api
+        assert parse_env_file(secrets)["CANVAS_TOKEN"] == fourth and len(canvas.issued()) == 4
+        mark = len(canvas.requests)
+        run([bot, "mantenimiento"], T_RENEW_5)
+        run([bot, "sondeo"], T_RENEW_5)
+        assert take("Cadena cortada · mantenimiento y sondeo siguientes") == [], "el aviso no se repite"
+        assert all(path.startswith("/feeds/") for _, path in canvas.requests[mark:]), \
+            "con la cadena cortada, nadie vuelve a llamar a Canvas con un token muerto"
+        report.append("Con el token actual y la sonda vencidos, el mantenimiento avisó que la cadena se cortó y cómo "
+                      "resembrarla (no que el reemplazo funciona), y desde entonces ni el mantenimiento ni el sondeo "
+                      "llamaron a Canvas con esos tokens")
+
+        # 6d. With every token dead, public feeds still update due dates and announcements ------------------
         canvas.calendar_feed = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -1025,28 +1054,28 @@ END:VCALENDAR
   <content type="html">Lleven su computador cargado.</content></entry>
 </feed>
 """.format(base=canvas.base)
-        run([bot, "sondeo"], T_RENEW_2)
+        run([bot, "sondeo"], T_RENEW_5)
         floor = take("Piso sin token · iCal y anuncios Atom")
         floor_text = "\n".join(message["text"] for message in floor)
-        assert "token de Canvas" in floor_text and "Crear token nuevo" in json.dumps(floor, ensure_ascii=False)
+        assert "cadena automática del token" not in floor_text, "el corte ya se avisó una vez"
         assert "Cambió la fecha de entrega" in floor_text and "Clase en laboratorio" in floor_text
-        pending_floor = json.loads(run([aula, "tareas", "--sin-actualizar", "--json"], T_RENEW_2).stdout)
+        pending_floor = json.loads(run([aula, "tareas", "--sin-actualizar", "--json"], T_RENEW_5).stdout)
         assert any(task["tarea"] == "Lectura guiada de Cálculo" for task in pending_floor)
         mark = len(canvas.requests)
-        run([bot, "sondeo"], T_RENEW_2)
+        run([bot, "sondeo"], T_RENEW_5)
         assert take("Piso sin token repetido") == [], "el aviso de re-siembra y los feeds no se duplican"
         assert all(method == "GET" and path.startswith("/feeds/") for method, path in canvas.requests[mark:])
         report.append("Con toda la cadena de tokens vencida, iCal actualizó una fecha y agregó un evento, Atom trajo "
                       "un anuncio, y Vinci siguió alertando sin mandar Authorization a esos feeds")
 
-        # 6d. A hidden terminal prompt re-seeds the chain; the token never passes through Telegram -------------
+        # 6e. A hidden terminal prompt re-seeds the chain; the token never passes through Telegram -------------
         canvas.valid_tokens.add(NEW_CANVAS_TOKEN)
         canvas.mint(NEW_CANVAS_TOKEN, "Token personal")
-        reseed = run([bot, "resembrar", "--stdin"], T_RENEW_2, stdin=NEW_CANVAS_TOKEN + "\n")
+        reseed = run([bot, "resembrar", "--stdin"], T_RENEW_5, stdin=NEW_CANVAS_TOKEN + "\n")
         assert "verificado" in reseed.stdout.lower() and NEW_CANVAS_TOKEN not in reseed.stdout + reseed.stderr
         reseeded = parse_env_file(secrets)["CANVAS_TOKEN"]
         assert reseeded in canvas.valid_tokens
-        run([bot, "sondeo"], T_RENEW_2)
+        run([bot, "sondeo"], T_RENEW_5)
         after_reseed = take("Cadena resembrada")
         assert not any("cadena automática del token" in message["text"] for message in after_reseed)
         report.append("Tras el corte total, `espol-bot resembrar` leyó el token con entrada oculta, lo verificó y "

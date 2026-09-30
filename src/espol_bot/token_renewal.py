@@ -5,7 +5,9 @@ after an hour. This manager creates a verified successor before then, swaps it i
 gitignored secrets file atomically, and deletes superseded tokens only after the swap.
 One predecessor is retained briefly as a probe: if it still works after 70 minutes, the
 server-side bug was fixed and automatic renewal disables itself. Renewal tokens left
-behind by an interrupted run are swept after the next successful swap.
+behind by an interrupted run are swept after the next successful swap. Once Canvas refuses
+the current token itself, the chain is cut: that is recorded and Canvas is left alone until
+a reseed puts a different token in place.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from urllib.parse import urlsplit
 
 import requests
 
-from aula_core import timefmt, token_fingerprint
+from aula_core import REFUSED_KEY, timefmt, token_fingerprint
 from aula_core.config import CoreConfig, load_secret_values, update_secret_values
 from aula_core.store import delete_meta, get_meta, set_meta
 
@@ -42,10 +44,19 @@ class RenewalError(Exception):
         self.status = status
 
 
+class TokenRefusedError(RenewalError):
+    """Canvas answered 401 "Invalid access token" to the token the request carried."""
+
+    def __init__(self, token: str):
+        super().__init__("Canvas rechazó el token actual (401): la cadena se cortó", 401)
+        self.fingerprint = token_fingerprint(token)
+
+
 @dataclass(frozen=True)
 class RenewalResult:
     renewed: bool = False
     server_fixed: bool = False
+    chain_cut: bool = False  # Canvas refused the current token; only `espol-bot resembrar` revives it
 
 
 class TokenRenewal:
@@ -64,12 +75,22 @@ class TokenRenewal:
 
         if get_meta(self.conn, DISABLED) == "server-fixed":
             return RenewalResult(server_fixed=True)
+        fingerprint = token_fingerprint(current)
+        if get_meta(self.conn, REFUSED_KEY) == fingerprint:
+            return RenewalResult(chain_cut=True)
+        try:
+            return self._renew(values, current, fingerprint, force)
+        except TokenRefusedError as exc:
+            # Shared with the poll, which then stops reading Canvas with this token too.
+            set_meta(self.conn, REFUSED_KEY, exc.fingerprint)
+            self.conn.commit()
+            return RenewalResult(chain_cut=True)
 
+    def _renew(self, values: dict[str, str], current: str, fingerprint: str, force: bool) -> RenewalResult:
         probe_result = self._check_probe(values, current)
         if probe_result is not None:
             return probe_result
 
-        fingerprint = token_fingerprint(current)
         tracked = get_meta(self.conn, CURRENT_FINGERPRINT)
         created = timefmt.parse(get_meta(self.conn, CURRENT_CREATED)) if tracked == fingerprint else None
         if created is not None and not force and self.now - created < RENEW_AFTER:
@@ -113,7 +134,7 @@ class TokenRenewal:
         self._verify(token)
         update_secret_values({"CANVAS_TOKEN": token}, remove=(PROBE_TOKEN_KEY,))
         delete_meta(self.conn, CURRENT_FINGERPRINT, CURRENT_CREATED, CURRENT_ID,
-                    PROBE_CREATED, PROBE_ID, DISABLED, "canvas_token_refused")
+                    PROBE_CREATED, PROBE_ID, DISABLED, REFUSED_KEY)
         self.conn.commit()
         return self.maintain(force=True)
 
@@ -143,7 +164,7 @@ class TokenRenewal:
             json={"token": {"purpose": PURPOSE, "expires_at": expires}},
         )
         if response.status_code == 401 and self._is_bad_token(response):
-            raise RenewalError("El token venció antes de poder crear su reemplazo", 401)
+            raise TokenRefusedError(token)
         if response.status_code == 403:
             raise RenewalError("Canvas no permitió crear el token de reemplazo (403)", 403)
         if response.status_code >= 400:
@@ -197,6 +218,8 @@ class TokenRenewal:
 
     def _delete(self, current: str, token_id: int) -> None:
         response = self._request("DELETE", f"/users/self/tokens/{token_id}", current)
+        if response.status_code == 401 and self._is_bad_token(response):
+            raise TokenRefusedError(current)
         if response.status_code not in (200, 204, 404):
             raise RenewalError(f"El reemplazo funciona, pero Canvas no borró el token anterior "
                                f"({response.status_code})", response.status_code)

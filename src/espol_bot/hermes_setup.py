@@ -15,8 +15,10 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   stdio MCP server in `mcp_servers:` becomes the `mcp-<server>` toolset (tools
   `mcp__<server>__<tool>`), and a plugin's tool its own toolset (ver_pagina: `vinci-paginas`, the one
   way a tool's image reaches the model). Tool Search is turned off so the model sees exactly that list.
-  `skills.auto_load` pins a skill fully loaded in every session (chat and cron), so no
-  bot needs the skills toolset (whose skill_manage writes files).
+  `skills.auto_load` pins a skill fully loaded in every chat session (a cron agent run only loads the
+  skills its job names with `--skill`), but Hermes ignores
+  it unless the agent has one of the skills toolset's tools (skills_list, skill_view, skill_manage), so
+  every bot gets that toolset. Its skill_manage writes files under the bot's own profile `skills/`.
 - Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
   `--script` runs the script first and skips the model when its last line is
   `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use. The ticker checks
@@ -62,8 +64,15 @@ from aula_core.config import (
     secrets_path,
     update_secret_values,
 )
-from espol_bot import characters, materias
-from espol_bot.config import DEFAULT_TELEGRAM_API, BotConfig, TelegramSecrets, captain_id, token_key
+from espol_bot import characters, materias, skill_check
+from espol_bot.config import (
+    BLOCKED_TOOLSETS,
+    DEFAULT_TELEGRAM_API,
+    BotConfig,
+    TelegramSecrets,
+    captain_id,
+    token_key,
+)
 from espol_bot.telegram import Telegram, TelegramError
 
 MARKER = "Generado por setup.sh de espol-academic-bot"
@@ -72,15 +81,9 @@ PLUGIN = "vinci-botones"
 SKILLS_CATEGORY = "vinci"
 TEMPLATES = REPO_ROOT / "hermes"
 
-VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "mcp-vinci"]
-SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "mcp-materia", "vinci-paginas"]
-# Removed everywhere, whatever a platform list says (Hermes applies this last). `skills` goes
-# too: its skill_manage tool writes files; each bot's own skill is pinned with skills.auto_load.
-BLOCKED_TOOLSETS = [
-    "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
-    "skills", "vision", "video", "image_gen", "video_gen", "tts", "todo", "connections", "homeassistant",
-    "spotify", "x_search", "a2a",
-]
+# `skills` is what makes skills.auto_load pin each bot's own skill (see the docstring).
+VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-vinci"]
+SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "skills", "mcp-materia", "vinci-paginas"]
 APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 # Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
 # 25K verbatim tail already weigh ~50K, so a lower trigger would summarize again every question or two.
@@ -123,6 +126,11 @@ def poll_schedule(minutes: int, summary_minute: int) -> str:
     return ",".join(map(str, range(first, 60, minutes))) + " * * * *"
 
 
+def _join_ni(names: list[str]) -> str:
+    """«web, terminal ni archivos»."""
+    return f"{', '.join(names[:-1])} ni {names[-1]}" if len(names) > 1 else "".join(names)
+
+
 def _render(template: Path, values: dict[str, str]) -> str:
     text = template.read_text(encoding="utf-8")
     for key, value in values.items():
@@ -145,6 +153,7 @@ class Setup:
         self.bot_bin = self.bin_dir / "espol-bot"
         if not self.bot_bin.exists():
             raise ConfigError(f"Falta {self.bot_bin}; corre ./setup.sh para instalar las dependencias.")
+        self.configured: list[tuple[str, str]] = []  # (profile, its pinned skill) for check_skills
         self.secrets = load_secret_values()
         self.captain = captain_id(self.secrets)
         self.values = {"BOT": str(self.bot_bin), "CONFIG": str(config_path()), "SECRETS": str(secrets_path()),
@@ -185,6 +194,48 @@ class Setup:
         if merged == current and config_file.exists():  # Hermes may re-serialize the file: compare values
             return False
         return _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
+
+    def toolset_switches(self, code: str | None, toolsets: list[str], blocked: list[str],
+                         label: str) -> tuple[list[str], list[str]]:
+        """The bot's toolsets and blocked list once the captain's [hermes.herramientas] switches are applied."""
+        extra = self.cfg.extra_toolsets(code)
+        if extra:
+            print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en el README)")
+        return toolsets + [t for t in extra if t not in toolsets], [t for t in blocked if t not in extra]
+
+    def _closed(self, code: str | None, files: str) -> list[str]:
+        """Which of web (subject bots only), terminal and file the bot still lacks, named for the prompts."""
+        extra = set(self.cfg.extra_toolsets(code))
+        wanted = (*([("web", "web")] if code else []), ("terminal", "terminal"), (files, "file"))
+        return [name for name, toolset in wanted if toolset not in extra]
+
+    def _closed_note(self, code: str | None) -> str:
+        closed = self._closed(code, "archivos")
+        return f"; sin {' ni '.join(closed)}" if closed else ""
+
+    def _tool_limits(self, code: str | None) -> dict[str, str]:
+        """The SOUL.md and SKILL.md lines that deny a tool, so a tool switched on is never denied to the model.
+
+        With every switch at its default they render exactly the text the templates used to hardcode."""
+        closed = self._closed(code, "archivos del computador")
+        denied = _join_ni(closed)
+        if code:
+            only = (" (solo los adjuntos que te manda por Telegram y los\n  enlaces públicos del aula)"
+                    if "archivos del computador" in closed else "")
+            skill = f"- Sin {denied}{only}.\n" if closed else ""
+            soul = f"No tienes {_join_ni(self._closed(code, 'acceso a archivos del computador'))}. " if closed else ""
+            return {"SIN_HERRAMIENTAS": soul, "LIMITE_HERRAMIENTAS": skill}
+        extra = self.cfg.extra_toolsets(None)
+        if not extra:
+            soul = ("No tienes terminal ni acceso a archivos del computador, y no los necesitas: tus herramientas son\n"
+                    "  las de Vinci (`mcp__vinci__*`), la búsqueda web y tu memoria.")
+        else:
+            lacking = self._closed(None, "acceso a archivos del computador")
+            soul = ((f"No tienes {_join_ni(lacking)}. " if lacking else "")
+                    + "Tus herramientas son las de Vinci (`mcp__vinci__*`), la búsqueda web, tu memoria y las que el "
+                    f"estudiante activó en config.toml ({', '.join(extra)}).")
+        skill = f"- Sin {denied}; no leas" if closed else "- No leas"
+        return {"SIN_HERRAMIENTAS": soul, "LIMITE_HERRAMIENTAS": skill}
 
     def base_config(self, toolsets: list[str], blocked: list[str], mcp_name: str, mcp_args: list[str],
                     skill: str) -> dict:
@@ -351,17 +402,20 @@ class Setup:
         self.migrate_legacy()
         profile = self.ensure_profile(name, "Vinci: tu bot principal de ESPOL (avisos del aula, consultas generales, "
                                             "reparte cosas a los bots de cada materia).", alias=True)
-        managed = self.base_config(VINCI_TOOLSETS, BLOCKED_TOOLSETS, "vinci", ["vinci", "--hermes-home", str(profile)],
-                                   "vinci")
+        toolsets, blocked = self.toolset_switches(None, VINCI_TOOLSETS, BLOCKED_TOOLSETS, "Vinci")
+        managed = self.base_config(toolsets, blocked, "vinci", ["vinci", "--hermes-home", str(profile)], "vinci")
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
+        self.configured.append((name, "vinci"))
         print(f"• config.yaml {'actualizado' if changed else 'sin cambios'} (modelo {self.cfg.hermes_model}, "
-              f"zona {self.cfg.core.tz}; herramientas: búsqueda web, memoria y las de Vinci; sin terminal ni archivos)")
+              f"zona {self.cfg.core.tz}; herramientas: búsqueda web, memoria, skills y las de Vinci"
+              f"{self._closed_note(None)})")
         changed = self.telegram_env(profile, token)
         print(f"• .env de Vinci {'actualizado' if changed else 'sin cambios'} (Telegram solo para tu ID)")
 
         party = "\n".join(f"- «{characters.bot_name(code, c.subject or code)}»: {c.subject} ({code})"
                           for code, c in characters.party().items())
-        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": ""}
+        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": "",
+                  **self._tool_limits(None)}
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
@@ -438,12 +492,15 @@ class Setup:
         if token == self.secrets.get(token_key()):
             raise ConfigError(f"{subject.display} usa el mismo token que Vinci; cada bot necesita el suyo.")
         profile = self.ensure_profile(name, f"El bot de la materia {subject.name} ({subject.code}).", alias=False)
-        managed = self.base_config(SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"], "materia",
+        toolsets, blocked = self.toolset_switches(subject.code, SUBJECT_TOOLSETS, BLOCKED_TOOLSETS + ["web", "search"],
+                                                  subject.display)
+        managed = self.base_config(toolsets, blocked, "materia",
                                    ["materia", "--curso", subject.code, "--hermes-home", str(profile)], "vinci-materia")
         managed["cron"] = {"wrap_response": False}
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
+        self.configured.append((name, "vinci-materia"))
         values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,
-                  "PROFILE_HOME": str(profile)}
+                  "PROFILE_HOME": str(profile), **self._tool_limits(subject.code)}
         changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "materia" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci-materia" / "SKILL.md",
                                      _render(TEMPLATES / "materia" / "SKILL.md", values))
@@ -456,7 +513,7 @@ class Setup:
         changed |= _write_if_changed(profile / "scripts" / "vinci-agenda.sh", _render(
             TEMPLATES / "cron-script.sh", {**values, "COMMAND": f"agenda --curso {subject.code}"}), 0o755)
         print(f"• {subject.display}: config, .env, SOUL.md, skill, plugin y agenda {'instalados' if changed else 'sin cambios'}"
-              f" (solo su materia y su cuaderno; sin web, terminal ni archivos)")
+              f" (solo su materia, su cuaderno y sus skills{self._closed_note(subject.code)})")
         self.telegram_profile(profile, token, characters.for_subject(subject.code), subject.display,
                               name=subject.display)
         prompt = (f"Eres el bot de la materia {subject.name} ({subject.code}). El script de tu "
@@ -467,15 +524,47 @@ class Setup:
         # skip a minute whenever a run ends just past the mark, and every other minute for good if the gateway's
         # check falls in a minute's last second.
         self.reconcile_job(name, "vinci-agenda", "* * * * * */30", "vinci-agenda.sh", no_agent=False,
-                           prompt=prompt, enabled=active)
+                           prompt=prompt, skills=("vinci-materia",), enabled=active)
         if self.set_parked(name, not active):
             print(f"• {subject.display}: {'archivada (gateway.parked)' if not active else 'reactivada'}")
+
+
+    # -- install check --------------------------------------------------------------------
+
+    def check_skills(self) -> bool:
+        """False when a bot's SKILL does not reach the prompt a fresh session would store."""
+        ok = True
+        for name, skill in self.configured:
+            profile = self.profile_dir(name)
+            try:
+                lines = skill_check.skill_lines(
+                    (profile / "skills" / SKILLS_CATEGORY / skill / "SKILL.md").read_text(encoding="utf-8"),
+                    (profile / "SOUL.md").read_text(encoding="utf-8"))
+                found = skill_check.problems(skill_check.inspect_profile(self.hermes, profile), lines)
+            except skill_check.Unavailable as exc:
+                print(f"⚠ {name}: no pude revisar si su skill llega al modelo ({exc}).")
+                continue
+            except OSError as exc:
+                found = [f"no leí su skill o su SOUL.md ({exc})"]
+            if found:
+                ok = False
+                print(f"✗ {name}: su skill NO llega al modelo, así que el bot no sigue sus reglas:"
+                      + "".join(f"\n    {line}" for line in found)
+                      + f"\n  Arréglalo: vuelve a correr ./setup.sh y luego `hermes gateway restart`. Si sigue igual, "
+                        f"revisa que `skills` no esté en agent.disabled_toolsets de {profile / 'config.yaml'}.")
+            else:
+                print(f"✓ {name}: su skill llega al modelo ({len(lines)} líneas en su prompt de Telegram)")
+        return ok
 
 
 def provision(cfg: BotConfig, *, hermes_bin: str | None = None) -> int:
     setup = Setup(cfg, hermes_bin=hermes_bin)
     setup.vinci()
-    for subject in materias.load(cfg.core):
+    subjects = materias.load(cfg.core)
+    stray = sorted(set(cfg.subject_toolsets_by_code) - {s.code for s in subjects})
+    if stray:
+        print(f"⚠ [hermes.herramientas.por_materia] {', '.join(stray)} no es ninguna de tus materias en materias.toml; revisa el código.")
+    for subject in subjects:
         if subject.state != "pendiente":
             setup.subject(subject)
-    return 0
+    return 0 if setup.check_skills() else 1

@@ -35,7 +35,7 @@ from espol_bot import equipo, horario, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([ahcxrnst]):(\d{1,12}):([A-Za-z0-9]{2,12})")
+PATTERN = re.compile(r"v1:([ahcxrnst]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)

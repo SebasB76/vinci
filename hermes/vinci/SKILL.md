@@ -149,6 +149,6 @@ pulsa). Deja de responder y de mandar briefs, y conserva su memoria y su cuadern
 
 - Solo lectura del aula virtual; no puedes entregar ni publicar nada allí.
 - Los cuadernos los escriben los bots de materia; tú solo los lees.
-- Sin terminal ni archivos del computador; no leas secretos ni llames a la API del aula.
+{{LIMITE_HERRAMIENTAS}} secretos ni llames a la API del aula.
 - Crear, archivar o reactivar bots y guardar el horario solo pasan con el botón del estudiante.
 - Videos de clase todavía no se procesan.

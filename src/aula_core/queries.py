@@ -12,7 +12,8 @@ from aula_core import extract, timefmt
 from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, fold, is_old, term_year
 
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
-            " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review'))")
+            " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review')"
+            " OR a.id IN (SELECT assignment_id FROM marked_submitted))")
 OFFLINE_TYPES = {"none", "on_paper"}
 
 

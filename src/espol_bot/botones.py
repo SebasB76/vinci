@@ -13,6 +13,11 @@ plugin should show:
   v1:x:0:<CÓDIGO>         «🗄️ Archivar»: parks the subject bot and pauses its agenda
   v1:r:0:<CÓDIGO>         «♻️ Reactivar»: undoes it
   v1:n:0:<CÓDIGO>         «Cancelar»: does nothing
+  v1:s:<tarea>:ok|no      «✅ Ya lo entregué» under a reminder: the assignment counts as submitted
+                          (handed in outside Canvas), so no reminder or summary lists it again;
+                          its button turns into «↩️ Aún no lo entregué», which undoes it
+  v1:t:<pendiente>:ok|no  «✅ Hecho» under a to-do (its card, a reminder, the summary): closes it;
+                          the button turns into «↩️ Deshacer»
 
 No model is involved: the schedule is saved, and a bot created or archived, only by the
 captain's own press.
@@ -25,19 +30,24 @@ import re
 from datetime import datetime, timedelta
 
 from aula_core import Aula, timefmt
-from aula_core.store import file_lock, get_meta, set_meta
+from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
 from espol_bot import equipo, horario, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([ahcxrn]):(\d{1,12}):([A-Za-z0-9]{2,12})")
+PATTERN = re.compile(r"v1:([ahcxrnst]):(\d{1,12}):([A-Za-z0-9]{2,12})")
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
 
 
-def _answer(toast: str, reply: str | None = None, remove_buttons: bool = False) -> dict:
-    return {"aviso": toast, "respuesta": reply, "quitar_botones": remove_buttons}
+def _answer(toast: str, reply: str | None = None, remove_buttons: bool = False,
+            replace_button: tuple[str, str] | None = None) -> dict:
+    """`replace_button` swaps the pressed button for (label, callback data), leaving the others."""
+    answer = {"aviso": toast, "respuesta": reply, "quitar_botones": remove_buttons}
+    if replace_button:
+        answer["replace_button"] = list(replace_button)
+    return answer
 
 
 def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
@@ -52,6 +62,10 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
         conn = store.ensure(aula.conn)
         if kind == "a":
             return _handoff(cfg, conn, ref, arg.upper(), now)
+        if kind == "s":
+            return _submitted(conn, ref, arg == "ok", now)
+        if kind == "t":
+            return _todo_done(conn, ref, arg == "ok", now)
         return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()
@@ -67,6 +81,29 @@ def _handoff(cfg: BotConfig, conn, alert_id: int, code: str, now: datetime) -> d
     _, created = store.queue_handoff(conn, code, "aviso", alert["texto"], now, alert_id=alert_id)
     toast = f"Enviado a {subject.display}" if created else f"Ya estaba enviado a {subject.display}"
     return _answer(toast, messages.handoff_queued(subject.display, subject.handle(), again=not created))
+
+
+def _submitted(conn, assignment_id: int, submitted: bool, now: datetime) -> dict:
+    row = conn.execute("SELECT name FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
+    if row is None:
+        return _answer("Esa tarea ya no está en tu aula virtual.")
+    set_marked_submitted(conn, assignment_id, submitted, timefmt.iso(now))
+    if submitted:
+        return _answer(f"Listo: «{row['name']}» cuenta como entregada; no te la recuerdo más.",
+                       replace_button=(messages.UNSUBMITTED_BUTTON, f"v1:s:{assignment_id}:no"))
+    return _answer(f"«{row['name']}» vuelve a tus pendientes.",
+                   replace_button=(messages.SUBMITTED_BUTTON, f"v1:s:{assignment_id}:ok"))
+
+
+def _todo_done(conn, todo_id: int, done: bool, now: datetime) -> dict:
+    todo = store.todo(conn, todo_id)
+    if todo is None:
+        return _answer("Ese pendiente ya no está en tu lista.")
+    store.set_todo_done(conn, todo_id, done, now)
+    if done:
+        return _answer(f"✅ Hecho: «{todo['text']}».", replace_button=(messages.TODO_UNDO_BUTTON, f"v1:t:{todo_id}:no"))
+    return _answer(f"«{todo['text']}» vuelve a tu lista.",
+                   replace_button=(messages.TODO_DONE_BUTTON, f"v1:t:{todo_id}:ok"))
 
 
 def _team(cfg: BotConfig, kind: str, code: str, now: datetime) -> dict:

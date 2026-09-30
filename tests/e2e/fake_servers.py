@@ -471,6 +471,9 @@ class FakeTelegram(_Server):
         bot = {"id": self.bot_id(token), "is_bot": True, "first_name": self.bots[token], "username": self.bots[token]}
         msg = {"message_id": message["message_id"], "date": int(time.time()), "chat": {"id": user_id, "type": "private"},
                "from": bot, "text": message.get("text", "")}
+        markup = message.get("reply_markup")
+        if isinstance(markup, dict) and "inline_keyboard" in markup:  # as the message looks now
+            msg["reply_markup"] = markup
         return self._push(token, {"callback_query": {"id": f"cb{time.time_ns()}", "from": user,
                                                      "chat_instance": "1", "data": data, "message": msg}})
 

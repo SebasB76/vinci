@@ -6,10 +6,12 @@
      a token Canvas refused is not tried again (the captain hears once) until it changes;
   2. report, once per failure episode, each course resource that keeps failing;
   3. send one Telegram message per undelivered event (grouped when there are many);
-  4. send the 24 h / 3 h reminders for unsubmitted deliverables;
+  4. send the 24 h / 3 h reminders for unsubmitted deliverables (each with «✅ Ya lo entregué», for
+     what went in on paper, by email or in the lab, which Canvas never learns about) and for the
+     captain's own to-dos (store.todos, each with «✅ Hecho»);
   5. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
      that bot's chat, for its main book's PDF when there is none it can read (libros.py).
-`summary()` runs at `resumen_diario` and sends the week at a glance.
+`summary()` runs at `resumen_diario` and sends the week at a glance, the open to-dos included.
 
 Events stay undelivered, and reminders unmarked, until Telegram accepts the
 message, so a failed send is retried on the next poll.
@@ -84,14 +86,14 @@ class Bot:
                 found.append(subject)
         return found[:MAX_BUTTONS]
 
-    def _send(self, text: str, course_ids=()) -> None:
-        """Send to the captain; offer a handoff button per course that has an active subject bot."""
+    def _send(self, text: str, course_ids=(), extra: list[tuple[str, str]] = ()) -> None:
+        """Send to the captain; offer a handoff button per course that has an active subject bot, then `extra`."""
         subjects = self._subjects_for(dict.fromkeys(c for c in course_ids if c is not None))
         buttons = []
         if subjects:
             alert_id = store.new_alert(self.conn, messages.plain(text), [s.code for s in subjects], self.aula.now())
             buttons = [(messages.handoff_button(s.display), f"v1:a:{alert_id}:{s.code}") for s in subjects]
-        self.telegram.send(text, buttons)
+        self.telegram.send(text, buttons + list(extra))
 
     # -- failure handling ------------------------------------------------------------
 
@@ -273,7 +275,7 @@ class Bot:
             if already:
                 continue
             text = messages.reminder_message(task, smallest, self.tz, now)
-            self._send(text, [task["curso_id"]])
+            self._send(text, [task["curso_id"]], [(messages.SUBMITTED_BUTTON, f"v1:s:{task['id']}:ok")])
             result.sent.append(text)
             result.reminders += 1
             # Mark every larger offset too, so a late-created task gets one reminder, not two.
@@ -282,18 +284,40 @@ class Bot:
                 [(task["id"], h, task["vence"], timefmt.iso(now)) for h in applicable],
             )
             self.conn.commit()
+        self._send_todo_reminders(result, now, horizon)
+
+    def _send_todo_reminders(self, result: PollResult, now: datetime, horizon: int) -> None:
+        for todo in store.open_todos(self.conn, now + timedelta(hours=horizon)):
+            due = timefmt.parse(todo["due_at"])
+            if due is None or due <= now:
+                continue
+            applicable = [h for h in self.cfg.reminder_hours if (due - now).total_seconds() / 3600 <= h]
+            already = self.conn.execute("SELECT 1 FROM todo_reminders WHERE todo_id = ? AND hours = ? AND due_at = ?",
+                                        (todo["id"], min(applicable), todo["due_at"])).fetchone()
+            if already:
+                continue
+            text = messages.todo_reminder(todo, self.tz, now)
+            self.telegram.send(text, [(messages.TODO_DONE_BUTTON, f"v1:t:{todo['id']}:ok")])
+            result.sent.append(text)
+            result.reminders += 1
+            self.conn.executemany(
+                "INSERT OR IGNORE INTO todo_reminders(todo_id, hours, due_at, sent_at) VALUES (?, ?, ?, ?)",
+                [(todo["id"], h, todo["due_at"], timefmt.iso(now)) for h in applicable])
+            self.conn.commit()
 
     # -- daily summary ---------------------------------------------------------------
 
-    def summary_text(self, now: datetime) -> tuple[str, list[int]]:
+    def summary_text(self, now: datetime) -> tuple[str, list[int], list[tuple[str, str]]]:
         local_midnight = now.astimezone(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
         week = queries.assignments_between(self.conn, now, now, local_midnight + timedelta(days=7))
+        todos = store.open_todos(self.conn, local_midnight + timedelta(days=7))
         overdue = [t for t in queries.pending(self.conn, now, overdue_days=7) if t["atrasada"]]
         since = timefmt.iso(now - timedelta(hours=24))
         recent = [a for a in queries.announcements(self.conn, limit=50) if (a["publicado"] or "") >= since]
         courses = [t["curso_id"] for t in week if not t["entregada"]] + [t["curso_id"] for t in overdue]
         courses += [a["curso_id"] for a in recent]
-        return messages.weekly_summary(week, overdue, recent, self.tz, now), courses
+        done = [(messages.todo_done_button(t["text"]), f"v1:t:{t['id']}:ok") for t in todos[:MAX_BUTTONS]]
+        return messages.weekly_summary(week, overdue, recent, self.tz, now, todos), courses, done
 
     def summary(self, *, sync_first: bool = True) -> PollResult:
         result = PollResult()
@@ -303,9 +327,9 @@ class Bot:
         today = now.astimezone(self.tz).date().isoformat()
         if get_meta(self.conn, "bot_last_summary") == today:
             return result
-        text, courses = self.summary_text(now)
+        text, courses, done = self.summary_text(now)
         try:
-            self._send(text, courses)
+            self._send(text, courses, done)
         except TelegramError as exc:
             result.error = str(exc)
             return result

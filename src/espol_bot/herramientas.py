@@ -1,11 +1,12 @@
 """The tools each bot gets, served over MCP by `espol-bot mcp vinci|materia`.
 
-Vinci (the main bot): read-only queries over the aula data of every course (it opens the outside
-links the aula shows without a login, like a subject bot) and over every subject notebook, the
-schedule (it can read it and propose one extracted from a screenshot; only the captain's «Guardar»
-button saves it), the handoff of an item to a subject bot, and the team (it shows cards whose
-«Crear» / «Archivar» buttons, pressed by the captain, create or archive a subject bot). No Vinci
-tool writes a notebook, reads arbitrary files, runs commands, or sees a bot token.
+Vinci (the main bot): read-only queries over the aula data of every course (it opens the outside links
+the aula shows without a login, like a subject bot) and over every subject notebook, the schedule (it
+can read it and propose one extracted from a screenshot; only the captain's «Guardar» button saves it),
+the captain's own to-do list (it adds items; the captain closes them with «✅ Hecho»), the handoff of an
+item to a subject bot, and the team (it shows cards whose «Crear» / «Archivar» buttons, pressed by the
+captain, create or archive a subject bot). No Vinci tool writes a notebook, reads arbitrary files, runs
+commands, or sees a bot token.
 
 A subject bot: the same queries restricted to its own courses (theory and práctico), the classes of its
 subject, and its own notebook (read and write; attachments only from the files the
@@ -345,6 +346,35 @@ def _upcoming(ctx: Ctx, days: int, code: str | None = None) -> list[dict]:
             for start, c in horario.occurrences(classes, now, now + timedelta(days=days), ctx.cfg.core.tz, code)]
 
 
+def _todo_due(ctx: Ctx, value, now: datetime) -> tuple[datetime | None, bool]:
+    """(due moment, all day) from «AAAA-MM-DD» or «AAAA-MM-DD HH:MM»; a date alone is due at the end of that day."""
+    text = str(value or "").strip()
+    if not text:
+        return None, False
+    try:
+        moment = datetime.fromisoformat(text.replace(" ", "T"))
+    except ValueError:
+        raise ToolError("«due» debe ser AAAA-MM-DD o AAAA-MM-DD HH:MM.") from None
+    all_day = len(text) <= 10
+    if all_day:
+        moment = moment.replace(hour=23, minute=59)
+    moment = moment.replace(tzinfo=ctx.cfg.core.tz) if moment.tzinfo is None else moment
+    if moment < now:
+        raise ToolError(f"Esa fecha ya pasó (hoy es {timefmt.human(now, ctx.cfg.core.tz)}): revisa qué día "
+                        "quiso decir.")
+    return moment, all_day
+
+
+def _todo_json(ctx: Ctx, todo: dict, now: datetime) -> dict:
+    result = {"id": todo["id"], "text": todo["text"]}
+    if todo["subject"]:
+        result["subject"] = todo["subject"]
+    if todo["due_at"]:
+        result["due"] = messages.todo_due(todo, ctx.cfg.core.tz)
+        result["overdue"] = timefmt.parse(todo["due_at"]) < now
+    return result
+
+
 def _notebook_json(nb: Notebook, kind: str | None, n: int, open_only: bool = False) -> dict:
     if kind and kind not in KINDS:
         raise ToolError(f"«tipo» debe ser uno de: {', '.join(KINDS)}.")
@@ -452,8 +482,10 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
             nb = Notebook(ctx.cfg.core, s.code, read_only=True)
             notebooks[s.code] = {"nombre": s.name, "estado": s.state, **nb.overview()}
             nb.close()
+        local_midnight = now.astimezone(ctx.cfg.core.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        todos = [_todo_json(ctx, t, now) for t in store.open_todos(ctx.conn, local_midnight + timedelta(days=days))]
         return {"hoy": timefmt.human(now, ctx.cfg.core.tz), "clases": _upcoming(ctx, days),
-                "pendientes": pending, "cuadernos": notebooks}
+                "pendientes": pending, "todos": todos, "cuadernos": notebooks}
 
     def tareas(args):
         ctx.refresh()
@@ -532,6 +564,25 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
                            "«Corregir». Se guarda solo cuando pulse Guardar; tú no puedes guardarlo. Dile que "
                            "lo revise (sobre todo días y horas) y, si algo está mal, que te diga qué corregir."}
 
+    def add_todo(args):
+        text = " ".join(str(args["text"]).split())
+        if not text or len(text) > 300:
+            raise ToolError("«text» debe tener entre 1 y 300 caracteres.")
+        now = ctx.now()
+        due, all_day = _todo_due(ctx, args.get("due"), now)
+        subject = str(args.get("subject") or "").strip() or None
+        if subject:
+            try:
+                subject = materias.resolve(ctx.subjects(), subject).name
+            except materias.Ambiguous:
+                pass  # no bot for it (yet): keep the student's own words
+        todo = store.add_todo(ctx.conn, text, subject, due, all_day, now)
+        card(messages.todo_card(todo, ctx.cfg.core.tz, ctx.cfg.reminder_hours),
+             [(messages.TODO_DONE_BUTTON, f"v1:t:{todo['id']}:ok")])
+        return {"todo": _todo_json(ctx, todo, now),
+                "message": "Le mostré el pendiente anotado en una tarjeta con el botón «✅ Hecho». Confírmaselo en "
+                           "una línea (qué y para cuándo), sin repetir la tarjeta."}
+
     def entregar(args):
         try:
             subject = materias.resolve(ctx.subjects(), str(args["materia"]))
@@ -600,7 +651,8 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
     return [
         Tool("materias", "Los bots de materia del estudiante: nombre, código, @usuario y estado.", materias_),
         Tool("semana", "Vista general: clases de los próximos días (según el horario), entregas pendientes y "
-             "atrasadas de todas las materias, y lo que dice cada cuaderno (dudas abiertas y temas débiles). "
+             "atrasadas de todas las materias, su lista de pendientes personales («todos»), y lo que dice cada "
+             "cuaderno (dudas abiertas y temas débiles). "
              "Úsala para «¿qué tengo esta semana?», «¿cómo voy en todo?» y planes de estudio.", semana,
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
         Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,
@@ -644,6 +696,14 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
                                 "aula": {"type": "string"}, "paralelo": {"type": "string"}},
                  "required": ["materia", "dia", "inicio", "fin"]}}},
              ["clases"], read_only=False),
+        Tool("add_todo", "Anota un pendiente personal en su lista («anota: …», «recuérdame …»): lecturas, trámites, "
+             "lo que el profe dijo en clase y no subió. Le muestra una tarjeta con el botón «✅ Hecho»; se lo "
+             "recuerdo 24 h y 3 h antes y sale en el resumen de las 7:00 y en semana hasta que lo marque.", add_todo,
+             {"text": {"type": "string", "description": "qué hacer, corto y en sus palabras (sin la fecha)"},
+              "subject": {"type": "string", "description": "la materia, si la dijo"},
+              "due": {"type": "string", "description": "para cuándo, si lo dijo: AAAA-MM-DD, o AAAA-MM-DD HH:MM si "
+                                                       "dijo la hora (calcula «el viernes» desde hoy)"}},
+             ["text"], read_only=False),
         Tool("entregar_a_materia", "Pasa algo (texto, y fotos/PDF/audios que el estudiante te mandó) al bot de "
              "una materia, que le responde en su propio chat. Úsala solo si sabes con certeza de qué materia es; "
              "si no, pregúntale.", entregar,

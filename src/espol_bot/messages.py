@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from aula_core import timefmt
 from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY
 from aula_core.materials import READABLE
+from espol_bot.materias import short_name
 
 KIND_TITLE = {
     "new_assignment": "📝 Tareas nuevas",
@@ -29,6 +30,12 @@ def e(value) -> str:
     return escape(str(value if value is not None else ""), quote=False)
 
 
+def course(name: str) -> str:
+    """'FÍSICA I - II PAO 2026' → 'Física I'; a práctico section keeps saying so."""
+    short = e(short_name(name))
+    return f"{short} (práctico)" if re.search(r"\bpr[aá]ctic[oa]\b", name, re.IGNORECASE) else short
+
+
 def link(url: str | None, label: str = "Abrir en el aula virtual") -> str:
     return f'<a href="{escape(url or "", quote=True)}">{e(label)}</a>' if url else ""
 
@@ -44,13 +51,13 @@ def _score(ev: dict, prefix: str = "") -> str:
 
 
 def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | None = None) -> str:
-    kind, course = ev["kind"], e(ev["curso"])
+    kind, name = ev["kind"], course(ev["curso"])
     if kind == "new_assignment":
         due = (f"Entrega: {e(timefmt.human(ev['due_at'], tz))} ({e(timefmt.until(ev['due_at'], now))})"
                if ev.get("due_at") else "Sin fecha de entrega")
-        return f"📝 <b>Nueva tarea en {course}</b>\n{e(ev['tarea'])}\n{due}\n{link(ev['url'])}"
+        return f"📝 <b>Nueva tarea en {name}</b>\n{e(ev['tarea'])}\n{due}\n{link(ev['url'])}"
     if kind == "due_changed":
-        return (f"📅 <b>Cambió la fecha de entrega</b> — {course}\n{e(ev['tarea'])}\n"
+        return (f"📅 <b>Cambió la fecha de entrega</b> — {name}\n{e(ev['tarea'])}\n"
                 f"Antes: {e(timefmt.human(ev.get('due_at_anterior'), tz))}\n"
                 f"Ahora: <b>{e(timefmt.human(ev.get('due_at'), tz))}</b>\n{link(ev['url'])}")
     if kind == "new_announcement":
@@ -58,11 +65,11 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
         if len(text) > 500:
             text = text[:500].rstrip() + "…"
         author = f" ({e(ev['autor'])})" if ev.get("autor") else ""
-        return f"📢 <b>Nuevo anuncio en {course}</b>{author}\n<b>{e(ev['titulo'])}</b>\n{e(text)}\n{link(ev['url'])}"
+        return f"📢 <b>Nuevo anuncio en {name}</b>{author}\n<b>{e(ev['titulo'])}</b>\n{e(text)}\n{link(ev['url'])}"
     if kind == "grade_posted":
-        return f"✅ <b>Nota publicada</b> — {course}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n{link(ev['url'])}"
+        return f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n{link(ev['url'])}"
     if kind == "grade_changed":
-        return (f"✏️ <b>Nota actualizada</b> — {course}\n{e(ev['tarea'])}: {_score(ev, '')} "
+        return (f"✏️ <b>Nota actualizada</b> — {name}\n{e(ev['tarea'])}: {_score(ev, '')} "
                 f"(antes {_score({**ev, 'nota': ev.get('nota_anterior'), 'calificacion': ev.get('calificacion_anterior')})})\n"
                 f"{link(ev['url'])}")
     if kind in ("new_file", "file_updated"):
@@ -75,7 +82,7 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
         ready = {"ok": "\nYa lo leí: puedes preguntarme sobre él.",
                  "escaneado": "\nEs un escaneo: su bot de materia mira sus páginas como imagen."}.get(
             index_status or "", "" if index_status else later)
-        return (f"📚 <b>{verb} en {course}</b>{where}\n{e(ev['archivo'])}{source}{ready}\n"
+        return (f"📚 <b>{verb} en {name}</b>{where}\n{e(ev['archivo'])}{source}{ready}\n"
                 f"{link(ev['url'], 'Ver archivo')}")
     if kind == "new_link":
         where = "".join(f" · {e(ev[k])}" for k in ("modulo", "seccion") if ev.get(k))
@@ -83,11 +90,11 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
         how = ("Su bot de materia lo abre sin tu cuenta cuando haga falta (si pide iniciar sesión, te lo dice)."
                if ev.get("acceso") == PUBLIC else
                f"Ábrelo tú: {e(WHY_LINK_ONLY.get(ev.get('tipo'), 'no lo puedo abrir'))}.")
-        return (f"🔗 <b>Enlace nuevo en {course}</b>{where}\n{e(ev['enlace'])} ({e(what)})\n{how}\n"
+        return (f"🔗 <b>Enlace nuevo en {name}</b>{where}\n{e(ev['enlace'])} ({e(what)})\n{how}\n"
                 f"{link(ev['url'], 'Abrir enlace')}")
     if kind == "new_course":
-        return f"🎓 <b>Nueva materia en tu aula virtual</b>\n{course}\nDesde ahora te aviso de sus tareas y anuncios.\n{link(ev['url'])}"
-    return f"{course}: {e(kind)}"
+        return f"🎓 <b>Nueva materia en tu aula virtual</b>\n{e(ev['curso'])}\nDesde ahora te aviso de sus tareas y anuncios.\n{link(ev['url'])}"
+    return f"{name}: {e(kind)}"
 
 
 def _digest_line(ev: dict, tz: ZoneInfo) -> str:
@@ -98,7 +105,7 @@ def _digest_line(ev: dict, tz: ZoneInfo) -> str:
         extra = f" — vence {e(timefmt.human(ev['due_at'], tz))}"
     elif kind in ("grade_posted", "grade_changed"):
         extra = f" — {_score(ev)}"
-    return f"• {e(ev['curso'])}: {link(ev.get('url'), name) or e(name)}{extra}"
+    return f"• {course(ev['curso'])}: {link(ev.get('url'), name) or e(name)}{extra}"
 
 
 def digest(events: list[dict], tz: ZoneInfo) -> str:
@@ -114,7 +121,7 @@ def digest(events: list[dict], tz: ZoneInfo) -> str:
 def reminder_message(task: dict, hours: int, tz: ZoneInfo, now: datetime) -> str:
     offline = "\n(No tiene entrega en línea: revisa cómo se entrega.)" if task["sin_entrega_en_linea"] else ""
     return (f"⏰ <b>Recordatorio: vence {e(timefmt.until(task['vence'], now))}</b>\n"
-            f"{e(task['curso'])}: {e(task['tarea'])}\n"
+            f"{course(task['curso'])}: {e(task['tarea'])}\n"
             f"Entrega: {e(timefmt.human(task['vence'], tz))}\n"
             f"Aún no la has entregado.{offline}\n{link(task['url'])}")
 
@@ -147,13 +154,13 @@ def weekly_summary(week: list[dict], overdue: list[dict], announcements_24h: lis
             lines.append(f"<i>{_day_label(day, today)}</i>")
             for t in items:
                 hour = timefmt.parse(t["vence"]).astimezone(tz).strftime("%H:%M")
-                lines.append(f"• {hour} — {e(t['curso'])}: {link(t['url'], t['tarea'])}")
+                lines.append(f"• {hour} — {course(t['curso'])}: {link(t['url'], t['tarea'])}")
         blocks.append("\n".join(lines))
     else:
         blocks.append("No tienes entregas pendientes esta semana. 🎉")
     if overdue:
         blocks.append(f"<b>Atrasadas sin entregar ({len(overdue)})</b>\n" + "\n".join(
-            f"• {e(t['curso'])}: {link(t['url'], t['tarea'])} (venció {e(timefmt.human(t['vence'], tz))})"
+            f"• {course(t['curso'])}: {link(t['url'], t['tarea'])} (venció {e(timefmt.human(t['vence'], tz))})"
             for t in overdue))
     if done:
         blocks.append(f"Ya entregaste {len(done)} de esta semana ✓")
@@ -161,7 +168,7 @@ def weekly_summary(week: list[dict], overdue: list[dict], announcements_24h: lis
         blocks.append(f"<b>📌 Tu lista ({len(todos)})</b>\n" + "\n".join(todo_line(t, tz, now) for t in todos))
     if announcements_24h:
         blocks.append(f"<b>Anuncios de las últimas 24 h ({len(announcements_24h)})</b>\n" + "\n".join(
-            f"• {e(a['curso'])}: {link(a['url'], a['titulo'])}" for a in announcements_24h))
+            f"• {course(a['curso'])}: {link(a['url'], a['titulo'])}" for a in announcements_24h))
     return "\n\n".join(blocks)
 
 

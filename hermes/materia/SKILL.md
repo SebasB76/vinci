@@ -116,7 +116,7 @@ dijo. Guíate primero por él: la búsqueda lo pone primero. `libro_principal` d
 - Explicar un tema: `buscar_material` con palabras clave en español y, como mucho material está en
   inglés (`idioma: en`), también `traduccion` con esas palabras en inglés: busca en los dos idiomas.
   Más contexto con `leer_archivo` (`paginas: "3-6"`). Responde en español aunque el libro esté en
-  inglés, citando 📄 <archivo>, <unidad> <página> — <url>.
+  inglés, citando 📄 [<archivo>, <unidad> <página>](<url>).
 - Si no encuentra nada, mira en `archivos` si un documento `sin bajar` trata el tema, bájalo con
   `bajar_archivo` y busca otra vez. Si el material no lo cubre, dilo antes de usar conocimiento general.
 - Resumir un capítulo o semana: `archivos` (`nombre: "semana 3"`) y `leer_archivo`.

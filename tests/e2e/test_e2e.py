@@ -874,11 +874,11 @@ def test_e2e(tmp_path):
                       "menos de 5 s: la descarga ya no retiene el candado de la sincronización")
         poll2 = take("Sondeo 2 · mar 29 sep 00:30 (tras los cambios)")
         texts = "\n\n".join(m["text"] for m in poll2)
-        for expected in ("Nueva tarea en FÍSICA I", "Taller 2: Movimiento parabólico", "Cambió la fecha de entrega",
-                         "Nuevo anuncio en CÁLCULO", "Cambio de fecha del Taller 3", "Nota publicada",
-                         "Tarea 1: Vectores", "9/10", "Nuevo material en FÍSICA I", "Recordatorio", "vence en 22 h",
-                         "Nuevo material en CÁLCULO DE UNA VARIABLE - II PAO 2026</b>\nSílabo MATG1049 2026-2T.pdf",
-                         "Enlace nuevo en CÁLCULO DE UNA VARIABLE - II PAO 2026</b> · Semana 4: Aplicaciones de la "
+        for expected in ("Nueva tarea en Física I", "Taller 2: Movimiento parabólico", "Cambió la fecha de entrega",
+                         "Nuevo anuncio en Cálculo de una Variable", "Cambio de fecha del Taller 3", "Nota publicada",
+                         "Tarea 1: Vectores", "9/10", "Nuevo material en Física I", "Recordatorio", "vence en 22 h",
+                         "Nuevo material en Cálculo de una Variable</b>\nSílabo MATG1049 2026-2T.pdf",
+                         "Enlace nuevo en Cálculo de una Variable</b> · Semana 4: Aplicaciones de la "
                          "derivada · ANTES de clase en vivo"):
             assert expected in texts, f"falta «{expected}» en el sondeo 2:\n{texts}"
         by_title = {m["text"].split("\n")[1]: m["text"] for m in poll2 if "\n" in m["text"]}
@@ -1549,7 +1549,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     calc_alert = next(m for m in reminders if "Taller 3" in m["text"])
     practico_alert = next(m for m in reminders if "Práctica 4" in m["text"])
     fis_alert = next(m for m in reminders if "Examen parcial" in m["text"])
-    assert "CÁLCULO DE UNA VARIABLE - II PAO 2026 Práctico" in practico_alert["text"]
+    assert "Cálculo de una Variable (práctico)" in practico_alert["text"]
     for alert in (calc_alert, practico_alert):  # theory and práctico: the same one bot
         assert [b["text"] for b in buttons(alert)] == ["🎓 Consultar con Cálculo de una Variable", SUBMITTED]
         assert re.fullmatch(r"v1:a:\d+:MATG1049", buttons(alert)[0]["callback_data"])
@@ -1588,7 +1588,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     for expected in ("Materia: Cálculo de una Variable (MATG1049) · paralelo 5",
                      "Clase: hoy miércoles 30 sep, 09:00–11:00 en A105 (empieza en 30 min)",
                      "Clase anterior: lunes 28 sep, 09:00.", "Taller 3: Derivadas", "Práctica 4: Regla de la cadena",
-                     "3 a 5 conceptos clave", "Una pregunta concreta",
+                     "2 o 3 conceptos clave", "Una pregunta concreta",
                      "Libro principal: Purcell, E., Varberg, D. y Rigdon, S. (2007). Cálculo (9a ed.). Pearson — no tengo",
                      "  - Sílabo MATG1049 2026-2T.pdf · archivo 5010, leído",
                      "  - enlace: Guía de optimización (página del profesor) [Semana 4: Aplicaciones de la derivada · "

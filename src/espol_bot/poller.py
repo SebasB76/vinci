@@ -144,7 +144,9 @@ class Bot:
         now = self.aula.now()
         try:
             renewal = TokenRenewal(self.cfg.core, self.conn, now).maintain()
-            if renewal.server_fixed:
+            if renewal.chain_cut:
+                result.error = self._token_refused()
+            elif renewal.server_fixed:
                 delete_meta(self.conn, "bot_fail_count_renewal", "bot_alert_renewal")
                 self.conn.commit()
         except RenewalError as exc:

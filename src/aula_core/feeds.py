@@ -40,6 +40,11 @@ class FeedReport:
     errors: list[str] = field(default_factory=list)
 
 
+def announcements_key(secret_url: str) -> str:
+    """meta key holding when this announcement feed was last read; keyed by a hash, never the URL."""
+    return "feeds_announcements_seeded_" + hashlib.sha256(secret_url.encode()).hexdigest()[:16]
+
+
 def configured() -> bool:
     values = load_secret_values()
     return bool(values.get(CALENDAR_KEY) or values.get(ANNOUNCEMENTS_KEY))
@@ -134,7 +139,7 @@ def _calendar(conn: sqlite3.Connection, cfg: CoreConfig, now: datetime, text: st
 
 
 def _announcements(conn: sqlite3.Connection, cfg: CoreConfig, now: datetime, text: str, secret_url: str) -> int:
-    key = "feeds_announcements_seeded_" + hashlib.sha256(secret_url.encode()).hexdigest()[:16]
+    key = announcements_key(secret_url)
     seeded = get_meta(conn, key) is not None
     try:
         root = ET.fromstring(text)

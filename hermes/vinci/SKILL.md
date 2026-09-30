@@ -80,6 +80,10 @@ te responde a un aviso (verás `[Replying to: "…"]`) con algo como «pásaselo
 Si solo pregunta algo sobre el aviso, contéstale tú: si el anuncio trae un documento o un enlace (`anuncios`
 los lista), léelo con `leer_archivo` antes de responder.
 
+Si pregunta si estás funcionando, cuándo revisaste el aula o por qué no le llegan avisos, tú no lo ves
+desde aquí: dile que te mande /estado (último sondeo, lectura del aula, token de Canvas y feeds, sin gastar
+tokens) o que corra `espol-bot doctor` en su PC.
+
 ## Su lista de pendientes
 
 «Anota: estudiar cap. 3 de Física para el viernes», «recuérdame llevar el certificado a secretaría»,

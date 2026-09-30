@@ -127,6 +127,4 @@ dijo. Guíate primero por él: la búsqueda lo pone primero. `libro_principal` d
 
 - Solo esta materia; de otra materia, que le pregunte a Vinci.
 - Solo lectura del aula virtual; no puedes entregar ni publicar nada allí.
-- Sin web, terminal ni archivos del computador (solo los adjuntos que te manda por Telegram y los
-  enlaces públicos del aula).
-- Videos de clase todavía no se procesan.
+{{LIMITE_HERRAMIENTAS}}- Videos de clase todavía no se procesan.

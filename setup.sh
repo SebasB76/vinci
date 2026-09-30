@@ -149,7 +149,9 @@ cat <<EOF
 Listo. Un solo gateway de Hermes atiende a Vinci y a todos tus bots de materia.
 Para encenderlo (queda corriendo en segundo plano y arranca con tu sesión):
   hermes gateway install      # una sola vez (si ya usas el gateway de Hermes, sáltate esto)
-  hermes gateway start        # si ya estaba encendido, toma los bots nuevos solo en ~30 s
+  hermes gateway start        # la primera vez; si ya estaba encendido, toma los bots nuevos solo en ~30 s
+Si esta instalación cambió las herramientas de un bot (skills, servidor MCP), «start» no basta:
+  hermes gateway restart      # reinicia el gateway completo; los chats abiertos siguen con lo viejo hasta /new
 Ver si está vivo:  hermes gateway status   ·   $PROFILE cron list
 Apagarlo:          hermes gateway stop     (apaga también tu Hermes personal en Telegram, si lo usas)
 

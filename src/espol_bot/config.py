@@ -5,13 +5,22 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import time
 
 from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_values, section
 
 PROFILE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 DEFAULT_TELEGRAM_API = "https://api.telegram.org"
+# Removed everywhere, whatever a platform list says (Hermes applies this last).
+BLOCKED_TOOLSETS = [
+    "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
+    "vision", "video", "image_gen", "video_gen", "tts", "todo", "connections", "homeassistant",
+    "spotify", "x_search", "a2a",
+]
+# Blocked by default and switched on per bot in config.toml ([hermes.herramientas]); a subject bot also has
+# web and search off.
+SWITCHABLE_TOOLSETS = [*BLOCKED_TOOLSETS, "web", "search"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,15 @@ class BotConfig:
     hermes_provider: str
     hermes_model: str
     telegram_api: str
+    vinci_toolsets: tuple[str, ...] = ()
+    subject_toolsets: tuple[str, ...] = ()
+    subject_toolsets_by_code: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def extra_toolsets(self, code: str | None) -> tuple[str, ...]:
+        """Toolsets the captain switched on for Vinci (`code` None) or for one subject bot, in config.toml."""
+        if code is None:
+            return self.vinci_toolsets
+        return (*self.subject_toolsets, *self.subject_toolsets_by_code.get(code.upper(), ()))
 
     def subject_profile(self, code: str) -> str:
         """Hermes profile of a subject bot: `vinci-estg1034` for Vinci's ESTG1034."""
@@ -65,6 +83,9 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not PROFILE_RE.fullmatch(profile) or profile == "default":
         raise ConfigError(f"perfil de Hermes inválido: {profile!r}")
 
+    tools = section(hermes, "herramientas")
+    by_code = section(tools, "por_materia")
+
     api = os.environ.get("ESPOL_TELEGRAM_API_BASE") or DEFAULT_TELEGRAM_API
     if not api.startswith(("https://", "http://")):
         raise ConfigError("ESPOL_TELEGRAM_API_BASE debe empezar con https://")
@@ -80,7 +101,20 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_provider=str(hermes.get("proveedor", "anthropic")),
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
+        vinci_toolsets=_names(tools.get("vinci", []), "vinci"),
+        subject_toolsets=_names(tools.get("materias", []), "materias"),
+        subject_toolsets_by_code={code.upper(): _names(names, f"por_materia.{code}") for code, names in by_code.items()},
     )
+
+
+def _names(value: object, key: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+        raise ConfigError(f"[hermes.herramientas] {key} debe ser una lista de nombres de herramientas, ej. [\"terminal\"]")
+    unknown = [v.strip() for v in value if v.strip() not in SWITCHABLE_TOOLSETS]
+    if unknown:
+        raise ConfigError(f"[hermes.herramientas] {key}: no conozco {', '.join(unknown)}. Las que se pueden activar: "
+                          f"{', '.join(SWITCHABLE_TOOLSETS)}")
+    return tuple(dict.fromkeys(v.strip() for v in value))
 
 
 def captain_id(values: dict[str, str] | None = None) -> str:

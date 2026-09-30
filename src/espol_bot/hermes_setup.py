@@ -126,6 +126,11 @@ def poll_schedule(minutes: int, summary_minute: int) -> str:
     return ",".join(map(str, range(first, 60, minutes))) + " * * * *"
 
 
+def _join_ni(names: list[str]) -> str:
+    """«web, terminal ni archivos»."""
+    return f"{', '.join(names[:-1])} ni {names[-1]}" if len(names) > 1 else "".join(names)
+
+
 def _render(template: Path, values: dict[str, str]) -> str:
     text = template.read_text(encoding="utf-8")
     for key, value in values.items():
@@ -198,11 +203,39 @@ class Setup:
             print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en el README)")
         return toolsets + [t for t in extra if t not in toolsets], [t for t in blocked if t not in extra]
 
-    def _closed_note(self, code: str | None) -> str:
+    def _closed(self, code: str | None, files: str) -> list[str]:
+        """Which of web (subject bots only), terminal and file the bot still lacks, named for the prompts."""
         extra = set(self.cfg.extra_toolsets(code))
-        wanted = (*([("web", "web")] if code else []), ("terminal", "terminal"), ("archivos", "file"))
-        closed = [name for name, toolset in wanted if toolset not in extra]
+        wanted = (*([("web", "web")] if code else []), ("terminal", "terminal"), (files, "file"))
+        return [name for name, toolset in wanted if toolset not in extra]
+
+    def _closed_note(self, code: str | None) -> str:
+        closed = self._closed(code, "archivos")
         return f"; sin {' ni '.join(closed)}" if closed else ""
+
+    def _tool_limits(self, code: str | None) -> dict[str, str]:
+        """The SOUL.md and SKILL.md lines that deny a tool, so a tool switched on is never denied to the model.
+
+        With every switch at its default they render exactly the text the templates used to hardcode."""
+        closed = self._closed(code, "archivos del computador")
+        denied = _join_ni(closed)
+        if code:
+            only = (" (solo los adjuntos que te manda por Telegram y los\n  enlaces públicos del aula)"
+                    if "archivos del computador" in closed else "")
+            skill = f"- Sin {denied}{only}.\n" if closed else ""
+            soul = f"No tienes {_join_ni(self._closed(code, 'acceso a archivos del computador'))}. " if closed else ""
+            return {"SIN_HERRAMIENTAS": soul, "LIMITE_HERRAMIENTAS": skill}
+        extra = self.cfg.extra_toolsets(None)
+        if not extra:
+            soul = ("No tienes terminal ni acceso a archivos del computador, y no los necesitas: tus herramientas son\n"
+                    "  las de Vinci (`mcp__vinci__*`), la búsqueda web y tu memoria.")
+        else:
+            lacking = self._closed(None, "acceso a archivos del computador")
+            soul = ((f"No tienes {_join_ni(lacking)}. " if lacking else "")
+                    + "Tus herramientas son las de Vinci (`mcp__vinci__*`), la búsqueda web, tu memoria y las que el "
+                    f"estudiante activó en config.toml ({', '.join(extra)}).")
+        skill = f"- Sin {denied}; no leas" if closed else "- No leas"
+        return {"SIN_HERRAMIENTAS": soul, "LIMITE_HERRAMIENTAS": skill}
 
     def base_config(self, toolsets: list[str], blocked: list[str], mcp_name: str, mcp_args: list[str],
                     skill: str) -> dict:
@@ -381,7 +414,8 @@ class Setup:
 
         party = "\n".join(f"- «{characters.bot_name(code, c.subject or code)}»: {c.subject} ({code})"
                           for code, c in characters.party().items())
-        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": ""}
+        values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": "",
+                  **self._tool_limits(None)}
         changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "SKILL.md", values))
@@ -466,7 +500,7 @@ class Setup:
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         self.configured.append((name, "vinci-materia"))
         values = {**self.values, "NOMBRE": subject.name, "CODIGO": subject.code, "BOT_NOMBRE": subject.display,
-                  "PROFILE_HOME": str(profile)}
+                  "PROFILE_HOME": str(profile), **self._tool_limits(subject.code)}
         changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "materia" / "SOUL.md", values))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci-materia" / "SKILL.md",
                                      _render(TEMPLATES / "materia" / "SKILL.md", values))

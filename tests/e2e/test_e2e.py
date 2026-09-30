@@ -706,12 +706,17 @@ def test_e2e(tmp_path):
             assert not {"terminal", "file"} & set(scfg_on["agent"]["disabled_toolsets"])
             assert {"code_execution", "browser", "delegation"} <= set(scfg_on["agent"]["disabled_toolsets"])
             assert "herramientas extra activadas en config.toml: terminal, file" in switched.stdout, switched.stdout
+            vinci_skill = profile / "skills" / "vinci" / "vinci" / "SKILL.md"
+            prompts_on = (profile / "SOUL.md").read_text(encoding="utf-8") + vinci_skill.read_text(encoding="utf-8")
+            assert "terminal" not in prompts_on.replace("(terminal, file)", ""), "un switch encendido no se niega al modelo"
             config_file.write_text(original.replace("vinci = []", 'vinci = ["terminall"]'), encoding="utf-8")
             typo = run(["bash", str(REPO / "setup.sh"), "--skip-deps", "--sin-pruebas"], T_SETUP, check=False)
             assert typo.returncode != 0 and "no conozco terminall" in typo.stdout + typo.stderr
             config_file.write_text(original, encoding="utf-8")
             run(["bash", str(REPO / "setup.sh"), "--skip-deps", "--sin-pruebas"], T_SETUP)
             assert yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8")) == vcfg_before_switch
+            assert "No tienes terminal ni acceso a archivos del computador" in (profile / "SOUL.md").read_text(encoding="utf-8")
+            assert "- Sin terminal ni archivos del computador;" in vinci_skill.read_text(encoding="utf-8")
             profile_env = parse_env_file(profile / ".env")
             assert profile_env["TELEGRAM_BOT_TOKEN"] == BOT_TOKEN
             assert profile_env["TELEGRAM_ALLOWED_USERS"] == profile_env["TELEGRAM_HOME_CHANNEL"] == CAPTAIN_ID

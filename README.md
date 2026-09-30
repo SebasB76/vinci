@@ -59,6 +59,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 🧭 **Vinci ve todo junto** | Contesta sobre cualquier materia, arma planes de estudio con tus entregas y tus clases, lee los cuadernos de todos los bots y busca en la web. Le mandas «tengo esto de Física» con una foto y se lo pasa al bot correcto. |
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
+| 🩺 **Estado del sistema** | Mándale `/estado` a Vinci (o corre `espol-bot doctor` en la terminal) y ves cuándo corrió el último sondeo, cuándo se leyó el aula, la edad del token de Canvas y si su cadena de renovación está sana, y qué feeds sin token están activos. Lo que está atrasado o roto sale con ❌ o ⚠️ y qué hacer. No usa el modelo. |
 | 💻 **Terminal y Claude Code** | El comando `aula` consulta todo desde la terminal, y una skill le enseña a Claude Code a usarlo. |
 
 Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un brief) lo hacen scripts fijos que
@@ -82,8 +83,8 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
 - **Las herramientas** de cada bot son un servidor MCP propio (`espol-bot mcp vinci|materia`) que lee los datos
   ya sincronizados; el de un bot de materia, además, baja del aula el material que le hace falta. Vinci ve todas
   las materias y lee los cuadernos; un bot de materia ve solo la suya y escribe solo en su cuaderno.
-- **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start` y cualquier mensaje con un token
-  de bot, antes de que Hermes los vea, y revisa las citas de cada respuesta antes de que salga
+- **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start`, el `/estado` de Vinci y cualquier
+  mensaje con un token de bot, antes de que Hermes los vea, y revisa las citas de cada respuesta antes de que salga
   (`espol-bot citas`). A cada bot de materia, además, le da `ver_pagina`: una página de un PDF como imagen, para
   leer escaneos.
 
@@ -260,8 +261,26 @@ pero nunca pulsarlo.
 
 - `/start` en cualquier bot: te saluda y te dice qué hace. En un bot de materia, además, cuándo es tu próxima clase
   y a qué hora te llega el brief.
+- `/estado` en el chat de Vinci: la salud del sistema, sin gastar tokens (mira [El estado del
+  sistema](#el-estado-del-sistema)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
+
+### El estado del sistema
+
+`/estado` en el chat de Vinci y `.venv/bin/espol-bot doctor` en la terminal muestran lo mismo, leyendo solo lo que
+guardaron el sondeo y el mantenimiento (no llaman al aula ni al modelo):
+
+| Línea | ✅ | Se marca así cuando |
+|---|---|---|
+| Sondeo | corrió hace poco | ❌ no corre hace más de dos intervalos (60 min con el intervalo de 30); ⚠️ corrió con un problema (el aula o Telegram fallaron) |
+| Aula virtual | se leyó con el token hace poco | ⚠️ no se lee hace más de dos intervalos, o Canvas pidió bajar el ritmo |
+| Mantenimiento | corrió hace poco | ❌ no corre hace más de 25 min (corre cada 10) |
+| Token de Canvas | se renovó hace menos de 50 min | ⚠️ tiene 50 min o más, o la última renovación falló; ❌ tiene una hora o más (ESPOL ya lo invalidó), o Canvas lo rechazó y la cadena se cortó |
+| Calendario (iCal) · Anuncios (RSS/Atom) | se leyó hace menos de 25 min | ❌ el último mantenimiento no pudo leerlo; ⚠️ no se lee hace 25 min o no está configurado |
+
+Debajo de cada línea con problema va qué correr (por ejemplo `espol-bot resembrar` si la cadena se cortó).
+`espol-bot doctor` termina con código 1 si alguna línea tiene ❌. `/estado` solo lo contesta Vinci, y solo a ti.
 
 ### El material de cada materia
 
@@ -582,6 +601,7 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 | `⚠ El gateway de Hermes no cargó el plugin …` | Reinicia el gateway: `hermes gateway stop && hermes gateway start`. |
 | Vinci te responde «No sé de qué materia es ese bot» | Pulsa primero «➕ Crear» en la materia que es, y revoca en @BotFather (`/revoke`) el token que mandaste. |
 | No te llega el brief | Revisa que guardaste el horario y que la clase está en él, que el bot está activo y que el gateway corre. Mándale `/start` al bot: te dice cuándo es tu próxima clase y a qué hora llega el brief. |
+| No te llegan avisos del aula | Mándale `/estado` a Vinci o corre `.venv/bin/espol-bot doctor`: te dice si el sondeo dejó de correr, si la cadena del token se cortó o si un feed falla, y qué hacer. |
 | Ningún bot responde | `hermes gateway status`; si está apagado, `hermes gateway start`. Si se apaga al cerrar sesión: `sudo loginctl enable-linger "$USER"`. |
 | El modelo no responde o falta la credencial | Configura el modelo en Hermes (`hermes model`). Si usas una `ANTHROPIC_API_KEY` y no el login de Anthropic, cada perfil lee su propio `.env`: agrégala al `.env` de `~/.hermes/profiles/vinci/` y de cada `vinci-<código>` (el setup conserva esa línea). |
 | `⚠ No pude ponerle su foto …` o `… el nombre …` | Telegram pidió esperar o no hubo conexión. `./setup.sh` lo reintenta la próxima vez; también puedes hacerlo en @BotFather con `/setuserpic` o `/setname`. |
@@ -589,6 +609,7 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 Para ver qué pasa:
 
 ```bash
+.venv/bin/espol-bot doctor                             # sondeo, aula, token y feeds, de un vistazo
 hermes gateway status                                  # ¿está corriendo?
 vinci cron list                                        # sondeo, mantenimiento y resumen de Vinci
 tail -f ~/.hermes/logs/gateway.log                     # registro del gateway de Hermes

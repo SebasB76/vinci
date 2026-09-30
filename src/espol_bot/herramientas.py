@@ -577,8 +577,12 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
             except materias.Ambiguous:
                 pass  # no bot for it (yet): keep the student's own words
         todo = store.add_todo(ctx.conn, text, subject, due, all_day, now)
-        card(messages.todo_card(todo, ctx.cfg.core.tz, ctx.cfg.reminder_hours),
-             [(messages.TODO_DONE_BUTTON, f"v1:t:{todo['id']}:ok")])
+        try:
+            card(messages.todo_card(todo, ctx.cfg.core.tz, ctx.cfg.reminder_hours),
+                 [(messages.TODO_DONE_BUTTON, f"v1:t:{todo['id']}:ok")])
+        except ToolError:
+            store.delete_todo(ctx.conn, todo["id"])
+            raise
         return {"todo": _todo_json(ctx, todo, now),
                 "message": "Le mostré el pendiente anotado en una tarjeta con el botón «✅ Hecho». Confírmaselo en "
                            "una línea (qué y para cuándo), sin repetir la tarjeta."}

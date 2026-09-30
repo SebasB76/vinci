@@ -214,6 +214,11 @@ def todo(conn: sqlite3.Connection, todo_id: int) -> dict | None:
     return _todo(row) if row else None
 
 
+def delete_todo(conn: sqlite3.Connection, todo_id: int) -> None:
+    conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+    conn.commit()
+
+
 def set_todo_done(conn: sqlite3.Connection, todo_id: int, done: bool, now: datetime) -> bool:
     """Mark a to-do done (or open again); False when it already was."""
     cur = conn.execute("UPDATE todos SET done_at = ? WHERE id = ? AND done_at IS " + ("NULL" if done else "NOT NULL"),

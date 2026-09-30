@@ -168,13 +168,19 @@ def weekly_summary(week: list[dict], overdue: list[dict], announcements_24h: lis
 SUBMITTED_BUTTON = "✅ Ya lo entregué"
 UNSUBMITTED_BUTTON = "↩️ Aún no lo entregué"
 TODO_DONE_BUTTON = "✅ Hecho"
-TODO_UNDO_BUTTON = "↩️ Deshacer"
+
+
+def _todo_short(text: str) -> str:
+    return text if len(text) <= 28 else text[:27].rstrip() + "…"
 
 
 def todo_done_button(text: str) -> str:
     """The summary lists several to-dos: each button says which one it closes."""
-    short = text if len(text) <= 28 else text[:27].rstrip() + "…"
-    return f"✅ {short}"
+    return f"✅ {_todo_short(text)}"
+
+
+def todo_undo_button(text: str) -> str:
+    return f"↩️ Deshacer: {_todo_short(text)}"
 
 
 def todo_due(todo: dict, tz: ZoneInfo) -> str:

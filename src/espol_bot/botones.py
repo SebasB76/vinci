@@ -17,7 +17,7 @@ plugin should show:
                           (handed in outside Canvas), so no reminder or summary lists it again;
                           its button turns into «↩️ Aún no lo entregué», which undoes it
   v1:t:<pendiente>:ok|no  «✅ Hecho» under a to-do (its card, a reminder, the summary): closes it;
-                          the button turns into «↩️ Deshacer»
+                          the button turns into «↩️ Deshacer: <pendiente>», which undoes it
 
 No model is involved: the schedule is saved, and a bot created or archived, only by the
 captain's own press.
@@ -101,9 +101,9 @@ def _todo_done(conn, todo_id: int, done: bool, now: datetime) -> dict:
         return _answer("Ese pendiente ya no está en tu lista.")
     store.set_todo_done(conn, todo_id, done, now)
     if done:
-        return _answer(f"✅ Hecho: «{todo['text']}».", replace_button=(messages.TODO_UNDO_BUTTON, f"v1:t:{todo_id}:no"))
+        return _answer(f"✅ Hecho: «{todo['text']}».", replace_button=(messages.todo_undo_button(todo["text"]), f"v1:t:{todo_id}:no"))
     return _answer(f"«{todo['text']}» vuelve a tu lista.",
-                   replace_button=(messages.TODO_DONE_BUTTON, f"v1:t:{todo_id}:ok"))
+                   replace_button=(messages.todo_done_button(todo["text"]), f"v1:t:{todo_id}:ok"))
 
 
 def _team(cfg: BotConfig, kind: str, code: str, now: datetime) -> dict:

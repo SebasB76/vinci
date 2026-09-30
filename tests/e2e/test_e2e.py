@@ -1668,9 +1668,13 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
 
     steps = [press(reminded[0], f"v1:t:{rows[1]['id']}:ok", "Hecho"),
              press(daily[0], done_buttons[1]["callback_data"], "Hecho")]
-    assert [b["text"] for b in buttons(reminded[0])] == ["↩️ Deshacer"]
+    assert [b["text"] for b in buttons(reminded[0])] == ["↩️ Deshacer: Llevar el certificado de ma…"]
     assert [b["text"] for b in buttons(daily[0]) if b["callback_data"].startswith("v1:t:")][:2] == \
-        [done_buttons[0]["text"], "↩️ Deshacer"], "solo cambia el botón pulsado"
+        [done_buttons[0]["text"], "↩️ Deshacer: Estudiar cap. 3"], "solo cambia el botón pulsado"
+    steps.append(press(daily[0], f"v1:t:{rows[0]['id']}:no", "vuelve a tu lista"))
+    assert [b["text"] for b in buttons(daily[0]) if b["callback_data"].startswith("v1:t:")][1] == \
+        "✅ Estudiar cap. 3", "deshacer en el resumen devuelve el botón con su pendiente"
+    steps.append(press(daily[0], done_buttons[1]["callback_data"], "Hecho"))
     assert [bool(r["done_at"]) for r in todo_rows()] == [True, True, False]
     run([bot, "sondeo"], T_VINCI)
     assert take("Sondeo: nada que recordar") == []

@@ -57,3 +57,18 @@ perfil = "vinci"
 # solo las respuestas, los briefs y lo que les pases).
 proveedor = "anthropic"
 modelo = "claude-sonnet-5-5"
+
+[hermes.herramientas]
+# Herramientas de Hermes que cada bot tiene APAGADAS y puedes encender. Nadie las trae de fábrica:
+# escribe los nombres que quieras, vuelve a correr ./setup.sh y reinicia el gateway (hermes gateway restart).
+# Quitar un nombre la vuelve a apagar. La tabla con el riesgo de cada una está en el README (Seguridad y privacidad).
+#   terminal, file, code_execution, browser, computer_use, delegation, cronjob, kanban, vision, video,
+#   image_gen, video_gen, tts, todo, connections, homeassistant, spotify, x_search, a2a
+#   (a los bots de materia además: web, search)
+# Ejemplo: vinci = ["terminal", "file"]
+vinci = []
+# Para todos los bots de materia.
+materias = []
+
+[hermes.herramientas.por_materia]
+# Para un solo bot de materia, por su código (se suma a `materias`). Ejemplo: ESTG1034 = ["code_execution"]

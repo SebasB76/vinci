@@ -94,6 +94,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from aula_core.config import parse_env_file
+from espol_bot import skill_check
 
 HERE = Path(__file__).parent
 REPO = HERE.parents[1]
@@ -175,8 +176,9 @@ SCHEDULE_V1 = [
 ]
 SCHEDULE_V2 = [dict(c, inicio="09:00", fin="11:00") if c["dia"] == "miércoles" else c for c in SCHEDULE_V1]
 
-VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"}
-SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina"}
+SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
+VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
+SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina"} | SKILL_TOOLS
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
 VOICE_RE = re.compile(r"(?:voice message: |audio is available at: )([^\s\]]+)")
@@ -361,7 +363,7 @@ class Script:
         return "\n".join(parts)
 
     def subject(self, name: str, text: str, called: list[str], results: list[str]) -> dict:
-        if "TAREA: brief_de_clase" in text:
+        if re.search(r"^TAREA: brief_de_clase", text, re.M):  # the skill quotes it mid-line
             if not called:
                 return _call("mcp__materia__buscar_material", pregunta="regla de la cadena")
             hits = _json(results[-1]) if results else None
@@ -379,7 +381,7 @@ class Script:
                 f"4) Conceptos clave: regla de la cadena, derivada de una composición "
                 f"(📄 {source or 'sin material'})",
                 "5) Pregunta para clase: ¿cuándo conviene derivar de forma implícita?"])}
-        if "TAREA: entrega_de_vinci" in text:
+        if re.search(r"^TAREA: entrega_de_vinci", text, re.M):
             count = len(re.findall(r"^Entrega #\d+", text, re.M))
             photos = len(re.findall(r"^  - foto #\d+", text, re.M))
             extra = f", con {photos} foto(s) ya guardada(s) en tu cuaderno" if photos else ""
@@ -692,6 +694,24 @@ def test_e2e(tmp_path):
                 by_name["vinci-resumen"]["schedule_display"] == "0 7 * * *"
             assert all(j["no_agent"] and j["deliver"] == f"telegram:{CAPTAIN_ID}" for j in jobs)
             assert "sin cambios" in second.stdout and "creado" not in second.stdout
+            for out in (first.stdout, second.stdout):
+                assert "✓ vinci: su skill llega al modelo" in out and "✗" not in out and "no pude revisar" not in out, out
+            # A toolset the captain switches on in config.toml leaves the blocked list; switching it off restores it.
+            original = config_file.read_text(encoding="utf-8")
+            vcfg_before_switch = yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8"))
+            config_file.write_text(original.replace("vinci = []", 'vinci = ["terminal", "file"]'), encoding="utf-8")
+            switched = run(["bash", str(REPO / "setup.sh"), "--skip-deps", "--sin-pruebas"], T_SETUP)
+            scfg_on = yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8"))
+            assert {"terminal", "file"} <= set(scfg_on["platform_toolsets"]["telegram"]) & set(scfg_on["platform_toolsets"]["cron"])
+            assert not {"terminal", "file"} & set(scfg_on["agent"]["disabled_toolsets"])
+            assert {"code_execution", "browser", "delegation"} <= set(scfg_on["agent"]["disabled_toolsets"])
+            assert "herramientas extra activadas en config.toml: terminal, file" in switched.stdout, switched.stdout
+            config_file.write_text(original.replace("vinci = []", 'vinci = ["terminall"]'), encoding="utf-8")
+            typo = run(["bash", str(REPO / "setup.sh"), "--skip-deps", "--sin-pruebas"], T_SETUP, check=False)
+            assert typo.returncode != 0 and "no conozco terminall" in typo.stdout + typo.stderr
+            config_file.write_text(original, encoding="utf-8")
+            run(["bash", str(REPO / "setup.sh"), "--skip-deps", "--sin-pruebas"], T_SETUP)
+            assert yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8")) == vcfg_before_switch
             profile_env = parse_env_file(profile / ".env")
             assert profile_env["TELEGRAM_BOT_TOKEN"] == BOT_TOKEN
             assert profile_env["TELEGRAM_ALLOWED_USERS"] == profile_env["TELEGRAM_HOME_CHANNEL"] == CAPTAIN_ID
@@ -699,9 +719,11 @@ def test_e2e(tmp_path):
             assert vcfg["timezone"] == "America/Guayaquil" and vcfg["model"]["provider"] == "fakellm"
             assert vcfg["model"]["default"] == "fake", "the config.toml model substitution no longer matches"
             assert set(vcfg["platform_toolsets"]["telegram"]) == {"web", "memory", "session_search", "clarify",
-                                                                  "mcp-vinci"}
-            assert {"terminal", "file", "code_execution", "skills", "delegation", "cronjob"} <= \
-                set(vcfg["agent"]["disabled_toolsets"])
+                                                                  "skills", "mcp-vinci"}
+            assert set(vcfg["platform_toolsets"]["cli"]) == set(vcfg["platform_toolsets"]["telegram"])
+            assert set(vcfg["platform_toolsets"]["cron"]) == {"web", "memory", "skills", "mcp-vinci"}
+            assert {"terminal", "file", "code_execution", "delegation", "cronjob"} <= \
+                set(vcfg["agent"]["disabled_toolsets"]) and "skills" not in vcfg["agent"]["disabled_toolsets"]
             assert vcfg["tools"]["tool_search"]["enabled"] == "off"
             assert vcfg["skills"]["auto_load"] == ["vinci"]
             assert vcfg["compression"]["threshold_tokens"] == 80_000, "Vinci resume su chat a los 80 mil tokens"
@@ -1201,7 +1223,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
         for req in llm.requests:
             for m in req.get("messages") or []:
                 text = flatten(m.get("content"))
-                if m.get("role") == "user" and f"TAREA: {kind}" in text and text not in found:
+                if m.get("role") == "user" and re.search(rf"^TAREA: {kind}", text, re.M) and text not in found:
                     found.append(text)
         return found
 
@@ -1314,9 +1336,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
         env = parse_env_file(sp / ".env")
         assert env["TELEGRAM_BOT_TOKEN"] == token and env["TELEGRAM_ALLOWED_USERS"] == CAPTAIN_ID
         scfg = yaml.safe_load((sp / "config.yaml").read_text())
-        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia",
-                                                              "vinci-paginas"}
-        assert {"web", "terminal", "file", "skills"} <= set(scfg["agent"]["disabled_toolsets"])
+        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "skills",
+                                                              "mcp-materia", "vinci-paginas"}
+        assert set(scfg["platform_toolsets"]["cron"]) == {"memory", "skills", "mcp-materia", "vinci-paginas"}
+        assert {"web", "terminal", "file"} <= set(scfg["agent"]["disabled_toolsets"])
+        assert "skills" not in scfg["agent"]["disabled_toolsets"]
         assert scfg["mcp_servers"]["materia"]["args"][:4] == ["mcp", "materia", "--curso", code]
         assert scfg["unauthorized_dm_behavior"] == "ignore" and scfg["skills"]["auto_load"] == ["vinci-materia"]
         assert "vinci-botones" in scfg["plugins"]["enabled"]
@@ -1819,8 +1843,8 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   f"terminal Hermes respondió que esas herramientas no existen: «{readable(shell)[:60]}…»; el "
                   "cuaderno no cambió y no se creó ningún archivo")
     report.append("Herramientas que Hermes le ofreció al modelo (ver hermes_herramientas.json): Vinci, solo las "
-                  "suyas + búsqueda web, memoria, historial y preguntas; los bots de materia, solo las de su "
-                  "materia + memoria (sin web); ninguno con terminal, archivos, código ni skills")
+                  "suyas + búsqueda web, memoria, historial, preguntas y skills; los bots de materia, solo las de su "
+                  "materia + memoria (sin web); todos con las skills de Hermes; ninguno con terminal, archivos ni código")
     report.append("El primer mensaje de cada bot trae solo la presentación de Hermes: ninguno le ofrece al estudiante "
                   "«armar un perfil tuyo» (onboarding.profile_build: off)")
     take("Vinci lee cuadernos, no los escribe, sin terminal")
@@ -1955,6 +1979,22 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     assert vinci_systems and all("buen compañero de estudio" in t and not [w for w in ROLEPLAY if w in t]
                                  for t in vinci_systems), "ningún turno de Vinci trae un personaje"
     assert calc_systems and all("como un compañero que se sabe la materia" in t for t in calc_systems)
+    # skills.auto_load: Hermes drops it silently when the agent has no skills tool, so every SKILL line must be
+    # in what the model got (a line SOUL.md repeats would prove nothing).
+    def assert_skill_reached(who: str, profile_name: str, skill: str) -> None:
+        lines = skill_check.skill_lines(
+            (profiles / profile_name / "skills" / "vinci" / skill / "SKILL.md").read_text("utf-8"), soul_md(profile_name))
+        assert len(lines) > 20, f"{who}: la skill no tiene líneas propias"
+        for req in (r for r in llm.requests if bot_of(r) == who):
+            # A chat has the skill in its system prompt; a cron agent run (no clarify tool) in its job prompt.
+            source = system_of(req) if "clarify" in tools_of(req) else "\n".join(
+                flatten(m.get("content")) for m in req["messages"])
+            seen = " ".join(source.split())
+            gone = [line for line in lines if " ".join(line.split()) not in seen]
+            assert not gone, f"{who}: su skill no llegó al modelo ({len(gone)} líneas, p. ej. «{gone[0][:60]}»)"
+
+    assert_skill_reached("Vinci", "vinci", "vinci")
+    assert_skill_reached("Cálculo de una Variable", "vinci-matg1049", "vinci-materia")
     from aula_core.config import load_config
     from espol_bot import equipo, materias, messages
     core = load_config(Path(base_env["AULA_CONFIG"]))
@@ -2119,9 +2159,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
         for rule in ("Reglas firmes:", f"Solo {name}.", "Solo lectura del aula virtual", "No tienes web, terminal"):
             assert rule in soul, f"{bot_name} no cambia sus reglas: falta «{rule}»"
         scfg = yaml.safe_load((profile / "config.yaml").read_text())
-        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "mcp-materia",
-                                                              "vinci-paginas"}
-        assert {"web", "terminal", "file", "skills"} <= set(scfg["agent"]["disabled_toolsets"])
+        assert set(scfg["platform_toolsets"]["telegram"]) == {"memory", "session_search", "clarify", "skills",
+                                                              "mcp-materia", "vinci-paginas"}
+        assert set(scfg["platform_toolsets"]["cron"]) == {"memory", "skills", "mcp-materia", "vinci-paginas"}
+        assert {"web", "terminal", "file"} <= set(scfg["agent"]["disabled_toolsets"])
+        assert "skills" not in scfg["agent"]["disabled_toolsets"]
         assert scfg["compression"]["threshold_tokens"] == 80_000, f"{bot_name} resume su chat a los 80 mil tokens"
         if code in EXISTING and not EXISTING[code][1].startswith("Vinci · "):
             assert scfg["compression"]["protect_last_n"] == 30, "setup.sh no toca lo demás de un perfil que ya existía"

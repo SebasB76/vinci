@@ -145,7 +145,7 @@ Puedes correrlo las veces que quieras: si no cambiaste nada, no cambia nada. Hac
 - instala el comando `aula` en `~/.local/bin/` y la skill de Claude Code en `~/.claude/skills/aula/`;
 - crea o actualiza el perfil `vinci` de Hermes (modelo, zona horaria, Telegram solo para tu ID, sus
   herramientas, el cron del sondeo y el del resumen de las 7:00) y el perfil de cada bot de materia que ya
-  exista;
+  exista, y comprueba que la skill de cada bot llegue de verdad a su prompt (sin llamar al modelo);
 - le pone a Vinci su foto de perfil en Telegram, y a cada bot de materia su nombre y su foto (mira
   [La foto de cada bot](#la-foto-de-cada-bot));
 - prueba que el aula virtual responde (si rechaza tu token, te lo dice) y Vinci te manda un mensaje de prueba,
@@ -164,6 +164,10 @@ Un solo gateway atiende a Vinci, a todos tus bots de materia y a tu Hermes perso
 hermes gateway install     # una sola vez (si ya usas el gateway de Hermes, sáltate esto)
 hermes gateway start
 ```
+
+Si el gateway ya estaba encendido y la instalación cambió las herramientas de un bot, usa
+`hermes gateway restart` (con `start` los bots siguen con las herramientas viejas). Un chat ya abierto conserva su
+prompt y sus herramientas hasta `/new`.
 
 Queda en segundo plano y arranca con tu sesión. Para que siga funcionando con la sesión cerrada:
 `sudo loginctl enable-linger "$USER"`.
@@ -405,10 +409,14 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   de Vinci, verifica el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
 - **Solo tú.** Cada bot acepta mensajes solo de tu ID de Telegram. A cualquier otra persona no le contesta nada (ni
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
-- **Herramientas cerradas.** Ningún bot tiene terminal, acceso a archivos, ejecución de código, navegador ni
-  puede instalar skills: solo sus herramientas fijas y su memoria. Vinci además busca en la web; un bot de materia
-  ve solo su materia y no busca en la web: solo abre los enlaces que muestra el aula de su materia, nunca una
-  dirección de tu red o de tu PC. Un bot solo toma como adjunto lo que tú le mandaste por Telegram.
+- **Herramientas cerradas de fábrica.** Ningún bot trae terminal, acceso a archivos, ejecución de código ni
+  navegador: solo sus herramientas fijas, su memoria y las skills de Hermes. Vinci además busca en la web; un bot
+  de materia ve solo su materia y no busca en la web: solo abre los enlaces que muestra el aula de su materia,
+  nunca una dirección de tu red o de tu PC. Un bot solo toma como adjunto lo que tú le mandaste por Telegram.
+  Las demás herramientas de Hermes están apagadas, pero tú decides: [las enciendes por bot](#herramientas-de-hermes-que-puedes-encender).
+- **Las skills pueden escribir.** `skill_manage` deja que un bot cree o edite skills, pero solo dentro de la carpeta
+  `skills/` de su propio perfil. El texto no confiable del aula (un anuncio, un documento) podría intentar dirigirlo
+  a que escriba una skill; `setup.sh` reescribe la skill de cada bot en cada corrida.
 - **Un enlace se abre sin tu cuenta.** Un bot pide el documento de un enlace de forma anónima: sin tu token del
   aula, sin cookies (ni las que el sitio pone en el camino), sin credenciales de tu PC, revisando cada redirección y
   con tope de tamaño (`material.tamano_maximo_mb`) y de tiempo. Lo que trae es material para leer, nunca
@@ -434,6 +442,39 @@ enlace del aula (sin tu cuenta) cuando le hace falta. Los datos guardados se que
 
 Si encuentras un problema de seguridad, no lo publiques en un issue con detalles: avísale primero al dueño del
 repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.
+
+
+### Herramientas de Hermes que puedes encender
+
+Todas están apagadas salvo lo que cada bot necesita. Para encender una en un bot, escribe su nombre en
+`config.toml`, corre `./setup.sh` y reinicia el gateway (`hermes gateway restart`); para apagarla, quítala de la lista.
+
+```toml
+[hermes.herramientas]
+vinci = ["terminal", "file"]     # solo Vinci
+materias = ["code_execution"]    # todos los bots de materia
+
+[hermes.herramientas.por_materia]
+ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
+```
+
+| Herramienta | Qué le da al bot | Riesgo |
+|---|---|---|
+| `terminal` | Comandos de shell y procesos en tu PC | Corre como tu usuario: puede leer o borrar tus archivos, `secrets.env` y el token del aula. El filtro `approvals.deny` solo frena unos patrones |
+| `file` | Leer, escribir y editar archivos | Puede leer `secrets.env` y la base de datos, y modificar cualquier archivo que tu usuario pueda |
+| `code_execution` | Scripts de Python que llaman herramientas | Equivale a una terminal |
+| `browser` | Navegar, hacer clic y escribir en páginas | Páginas con instrucciones ocultas pueden dirigir al bot; actúa con la sesión del navegador que use |
+| `computer_use` | Controlar el escritorio (ratón y teclado) | Actúa sobre lo que tengas abierto en tu PC |
+| `delegation` | Lanzar sub-agentes con las mismas herramientas | Multiplica el gasto de tokens y el alcance de las demás herramientas |
+| `cronjob` | Crear y cambiar tareas programadas | Pueden correr sin ti, gastar tokens y escribirte por Telegram |
+| `kanban` | Tablero de tareas para agentes | Encola trabajo para agentes de Hermes que corre sin que estés en el chat |
+| `vision`, `video`, `image_gen`, `video_gen`, `tts` | Analizar y generar imágenes, video y voz | Mandan contenido a proveedores externos y cobran aparte |
+| `todo` | Lista de pasos de una tarea | Ninguno relevante |
+| `connections` | Conectores a cuentas y servicios remotos | Puede autorizar y usar cuentas externas |
+| `homeassistant`, `spotify` | Casa inteligente y Spotify | Actúan sobre esas cuentas o dispositivos |
+| `x_search` | Buscar en X (Twitter) con xAI | Trae texto no confiable y cobra aparte |
+| `a2a` | Hablar con otros agentes | Recibe mensajes de terceros como si fueran instrucciones |
+| `web`, `search` (solo materias; Vinci ya busca en la web) | Buscar y leer páginas | Texto no confiable de internet; `web` puede abrir cualquier dirección que alcance tu PC |
 
 ## Límites conocidos
 

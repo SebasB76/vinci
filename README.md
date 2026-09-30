@@ -23,8 +23,9 @@ cada una de tus materias y te prepara para cada clase.
 > [Hermes Agent](https://github.com/NousResearch/hermes-agent). It reads your Canvas courses
 > (aulavirtual.espol.edu.ec) read-only, sends alerts and deadline reminders, and creates one Telegram bot per
 > subject from your own courses. Each subject bot sends a brief 30 minutes before every class, keeps a
-> notebook of what you covered, and answers questions from the course material with citations. Everything
-> runs on your PC and answers only you. The rest of this README is in Spanish.
+> notebook of what you covered, and answers questions from the course material with citations (file, page and
+> aula link, checked against what the bot actually read before it is sent). Everything runs on your PC and answers
+> only you. The rest of this README is in Spanish.
 
 <p align="center">
   <img src="docs/images/vinci-en-telegram.png" alt="Tres chats de Telegram: Vinci arma el equipo de bots, un aviso del aula con el botón para consultarlo con el bot de la materia, y el brief de una clase" width="100%">
@@ -49,11 +50,13 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 |---|---|
 | 🔔 **Avisos del aula virtual** | Revisa el aula cada 30 minutos y te avisa de tareas nuevas, cambios de fecha, anuncios, notas publicadas o cambiadas, material y enlaces nuevos y materias nuevas. Te recuerda cada entrega que aún no enviaste 24 h y 3 h antes, y a las 7:00 te manda el resumen de tu semana. Si la entregaste en papel, por correo o en el laboratorio (el aula no se entera), pulsa «✅ Ya lo entregué» y no insiste más. |
 | 📌 **Tu lista de pendientes** | «Anota: estudiar cap. 3 de Física para el viernes»: Vinci guarda lo que el aula no trae (lecturas, trámites, lo que el profe dijo en clase y no subió), con su materia y su fecha. Sale en el resumen de las 7:00 y en «¿qué tengo esta semana?», te lo recuerda 24 h y 3 h antes, y lo cierras con «✅ Hecho». |
+| 📊 **Calculadora de notas** | «¿Cómo voy?», «¿cuánto necesito en la lección para pasar?», «¿y si saco 70 en el examen?»: aplica los pesos de cada materia a tus notas del aula (y a las que le cuentas) y te dice cuánto llevas y qué promedio necesitas en lo que falta. Los pesos los saca del sílabo, de las políticas del curso y de los anuncios, incluido cómo maneja cada materia el primer parcial sin examen por El Niño; lo que no encuentra te lo pregunta, y se guarda solo cuando pulsas «✅ Guardar esquema». Las cuentas las hace un script, no el modelo. [Más sobre la calculadora](#la-calculadora-de-notas). |
 | 🤖 **Un bot por materia** | Le dices «arma mi equipo» y Vinci te propone un bot por cada materia de tu aula, que se crea con un toque tuyo. El teórico y el práctico de una materia comparten un solo bot. |
 | 📚 **Brief antes de cada clase** | 30 minutos antes de cada clase de tu horario, el bot de esa materia te manda un repaso de la clase anterior, lo que vence, el material nuevo, 2 o 3 conceptos clave y una pregunta para hacerle al profe. |
 | 📓 **Cuaderno de cada materia** | Cuéntale al bot lo que vieron o mándale una foto de la pizarra, una nota de voz o un PDF: lo guarda con un resumen. Lleva tus dudas y los temas que te cuestan, y los usa en los briefs. |
 | 📄 **Preguntas sobre el material** | Cada bot tiene el catálogo de todo el material de su materia y baja lo que necesita. Se guía primero por el **libro principal** (el del sílabo, o el que tú le digas), busca en español y en inglés y te explica un tema, resume un capítulo o te hace preguntas tipo examen, citando archivo, página y el enlace del aula. [Más sobre el material](#el-material-de-cada-materia). |
 | 🧠 **Quiz con `/quiz`** | Escríbele `/quiz derivadas` al bot de la materia y te manda un quiz corto (3 a 5 preguntas) como encuestas de Telegram, sacado de su material o de lo que le mandes (texto, foto o PDF). Cada respuesta se ve recién al contestar, con su explicación y la cita de archivo y página; al terminar te llega tu puntaje y lo que fallaste queda en el cuaderno como tema débil. A Vinci también le puedes escribir `/quiz`: se lo pasa al bot de la materia. |
+| 🔎 **Citas que se comprueban** | Cada respuesta con material cita archivo, página (o diapositiva) y el enlace del aula, copiados de lo que el bot leyó. Antes de enviarla se revisa cada cita: una página que el bot no leyó o un archivo que no está en el material se cambia por un aviso, y un enlace que falta o está mal se corrige. Si el material no trae lo que preguntas, te dice «No está en el material» y recién después te lo explica con lo que sabe, avisando que eso no sale del material. |
 | 🧭 **Vinci ve todo junto** | Contesta sobre cualquier materia, arma planes de estudio con tus entregas y tus clases, lee los cuadernos de todos los bots y busca en la web. Le mandas «tengo esto de Física» con una foto y se lo pasa al bot correcto. |
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
@@ -81,8 +84,9 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
   ya sincronizados; el de un bot de materia, además, baja del aula el material que le hace falta. Vinci ve todas
   las materias y lee los cuadernos; un bot de materia ve solo la suya y escribe solo en su cuaderno.
 - **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start` y cualquier mensaje con un token
-  de bot, antes de que Hermes los vea. A cada bot de materia, además, le da `ver_pagina`: una página de un PDF
-  como imagen, para leer escaneos. También cuenta tus respuestas a un quiz y te manda el puntaje, sin el modelo.
+  de bot, antes de que Hermes los vea, y revisa las citas de cada respuesta antes de que salga
+  (`espol-bot citas`). A cada bot de materia, además, le da `ver_pagina`: una página de un PDF como imagen, para
+  leer escaneos. También cuenta tus respuestas a un quiz y te manda el puntaje, sin el modelo.
 
 Así está organizado el repositorio:
 
@@ -208,6 +212,8 @@ brief, antes del primero. Si tu horario cambia, mándale otra captura.
 - «¿Qué tengo pendiente esta semana y en qué orden lo hago?» · «¿Cómo voy en todo?» · «Hazme un plan para el
   parcial de Física».
 - «¿Qué dijo el profe de Cálculo?» · «¿Qué notas me publicaron?»
+- «¿Cómo voy en notas?» · «¿Cuánto necesito para pasar Estadística?» · «En Física no hay examen en el primer
+  parcial: todo son deberes y laboratorio» → te muestra el esquema para que lo guardes.
 - «Tengo esto de Física» + una foto, un PDF o una nota de voz → te dice a qué bot se lo pasó. Si no le queda
   claro de qué materia es, te pregunta antes.
 - «¿Qué hay en el cuaderno de Cálculo?» (Vinci lee los cuadernos, pero no los cambia).
@@ -227,10 +233,15 @@ Escríbele directo, como a un compañero que se sabe la materia:
 - Una foto de la pizarra o una nota de voz → la guarda en el cuaderno con un resumen (y la transcripción, si es
   audio).
 - «No entendí las derivadas implícitas» → te lo explica con el material del curso y lo anota como duda.
+- «¿Qué dice el material de la regla de la cadena?» → te lo explica citando «📄 Capítulo 3 - Derivadas.pdf,
+  página 2» con su enlace del aula; si preguntas por algo que el material no trae, empieza con «No está en el
+  material» ([cómo se revisan las citas](#citas-que-puedes-comprobar)).
 - «Explícame el capítulo 3» · «Hazme 5 preguntas tipo examen».
 - `/quiz regla de la cadena` → un quiz corto en el chat: tocas la opción, Telegram te dice si acertaste y te
   muestra la explicación con la cita del material. `/quiz` solo te pregunta el tema; también puedes mandarle
   justo después el material (un texto, una foto o un PDF) y el quiz sale de eso.
+- «¿Cómo voy en la materia?» · «¿Y si saco 70 en la lección?» · «Saqué 16/20 en la lección de ayer» (una nota que
+  no está en el aula).
 - «El libro principal es el Purcell», o el PDF del libro → lo usa primero al explicarte y en los briefs.
 
 Un bot de materia solo sabe de la suya: si le preguntas de otra, te manda con Vinci.
@@ -246,6 +257,7 @@ Un bot de materia solo sabe de la suya: si le preguntas de otra, te manda con Vi
 | 🗄️ Archivar · ♻️ Reactivar · Cancelar | Cuando pides archivar o reactivar un bot | Apaga o vuelve a encender el bot de esa materia. |
 | ✅ Ya lo entregué | Debajo de cada recordatorio de una entrega | La cuenta como entregada (en papel, por correo, en el laboratorio): no te la recuerda más ni sale como pendiente. Se vuelve «↩️ Aún no lo entregué», que lo deshace. |
 | ✅ Hecho | En la tarjeta de un pendiente de tu lista, su recordatorio y el resumen de las 7:00 | Cierra ese pendiente. Se vuelve «↩️ Deshacer: …» con el nombre del pendiente, que lo deshace. |
+| ✅ Guardar esquema · ✏️ Corregir | En la tarjeta de cómo se evalúa una materia (en el chat de Vinci o del bot de la materia) | Guarda esos pesos para la calculadora, o los descarta para que le digas qué cambiar. |
 
 Los botones los atiende el plugin, sin el modelo, y solo responden a tu ID. El modelo puede mostrarte un botón,
 pero nunca pulsarlo.
@@ -287,6 +299,51 @@ disco ni el contexto del modelo:
   enlace para que los abras tú.
 - **Documentos que le mandas:** un PDF, DOCX o PPTX del curso que le mandas al bot pasa a su material y se puede
   buscar; lo que es tuyo (un deber resuelto, tus apuntes) va al cuaderno.
+
+### Citas que puedes comprobar
+
+Cuando un bot (el de la materia o Vinci) te responde con el material, cada dato lleva su cita: 📄 el archivo, la
+página (o la diapositiva, o la sección de un DOCX o de una página web) y el enlace para abrirlo en el aula. Si el
+material es un documento que le mandaste, la cita va sin enlace.
+
+- **Las citas salen de lo que leyó.** La búsqueda y la lectura del material le dan al bot la cita de cada página,
+  lista para copiar, y guardan qué páginas le mostraron. El bot no tiene que acordarse de una página ni armar un
+  enlace.
+- **Se revisan antes de llegarte.** Antes de enviar una respuesta, un script sin el modelo revisa cada cita
+  contra las páginas que ese bot leyó: si cita una página que no leyó o un archivo que no está en su material,
+  la cambia por «⚠️ «Capítulo 3 - Derivadas.pdf, página 9» (esa página no salió del material que leí: no la tomes
+  como fuente)», y si el enlace falta o está mal, pone el del aula. Cada cambio queda en `bot.log`.
+- **«No está en el material».** Si la búsqueda no encuentra el tema, el bot de la materia primero baja del catálogo
+  lo que podría tratarlo; si nada lo trae, empieza su respuesta con «No está en el material». Después te lo puede
+  explicar con lo que sabe (o Vinci, con la web), diciendo que eso no sale del material y sin cita.
+
+### La calculadora de notas
+
+Le preguntas a Vinci o al bot de una materia **«¿cómo voy?»** y te contesta con cuánto llevas, sobre cuánto ya te
+calificaron y qué promedio necesitas en lo que falta para aprobar (o para la nota que le digas):
+
+```
+📊 Cálculo de una Variable: cómo vas (para aprobar: 60/100)
+Llevas 4,8 de 6 puntos calificados (promedio 80 %). Falta calificar 94 de 100.
+Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puedes sacar 98,8).
+• Curso (100 % de la nota): 80 % en lo calificado
+  ↳ Sin examen en el primer parcial por El Niño: lo reemplaza una lección que vale lo mismo.
+  – Lección que reemplaza el examen del primer parcial (35 %): sin notas todavía
+  – Examen del segundo parcial (35 %): sin notas todavía
+  – Deberes y lecciones (30 %): 80 % en el 20 % calificado · Lección 1: Límites 8/10
+```
+
+- **Cómo se evalúa cada materia.** La primera vez, el bot busca los pesos en el sílabo, en las políticas del curso y
+  en los anuncios (lo que diga un anuncio manda sobre el sílabo). Este semestre el primer parcial no tiene examen por
+  El Niño y cada materia lo maneja distinto: en unas una lección vale lo que el examen, en otras todo el parcial sale
+  de las actividades de clase. Lo que no encuentra no lo adivina: te lo pregunta.
+- **Tú lo confirmas.** Te muestra el esquema en una tarjeta (cada parte, su peso y qué tareas del aula entran ahí) y se
+  guarda solo cuando pulsas «✅ Guardar esquema». Si algo está mal, pulsa «✏️ Corregir» y díselo con tus palabras
+  («el examen del primer parcial lo reemplaza una lección que vale lo mismo»).
+- **Notas que el aula no tiene.** «Saqué 16/20 en la lección de ayer» la anota en su parte del esquema.
+- **Suposiciones.** «¿Y si saco 70 en la lección?» calcula sin guardar nada.
+- **Las cuentas son de un script.** El modelo solo te muestra el resultado; el promedio de cada parte se calcula por
+  puntos (como el aula), y el mejoramiento reemplaza al parcial más bajo cuando ya tiene nota.
 
 ### Qué recuerda cada bot
 
@@ -402,7 +459,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 
 | Archivo | Qué es |
 |---|---|
-| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, los avisos enviados, tu lista de pendientes y las tareas que marcaste como entregadas |
+| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas y las páginas del material que leyó cada bot (con eso se revisan sus citas) |
 | `materiales/<curso>/` | Los archivos descargados del aula, una carpeta por curso (y en `recibidos/`, el material que le mandaste a un bot) |
 | `libros/<CÓDIGO>/` | Donde pones el PDF del libro principal de una materia si pesa más de 20 MB |
 | `materias.toml` | Tu equipo de bots, con los cursos del aula de cada materia |
@@ -434,8 +491,8 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   aula, sin cookies (ni las que el sitio pone en el camino), sin credenciales de tu PC, revisando cada redirección y
   con tope de tamaño (`material.tamano_maximo_mb`) y de tiempo. Lo que trae es material para leer, nunca
   instrucciones para el bot.
-- **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot y guardar el horario ocurren
-  solo cuando pulsas el botón; el modelo solo puede mostrártelo.
+- **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot y guardar el horario o cómo se
+  evalúa una materia ocurren solo cuando pulsas el botón; el modelo solo puede mostrártelo.
 - **Los tokens de los bots nunca llegan al modelo.** El plugin atrapa cualquier mensaje con un token antes que
   Hermes, lo guarda y borra el mensaje del chat. Con «gestionar otros bots», el token ni siquiera pasa por el chat.
 
@@ -505,6 +562,8 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
   Teams solo quedan listados con su enlace, para que los abras tú.
 - **Solo se busca en lo ya leído:** del catálogo, solo el sílabo se baja por su cuenta; el resto lo baja el bot de
   la materia cuando le hace falta. Para estudiar a fondo, pregúntale a ese bot más que a Vinci.
+- **Qué prueba una cita:** que el bot leyó esa página de ese archivo, no que la página diga exactamente lo que el
+  bot resume. Ábrela con su enlace si te importa el detalle.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
 - **Tu PC tiene que estar encendida:** con la PC apagada o el gateway detenido no hay avisos ni briefs. Lo que le
   escribas a un bot mientras tanto te lo responde al volver, y los cambios del aula llegan en la siguiente revisión;
@@ -593,8 +652,8 @@ uv run pytest     # la prueba de punta a punta
 describe cada paso). Levanta un Canvas falso con datos grabados (`tests/e2e/fixtures/`), un Telegram falso y un
 modelo con guion, y corre todo con los comandos reales, el `setup.sh` real y el gateway real de Hermes (si está
 instalado), en un HOME temporal: nunca toca tu `~/.hermes`. Cubre desde el setup y los avisos hasta crear el
-equipo desde el chat, el horario, los briefs, los cuadernos, el catálogo del material y el libro principal,
-archivar y reactivar bots, los `/quiz` y reiniciar el gateway. Deja un reporte repetible en `artifacts/e2e/` (`REPORTE.md` y un
+equipo desde el chat, el horario, los briefs, los cuadernos, el catálogo del material y el libro principal, las
+citas (una con su enlace, un «No está en el material» y las citas de memoria que no pasan), archivar y reactivar bots, los `/quiz` y reiniciar el gateway. Deja un reporte repetible en `artifacts/e2e/` (`REPORTE.md` y un
 archivo por tema). Toma unos minutos.
 
 Al contribuir:

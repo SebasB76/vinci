@@ -13,6 +13,13 @@
   todos                the captain's own to-do list (readings, paperwork, what a professor said in
                        class): text, subject and due date when given, and when it was done
   todo_reminders       which to-do reminders were already sent (like bot_reminders)
+  shown_pages          each page of the material a tool showed a bot (Vinci or a subject): what a citation
+                       in its answers may point at (citations.py)
+  grading_schemes      per subject: how it is graded this semester (grades.py), saved only by the
+                       captain's «Guardar» under a proposal
+  grading_scheme_proposals
+                       schemes a bot read from the syllabus or heard from the captain, waiting for that press
+  manual_grades        grades the captain told a bot about that Canvas does not have (a lesson on paper)
 """
 
 from __future__ import annotations
@@ -77,12 +84,42 @@ CREATE TABLE IF NOT EXISTS todo_reminders (
     sent_at TEXT NOT NULL,
     PRIMARY KEY (todo_id, hours, due_at)
 );
+CREATE TABLE IF NOT EXISTS grading_schemes (
+    subject TEXT PRIMARY KEY,
+    scheme TEXT NOT NULL,
+    saved_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS grading_scheme_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject TEXT NOT NULL,
+    scheme TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    resolved_at TEXT
+);
+CREATE TABLE IF NOT EXISTS manual_grades (
+    subject TEXT NOT NULL,
+    period TEXT NOT NULL,
+    component TEXT NOT NULL,
+    label TEXT NOT NULL,
+    score REAL NOT NULL,
+    out_of REAL NOT NULL,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (subject, period, component, label)
+);
 CREATE TABLE IF NOT EXISTS horario_propuestas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clases TEXT NOT NULL,
     creado TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'pendiente',
     resuelto TEXT
+);
+CREATE TABLE IF NOT EXISTS shown_pages (
+    bot TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    page INTEGER NOT NULL,
+    shown_at TEXT NOT NULL,
+    PRIMARY KEY (bot, file_id, page)
 );
 """
 
@@ -232,3 +269,63 @@ def open_todos(conn: sqlite3.Connection, until: datetime | None = None) -> list[
     rows = conn.execute("SELECT * FROM todos WHERE done_at IS NULL ORDER BY due_at IS NULL, due_at, id").fetchall()
     limit = timefmt.iso(until) if until else None
     return [_todo(r) for r in rows if not (limit and r["due_at"] and r["due_at"] >= limit)]
+
+
+# -- grading schemes ---------------------------------------------------------------------
+
+
+def grading_scheme(conn: sqlite3.Connection, subject: str) -> dict | None:
+    row = conn.execute("SELECT * FROM grading_schemes WHERE subject = ?", (subject,)).fetchone()
+    return {"scheme": json.loads(row["scheme"]), "saved_at": row["saved_at"]} if row else None
+
+
+def new_scheme_proposal(conn: sqlite3.Connection, subject: str, scheme: dict, now: datetime) -> int:
+    cur = conn.execute("INSERT INTO grading_scheme_proposals(subject, scheme, created_at) VALUES (?, ?, ?)",
+                       (subject, json.dumps(scheme, ensure_ascii=False), timefmt.iso(now)))
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def scheme_proposal(conn: sqlite3.Connection, proposal_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM grading_scheme_proposals WHERE id = ?", (proposal_id,)).fetchone()
+    if row is None:
+        return None
+    return {"id": row["id"], "subject": row["subject"], "scheme": json.loads(row["scheme"]), "state": row["state"]}
+
+
+def resolve_scheme_proposal(conn: sqlite3.Connection, proposal_id: int, save: bool, now: datetime) -> bool:
+    """Save a pending proposal as its subject's scheme (older pending ones of that subject are superseded),
+    or discard it; False when it was not pending."""
+    cur = conn.execute("UPDATE grading_scheme_proposals SET state = ?, resolved_at = ? WHERE id = ? AND state = 'pending'",
+                       ("saved" if save else "discarded", timefmt.iso(now), proposal_id))
+    if save and cur.rowcount == 1:
+        row = conn.execute("SELECT subject, scheme FROM grading_scheme_proposals WHERE id = ?", (proposal_id,)).fetchone()
+        conn.execute("INSERT INTO grading_schemes(subject, scheme, saved_at) VALUES (?, ?, ?) ON CONFLICT(subject) "
+                     "DO UPDATE SET scheme = excluded.scheme, saved_at = excluded.saved_at",
+                     (row["subject"], row["scheme"], timefmt.iso(now)))
+        conn.execute("UPDATE grading_scheme_proposals SET state = 'discarded', resolved_at = ? "
+                     "WHERE state = 'pending' AND subject = ? AND id < ?", (timefmt.iso(now), row["subject"], proposal_id))
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def manual_grades(conn: sqlite3.Connection, subject: str) -> list[dict]:
+    rows = conn.execute("SELECT * FROM manual_grades WHERE subject = ? ORDER BY recorded_at, label", (subject,)).fetchall()
+    return [{"period": r["period"], "component": r["component"], "label": r["label"], "score": r["score"],
+             "out_of": r["out_of"], "recorded_at": r["recorded_at"]} for r in rows]
+
+
+def set_manual_grade(conn: sqlite3.Connection, subject: str, period: str, component: str, label: str,
+                     score: float | None, out_of: float | None, now: datetime) -> bool:
+    """Record (or, with `score` None, remove) a grade the captain gave; False when there was nothing to remove."""
+    if score is None:
+        cur = conn.execute("DELETE FROM manual_grades WHERE subject = ? AND period = ? AND component = ? AND label = ?",
+                           (subject, period, component, label))
+    else:
+        cur = conn.execute(
+            "INSERT INTO manual_grades(subject, period, component, label, score, out_of, recorded_at) VALUES "
+            "(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(subject, period, component, label) DO UPDATE SET score = excluded.score,"
+            " out_of = excluded.out_of, recorded_at = excluded.recorded_at",
+            (subject, period, component, label, score, out_of, timefmt.iso(now)))
+    conn.commit()
+    return cur.rowcount == 1

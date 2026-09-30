@@ -3,8 +3,8 @@
 Model-free Telegram handlers of Vinci and its subject bots, answering only the captain:
 
 - Inline buttons (callback data `v1:...`): run `espol-bot boton <data>`, which queues a
-  handoff, saves or discards a schedule proposal, creates / archives a subject bot, marks an
-  assignment as handed in or closes a to-do (the pressed button then turns into its undo).
+  handoff, saves or discards a schedule proposal or a grading scheme, creates / archives a subject
+  bot, marks an assignment as handed in or closes a to-do (the pressed button then turns into its undo).
 - A bot created for Vinci to manage (`managed_bot_created`): run `espol-bot bot-creado <id>`,
   which fetches its token from Telegram and provisions it.
 - Any message carrying a bot token (for example BotFather's reply, forwarded): delete it
@@ -13,6 +13,10 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
   subject bot when its next brief comes).
 - The captain's vote in a subject bot's quiz poll (`poll_answer`): run `espol-bot quiz-respuesta`,
   which records it and, after the quiz's last question, answers the score to send.
+
+Every answer that cites the material goes through `espol-bot citas` before it is sent (hook
+transform_llm_output): a citation of a page the bot was never shown becomes a warning, and a missing or
+wrong aula link is set right. If the check fails, the answer goes as it is.
 
 A subject bot also gets the tool `ver_pagina` (toolset vinci-paginas): a page of one of its own
 downloaded PDFs, from `espol-bot pagina`, handed to the model as an image. A scanned book has
@@ -28,6 +32,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 
 logger = logging.getLogger("vinci-botones")
 
@@ -41,6 +46,7 @@ START_RE = re.compile(r"^/start(?:@\w+)?(?:\s|$)")
 # Telegram gives up on a press left unanswered for a few seconds (the spinner times out, the toast is
 # lost): a press whose work takes longer than this is answered first and done after.
 QUICK = 3
+CITES = ("📄", "](")  # an answer without either cites nothing: it skips the check
 FAILED = {"respuesta": "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."}
 
 
@@ -182,9 +188,22 @@ def register(ctx):
         application.add_handler(CallbackQueryHandler(_on_button, pattern=PATTERN))
 
     ctx.register_platform_handler("telegram", _wire)
+    ctx.register_hook("transform_llm_output", _check_citations)
     if SUBJECT:
         ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
                           is_async=True, description=PAGE_TOOL["description"])
+
+
+def _check_citations(response_text="", **_):
+    if not any(mark in (response_text or "") for mark in CITES):
+        return None
+    try:
+        proc = subprocess.run([BOT, "citas", *(("--curso", SUBJECT) if SUBJECT else ())], input=response_text,
+                              capture_output=True, text=True, timeout=20, env={**os.environ, **ENV})
+        return json.loads(proc.stdout or "{}").get("respuesta") or None
+    except Exception as exc:  # never hold an answer back over the check
+        logger.error("citas: %s", exc)
+        return None
 
 
 PAGE_TOOL = {
@@ -212,7 +231,7 @@ async def _see_page(args, **_):
     if result.get("error"):
         return json.dumps({"error": result["error"]}, ensure_ascii=False)
     text = (f"Página {result['pagina']} de {result.get('paginas') or '?'} de «{result['archivo']}» (archivo "
-            f"{result['archivo_id']}), como imagen: léela tú y cita esa página.")
+            f"{result['archivo_id']}), como imagen: léela tú y cita esa página así: {result['cita']}")
     return {"_multimodal": True, "text_summary": text,
             "content": [{"type": "text", "text": text},
                         {"type": "image_url", "image_url": {"url": f"data:{result['tipo']};base64,{result['imagen']}"}}]}

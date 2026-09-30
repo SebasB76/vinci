@@ -22,6 +22,8 @@
     espol-bot quiz-respuesta --curso CÓDIGO <poll_id> <opción>
                                      the captain's vote in a quiz poll; after the last question, the
                                      score to send (the plugin calls it)
+    espol-bot citas [--curso CÓDIGO] an answer read from stdin with its citations checked against the pages
+                                     that bot was shown (the plugin runs it before an answer is sent)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -160,6 +162,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("poll_id")
     p.add_argument("opciones", type=int, nargs="*")
+    p = sub.add_parser("citas", help="comprobar las citas de una respuesta leída por stdin (la usa el plugin "
+                                     "vinci-botones)")
+    p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -197,6 +202,16 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import quiz
             answer = quiz.record_answer(cfg.core, args.curso, args.poll_id, args.opciones, now_utc())
             print(json.dumps({"respuesta": answer}, ensure_ascii=False))
+            return 0
+        if args.cmd == "citas":
+            from espol_bot import herramientas
+            from espol_bot.mcp_server import ToolError
+            try:
+                result = herramientas.check_citations(cfg, args.curso, sys.stdin.read())
+            except ToolError as exc:  # a subject no longer in materias.toml: the answer goes as it is
+                logging.warning("citas: %s", exc)
+                result = {}
+            print(json.dumps(result, ensure_ascii=False))
             return 0
         if args.cmd in ("bot-creado", "token"):
             from espol_bot import equipo

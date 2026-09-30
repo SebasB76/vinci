@@ -53,6 +53,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 📚 **Brief antes de cada clase** | 30 minutos antes de cada clase de tu horario, el bot de esa materia te manda un repaso de la clase anterior, lo que vence, el material nuevo, 2 o 3 conceptos clave y una pregunta para hacerle al profe. |
 | 📓 **Cuaderno de cada materia** | Cuéntale al bot lo que vieron o mándale una foto de la pizarra, una nota de voz o un PDF: lo guarda con un resumen. Lleva tus dudas y los temas que te cuestan, y los usa en los briefs. |
 | 📄 **Preguntas sobre el material** | Cada bot tiene el catálogo de todo el material de su materia y baja lo que necesita. Se guía primero por el **libro principal** (el del sílabo, o el que tú le digas), busca en español y en inglés y te explica un tema, resume un capítulo o te hace preguntas tipo examen, citando archivo, página y el enlace del aula. [Más sobre el material](#el-material-de-cada-materia). |
+| 🧠 **Quiz con `/quiz`** | Escríbele `/quiz derivadas` al bot de la materia y te manda un quiz corto (3 a 5 preguntas) como encuestas de Telegram, sacado de su material o de lo que le mandes (texto, foto o PDF). Cada respuesta se ve recién al contestar, con su explicación y la cita de archivo y página; al terminar te llega tu puntaje y lo que fallaste queda en el cuaderno como tema débil. A Vinci también le puedes escribir `/quiz`: se lo pasa al bot de la materia. |
 | 🧭 **Vinci ve todo junto** | Contesta sobre cualquier materia, arma planes de estudio con tus entregas y tus clases, lee los cuadernos de todos los bots y busca en la web. Le mandas «tengo esto de Física» con una foto y se lo pasa al bot correcto. |
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
@@ -81,7 +82,7 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
   las materias y lee los cuadernos; un bot de materia ve solo la suya y escribe solo en su cuaderno.
 - **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start` y cualquier mensaje con un token
   de bot, antes de que Hermes los vea. A cada bot de materia, además, le da `ver_pagina`: una página de un PDF
-  como imagen, para leer escaneos.
+  como imagen, para leer escaneos. También cuenta tus respuestas a un quiz y te manda el puntaje, sin el modelo.
 
 Así está organizado el repositorio:
 
@@ -214,6 +215,8 @@ brief, antes del primero. Si tu horario cambia, mándale otra captura.
 - «Anota: estudiar cap. 3 de Física para el viernes» · «recuérdame llevar el certificado a secretaría mañana a
   las 10» → lo agrega a tu lista, con una tarjeta y su botón «✅ Hecho».
 - Responde a un aviso con «pásaselo al de la materia», o pulsa su botón «🎓 Consultar con …».
+- `/quiz derivadas de Cálculo` → se lo pasa al bot de Cálculo, que te manda el quiz en su chat. Si no dices de qué
+  materia y el tema no lo deja claro, te pregunta.
 - «Arma mi equipo» · «archiva el bot de Física» · «reactiva el bot de Física».
 
 ### Con cada bot de materia
@@ -225,6 +228,9 @@ Escríbele directo, como a un compañero que se sabe la materia:
   audio).
 - «No entendí las derivadas implícitas» → te lo explica con el material del curso y lo anota como duda.
 - «Explícame el capítulo 3» · «Hazme 5 preguntas tipo examen».
+- `/quiz regla de la cadena` → un quiz corto en el chat: tocas la opción, Telegram te dice si acertaste y te
+  muestra la explicación con la cita del material. `/quiz` solo te pregunta el tema; también puedes mandarle
+  justo después el material (un texto, una foto o un PDF) y el quiz sale de eso.
 - «El libro principal es el Purcell», o el PDF del libro → lo usa primero al explicarte y en los briefs.
 
 Un bot de materia solo sabe de la suya: si le preguntas de otra, te manda con Vinci.
@@ -248,6 +254,8 @@ pero nunca pulsarlo.
 
 - `/start` en cualquier bot: te saluda y te dice qué hace. En un bot de materia, además, cuándo es tu próxima clase
   y a qué hora te llega el brief.
+- `/quiz <tema>` en un bot de materia: un quiz corto del tema con su material. En Vinci, se lo pasa al bot de la
+  materia. Se escribe a mano: no aparece en el menú de comandos del bot.
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
 
@@ -286,7 +294,7 @@ disco ni el contexto del modelo:
 |---|---|---|
 | **La conversación** | En el perfil de Hermes del bot. Al llegar a unos 80 000 tokens, Hermes la resume (por defecto esperaría a 256 000), porque cada mensaje viaja con todo el chat. | Hermes |
 | **La memoria** | En el perfil de Hermes del bot: lo que el bot decide recordar de ti entre conversaciones. | Cada bot, la suya |
-| **El cuaderno** | `cuadernos/<CÓDIGO>/` en la carpeta de datos: lo visto en clase, apuntes, dudas, temas débiles, fotos, audios, documentos y lo que Vinci le pasó. | Solo el bot de esa materia (Vinci lo lee) |
+| **El cuaderno** | `cuadernos/<CÓDIGO>/` en la carpeta de datos: lo visto en clase, apuntes, dudas, temas débiles, fotos, audios, documentos, lo que Vinci le pasó y los quiz con tus respuestas. | Solo el bot de esa materia (Vinci lo lee) |
 | **El aula** | `espol.db`: tus materias, tareas, anuncios, notas, el catálogo del material y su índice. | El sondeo (y el bot que baja un documento) |
 
 ### Fin de semestre
@@ -399,7 +407,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 | `libros/<CÓDIGO>/` | Donde pones el PDF del libro principal de una materia si pesa más de 20 MB |
 | `materias.toml` | Tu equipo de bots, con los cursos del aula de cada materia |
 | `horario.toml` | Tu horario (y sus copias anteriores, `horario.anterior-*.toml`) |
-| `cuadernos/<CÓDIGO>/` | El cuaderno de cada materia (`cuaderno.db`) y sus adjuntos |
+| `cuadernos/<CÓDIGO>/` | El cuaderno de cada materia (`cuaderno.db`, con sus quiz y tus respuestas) y sus adjuntos |
 | `entregas/<CÓDIGO>/` | Lo que Vinci le pasó a un bot y todavía no llegó a su cuaderno |
 | `bot.log` | Registro del sondeo, la agenda y los botones |
 
@@ -586,7 +594,7 @@ describe cada paso). Levanta un Canvas falso con datos grabados (`tests/e2e/fixt
 modelo con guion, y corre todo con los comandos reales, el `setup.sh` real y el gateway real de Hermes (si está
 instalado), en un HOME temporal: nunca toca tu `~/.hermes`. Cubre desde el setup y los avisos hasta crear el
 equipo desde el chat, el horario, los briefs, los cuadernos, el catálogo del material y el libro principal,
-archivar y reactivar bots y reiniciar el gateway. Deja un reporte repetible en `artifacts/e2e/` (`REPORTE.md` y un
+archivar y reactivar bots, los `/quiz` y reiniciar el gateway. Deja un reporte repetible en `artifacts/e2e/` (`REPORTE.md` y un
 archivo por tema). Toma unos minutos.
 
 Al contribuir:

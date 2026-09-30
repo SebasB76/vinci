@@ -480,7 +480,8 @@ class FakeTelegram(_Server):
     def answer_poll(self, token: str, user_id: int, poll_id: str, option_ids: list[int]) -> int:
         """The captain (or anyone) votes in a non-anonymous poll this bot sent."""
         user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
-        return self._push(token, {"poll_answer": {"poll_id": poll_id, "user": user, "option_ids": option_ids}})
+        return self._push(token, {"poll_answer": {"poll_id": poll_id, "user": user, "option_ids": option_ids,
+                                                  "option_persistent_ids": [f"o{i}" for i in option_ids]}})
 
     def pending(self, token: str) -> int:
         with self.cond:
@@ -635,7 +636,8 @@ class _TelegramHandler(_Quiet):
             poll = {"id": poll_id, "question": params["question"], "type": "quiz", "total_voter_count": 0,
                     "is_closed": False, "is_anonymous": bool(params.get("is_anonymous", True)),
                     "allows_multiple_answers": False, "correct_option_id": int(params["correct_option_id"]),
-                    "options": [{"text": o["text"], "voter_count": 0} for o in options]}
+                    "options": [{"text": o["text"], "voter_count": 0, "persistent_id": f"o{i}"}
+                                for i, o in enumerate(options)]}
             chat = {"id": int(params.get("chat_id", 0)), "type": "private"}
             return self._ok({"message_id": message_id, "date": int(time.time()), "chat": chat, "from": me,
                              "poll": poll})

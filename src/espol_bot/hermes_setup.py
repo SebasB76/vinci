@@ -19,8 +19,9 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   skills its job names with `--skill`), but Hermes ignores
   it unless the agent has one of the skills toolset's tools (skills_list, skill_view, skill_manage), so
   every bot gets that toolset. Its skill_manage writes files under the bot's own profile `skills/`.
-  Every skill in a profile's `skills/` is also a slash command in its Telegram chat (and in the bot's
-  command menu): the `quiz` skill is `/quiz <tema>`, whose text reaches the model with the skill.
+  Every skill in a profile's `skills/` is also a slash command in its Telegram chat: the `quiz` skill is
+  `/quiz <tema>`, whose text reaches the model with the skill. (The shared gateway builds each bot's command
+  menu from the default profile's skills, so /quiz works typed but is not listed there.)
 - Cron: `--no-agent` jobs run a script with zero model calls; an agent job with
   `--script` runs the script first and skips the model when its last line is
   `{"wakeAgent": false}`. `timezone` sets the zone cron expressions use. The ticker checks

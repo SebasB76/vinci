@@ -106,7 +106,7 @@ def entry_source(notebook: Notebook, entry_id) -> tuple[str, None]:
     except NotebookError as exc:
         raise QuizError(str(exc)) from None
     kind = entry["tipo"].replace("_", " ")
-    return f"tu cuaderno, {kind} #{entry['id']} ({entry['creado'][8:10]}/{entry['creado'][5:7]})", None
+    return f"tu cuaderno, {kind} #{entry['id']} ({timefmt.parse(entry['creado']).astimezone(notebook.tz):%d/%m})", None
 
 
 def question(item: dict, position: int, source: tuple[str, str | None]) -> Question:

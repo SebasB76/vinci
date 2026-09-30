@@ -443,7 +443,6 @@ enlace del aula (sin tu cuenta) cuando le hace falta. Los datos guardados se que
 Si encuentras un problema de seguridad, no lo publiques en un issue con detalles: avísale primero al dueño del
 repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.
 
-
 ### Herramientas de Hermes que puedes encender
 
 Todas están apagadas salvo lo que cada bot necesita. Para encender una en un bot, escribe su nombre en

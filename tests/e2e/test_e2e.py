@@ -2015,7 +2015,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                      "• hoy 23:59 — Cálculo de una Variable: Taller 3: Derivadas\n",
                      "Sin peso conocido, por fecha\n• mañana 09:00 — Cálculo de una Variable: Lectura guiada de Cálculo\n"
                      f"• vie 2 oct — 📌 {fis_name}: Estudiar cap. 3\n",
-                     "Sin esquema de notas, por fecha: Cálculo de una Variable, Física I. Dime cómo se evalúan",
+                     "Sin esquema de notas, por fecha: Física I, Cálculo de una Variable. Dime cómo se evalúan",
                      f"📌 Tu lista, sin fecha (1)\n• {calc_name}: Leer el paper que recomendó el profe",
                      "Ya entregaste 1 de esta semana"):
         assert expected in daily_text, f"falta «{expected}» en el resumen:\n{daily_text}"

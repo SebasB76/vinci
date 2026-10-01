@@ -136,10 +136,10 @@ SUBJECT_TOKENS = {"MATG1049": "700001:PRUEBA-token-de-calculo-xxxxxxxxxxxxxxxx",
                   "FISG1002": "700002:PRUEBA-token-de-fisica-xxxxxxxxxxxxxxxxx"}
 UNKNOWN_TOKEN = "700009:PRUEBA-token-que-no-existe-xxxxxxxxxxxx"
 STRANGER_TOKEN = "700008:PRUEBA-token-de-un-extrano-xxxxxxxxxxxx"
-# Shaped like real Canvas tokens: digits, «~» and dozens of letters or digits (what the plugin and the page check).
-FORM_TOKEN = "7~" + "FormularioCifrado" * 3 + "TokenDelAula"        # the captain pastes it in /token's page
-REFUSED_FORM_TOKEN = "7~" + "TokenQueElAulaNoAcepta" * 3            # mistyped: the aula refuses it
-PASTED_TOKEN = "7~" + "PegadoDirectoEnElChat" * 3 + "x"              # pasted straight into a chat by mistake
+# Shaped like ESPOL's aula tokens: 64 letters (both cases) and digits, no «~» (what the page and the plugin accept).
+FORM_TOKEN = ("Formulario7Cifrado" * 4)[:64]           # the captain pastes it in /token's page
+REFUSED_FORM_TOKEN = "7~" + ("Aula9NoLoAcepta" * 5)[:64]  # mistyped, in stock Canvas' shape: the aula refuses it
+PASTED_TOKEN = ("Pegado3EnElChat" * 5)[:64]            # pasted straight into a chat by mistake
 BOTFATHER_REPLY = ("Done! Congratulations on your new bot. You will find it at t.me/vinci_fisica_bot. You can now "
                    "add a description.\n\nUse this token to access the HTTP API:\n{token}\nKeep your token secure "
                    "and store it safely, it can be used by anyone to control your bot.")
@@ -1651,6 +1651,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
             public = serialization.load_der_public_key(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4)))
             return "v1." + base64.urlsafe_b64encode(public.encrypt(token.encode(), OAEP)).decode().rstrip("=")
         script = (f"const page = await import({json.dumps((REPO / 'docs' / 'token' / 'form.js').as_uri())});"
+                  "if (!page.TOKEN_RE.test(process.argv[2])) { console.error('the page refuses it'); process.exit(3); }"
                   "process.stdout.write(await page.seal(process.argv[1], process.argv[2]));")
         proc = subprocess.run([node, "--input-type=module", "-e", script, key, token], capture_output=True, text=True,
                               timeout=60)

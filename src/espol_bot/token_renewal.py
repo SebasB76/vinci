@@ -57,6 +57,7 @@ class RenewalResult:
     renewed: bool = False
     server_fixed: bool = False
     chain_cut: bool = False  # Canvas refused the current token; only a reseed (/token or `resembrar`) revives it
+    renewal_error: str = ""  # reseed only: the token was verified and saved, but renewing it failed this time
 
 
 def reseed(cfg: CoreConfig, token: str, now: datetime) -> RenewalResult:
@@ -146,7 +147,10 @@ class TokenRenewal:
         delete_meta(self.conn, CURRENT_FINGERPRINT, CURRENT_CREATED, CURRENT_ID,
                     PROBE_CREATED, PROBE_ID, DISABLED, REFUSED_KEY)
         self.conn.commit()
-        return self.maintain(force=True)
+        try:
+            return self.maintain(force=True)
+        except RenewalError as exc:
+            return RenewalResult(renewal_error=str(exc))
 
     def _check_probe(self, values: dict[str, str], current: str) -> RenewalResult | None:
         probe = values.get(PROBE_TOKEN_KEY, "")

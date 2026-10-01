@@ -131,6 +131,10 @@ def _reseed(cfg, *, from_stdin: bool = False) -> int:
         print("Vinci: Canvas aceptó el token pero lo rechazó al renovarlo; crea otro y vuelve a resembrar.",
               file=sys.stderr)
         return 1
+    if result.renewal_error:
+        print(f"Token verificado y guardado. La renovación automática falló esta vez ({result.renewal_error}); "
+              "el mantenimiento la reintentará solo.")
+        return 0
     suffix = " y su sucesor automático ya quedó activo" if result.renewed else ""
     print(f"Token verificado y guardado{suffix}. La cadena de renovación volvió a funcionar.")
     return 0

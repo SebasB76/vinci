@@ -84,6 +84,9 @@ def submit(cfg: BotConfig, data: str, now: datetime) -> dict:
         result = reseed(cfg.core, token, now)
     except RenewalError as exc:
         log.info("canvas-submit: reseed falló (%s)", exc.status)
+        if load_secret_values().get("CANVAS_TOKEN") == token:
+            return {"respuesta": "✅ Token verificado y guardado. La renovación automática falló esta vez; el "
+                                 "mantenimiento la reintentará solo.", "quitar_teclado": True}
         intro = ("❌ El aula virtual no aceptó ese token (¿lo copiaste completo?). Crea otro y pégalo:\n\n"
                  if exc.status == 401 else f"❌ No pude comprobarlo con el aula virtual: {e(exc)}. Pégalo otra vez:\n\n")
         return open_form(cfg, now, intro)

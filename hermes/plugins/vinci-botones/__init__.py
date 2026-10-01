@@ -90,15 +90,18 @@ def register(ctx):
                 await context.bot.send_message(chat_id=chat_id, text=result["respuesta"], parse_mode="HTML",
                                                disable_web_page_preview=True, reply_markup=markup)
 
+        async def _reply(context, chat_id, *args, stdin=None):
+            try:
+                result = await _run(*args, stdin=stdin)
+            except Exception as exc:
+                logger.error("%s: %s", args[0], exc)
+                result = FAILED
+            await _say(context, chat_id, result)
+
         async def _on_created(context, message, created):
             if not _is_captain(message.from_user):
                 return
-            try:
-                result = await _run("bot-creado", str(created.bot.id))
-            except Exception as exc:
-                logger.error("bot-creado: %s", exc)
-                result = FAILED
-            await _say(context, message.chat_id, result)
+            await _reply(context, message.chat_id, "bot-creado", str(created.bot.id))
 
         async def _on_token(context, message, token):
             try:
@@ -130,7 +133,12 @@ def register(ctx):
             if SUBJECT:
                 await _say(context, message.chat_id, {"respuesta": note + " Para cambiarlo, mándale /token a Vinci."})
                 return
-            result = await _run("canvas-form")
+            try:
+                result = await _run("canvas-form")
+            except Exception as exc:
+                logger.error("canvas-form: %s", exc)
+                await _say(context, message.chat_id, {"respuesta": f"{note}\n{FAILED['respuesta']}"})
+                return
             await _say(context, message.chat_id, {**result, "respuesta": (
                 f"{note} Pégalo en este formulario, que lo cifra antes de enviarlo (como ya pasó por Telegram, mejor "
                 f"crea uno nuevo).\n\n{result.get('respuesta') or ''}")})
@@ -169,7 +177,7 @@ def register(ctx):
                     await _on_created(context, message, created)
                 elif form is not None:
                     if not SUBJECT and _is_captain(message.from_user):
-                        await _say(context, message.chat_id, await _run("canvas-submit", stdin=form.data or ""))
+                        await _reply(context, message.chat_id, "canvas-submit", stdin=form.data or "")
                 elif match is not None:
                     await _on_token(context, message, match.group(0))
                 elif canvas is not None:
@@ -177,7 +185,7 @@ def register(ctx):
                 elif _is_captain(message.from_user):
                     command = (("estado",) if status else ("canvas-form",) if ask_form else
                                ("saludo", *(("--curso", SUBJECT) if SUBJECT else ())))
-                    await _say(context, message.chat_id, await _run(*command))
+                    await _reply(context, message.chat_id, *command)
             except Exception as exc:  # a failed reply must not let the update through to Hermes
                 logger.error("filtro: %s", exc)
             raise ApplicationHandlerStop

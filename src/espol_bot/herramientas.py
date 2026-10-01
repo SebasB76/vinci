@@ -46,7 +46,7 @@ from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
-from espol_bot import agenda, citations, grades, horario, libros, materias, messages, quiz, store
+from espol_bot import agenda, citations, grades, horario, libros, materias, messages, priority, quiz, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -428,6 +428,19 @@ def _todo_json(ctx: Ctx, todo: dict, now: datetime) -> dict:
     return result
 
 
+DELIVERABLE_GROUP = {"overdue": "atrasada", "urgent": "vence en menos de 24 h", "weighted": "por lo que vale en su nota",
+                     "unweighted": "sin peso conocido, por fecha"}
+
+
+def _deliverable_json(ctx: Ctx, entry: priority.Entry, now: datetime) -> dict:
+    """An assignment (tipo «entrega») or a dated to-do of his list (tipo «tu_lista»), as semana lists them."""
+    data = {"tipo": "tu_lista", **_todo_json(ctx, entry.item, now)} if entry.todo else {"tipo": "entrega", **entry.item}
+    data["grupo"] = DELIVERABLE_GROUP[entry.tier]
+    if messages.weight_text(entry):
+        data["peso"] = messages.weight_text(entry)
+    return data
+
+
 def _notebook_json(nb: Notebook, kind: str | None, n: int, open_only: bool = False) -> dict:
     if kind and kind not in KINDS:
         raise ToolError(f"«tipo» debe ser uno de: {', '.join(KINDS)}.")
@@ -682,16 +695,18 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         days = _int(args.get("dias"), "dias", 7, 1, 31)
         ctx.refresh()
         now = ctx.now()
-        pending = queries.pending(ctx.conn, now, days=days, overdue_days=7)
+        tasks = queries.pending(ctx.conn, now, days=days, overdue_days=7)
         notebooks = {}
         for s in ctx.subjects():
             nb = Notebook(ctx.cfg.core, s.code, read_only=True)
             notebooks[s.code] = {"nombre": s.name, "estado": s.state, **nb.overview()}
             nb.close()
         local_midnight = now.astimezone(ctx.cfg.core.tz).replace(hour=0, minute=0, second=0, microsecond=0)
-        todos = [_todo_json(ctx, t, now) for t in store.open_todos(ctx.conn, local_midnight + timedelta(days=days))]
+        todos = store.open_todos(ctx.conn, local_midnight + timedelta(days=days))
+        entries = priority.ordered(ctx.conn, ctx.subjects(), ctx.cfg.core.tz, now, tasks, todos)
         return {"hoy": timefmt.human(now, ctx.cfg.core.tz), "clases": _upcoming(ctx, days),
-                "pendientes": pending, "todos": todos, "cuadernos": notebooks}
+                "pendientes": [_deliverable_json(ctx, entry, now) for entry in entries],
+                "todos": [_todo_json(ctx, t, now) for t in todos if not t["due_at"]], "cuadernos": notebooks}
 
     def tareas(args):
         ctx.refresh()
@@ -884,9 +899,11 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
     materia = {"materia": {"type": "string", "description": "materia (nombre o código); vacío = todas"}}
     return [
         Tool("materias", "Los bots de materia del estudiante: nombre, código, @usuario y estado.", materias_),
-        Tool("semana", "Vista general: clases de los próximos días (según el horario), entregas pendientes y "
-             "atrasadas de todas las materias, su lista de pendientes personales («todos»), y lo que dice cada "
-             "cuaderno (dudas abiertas y temas débiles). "
+        Tool("semana", "Vista general: clases de los próximos días (según el horario); en «pendientes», las entregas "
+             "pendientes y atrasadas de todas las materias y lo de su lista con fecha, ya en orden de prioridad "
+             "(lo atrasado, lo que vence en 24 h, después lo que más vale en su nota y al final lo que no tiene peso "
+             "conocido), cada una con su «grupo» y su «peso»; en «todos», lo de su lista sin fecha; y lo que dice "
+             "cada cuaderno (dudas abiertas y temas débiles). "
              "Úsala para «¿qué tengo esta semana?», «¿cómo voy en todo?» y planes de estudio.", semana,
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
         Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,

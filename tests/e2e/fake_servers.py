@@ -144,7 +144,8 @@ class FakeCanvas(_Server):
                 "can_manually_regenerate": True}
 
     def load(self, api_path: str):
-        for state in dict.fromkeys([self.state, "state1"]):
+        # Each stateN holds only what changed since the one before it.
+        for state in (f"state{n}" for n in range(int(self.state.removeprefix("state")), 0, -1)):
             path = FIXTURES / "canvas" / state / (api_path.strip("/") + ".json")
             if path.is_file():
                 text = path.read_text(encoding="utf-8").replace("{{BASE}}", self.base).replace("{{WEB}}", self.web)

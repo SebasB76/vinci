@@ -1,6 +1,6 @@
 """Local stand-ins for Canvas and the Telegram Bot API, used only by the E2E test.
 
-FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ the way
+FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ (or another set) the way
 Canvas does: Bearer auth, access-token creation/deletion, public iCal/Atom feeds,
 `Link` pagination (capped at 2 items per page so the client must follow it),
 `X-Rate-Limit-Remaining`, one 429 to exercise backoff, a course whose Files tab
@@ -83,8 +83,9 @@ class _Server:
 
 
 class FakeCanvas(_Server):
-    def __init__(self, token: str):
+    def __init__(self, token: str, fixtures: str = "canvas"):
         super().__init__(_CanvasHandler)
+        self.fixtures = FIXTURES / fixtures
         self._token = token
         self.valid_tokens = {token}
         self.token_ids = {token: 1}
@@ -146,7 +147,7 @@ class FakeCanvas(_Server):
     def load(self, api_path: str):
         # Each stateN holds only what changed since the one before it.
         for state in (f"state{n}" for n in range(int(self.state.removeprefix("state")), 0, -1)):
-            path = FIXTURES / "canvas" / state / (api_path.strip("/") + ".json")
+            path = self.fixtures / state / (api_path.strip("/") + ".json")
             if path.is_file():
                 text = path.read_text(encoding="utf-8").replace("{{BASE}}", self.base).replace("{{WEB}}", self.web)
                 return json.loads(text)

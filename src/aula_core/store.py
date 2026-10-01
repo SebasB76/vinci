@@ -13,6 +13,9 @@ Tables:
                  points to (`material`)
   links          external links of each course (Google Docs, SharePoint, a professor's page, videos),
                  with what opening one anonymously gave (its file, or why it did not open)
+  quizzes        what a Classic Quiz behind an `online_quiz` assignment says about itself (questions, time
+                 limit, attempts, when it opens and closes, whether it shows results); its questions never
+                 (Canvas refuses them to a student before an attempt)
   pages          the course Pages already read, with the files and links they point to
   unreachable    files linked somewhere that this student cannot open (retried weekly)
   bibliography   the main and complementary books parsed from each syllabus
@@ -127,6 +130,18 @@ CREATE TABLE IF NOT EXISTS links (
     checked_at TEXT,
     problem TEXT,
     UNIQUE (course_id, url)
+);
+
+CREATE TABLE IF NOT EXISTS quizzes (
+    assignment_id INTEGER PRIMARY KEY,
+    quiz_id INTEGER NOT NULL,
+    question_count INTEGER,
+    time_limit INTEGER,
+    allowed_attempts INTEGER,
+    unlock_at TEXT,
+    lock_at TEXT,
+    hide_results TEXT,
+    read_for TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pages (

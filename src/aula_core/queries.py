@@ -15,6 +15,9 @@ DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
             " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review')"
             " OR a.id IN (SELECT assignment_id FROM marked_submitted))")
 OFFLINE_TYPES = {"none", "on_paper"}
+QUIZ_FIELDS = ("question_count", "time_limit", "allowed_attempts", "unlock_at", "lock_at", "hide_results")
+QUIZ_SQL = ", ".join(f"q.{f} AS quiz_{f}" for f in QUIZ_FIELDS) + ", q.quiz_id"
+QUIZ_JOIN = "LEFT JOIN quizzes q ON q.assignment_id = a.id"
 
 
 class NotFound(Exception):
@@ -60,15 +63,23 @@ def _assignment(r: sqlite3.Row, now: datetime) -> dict:
         "atrasada": bool(due and due < now and not done and not offline),
         "sin_entrega_en_linea": offline,
         "puntos": r["points_possible"], "nota": r["score"], "calificacion": r["grade"], "url": r["html_url"],
+        "quiz": quiz_info(r, "quiz_"),
     }
+
+
+def quiz_info(r, prefix: str = "") -> dict | None:
+    """A quiz's settings as alerts and tools show them; None when the assignment is not a quiz read so far."""
+    if r is None or r["quiz_id"] is None:
+        return None
+    return {f: r[prefix + f] for f in QUIZ_FIELDS}
 
 
 def assignments_between(conn: sqlite3.Connection, now: datetime, start: datetime, end: datetime,
                         ids: list[int] | None = None) -> list[dict]:
     extra, params = _course_filter(ids, "a.course_id")
     rows = conn.execute(
-        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done FROM assignments a
-            JOIN courses c ON c.id = a.course_id
+        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done, {QUIZ_SQL} FROM assignments a
+            JOIN courses c ON c.id = a.course_id {QUIZ_JOIN}
             WHERE a.active = 1 AND c.active = 1 AND a.due_at >= ? AND a.due_at < ?{extra}
             ORDER BY a.due_at, c.name""",
         [timefmt.iso(start), timefmt.iso(end), *params],
@@ -84,8 +95,8 @@ def pending(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = Non
     since = timefmt.iso(now - timedelta(days=overdue_days))
     until = timefmt.iso(now + timedelta(days=days)) if days is not None else None
     rows = conn.execute(
-        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done FROM assignments a
-            JOIN courses c ON c.id = a.course_id
+        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done, {QUIZ_SQL} FROM assignments a
+            JOIN courses c ON c.id = a.course_id {QUIZ_JOIN}
             WHERE a.active = 1 AND c.active = 1 AND NOT {DONE_SQL}
               AND (a.due_at IS NULL OR a.due_at >= ?){' AND a.due_at < ?' if until else ''}{extra}
             ORDER BY a.due_at IS NULL, a.due_at, c.name""",
@@ -94,6 +105,18 @@ def pending(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = Non
     tasks = [_assignment(r, now) for r in rows]
     # A paper exam from yesterday is not "pending": it just never gets a Canvas submission.
     return [t for t in tasks if not (t["sin_entrega_en_linea"] and t["vence"] and timefmt.parse(t["vence"]) < now)]
+
+
+def quiz_openings(conn: sqlite3.Connection, now: datetime, lead: timedelta) -> list[dict]:
+    """Unanswered quizzes that open, or opened, within `lead` of now."""
+    rows = conn.execute(
+        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done, {QUIZ_SQL} FROM assignments a
+            JOIN courses c ON c.id = a.course_id {QUIZ_JOIN}
+            WHERE a.active = 1 AND c.active = 1 AND NOT {DONE_SQL} AND q.unlock_at > ? AND q.unlock_at <= ?
+            ORDER BY q.unlock_at""",
+        [timefmt.iso(now - lead), timefmt.iso(now + lead)],
+    ).fetchall()
+    return [_assignment(r, now) for r in rows]
 
 
 def announcements(conn: sqlite3.Connection, ids: list[int] | None = None, *, limit: int = 10) -> list[dict]:

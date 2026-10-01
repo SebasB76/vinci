@@ -1,0 +1,26 @@
+[
+  {
+    "id": 401,
+    "name": "SISTEMAS DISTRIBUIDOS - II PAO 2026",
+    "course_code": "Paralelo1_CCPG1055",
+    "workflow_state": "available",
+    "default_view": "modules",
+    "time_zone": "America/Guayaquil",
+    "enrollments": [
+      {
+        "type": "student",
+        "role": "StudentEnrollment",
+        "enrollment_state": "active",
+        "computed_current_score": null,
+        "computed_current_grade": null
+      }
+    ],
+    "term": {
+      "id": 412,
+      "name": "2026 - 2do Término",
+      "start_at": "2026-09-01T05:00:00Z",
+      "end_at": "2027-02-15T05:00:00Z"
+    },
+    "syllabus_body": null
+  }
+]

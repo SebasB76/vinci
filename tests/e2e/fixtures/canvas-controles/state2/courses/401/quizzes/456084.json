@@ -1,0 +1,28 @@
+{
+  "id": 456084,
+  "title": "Control: Scaling Memcache at Facebook",
+  "quiz_type": "assignment",
+  "assignment_id": 456084,
+  "question_count": 3,
+  "points_possible": 10.0,
+  "time_limit": null,
+  "allowed_attempts": 1,
+  "shuffle_answers": false,
+  "hide_results": null,
+  "show_correct_answers": true,
+  "one_question_at_a_time": false,
+  "cant_go_back": false,
+  "unlock_at": null,
+  "due_at": "2026-10-08T04:59:00Z",
+  "lock_at": "2026-10-08T12:00:00Z",
+  "published": true,
+  "locked_for_user": false,
+  "permissions": {
+    "read": true,
+    "submit": true,
+    "preview": false,
+    "read_statistics": false,
+    "review_grades": false
+  },
+  "html_url": "{{BASE}}/courses/401/quizzes/456084"
+}

@@ -16,6 +16,9 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      then polls 2-4 and the 07:00 summary (twice: the second must not resend). Only syllabi
      download on their own; while poll 2 slowly downloads the new one, `aula cursos --actualizar`
      (what setup.sh runs) must not wait for it.
+     Then reading quizzes, against a Canvas of their own: a new quiz's alert and reminders carry its questions,
+     time limit, attempts and when it opens and closes; a test open for 30 minutes warns before it opens, once;
+     each quiz is read once (again only when it changes), never one already closed, and never its questions.
   4. retrieval: sample questions must hit the right file and page, never two copies of one page.
   5. a fresh install where two resources fail at different polls: the rest keeps working,
      one alert per failure episode and resource.
@@ -1164,6 +1167,73 @@ def test_e2e(tmp_path):
         run([bot, "sondeo"], T_POLL4)
         poll4 = take("Sondeo 4 · mar 29 sep 20:30")
         assert len(poll4) == 1 and "Taller 2" in poll4[0]["text"] and "vence en 2 h" in poll4[0]["text"]
+
+        # 4b. reading quizzes: a Canvas of its own (Sistemas Distribuidos), so the timeline above stays as it is ----
+        with FakeCanvas(CANVAS_TOKEN, "canvas-controles") as quiz_canvas:
+            quiz_dir = tmp_path / "controles"
+            quiz_config = tmp_path / "config-controles.toml"
+            quiz_config.write_text(config.replace(canvas.base, quiz_canvas.base).replace(str(data_dir), str(quiz_dir)),
+                                   encoding="utf-8")
+            quiz_secrets = tmp_path / "secrets-controles.env"
+            quiz_secrets.write_text(f"CANVAS_TOKEN={CANVAS_TOKEN}\nTELEGRAM_BOT_TOKEN={BOT_TOKEN}\n"
+                                    f"TELEGRAM_USER_ID={CAPTAIN_ID}\n")
+            quiz_secrets.chmod(0o600)
+            quiz_env = {"AULA_CONFIG": str(quiz_config), "AULA_SECRETS": str(quiz_secrets)}
+            controles_md = ["# Cuestionarios del aula (controles): lo que llega al chat\n",
+                            "Un aula aparte, Sistemas Distribuidos, con un control de vídeo abierta una semana y un "
+                            "test que abre a las 19:00 por 30 minutos. Solo se lee la configuración de cada "
+                            "cuestionario (GET); nunca sus preguntas ni un intento.\n"]
+
+            def quiz_poll(label: str, now: str) -> tuple[list[dict], list[str]]:
+                mark = len(quiz_canvas.requests)
+                run([bot, "sondeo"], now, env_extra=quiz_env)
+                reads = [path for _, path in quiz_canvas.requests[mark:] if "/quizzes" in path]
+                sent = take(label)
+                controles_md.append(f"## {label}\n\nLecturas de cuestionarios: "
+                                    f"{', '.join(f'`GET {r}`' for r in reads) or 'ninguna'}\n")
+                controles_md.extend(f"```\n{plain(readable(m))}\n```\n" for m in sent)
+                return sent, reads
+
+            sent, reads = quiz_poll("Primer sondeo · jue 1 oct 10:00 (solo un test del término pasado)",
+                                    "2026-10-01T10:00:00-05:00")
+            assert len(sent) == 1 and "Listo" in sent[0]["text"], sent
+            assert reads == [], "un cuestionario ya cerrado nunca se consulta"
+            quiz_canvas.state = "state2"
+            sent, reads = quiz_poll("Sondeo · jue 1 oct 12:00 (dos cuestionarios nuevos)", "2026-10-01T12:00:00-05:00")
+            assert sorted(reads) == ["/api/v1/courses/401/quizzes/455542", "/api/v1/courses/401/quizzes/456084"], reads
+            texts = {m["text"].split("\n")[1]: m["text"] for m in sent}
+            memcache = texts["Control: Scaling Memcache at Facebook"]
+            assert "Nuevo cuestionario en Sistemas Distribuidos" in memcache, memcache
+            assert "3 preguntas, sin límite de tiempo, 1 intento" in memcache, memcache
+            assert "Entrega: mié 7 oct, 23:59 (en 6 días) · cierra jue 8 oct, 07:00" in memcache, memcache
+            test = [m["text"] for m in sent if "Test de tiempos y costos" in m["text"]]
+            assert len(test) == 2, "el aviso del test nuevo y su recordatorio de 24 h"
+            assert all("5 preguntas, 30 min para resolverlo, 1 intento, no muestra resultados" in t and
+                       "Abre: <b>jue 1 oct, 19:00</b>" in t and "cierra jue 1 oct, 20:00" in t for t in test), test
+            assert "Aún no lo has respondido" in test[1], test
+            sent, reads = quiz_poll("Sondeo · jue 1 oct 12:30 (sin cambios)", "2026-10-01T12:30:00-05:00")
+            assert sent == [] and reads == [], "un cuestionario sin cambios no se vuelve a leer"
+            sent, reads = quiz_poll("Sondeo · jue 1 oct 18:35 (el test abre a las 19:00)", "2026-10-01T18:35:00-05:00")
+            opening = [m["text"] for m in sent if "Abre en" in m["text"]]
+            assert len(sent) == 2 and len(opening) == 1, [m["text"] for m in sent]
+            assert "⏳ <b>Abre en 25 min</b> — Sistemas Distribuidos" in opening[0], opening
+            assert "Abre: jue 1 oct, 19:00 · cierra <b>jue 1 oct, 20:00</b>" in opening[0], opening
+            sent, reads = quiz_poll("Sondeo · jue 1 oct 19:05 (ya abrió)", "2026-10-01T19:05:00-05:00")
+            assert sent == [], "el aviso de apertura sale una vez"
+            pending = json.loads(run([aula, "tareas", "--sin-actualizar", "--json"], "2026-10-01T19:05:00-05:00",
+                                     env_extra=quiz_env).stdout)
+            by_name = {t["tarea"]: t["quiz"] for t in pending}
+            assert by_name["Test de tiempos y costos"] == {
+                "question_count": 5, "time_limit": 30, "allowed_attempts": 1, "unlock_at": "2026-10-02T00:00:00Z",
+                "lock_at": "2026-10-02T01:00:00Z", "hide_results": "always"}, by_name
+            assert all(method == "GET" for method, _ in quiz_canvas.requests)
+            assert not any("/submissions" in path or "/questions" in path for _, path in quiz_canvas.requests)
+        (artifact / "controles.md").write_text(normalize("\n".join(controles_md)).replace(quiz_canvas.base,
+                                               "https://aulavirtual.test"), encoding="utf-8")
+        report.append("Cuestionarios del aula: el aviso de uno nuevo y sus recordatorios dicen cuántas preguntas tiene, "
+                      "el tiempo para resolverlo, los intentos, cuándo abre y cuándo cierra; un test que abre a una "
+                      "hora fija por poco tiempo avisa antes de abrir, una vez. Cada cuestionario se lee una vez "
+                      "(y otra solo si cambia), nunca uno ya cerrado, y jamás sus preguntas ni un intento")
 
         # 5. retrieval -------------------------------------------------------------------
         run([aula, "archivos", "bajar", "5101", "--json"], T_SUMMARY)  # material comes down when it is asked for

@@ -1,6 +1,6 @@
 """Vinci's own tables in espol.db (next to the aula_core tables).
 
-  bot_reminders        which due-date reminders were already sent
+  bot_reminders        which due-date reminders were already sent (hours = 0: a quiz's opening alert)
   avisos               every alert Vinci sent that offers a handoff (plain text + subjects)
   entregas             handoffs queued for a subject bot (from an alert button or routed by
                        Vinci); the subject bot's agenda claims each one exactly once

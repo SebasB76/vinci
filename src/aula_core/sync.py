@@ -1,7 +1,7 @@
 """Reads the aula virtual into the local store and records what changed.
 
-A sync reads, per active course: assignments with the student's submission,
-announcements, and the material catalog. It compares each item against the previous
+A sync reads, per active course: assignments with the student's submission (and, for a Classic
+Quiz, its settings: one more read when its assignment changed), announcements, and the material catalog. It compares each item against the previous
 snapshot and appends an `events` row for:
 
   new_course, new_assignment, due_changed, new_announcement,
@@ -42,6 +42,7 @@ from aula_core.canvas import (
 )
 from aula_core.catalog import Refs, classify, clean_title, html_to_text, mark_duplicates, refs, term_year
 from aula_core.config import CoreConfig
+from aula_core.queries import quiz_info
 from aula_core.store import delete_meta, get_meta, set_meta
 
 log = logging.getLogger(__name__)
@@ -185,6 +186,9 @@ class _Syncer:
             prev = self.conn.execute("SELECT * FROM assignments WHERE id = ?", (row["id"],)).fetchone()
             info = {"tarea": row["name"], "url": row["html_url"], "due_at": row["due_at"],
                     "puntos": row["points_possible"]}
+            quiz = self._quiz(course, a, row)
+            if quiz:
+                info["quiz"] = quiz
             if prev is None or not prev["active"]:
                 if prev is None:
                     self.emit(quiet, "new_assignment", course, row["id"], info)
@@ -214,6 +218,36 @@ class _Syncer:
             )
         self._deactivate("assignments", course["id"], seen)
         self.read.setdefault(course["id"], set()).add("assignments")
+
+    def _quiz(self, course: dict, a: dict, row: dict) -> dict | None:
+        """What the Classic Quiz behind an assignment says about itself. Read again only when its assignment
+        changed (editing a quiz updates it), and never for the first time once it closed."""
+        if "online_quiz" not in (a.get("submission_types") or []) or not a.get("quiz_id"):
+            return None
+        stored = self.conn.execute("SELECT * FROM quizzes WHERE assignment_id = ?", (a["id"],)).fetchone()
+        version = timefmt.normalize(a.get("updated_at")) or ""
+        closes = timefmt.parse(row["lock_at"] or row["due_at"])
+        if stored is not None and stored["read_for"] == version or stored is None and closes and closes < self.now:
+            return quiz_info(stored)
+        try:
+            # Works even where the course hides its Quizzes tab (the list answers 404 there).
+            q = self.client.get(f"courses/{course['id']}/quizzes/{a['quiz_id']}")
+        except (InvalidTokenError, ThrottledError):
+            raise
+        except CanvasError as exc:
+            # The alert still goes out, without these details; the next sync tries again.
+            log.warning("cuestionario %s de %s: %s", a["quiz_id"], course["name"], exc)
+            return quiz_info(stored)
+        quiz = {"assignment_id": a["id"], "quiz_id": a["quiz_id"], "question_count": q.get("question_count"),
+                "time_limit": q.get("time_limit"), "allowed_attempts": q.get("allowed_attempts"),
+                "unlock_at": timefmt.normalize(q.get("unlock_at")), "lock_at": timefmt.normalize(q.get("lock_at")),
+                "hide_results": q.get("hide_results"), "read_for": version}
+        self.conn.execute(
+            """INSERT OR REPLACE INTO quizzes(assignment_id, quiz_id, question_count, time_limit, allowed_attempts,
+                 unlock_at, lock_at, hide_results, read_for)
+               VALUES (:assignment_id, :quiz_id, :question_count, :time_limit, :allowed_attempts, :unlock_at, :lock_at,
+                 :hide_results, :read_for)""", quiz)
+        return quiz_info(quiz)
 
     # -- announcements ----------------------------------------------------------------
 

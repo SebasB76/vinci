@@ -51,11 +51,45 @@ def _score(ev: dict, prefix: str = "") -> str:
     return e(text)
 
 
+HIDE_RESULTS = {"always": "no muestra resultados", "until_after_last_attempt": "resultados tras el último intento"}
+
+
+def quiz_facts(quiz: dict) -> str:
+    """«3 preguntas, sin límite de tiempo, 1 intento»."""
+    parts = []
+    if quiz.get("question_count"):
+        n = quiz["question_count"]
+        parts.append(f"{n} pregunta{'' if n == 1 else 's'}")
+    parts.append(f"{quiz['time_limit']} min para resolverlo" if quiz.get("time_limit") else "sin límite de tiempo")
+    attempts = quiz.get("allowed_attempts")
+    if attempts == -1:
+        parts.append("intentos ilimitados")
+    elif attempts:
+        parts.append(f"{attempts} intento{'' if attempts == 1 else 's'}")
+    if quiz.get("hide_results") in HIDE_RESULTS:
+        parts.append(HIDE_RESULTS[quiz["hide_results"]])
+    return e(", ".join(parts))
+
+
+def _quiz_closes(quiz: dict, due_at: str | None, tz: ZoneInfo) -> str:
+    """« · cierra jue 8 oct, 07:00» when the quiz still takes answers after its due date."""
+    lock = quiz.get("lock_at")
+    return f" · cierra {e(timefmt.human(lock, tz))}" if lock and lock != due_at else ""
+
+
+def _quiz_opens(quiz: dict, tz: ZoneInfo, now: datetime) -> str:
+    opens = timefmt.parse(quiz.get("unlock_at"))
+    return f"Abre: <b>{e(timefmt.human(opens, tz))}</b>\n" if opens and opens > now else ""
+
+
 def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | None = None) -> str:
     kind, name = ev["kind"], course(ev["curso"])
     if kind == "new_assignment":
         due = (f"Entrega: {e(timefmt.human(ev['due_at'], tz))} ({e(timefmt.until(ev['due_at'], now))})"
                if ev.get("due_at") else "Sin fecha de entrega")
+        if quiz := ev.get("quiz"):
+            return (f"📝 <b>Nuevo cuestionario en {name}</b>\n{e(ev['tarea'])}\n{quiz_facts(quiz)}\n"
+                    f"{_quiz_opens(quiz, tz, now)}{due}{_quiz_closes(quiz, ev.get('due_at'), tz)}\n{link(ev['url'])}")
         return f"📝 <b>Nueva tarea en {name}</b>\n{e(ev['tarea'])}\n{due}\n{link(ev['url'])}"
     if kind == "due_changed":
         return (f"📅 <b>Cambió la fecha de entrega</b> — {name}\n{e(ev['tarea'])}\n"
@@ -104,6 +138,8 @@ def _digest_line(ev: dict, tz: ZoneInfo) -> str:
     extra = ""
     if kind in ("new_assignment", "due_changed") and ev.get("due_at"):
         extra = f" — vence {e(timefmt.human(ev['due_at'], tz))}"
+        if kind == "new_assignment" and ev.get("quiz"):
+            extra += f" ({quiz_facts(ev['quiz'])})"
     elif kind in ("grade_posted", "grade_changed"):
         extra = f" — {_score(ev)}"
     return f"• {course(ev['curso'])}: {link(ev.get('url'), name) or e(name)}{extra}"
@@ -121,10 +157,26 @@ def digest(events: list[dict], tz: ZoneInfo) -> str:
 
 def reminder_message(task: dict, hours: int, tz: ZoneInfo, now: datetime) -> str:
     offline = "\n(No tiene entrega en línea: revisa cómo se entrega.)" if task["sin_entrega_en_linea"] else ""
+    if quiz := task.get("quiz"):
+        return (f"⏰ <b>Recordatorio: vence {e(timefmt.until(task['vence'], now))}</b>\n"
+                f"{course(task['curso'])}: {e(task['tarea'])}\n{quiz_facts(quiz)}\n{_quiz_opens(quiz, tz, now)}"
+                f"Entrega: {e(timefmt.human(task['vence'], tz))}{_quiz_closes(quiz, task['vence'], tz)}\n"
+                f"Aún no lo has respondido.\n{link(task['url'])}")
     return (f"⏰ <b>Recordatorio: vence {e(timefmt.until(task['vence'], now))}</b>\n"
             f"{course(task['curso'])}: {e(task['tarea'])}\n"
             f"Entrega: {e(timefmt.human(task['vence'], tz))}\n"
             f"Aún no la has entregado.{offline}\n{link(task['url'])}")
+
+
+def quiz_opening(task: dict, tz: ZoneInfo, now: datetime) -> str:
+    """A quiz that opens for a short window: «abre en 15 min», or «ya abrió» when the poll came after."""
+    quiz = task["quiz"]
+    opens = timefmt.parse(quiz["unlock_at"])
+    closes = quiz.get("lock_at") or task["vence"]
+    head = f"⏳ <b>Abre {e(timefmt.until(opens, now))}</b>" if opens > now else "🟢 <b>Ya abrió</b>"
+    return (f"{head} — {course(task['curso'])}\n{e(task['tarea'])}\n{quiz_facts(quiz)}\n"
+            f"Abre: {e(timefmt.human(opens, tz))} · cierra <b>{e(timefmt.human(closes, tz))}</b>\n"
+            f"{link(task['url'])}")
 
 
 def _day_label(day, today) -> str:

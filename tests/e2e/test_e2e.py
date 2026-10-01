@@ -27,6 +27,10 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      deleted, never seen by the model; a repeated, an unknown and a stranger's token handled).
      Every press is answered at once, even one whose work is slow; a second «Crear» does not
      resend; the /start the captain sends Cálculo before the gateway serves it gets a greeting.
+     /token: Vinci answers with a Mini App button whose page (docs/token/form.js, run by Node) encrypts the
+     captain's new Canvas token; only the ciphertext reaches Telegram and the plugin, which reseeds the chain
+     (the form is one-time: a replay, a button of an earlier /token, a token the aula refuses, an expired form
+     and a stranger's data are each turned down), and a Canvas token pasted in a chat is deleted unused.
      Then, with both subject bots served by the same gateway: strangers get silence; the
      schedule read from a screenshot is saved only by the
      captain's «Guardar» (a stranger's press and a stale proposal are refused); a photo
@@ -67,7 +71,7 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
   8. Canvas tokens rotate through three generations without interrupting polls. When every
      token dies, maintenance says the chain is cut (never that a replacement works) and stops
      calling Canvas with the dead tokens; the token-free calendar and announcement feeds still
-     deliver useful alerts; a hidden CLI reseed restores the renewal chain. `espol-bot doctor` reads
+     deliver useful alerts, and the alert points to /token; a hidden CLI reseed restores the renewal chain. `espol-bot doctor` reads
      each of those moments (all healthy, three hours with nothing running, the chain cut, reseeded)
      without calling Canvas or the chat, and the captain's /estado in Vinci's chat, served by the
      plugin and never by the model, shows a night without poll or maintenance. setup.sh then runs
@@ -109,12 +113,13 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
 from aula_core.config import parse_env_file
 from espol_bot import skill_check
+from espol_bot.config import DEFAULT_TOKEN_FORM_URL
 
 HERE = Path(__file__).parent
 REPO = HERE.parents[1]
@@ -131,6 +136,10 @@ SUBJECT_TOKENS = {"MATG1049": "700001:PRUEBA-token-de-calculo-xxxxxxxxxxxxxxxx",
                   "FISG1002": "700002:PRUEBA-token-de-fisica-xxxxxxxxxxxxxxxxx"}
 UNKNOWN_TOKEN = "700009:PRUEBA-token-que-no-existe-xxxxxxxxxxxx"
 STRANGER_TOKEN = "700008:PRUEBA-token-de-un-extrano-xxxxxxxxxxxx"
+# Shaped like real Canvas tokens: digits, «~» and dozens of letters or digits (what the plugin and the page check).
+FORM_TOKEN = "7~" + "FormularioCifrado" * 3 + "TokenDelAula"        # the captain pastes it in /token's page
+REFUSED_FORM_TOKEN = "7~" + "TokenQueElAulaNoAcepta" * 3            # mistyped: the aula refuses it
+PASTED_TOKEN = "7~" + "PegadoDirectoEnElChat" * 3 + "x"              # pasted straight into a chat by mistake
 BOTFATHER_REPLY = ("Done! Congratulations on your new bot. You will find it at t.me/vinci_fisica_bot. You can now "
                    "add a description.\n\nUse this token to access the HTTP API:\n{token}\nKeep your token secure "
                    "and store it safely, it can be used by anyone to control your bot.")
@@ -1079,6 +1088,10 @@ def test_e2e(tmp_path):
 
         # 3. polls -----------------------------------------------------------------------
         bot = str(VENV_BIN / "espol-bot")
+        token_md = ["# /token: un token nuevo del aula desde Telegram, cifrado en el celular\n",
+                    "Lo que el capitán ve en el chat de Vinci y lo que viaja por Telegram. La página del formulario "
+                    "(docs/token/form.js) cifra con la llave pública de un uso que trae su enlace (aquí, "
+                    "`k=<llave de un uso>`); Telegram solo lleva el texto cifrado.\n"]
         estado_md = ["# Estado del sistema: `espol-bot doctor` y /estado\n",
                      "Lo que ve el capitán en cada momento de la prueba. Solo lee lo que dejaron el sondeo y el "
                      "mantenimiento: ninguna consulta al aula, ningún mensaje, ningún modelo.\n"]
@@ -1269,7 +1282,8 @@ def test_e2e(tmp_path):
         run([bot, "mantenimiento"], T_RENEW_4)
         cut = take("Cadena cortada · sonda y token actual vencidos")
         cut_text = "\n".join(message["text"] for message in cut)
-        assert "cadena automática del token" in cut_text and "resembrar" in cut_text, cut_text
+        assert "cadena automática del token" in cut_text and "/token" in cut_text, cut_text
+        assert "resembrar" not in cut_text, "el aviso no manda a la terminal"
         assert "Crear token nuevo" in json.dumps(cut, ensure_ascii=False)
         assert "reemplazo funciona" not in cut_text, "no hay reemplazo: la cadena está cortada"
         api = [request for request in canvas.requests[mark:] if not request[1].startswith("/feeds/")]
@@ -1283,7 +1297,8 @@ def test_e2e(tmp_path):
             "con la cadena cortada, nadie vuelve a llamar a Canvas con un token muerto"
         cut_health = doctor("la cadena del token se cortó", T_RENEW_5, broken=True)
         assert "❌ Token de Canvas: la cadena de renovación está cortada" in cut_health, cut_health
-        assert "espol-bot resembrar" in cut_health and "✅ Calendario (iCal): activo" in cut_health, cut_health
+        assert "→ /token en el chat de Vinci, o aquí:" in cut_health and "espol-bot resembrar" in cut_health, cut_health
+        assert "✅ Calendario (iCal): activo" in cut_health, cut_health
         assert "✅ Sondeo" in cut_health and "✅ Mantenimiento" in cut_health, cut_health
         report.append("Con el token actual y la sonda vencidos, el mantenimiento avisó que la cadena se cortó y cómo "
                       "resembrarla (no que el reemplazo funciona), y desde entonces ni el mantenimiento ni el sondeo "
@@ -1390,7 +1405,8 @@ END:VCALENDAR
             f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
         secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
                        calendar_feed_url, announcement_feed_url, BOT_TOKEN,
-                       *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+                       *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
@@ -1424,6 +1440,7 @@ END:VCALENDAR
     (artifact / "canvas_requests.log").write_text(requests_log + "\n", encoding="utf-8")
     (artifact / "estado.md").write_text(normalize("\n".join(estado_md)), encoding="utf-8")
     if vinci_section:
+        (artifact / "token.md").write_text(normalize("\n".join(token_md)), encoding="utf-8")
         (artifact / "equipo.md").write_text(normalize("\n".join(equipo_md)), encoding="utf-8")
         (artifact / "material.md").write_text(normalize("\n".join(material_md)), encoding="utf-8")
         (artifact / "quiz.md").write_text(normalize("\n".join(quiz_md)), encoding="utf-8")
@@ -1446,7 +1463,8 @@ END:VCALENDAR
         for secret in (CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
                        calendar_feed_url, announcement_feed_url, "/feeds/calendars/user-e2e.ics",
                        "/feeds/announcements/course-101.atom", BOT_TOKEN,
-                       *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN,
+                       *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN,
                        *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
@@ -1473,7 +1491,7 @@ END:VCALENDAR
         "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
         "material» y las citas de memoria que no pasaron), `notas.md` (la calculadora de notas), `prioridad.md` "
         "(el orden de las entregas con sus pesos), `estado.md` "
-        "(`espol-bot doctor` y /estado), "
+        "(`espol-bot doctor` y /estado), `token.md` (/token: el token del aula cifrado en el celular), "
         "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
         "`setup.log`.\n",
     ]
@@ -1482,7 +1500,7 @@ END:VCALENDAR
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
                equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,
-               real_tesseract, ocr_log, ocr_off, normalize, estado_md, **_) -> None:
+               real_tesseract, ocr_log, ocr_off, normalize, estado_md, token_md, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -1617,6 +1635,111 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "tras una noche sin correr (y qué revisar); a un extraño no le contestó nada")
     take("/estado")
 
+    # /token: a new Canvas token from Telegram, encrypted on the phone; only ciphertext reaches Telegram and the plugin
+    node = shutil.which("node")
+
+    def form_button(message: dict) -> tuple[str, str]:
+        button = message["reply_markup"]["keyboard"][0][0]
+        return button["text"], button["web_app"]["url"]
+
+    def page_seal(url: str, token: str) -> str:
+        """What the page does with the token the captain pastes: docs/token/form.js on Node's WebCrypto."""
+        key = parse_qs(urlsplit(url).query)["k"][0]
+        if node is None:  # the same RSA-OAEP / SHA-256 the page uses, without the page itself
+            from cryptography.hazmat.primitives import serialization
+            from espol_bot.token_form import OAEP
+            public = serialization.load_der_public_key(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4)))
+            return "v1." + base64.urlsafe_b64encode(public.encrypt(token.encode(), OAEP)).decode().rstrip("=")
+        script = (f"const page = await import({json.dumps((REPO / 'docs' / 'token' / 'form.js').as_uri())});"
+                  "process.stdout.write(await page.seal(process.argv[1], process.argv[2]));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script, key, token], capture_output=True, text=True,
+                              timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    def safe(text: str) -> str:
+        return re.sub(r"k=[A-Za-z0-9_-]+", "k=<llave de un uso>", text)
+
+    def show_form(title: str, message: dict, note: str = "") -> None:
+        keys = "".join(f"\n[botón de teclado: {b['text']} → Mini App {safe(b['web_app']['url'])}]"
+                       for row in (message.get("reply_markup") or {}).get("keyboard", []) for b in row)
+        token_md.append(f"## {title}\n\n{note}```\n{plain(message['text'])}{keys}\n```\n")
+
+    asked = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "/token"), "vinci_bot", "Token nuevo de Canvas")
+    label, first_url = form_button(asked)
+    assert label == "🔑 Pegar token" and first_url.startswith(DEFAULT_TOKEN_FORM_URL + "?k=")
+    assert asked["reply_markup"].get("one_time_keyboard") and "/profile/settings" in asked["text"]
+    assert "TOKEN_FORM_KEY" in parse_env_file(secrets)
+    show_form("El capitán le manda /token a Vinci", asked)
+    consumed(BOT_TOKEN, telegram.send_text(BOT_TOKEN, STRANGER, "/token"))
+
+    canvas.mint(FORM_TOKEN, "Token personal")  # the captain creates it in the aula's settings
+    sealed = page_seal(first_url, FORM_TOKEN)
+    assert sealed.startswith("v1.") and FORM_TOKEN not in sealed
+    secrets_before = secrets.read_text()
+    consumed(BOT_TOKEN, telegram.send_web_app_data(BOT_TOKEN, STRANGER, sealed, label))
+    time.sleep(1)
+    assert secrets.read_text() == secrets_before, "los datos del formulario de un extraño no se usan"
+    assert not [m for m in telegram.messages if str(m.get("chat_id")) == str(STRANGER)], "a un extraño no se le contesta"
+    done = turn(lambda: telegram.send_web_app_data(BOT_TOKEN, CAPTAIN, sealed, label), "vinci_bot",
+                "Token verificado y guardado", timeout=180)
+    assert done["reply_markup"] == {"remove_keyboard": True}
+    reseeded = parse_env_file(secrets)
+    assert reseeded["CANVAS_TOKEN"] in canvas.valid_tokens and reseeded["CANVAS_TOKEN"] != FORM_TOKEN, \
+        "el token pegado se verificó y su sucesor automático quedó activo"
+    assert reseeded.get("CANVAS_TOKEN_PROBE") == FORM_TOKEN and "TOKEN_FORM_KEY" not in reseeded, \
+        "el token pegado queda de sonda y la llave de un uso se borró"
+    token_md.append(f"## El capitán pega el token en el formulario y toca «Enviar cifrado a Vinci»\n\n"
+                    f"Telegram le entrega a Vinci solo el texto cifrado (web_app_data): `v1.` y {len(sealed) - 3} "
+                    f"caracteres que cambian en cada envío.\n\nVinci responde:\n\n```\n{plain(done['text'])}\n```\n")
+
+    again = turn(lambda: telegram.send_web_app_data(BOT_TOKEN, CAPTAIN, sealed, label), "vinci_bot",
+                 "ya se usó o venció")
+    _, second_url = form_button(again)
+    show_form("Los mismos datos cifrados, otra vez (la llave ya se borró)", again)
+    stale = turn(lambda: telegram.send_web_app_data(BOT_TOKEN, CAPTAIN, page_seal(first_url, FORM_TOKEN), label),
+                 "vinci_bot", "era de un /token anterior")
+    _, third_url = form_button(stale)
+    assert len({first_url, second_url, third_url}) == 3, "cada formulario trae su propia llave"
+    show_form("El botón de un /token anterior, con otro formulario pendiente", stale)
+    refused_form = turn(lambda: telegram.send_web_app_data(BOT_TOKEN, CAPTAIN, page_seal(third_url, REFUSED_FORM_TOKEN),
+                                                           label), "vinci_bot", "no aceptó ese token", timeout=180)
+    _, fourth_url = form_button(refused_form)
+    assert parse_env_file(secrets)["CANVAS_TOKEN"] == reseeded["CANVAS_TOKEN"], "un token rechazado no cambia nada"
+    show_form("Un token que el aula no acepta (mal copiado)", refused_form)
+    late = json.loads(run([bot, "canvas-submit"], "2026-09-30T08:50:00-05:00",
+                          stdin=page_seal(fourth_url, FORM_TOKEN)).stdout)
+    assert "venció" in late["respuesta"] and late["web_app_button"]["url"] != fourth_url, late
+    token_md.append(f"## El formulario abierto hace 20 min (vence a los 15)\n\n```\n{plain(late['respuesta'])}\n```\n")
+
+    mark = len(telegram.messages)
+    pasted_id = telegram.send_text(BOT_TOKEN, CAPTAIN, f"toma el token del aula: {PASTED_TOKEN}")
+    pasted = wait_msg("vinci_bot", mark, "Borré tu mensaje")
+    assert deleted(BOT_TOKEN, incoming_id(pasted_id)), "un token del aula pegado en el chat se borra"
+    assert "Token nuevo de Canvas" in plain(pasted["text"]) and form_button(pasted)[0] == label
+    assert PASTED_TOKEN not in secrets.read_text(), "un token pegado en el chat no se usa"
+    show_form("El capitán pega un token del aula directo en el chat", pasted, "El mensaje se borró del chat.\n\n")
+
+    asked_model = [m for r in llm.requests for m in r.get("messages") or []
+                   if m.get("role") == "user" and flatten(m.get("content")).strip() == "/token"]
+    seen = json.dumps(llm.requests, ensure_ascii=False)
+    assert not asked_model and not [t for t in (FORM_TOKEN, PASTED_TOKEN, sealed[3:40]) if t in seen], \
+        "/token, sus datos y un token pegado no pasan por el modelo"
+    carried = json.dumps([telegram.pushed, telegram.calls], ensure_ascii=False)
+    assert FORM_TOKEN not in carried and REFUSED_FORM_TOKEN not in carried, "Telegram solo llevó el texto cifrado"
+    for token in (FORM_TOKEN, REFUSED_FORM_TOKEN, PASTED_TOKEN):
+        files = [f for root in (home, data_dir) for f in root.rglob("*") if f.is_file()] + [gateway.log_path]
+        holders = sorted({str(f) for f in files if token.encode() in f.read_bytes()})
+        assert not holders, f"un token del aula apareció en {holders}"
+    report.append("/token en el chat de Vinci, sin el modelo: un botón abrió el formulario, cuya página "
+                  + ("(docs/token/form.js, en Node) " if node else "(sin Node: el mismo cifrado en Python) ")
+                  + "cifró el token con una llave de un uso; Telegram solo llevó el texto cifrado y Vinci resembró la "
+                  "cadena. La llave sirvió una vez: los mismos datos otra vez, el botón de un /token anterior, un "
+                  "token que el aula no acepta y un formulario vencido se rechazaron con un formulario nuevo, y los "
+                  "datos de un extraño no hicieron nada. Un token pegado directo en el chat se borró sin usarse y "
+                  "ningún token del aula quedó fuera de secrets.env")
+    take("/token")
+
     # 6. Vinci builds the team from chat ---------------------------------------------------------
     mark = len(telegram.messages)
     telegram.send_text(BOT_TOKEN, CAPTAIN, "arma mi equipo de bots por materia")
@@ -1744,6 +1867,12 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
               if m.get("role") == "user" and flatten(m.get("content")).strip() == "/start"]
     assert not starts, "el saludo a /start no pasa por el modelo"
     show("El capitán le manda /start a Cálculo apenas lo crea (antes de que el gateway lo atienda)", plain(hello["text"]))
+    mark = len(telegram.messages)
+    pasted_id = telegram.send_text(MATG, CAPTAIN, PASTED_TOKEN)
+    pasted = wait_msg("vinci_calculo_bot", mark, "mándale /token a Vinci")
+    assert deleted(MATG, incoming_id(pasted_id)) and "reply_markup" not in pasted
+    token_md.append(f"## El mismo token pegado en el chat de Cálculo\n\nEl mensaje se borró del chat.\n\n"
+                    f"```\n{plain(pasted['text'])}\n```\n")
     report.append("Botones de Vinci: cada toque contestó en menos de 5 s, también uno cuyo trabajo tardaba (primero "
                   "«⏳ Un momento…» y después su respuesta); un segundo «➕ Crear» no reenvió el mensaje, y el mensaje "
                   "para crear el bot avisa que Telegram puede pedir esperar si se crearon muchos seguidos")

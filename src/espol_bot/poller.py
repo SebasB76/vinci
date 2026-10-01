@@ -121,8 +121,8 @@ class Bot:
                  f" Para mantener fechas y anuncios aun sin token, configura sus feeds una vez con "
                  f"<code>{escape(str(command))} feeds</code>.")
         text = ("La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
-                "Pulsa el botón, crea un token y, sin pegarlo en ningún chat, ejecuta en una terminal:\n"
-                f"<code>{escape(str(command))} resembrar</code>" + floor)
+                "Pulsa el botón, crea un token y mándame <b>/token</b>: te abro un formulario que lo cifra en tu "
+                "celular antes de enviarlo (no lo pegues en el chat)." + floor)
         refused = self.aula.refused_token()
         if refused and get_meta(self.conn, "bot_alert_token") != refused:
             try:

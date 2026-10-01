@@ -21,6 +21,10 @@
     espol-bot saludo [--curso CÓDIGO]
                                      a bot's answer to /start, which Hermes ignores (the plugin calls it)
     espol-bot estado                 the same health report for Vinci's /estado (the plugin calls it)
+    espol-bot canvas-form            Vinci's answer to /token: a one-time key and the button of the page that
+                                     encrypts a new Canvas token on the phone (the plugin calls it)
+    espol-bot canvas-submit          that page's ciphertext read from stdin: decrypt it and reseed the token
+                                     chain (the plugin calls it)
     espol-bot pagina --curso CÓDIGO <archivo_id> <página>
                                      a page of the subject's PDF as a JPEG, for the plugin's ver_pagina
     espol-bot quiz-respuesta --curso CÓDIGO <poll_id> <opción>
@@ -114,23 +118,23 @@ def _health(cfg, *, telegram: bool) -> int:
 
 
 def _reseed(cfg, *, from_stdin: bool = False) -> int:
-    from aula_core import Aula
-    from espol_bot.token_renewal import RenewalError, TokenRenewal
+    from espol_bot.token_renewal import RenewalError, reseed
     token = sys.stdin.readline() if from_stdin else getpass.getpass("Token nuevo de Canvas (no se mostrará): ")
-    aula = Aula(cfg.core, explicit=True)
     try:
-        with file_lock(cfg.core.data_dir, "bot.lock"):
-            result = TokenRenewal(cfg.core, aula.conn, now_utc()).reseed(token)
+        result = reseed(cfg.core, token, now_utc())
     except RenewalError as exc:
         print(f"Vinci: {exc}", file=sys.stderr)
         return 1
     finally:
         token = ""
-        aula.close()
     if result.chain_cut:
         print("Vinci: Canvas aceptó el token pero lo rechazó al renovarlo; crea otro y vuelve a resembrar.",
               file=sys.stderr)
         return 1
+    if result.renewal_error:
+        print(f"Token verificado y guardado. La renovación automática falló esta vez ({result.renewal_error}); "
+              "el mantenimiento la reintentará solo.")
+        return 0
     suffix = " y su sucesor automático ya quedó activo" if result.renewed else ""
     print(f"Token verificado y guardado{suffix}. La cadena de renovación volvió a funcionar.")
     return 0
@@ -176,6 +180,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("saludo", help="la respuesta de un bot a /start (la usa el plugin vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
     sub.add_parser("estado", help="la respuesta de Vinci a /estado (la usa el plugin vinci-botones)")
+    sub.add_parser("canvas-form", help="la respuesta de Vinci a /token (la usa el plugin vinci-botones)")
+    sub.add_parser("canvas-submit", help="el token cifrado por el formulario de /token, leído por stdin (lo usa el "
+                                         "plugin vinci-botones)")
     p = sub.add_parser("pagina", help="una página de un PDF como imagen (la usa ver_pagina, del plugin vinci-botones)")
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("archivo_id", type=int)
@@ -209,6 +216,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "boton":
             from espol_bot import botones
             print(json.dumps(botones.handle(cfg, args.datos, now_utc()), ensure_ascii=False))
+            return 0
+        if args.cmd in ("canvas-form", "canvas-submit"):
+            from espol_bot import token_form
+            result = (token_form.open_form(cfg, now_utc()) if args.cmd == "canvas-form"
+                      else token_form.submit(cfg, sys.stdin.read(), now_utc()))
+            print(json.dumps(result, ensure_ascii=False))
             return 0
         if args.cmd == "saludo":
             print(json.dumps(_greeting(cfg, args.curso), ensure_ascii=False))

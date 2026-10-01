@@ -425,6 +425,11 @@ class FakeTelegram(_Server):
         extra = {"reply_to_message": reply_to} if reply_to else {}
         return self._push(token, {"message": self._message(user_id, text=text, **extra)})
 
+    def send_web_app_data(self, token: str, user_id: int, data: str, button_text: str) -> int:
+        """What a Mini App opened from a keyboard button hands the bot (Telegram.WebApp.sendData)."""
+        return self._push(token, {"message": self._message(user_id, web_app_data={"data": data,
+                                                                                  "button_text": button_text})})
+
     def send_photo(self, token: str, user_id: int, data: bytes, caption: str = "") -> int:
         photo = [{**self._file("photo.jpg", data), "width": 800, "height": 600}]
         return self._push(token, {"message": self._message(user_id, photo=photo, caption=caption)})

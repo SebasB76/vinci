@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>Token del aula</title>
+  <link rel="stylesheet" href="form.css">
+  <script type="module" src="form.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="badge" aria-hidden="true">🔑</div>
+      <h1>Token del aula virtual</h1>
+      <p class="lead">Pégalo aquí y Vinci vuelve a leer tu aula.</p>
+    </header>
+
+    <form id="form" autocomplete="off" novalidate>
+      <label for="token">Token de Canvas</label>
+      <div class="field">
+        <input id="token" type="password" inputmode="text" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" placeholder="1234~AbCd…" required>
+        <button id="reveal" type="button" class="reveal" aria-pressed="false" aria-controls="token">Mostrar</button>
+      </div>
+      <p id="status" role="status" aria-live="polite" data-kind="idle"></p>
+      <button id="send" type="submit" class="send">Enviar cifrado a Vinci</button>
+    </form>
+
+    <ol class="steps">
+      <li><span aria-hidden="true">📱</span><div><b>Se cifra aquí, en tu celular.</b> Esta página no se conecta a
+        ningún servidor.</div></li>
+      <li><span aria-hidden="true">✉️</span><div><b>Telegram solo lleva un texto ilegible.</b> Ni Telegram ni el
+        modelo ven tu token.</div></li>
+      <li><span aria-hidden="true">💻</span><div><b>Solo tu PC lo puede abrir.</b> La llave sirve una vez y vence en
+        15 minutos.</div></li>
+    </ol>
+  </main>
+</body>
+</html>

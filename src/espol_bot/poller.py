@@ -8,7 +8,8 @@
   3. send one Telegram message per undelivered event (grouped when there are many);
   4. send the 24 h / 3 h reminders for unsubmitted deliverables (each with «✅ Ya lo entregué», for
      what went in on paper, by email or in the lab, which Canvas never learns about) and for the
-     captain's own to-dos (store.todos, each with «✅ Hecho»);
+     captain's own to-dos (store.todos, each with «✅ Hecho»); and, for a quiz that opens at a set time for
+     a short window (a 30-minute test in class), «abre en 15 min» before it opens, or «ya abrió» right after;
   5. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
      that bot's chat, for its main book's PDF when there is none it can read (libros.py).
 Then (`read_scans`, outside the poll's lock) OCR of the scanned pages still waiting, OCR_MINUTES a run.
@@ -49,6 +50,8 @@ MAX_BUTTONS = 6
 OCR_MINUTES = 10  # of each poll: a 300-page scanned book is searchable after a few polls
 ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
+OPENING_LEAD = timedelta(minutes=15)
+SHORT_WINDOW = timedelta(hours=12)  # a quiz open longer than this gets the usual reminders only
 
 
 @dataclass
@@ -205,6 +208,7 @@ class Bot:
             self._report_failures(report.failed, now)
             self._deliver_events(result, now)
             self._send_reminders(result, now)
+            self._send_quiz_openings(result, now)
         except TelegramError as exc:
             log.error("%s", exc)
             problems.append(f"Telegram no aceptó un mensaje ({exc})")
@@ -298,6 +302,27 @@ class Bot:
             )
             self.conn.commit()
         self._send_todo_reminders(result, now, horizon)
+
+    def _send_quiz_openings(self, result: PollResult, now: datetime) -> None:
+        # A poll every N minutes must still warn before the opening, so the lead is at least one interval.
+        lead = max(OPENING_LEAD, timedelta(minutes=self.cfg.poll_minutes))
+        for task in queries.quiz_openings(self.conn, now, lead):
+            quiz = task["quiz"]
+            opens, closes = timefmt.parse(quiz["unlock_at"]), timefmt.parse(quiz["lock_at"] or task["vence"])
+            if closes is None or closes <= now or closes - opens > SHORT_WINDOW:
+                continue
+            # hours = 0 in bot_reminders is this alert, keyed by the opening time.
+            already = self.conn.execute("SELECT 1 FROM bot_reminders WHERE assignment_id = ? AND hours = 0 AND due_at = ?",
+                                        (task["id"], quiz["unlock_at"])).fetchone()
+            if already:
+                continue
+            text = messages.quiz_opening(task, self.tz, now)
+            self._send(text, [task["curso_id"]])
+            result.sent.append(text)
+            result.reminders += 1
+            self.conn.execute("INSERT OR IGNORE INTO bot_reminders(assignment_id, hours, due_at, sent_at) VALUES (?, ?, ?, ?)",
+                              (task["id"], 0, quiz["unlock_at"], timefmt.iso(now)))
+            self.conn.commit()
 
     def _send_todo_reminders(self, result: PollResult, now: datetime, horizon: int) -> None:
         for todo in store.open_todos(self.conn, now + timedelta(hours=horizon)):

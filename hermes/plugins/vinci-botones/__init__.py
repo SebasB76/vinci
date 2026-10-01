@@ -48,7 +48,10 @@ ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN":
 SUBJECT = "{{CODIGO}}"  # this bot's subject code; empty for Vinci
 PATTERN = r"^v1:"
 TOKEN_RE = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}\b")
-CANVAS_TOKEN_RE = re.compile(r"\b\d{1,6}~[A-Za-z0-9]{40,}\b")
+# ESPOL's aula tokens are 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~". Mixed case keeps
+# a pasted lowercase hex hash from counting as one.
+CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*\d)"
+                             r"[A-Za-z0-9]{64}\b")
 START_RE = re.compile(r"^/start(?:@\w+)?(?:\s|$)")
 STATUS_RE = re.compile(r"^/estado(?:@\w+)?(?:\s|$)")
 FORM_RE = re.compile(r"^/token(?:@\w+)?(?:\s|$)")

@@ -4,7 +4,9 @@
 // espol_bot/token_form.py holds the private half and decrypts it with the same RSA-OAEP / SHA-256.
 
 export const PREFIX = "v1.";
-export const TOKEN_RE = /^\d{1,6}~[A-Za-z0-9]{20,}$/;
+// ESPOL's aula gives 64 letters and digits; stock Canvas puts "<digits>~" before them. Only the shape of a
+// pasted secret is checked here: the aula itself says whether it works.
+export const TOKEN_RE = /^(?:\d{1,6}~)?[A-Za-z0-9]{20,}$/;
 const MAX_BYTES = 190; // what RSA-OAEP with a 2048-bit key and SHA-256 can seal
 
 function fromBase64Url(text) {
@@ -84,7 +86,7 @@ function init() {
     event.preventDefault();
     const token = input.value.replace(/\s+/g, "");
     if (!TOKEN_RE.test(token)) {
-      say("Eso no parece un token de Canvas. Se ve así: 1234~AbCd… (números, una virgulilla «~» y letras).");
+      say("Eso no parece un token del aula: pégalo completo, son unas 64 letras y números sin espacios.");
       input.focus();
       return;
     }

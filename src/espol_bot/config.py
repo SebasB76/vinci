@@ -12,6 +12,8 @@ from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_v
 
 PROFILE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 DEFAULT_TELEGRAM_API = "https://api.telegram.org"
+# The /token Mini App (docs/token/ on GitHub Pages). It holds no secret: any install can use this copy.
+DEFAULT_TOKEN_FORM_URL = "https://sebasb76.github.io/vinci/token/"
 # Removed everywhere, whatever a platform list says (Hermes applies this last).
 BLOCKED_TOOLSETS = [
     "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
@@ -35,6 +37,7 @@ class BotConfig:
     hermes_provider: str
     hermes_model: str
     telegram_api: str
+    token_form_url: str = DEFAULT_TOKEN_FORM_URL
     vinci_toolsets: tuple[str, ...] = ()
     subject_toolsets: tuple[str, ...] = ()
     subject_toolsets_by_code: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -90,6 +93,10 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not api.startswith(("https://", "http://")):
         raise ConfigError("ESPOL_TELEGRAM_API_BASE debe empezar con https://")
 
+    form_url = str(section(core.raw, "canvas").get("token_form_url") or DEFAULT_TOKEN_FORM_URL)
+    if not form_url.startswith("https://"):
+        raise ConfigError("canvas.token_form_url debe empezar con https:// (Telegram solo abre Mini Apps así)")
+
     return BotConfig(
         core=core,
         poll_minutes=poll_minutes,
@@ -101,6 +108,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_provider=str(hermes.get("proveedor", "anthropic")),
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
+        token_form_url=form_url,
         vinci_toolsets=_names(tools.get("vinci", []), "vinci"),
         subject_toolsets=_names(tools.get("materias", []), "materias"),
         subject_toolsets_by_code={code.upper(): _names(names, f"por_materia.{code}") for code, names in by_code.items()},

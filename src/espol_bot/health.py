@@ -44,6 +44,7 @@ class Check:
     level: str
     detail: str
     fix: str | None = None  # a command the captain runs in a terminal
+    chat_fix: str | None = None  # or what they send Vinci instead; /estado offers only this one
 
 
 def record_run(conn: sqlite3.Connection, key: str, now: datetime, **details) -> None:
@@ -145,12 +146,13 @@ def _token(meta: dict[str, str], secrets: dict[str, str], now: datetime, ago: _A
     name = "Token de Canvas"
     current = secrets.get("CANVAS_TOKEN", "")
     if not current:
-        return Check(name, FAIL, "falta CANVAS_TOKEN en secrets.env.", _bot_command("resembrar"))
+        return Check(name, FAIL, "falta CANVAS_TOKEN en secrets.env.", _bot_command("resembrar"), "/token")
     fingerprint = token_fingerprint(current)
     if meta.get(REFUSED_KEY) == fingerprint:
         return Check(name, FAIL, "la cadena de renovación está cortada: Canvas rechazó el token actual. Crea un "
-                     "token nuevo en el aula (Configuración → Nuevo token de acceso) y resiémbralo, sin pegarlo "
-                     "en ningún chat.", _bot_command("resembrar"))
+                     "token nuevo en el aula (Configuración → Nuevo token de acceso) y resiémbralo con el "
+                     "formulario de /token, que lo cifra antes de enviarlo; no lo pegues en el chat.",
+                     _bot_command("resembrar"), "/token")
     if meta.get(token_renewal.DISABLED) == "server-fixed":
         return Check(name, OK, "la renovación automática se apagó sola porque ESPOL ya no vence los tokens a la "
                      "hora; el actual dura meses.")
@@ -229,7 +231,9 @@ def terminal_report(found: list[Check], now: datetime, tz) -> str:
     lines = [f"Estado de Vinci · {timefmt.human(now, tz)}: {ICON[level]} {summary}", ""]
     for check in found:
         lines.append(f"{ICON[check.level]} {check.name}: {check.detail}")
-        if check.fix:
+        if check.chat_fix and check.fix:
+            lines.append(f"   → {check.chat_fix} en el chat de Vinci, o aquí: {check.fix}")
+        elif check.fix:
             lines.append(f"   → {check.fix}")
     return "\n".join(lines)
 
@@ -238,6 +242,7 @@ def telegram_report(found: list[Check], now: datetime, tz) -> str:
     level, summary = _headline(found)
     lines = [f"🩺 <b>Estado de Vinci</b> · {escape(timefmt.human(now, tz))}", f"{ICON[level]} {escape(summary.capitalize())}", ""]
     for check in found:
-        fix = f" En una terminal: <code>{escape(check.fix)}</code>" if check.fix and check.level != OK else ""
+        fix = ("" if check.level == OK else f" Mándame <code>{escape(check.chat_fix)}</code>." if check.chat_fix else
+               f" En una terminal: <code>{escape(check.fix)}</code>" if check.fix else "")
         lines.append(f"{ICON[check.level]} <b>{escape(check.name)}</b>: {escape(check.detail)}{fix}")
     return "\n".join(lines)

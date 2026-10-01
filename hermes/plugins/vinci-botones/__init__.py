@@ -15,6 +15,10 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
   which records it and, after the quiz's last question, answers the score to send.
 - /estado, in Vinci's chat: the system health from `espol-bot estado` (last poll and sync, token
   chain, feeds), without waking the model.
+- /token, in Vinci's chat: `espol-bot canvas-form` answers with a Mini App keyboard button whose page
+  encrypts a new Canvas token on the phone; the button's web_app_data (only ciphertext) goes to
+  `espol-bot canvas-submit` on stdin, which decrypts it and reseeds the token chain.
+- A Canvas token pasted in any bot's chat: deleted and never used; Vinci answers with the /token form.
 
 Every answer that cites the material goes through `espol-bot citas` before it is sent (hook
 transform_llm_output): a citation of a page the bot was never shown becomes a warning, and a missing or
@@ -44,8 +48,10 @@ ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN":
 SUBJECT = "{{CODIGO}}"  # this bot's subject code; empty for Vinci
 PATTERN = r"^v1:"
 TOKEN_RE = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}\b")
+CANVAS_TOKEN_RE = re.compile(r"\b\d{1,6}~[A-Za-z0-9]{40,}\b")
 START_RE = re.compile(r"^/start(?:@\w+)?(?:\s|$)")
 STATUS_RE = re.compile(r"^/estado(?:@\w+)?(?:\s|$)")
+FORM_RE = re.compile(r"^/token(?:@\w+)?(?:\s|$)")
 # Telegram gives up on a press left unanswered for a few seconds (the spinner times out, the toast is
 # lost): a press whose work takes longer than this is answered first and done after.
 QUICK = 3
@@ -69,12 +75,18 @@ def _is_captain(user):
 
 def register(ctx):
     def _wire(application, adapter):
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
+        from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup,
+                              ReplyKeyboardRemove, Update, WebAppInfo)
         from telegram.ext import ApplicationHandlerStop, CallbackQueryHandler, TypeHandler
 
         async def _say(context, chat_id, result):
             if result.get("respuesta"):
-                markup = ReplyKeyboardRemove() if result.get("quitar_teclado") else None
+                markup, button = None, result.get("web_app_button")
+                if button:  # only a keyboard button may send web_app_data back to the bot
+                    markup = ReplyKeyboardMarkup([[KeyboardButton(button["text"], web_app=WebAppInfo(button["url"]))]],
+                                                 resize_keyboard=True, one_time_keyboard=True)
+                elif result.get("quitar_teclado"):
+                    markup = ReplyKeyboardRemove()
                 await context.bot.send_message(chat_id=chat_id, text=result["respuesta"], parse_mode="HTML",
                                                disable_web_page_preview=True, reply_markup=markup)
 
@@ -107,6 +119,22 @@ def register(ctx):
             await _say(context, message.chat_id, {**result, "respuesta": "\n".join(
                 t for t in (note, result.get("respuesta")) if t)})
 
+        async def _on_canvas_token(context, message):
+            try:
+                await message.delete()
+            except Exception as exc:
+                logger.warning("no pude borrar el mensaje con el token de Canvas: %s", exc)
+            if not _is_captain(message.from_user):
+                return
+            note = "🔒 Borré tu mensaje: traía un token de Canvas, y lo que se pega en el chat lo lee Telegram."
+            if SUBJECT:
+                await _say(context, message.chat_id, {"respuesta": note + " Para cambiarlo, mándale /token a Vinci."})
+                return
+            result = await _run("canvas-form")
+            await _say(context, message.chat_id, {**result, "respuesta": (
+                f"{note} Pégalo en este formulario, que lo cifra antes de enviarlo (como ya pasó por Telegram, mejor "
+                f"crea uno nuevo).\n\n{result.get('respuesta') or ''}")})
+
         async def _intercept(update, context):
             if getattr(update, "managed_bot", None) is not None:
                 raise ApplicationHandlerStop  # handled through its service message below
@@ -124,18 +152,31 @@ def register(ctx):
             if message is None or update.callback_query is not None:
                 return
             created = getattr(message, "managed_bot_created", None)
-            match = None if created is not None else TOKEN_RE.search(message.text or message.caption or "")
-            start = created is None and match is None and START_RE.match(message.text or "")
-            status = not SUBJECT and created is None and match is None and STATUS_RE.match(message.text or "")
-            if created is None and match is None and not start and not status:
+            form = getattr(message, "web_app_data", None)
+            match = canvas = None
+            if created is None and form is None:
+                text = message.text or message.caption or ""
+                match = TOKEN_RE.search(text)
+                canvas = None if match else CANVAS_TOKEN_RE.search(text)
+            plain = created is None and form is None and match is None and canvas is None
+            start = plain and START_RE.match(message.text or "")
+            status = plain and not SUBJECT and STATUS_RE.match(message.text or "")
+            ask_form = plain and not SUBJECT and FORM_RE.match(message.text or "")
+            if plain and not start and not status and not ask_form:
                 return
             try:
                 if created is not None:
                     await _on_created(context, message, created)
+                elif form is not None:
+                    if not SUBJECT and _is_captain(message.from_user):
+                        await _say(context, message.chat_id, await _run("canvas-submit", stdin=form.data or ""))
                 elif match is not None:
                     await _on_token(context, message, match.group(0))
+                elif canvas is not None:
+                    await _on_canvas_token(context, message)
                 elif _is_captain(message.from_user):
-                    command = ("estado",) if status else ("saludo", *(("--curso", SUBJECT) if SUBJECT else ()))
+                    command = (("estado",) if status else ("canvas-form",) if ask_form else
+                               ("saludo", *(("--curso", SUBJECT) if SUBJECT else ())))
                     await _say(context, message.chat_id, await _run(*command))
             except Exception as exc:  # a failed reply must not let the update through to Hermes
                 logger.error("filtro: %s", exc)

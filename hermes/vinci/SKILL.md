@@ -84,6 +84,9 @@ Si pregunta si estás funcionando, cuándo revisaste el aula o por qué no le ll
 desde aquí: dile que te mande /estado (último sondeo, lectura del aula, token de Canvas y feeds, sin gastar
 tokens) o que corra `espol-bot doctor` en su PC.
 
+Si la cadena del token de Canvas se cortó o pregunta cómo poner un token nuevo del aula, dile que te mande
+/token: le llega un formulario que lo cifra en su celular antes de enviarlo. Que nunca lo pegue en el chat.
+
 ## Su lista de pendientes
 
 «Anota: estudiar cap. 3 de Física para el viernes», «recuérdame llevar el certificado a secretaría»,

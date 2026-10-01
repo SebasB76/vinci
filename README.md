@@ -62,6 +62,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
 | 🩺 **Estado del sistema** | Mándale `/estado` a Vinci (o corre `espol-bot doctor` en la terminal) y ves cuándo corrió el último sondeo, cuándo se leyó el aula, la edad del token de Canvas y si su cadena de renovación está sana, y qué feeds sin token están activos. Lo que está atrasado o roto sale con ❌ o ⚠️ y qué hacer. No usa el modelo. |
+| 🔑 **Token del aula desde Telegram** | Si la cadena del token se cortó, mándale `/token` a Vinci: te abre un formulario dentro de Telegram que cifra el token en tu celular antes de enviarlo. Telegram solo lleva un texto ilegible que únicamente tu PC puede abrir, y el modelo nunca lo ve. [Cómo funciona](#token-nuevo-desde-telegram-token). |
 | 💻 **Terminal y Claude Code** | El comando `aula` consulta todo desde la terminal, y una skill le enseña a Claude Code a usarlo. |
 
 Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un brief) lo hacen scripts fijos que
@@ -86,8 +87,8 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
 - **Las herramientas** de cada bot son un servidor MCP propio (`espol-bot mcp vinci|materia`) que lee los datos
   ya sincronizados; el de un bot de materia, además, baja del aula el material que le hace falta. Vinci ve todas
   las materias y lee los cuadernos; un bot de materia ve solo la suya y escribe solo en su cuaderno.
-- **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start`, el `/estado` de Vinci y cualquier
-  mensaje con un token de bot, antes de que Hermes los vea, y revisa las citas de cada respuesta antes de que salga
+- **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start`, el `/estado` y el `/token` de Vinci
+  y cualquier mensaje con un token de bot o del aula, antes de que Hermes los vea, y revisa las citas de cada respuesta antes de que salga
   (`espol-bot citas`). A cada bot de materia, además, le da `ver_pagina`: una página de un PDF como imagen, para
   leer escaneos. También cuenta tus respuestas a un quiz y te manda el puntaje, sin el modelo.
 
@@ -275,6 +276,8 @@ pero nunca pulsarlo.
   materia. Se escribe a mano: no aparece en el menú de comandos del bot.
 - `/estado` en el chat de Vinci: la salud del sistema, sin gastar tokens (mira [El estado del
   sistema](#el-estado-del-sistema)).
+- `/token` en el chat de Vinci: un formulario para poner un token nuevo del aula sin que Telegram lo lea (mira
+  [Token nuevo desde Telegram](#token-nuevo-desde-telegram-token)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
 
@@ -291,8 +294,39 @@ guardaron el sondeo y el mantenimiento (no llaman al aula ni al modelo):
 | Token de Canvas | se renovó hace menos de 50 min | ⚠️ tiene 50 min o más, o la última renovación falló; ❌ tiene una hora o más (ESPOL ya lo invalidó), o Canvas lo rechazó y la cadena se cortó |
 | Calendario (iCal) · Anuncios (RSS/Atom) | se leyó hace menos de 25 min | ❌ el último mantenimiento no pudo leerlo; ⚠️ no se lee hace 25 min o no está configurado |
 
-Debajo de cada línea con problema va qué correr (por ejemplo `espol-bot resembrar` si la cadena se cortó).
-`espol-bot doctor` termina con código 1 si alguna línea tiene ❌. `/estado` solo lo contesta Vinci, y solo a ti.
+Debajo de cada línea con problema va qué hacer (si la cadena se cortó, `/token` en el chat de Vinci; en la
+terminal también `espol-bot resembrar`). `espol-bot doctor` termina con código 1 si alguna línea tiene ❌. `/estado`
+solo lo contesta Vinci, y solo a ti.
+
+### Token nuevo desde Telegram (`/token`)
+
+Si la PC estuvo apagada más de una hora, el token del aula vence y la cadena de renovación se corta. Para ponerle
+uno nuevo no hace falta abrir `secrets.env`:
+
+1. Mándale `/token` a Vinci. Te responde con un enlace a tu perfil del aula y un botón «🔑 Pegar token».
+2. En el aula, toca «+ Nuevo token de acceso» y copia el token.
+3. Toca «🔑 Pegar token»: se abre un formulario dentro de Telegram. Pega el token y toca «Enviar cifrado a Vinci».
+4. Vinci lo verifica con el aula, lo guarda y reanuda la renovación. Te confirma en el chat.
+
+<p align="center">
+  <img src="docs/images/token-formulario.png" alt="El formulario de /token dentro de Telegram: un campo oculto para pegar el token de Canvas y el botón «Enviar cifrado a Vinci»" width="300">
+</p>
+
+Cómo se protege el token:
+
+- **Se cifra en tu celular.** Cada `/token` genera un par de llaves de un solo uso. La pública va en el enlace del
+  botón y la página (`docs/token/`, publicada en GitHub Pages) cifra el token con ella (RSA-OAEP). Telegram solo
+  lleva el texto cifrado y la llave privada nunca sale de tu PC (`secrets.env`, permisos 600).
+- **La página no se conecta a nada.** No carga scripts de terceros (ni el de Telegram) y su política de seguridad
+  le prohíbe hacer conexiones: lo único que hace es entregarle a Telegram el texto cifrado.
+- **Sirve una vez y vence en 15 minutos.** La llave se borra al abrir el primer envío, así que el texto cifrado
+  que queda en el historial del chat ya no abre nada. Un envío repetido, el botón de un `/token` anterior o uno
+  vencido se rechazan y te llega un formulario nuevo.
+- **El modelo nunca lo ve.** El plugin atiende `/token` y el envío antes que Hermes. Si pegas un token del aula
+  directo en cualquier chat, el plugin borra el mensaje sin usarlo y Vinci te manda el formulario.
+
+La página sirve para cualquier instalación porque no guarda nada. Si prefieres publicar tu propia copia, cambia
+`token_form_url` en la sección `[canvas]` de `config.toml`.
 
 ### El material de cada materia
 
@@ -570,12 +604,14 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   evalúa una materia ocurren solo cuando pulsas el botón; el modelo solo puede mostrártelo.
 - **Los tokens de los bots nunca llegan al modelo.** El plugin atrapa cualquier mensaje con un token antes que
   Hermes, lo guarda y borra el mensaje del chat. Con «gestionar otros bots», el token ni siquiera pasa por el chat.
+- **El token del aula tampoco.** `/token` lo cifra en tu celular y Telegram solo lleva el texto cifrado. Un token del
+  aula pegado en un chat se borra sin usarse.
 
 **Dónde viven los secretos:**
 
 | Dónde | Qué guarda |
 |---|---|
-| `secrets.env` (en esta carpeta, permisos 600, fuera de git) | Tokens de Canvas y Telegram, y las URLs secretas de los feeds iCal/Atom |
+| `secrets.env` (en esta carpeta, permisos 600, fuera de git) | Tokens de Canvas y Telegram, las URLs secretas de los feeds iCal/Atom y, mientras un `/token` espera, su llave privada de un uso |
 | `~/.hermes/profiles/<perfil>/.env` | El token del bot de ese perfil y tu ID como único usuario permitido |
 | Hermes | Tu acceso al modelo, según cómo lo configuraste con `hermes model` |
 
@@ -659,8 +695,9 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 | `No encuentro Hermes Agent en ~/.local/bin/hermes` | Instala Hermes, o indica dónde está: `HERMES_BIN=/ruta/a/hermes ./setup.sh`. |
 | `Faltan valores en secrets.env: …` | Completa esas claves (pasos 1 a 4) y vuelve a correr `./setup.sh`. |
 | `⚠ Telegram no aceptó el mensaje` | Mándale `/start` a tu bot de Vinci y revisa `TELEGRAM_BOT_TOKEN`. |
-| `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El token inicial no funcionó durante el setup. Crea otro (paso 3) y ejecuta `.venv/bin/espol-bot resembrar`. |
-| Vinci dice que la cadena del token se cortó | Pulsa «🔑 Crear token nuevo», créalo y ejecuta `.venv/bin/espol-bot resembrar`: la entrada es oculta y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
+| `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El token inicial no funcionó durante el setup. Crea otro (paso 3) y mándaselo a Vinci con `/token` (o ejecuta `.venv/bin/espol-bot resembrar`). |
+| Vinci dice que la cadena del token se cortó | Pulsa «🔑 Crear token nuevo», créalo y mándale `/token` a Vinci: [el formulario](#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
+| El formulario de `/token` dice que venció o que era de un `/token` anterior | Usa el botón del mensaje más reciente de Vinci: cada formulario sirve una vez y por 15 minutos. |
 | Vinci te dice «Llevo un rato sin poder leer … de …» | Una parte de una materia falló tres veces seguidas. Lo sigue intentando y el resto funciona normal; te avisa de nuevo si vuelve a fallar después de recuperarse. |
 | `⚠ Agrega ~/.local/bin a tu PATH` | Agrégalo en tu `~/.bashrc` (o el de tu shell) para usar `aula`. |
 | `vinci: command not found` | `vinci` es el alias que Hermes crea para el perfil; sin él, usa `hermes -p vinci …`. |

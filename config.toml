@@ -14,6 +14,9 @@ cache_minutos = 10
 # Pausa mínima entre dos consultas del sondeo al aula virtual (segundos), para que su tráfico
 # nunca parezca abuso. Lo que le preguntas a un bot en Telegram no espera esta pausa.
 request_interval_seconds = 1.0
+# El formulario de /token (docs/token/ publicado en GitHub Pages). No guarda nada, así que cualquier instalación
+# puede usar esta copia; cámbialo solo si publicas la tuya.
+token_form_url = "https://sebasb76.github.io/vinci/token/"
 
 [general]
 # Zona horaria para fechas, recordatorios y el resumen.

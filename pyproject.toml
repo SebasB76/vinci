@@ -12,6 +12,7 @@ dependencies = [
     "PyYAML>=6.0",
     "fonttools>=4.50",
     "pypdfium2>=4.30",
+    "cryptography>=42",
 ]
 
 [project.scripts]

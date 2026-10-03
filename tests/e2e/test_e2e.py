@@ -74,7 +74,8 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
   8. Canvas tokens rotate through three generations without interrupting polls. When every
      token dies, maintenance says the chain is cut (never that a replacement works) and stops
      calling Canvas with the dead tokens; the token-free calendar and announcement feeds still
-     deliver useful alerts, and the alert points to /token; a hidden CLI reseed restores the renewal chain. `espol-bot doctor` reads
+     deliver useful alerts, and the alert itself carries the /token form (valid 24 h, no /token typed);
+     the captain fills it 26 min later and the chain comes back; a hidden CLI reseed also works. `espol-bot doctor` reads
      each of those moments (all healthy, three hours with nothing running, the chain cut, reseeded)
      without calling Canvas or the chat, and the captain's /estado in Vinci's chat, served by the
      plugin and never by the model, shows a night without poll or maintenance. setup.sh then runs
@@ -143,6 +144,7 @@ STRANGER_TOKEN = "700008:PRUEBA-token-de-un-extrano-xxxxxxxxxxxx"
 FORM_TOKEN = ("Formulario7Cifrado" * 4)[:64]           # the captain pastes it in /token's page
 REFUSED_FORM_TOKEN = "7~" + ("Aula9NoLoAcepta" * 5)[:64]  # mistyped, in stock Canvas' shape: the aula refuses it
 PASTED_TOKEN = ("Pegado3EnElChat" * 5)[:64]            # pasted straight into a chat by mistake
+AUTO_FORM_TOKEN = ("Automatico5SinPedirlo" * 4)[:64]   # pasted in the form Vinci sent on its own
 BOTFATHER_REPLY = ("Done! Congratulations on your new bot. You will find it at t.me/vinci_fisica_bot. You can now "
                    "add a description.\n\nUse this token to access the HTTP API:\n{token}\nKeep your token secure "
                    "and store it safely, it can be used by anyone to control your bot.")
@@ -192,6 +194,7 @@ T_RENEW_2 = "2026-09-29T22:22:00-05:00"
 T_RENEW_3 = "2026-09-29T23:03:00-05:00"
 T_RENEW_4 = "2026-09-29T23:33:00-05:00"  # the probe (born 22:22) turns 70 minutes old
 T_RENEW_5 = "2026-09-29T23:43:00-05:00"
+T_RENEW_6 = "2026-09-29T23:59:00-05:00"  # 26 min after the cut: a /token form (15 min) would have expired
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -293,6 +296,26 @@ def quiz_questions(topic: str, sources: list[dict]) -> list[dict]:
 
 
 # -- the model's side ------------------------------------------------------------------------
+
+
+NODE = shutil.which("node")
+
+
+def page_seal(url: str, token: str) -> str:
+    """What the page does with the token the captain pastes: docs/token/form.js on Node's WebCrypto."""
+    key = parse_qs(urlsplit(url).query)["k"][0]
+    if NODE is None:  # the same RSA-OAEP / SHA-256 the page uses, without the page itself
+        from cryptography.hazmat.primitives import serialization
+        from espol_bot.token_form import OAEP
+        public = serialization.load_der_public_key(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4)))
+        return "v1." + base64.urlsafe_b64encode(public.encrypt(token.encode(), OAEP)).decode().rstrip("=")
+    script = (f"const page = await import({json.dumps((REPO / 'docs' / 'token' / 'form.js').as_uri())});"
+              "if (!page.TOKEN_RE.test(process.argv[2])) { console.error('the page refuses it'); process.exit(3); }"
+              "process.stdout.write(await page.seal(process.argv[1], process.argv[2]));")
+    proc = subprocess.run([NODE, "--input-type=module", "-e", script, key, token], capture_output=True, text=True,
+                          timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
 
 
 def flatten(content) -> str:
@@ -1352,9 +1375,17 @@ def test_e2e(tmp_path):
         run([bot, "mantenimiento"], T_RENEW_4)
         cut = take("Cadena cortada · sonda y token actual vencidos")
         cut_text = "\n".join(message["text"] for message in cut)
-        assert "cadena automática del token" in cut_text and "/token" in cut_text, cut_text
+        assert "cadena automática del token" in cut_text and "No hace falta que escribas /token" in cut_text, cut_text
         assert "resembrar" not in cut_text, "el aviso no manda a la terminal"
-        assert "Crear token nuevo" in json.dumps(cut, ensure_ascii=False)
+        assert len(cut) == 1 and "Token nuevo de Canvas" in cut_text and "/profile/settings" in cut_text, cut_text
+        assert "vence en 24 h" in cut_text, "el formulario que llega solo dura lo bastante para verlo más tarde"
+        auto_button = cut[0]["reply_markup"]["keyboard"][0][0]
+        assert auto_button["text"] == "🔑 Pegar token" and cut[0]["reply_markup"].get("one_time_keyboard")
+        auto_url = auto_button["web_app"]["url"]
+        assert auto_url.startswith(DEFAULT_TOKEN_FORM_URL + "?k=") and "TOKEN_FORM_KEY" in parse_env_file(secrets)
+        token_md.append(f"## La cadena se corta: Vinci manda el formulario solo, sin que el capitán escriba /token\n\n"
+                        f"```\n{plain(cut[0]['text'])}\n[botón de teclado: {auto_button['text']} → Mini App "
+                        f"{re.sub(r'k=[A-Za-z0-9_-]+', 'k=<llave de un uso>', auto_url)}]\n```\n")
         assert "reemplazo funciona" not in cut_text, "no hay reemplazo: la cadena está cortada"
         api = [request for request in canvas.requests[mark:] if not request[1].startswith("/feeds/")]
         assert [method for method, _ in api] == ["GET", "DELETE"], api
@@ -1362,7 +1393,8 @@ def test_e2e(tmp_path):
         mark = len(canvas.requests)
         run([bot, "mantenimiento"], T_RENEW_5)
         run([bot, "sondeo"], T_RENEW_5)
-        assert take("Cadena cortada · mantenimiento y sondeo siguientes") == [], "el aviso no se repite"
+        assert take("Cadena cortada · mantenimiento y sondeo siguientes") == [], \
+            "el aviso no se repite mientras su formulario sigue vigente"
         assert all(path.startswith("/feeds/") for _, path in canvas.requests[mark:]), \
             "con la cadena cortada, nadie vuelve a llamar a Canvas con un token muerto"
         cut_health = doctor("la cadena del token se cortó", T_RENEW_5, broken=True)
@@ -1370,9 +1402,10 @@ def test_e2e(tmp_path):
         assert "→ /token en el chat de Vinci, o aquí:" in cut_health and "espol-bot resembrar" in cut_health, cut_health
         assert "✅ Calendario (iCal): activo" in cut_health, cut_health
         assert "✅ Sondeo" in cut_health and "✅ Mantenimiento" in cut_health, cut_health
-        report.append("Con el token actual y la sonda vencidos, el mantenimiento avisó que la cadena se cortó y cómo "
-                      "resembrarla (no que el reemplazo funciona), y desde entonces ni el mantenimiento ni el sondeo "
-                      "llamaron a Canvas con esos tokens")
+        report.append("Con el token actual y la sonda vencidos, el mantenimiento avisó que la cadena se cortó (no que el "
+                      "reemplazo funciona) y en el mismo mensaje mandó el formulario cifrado de /token, válido 24 h, "
+                      "sin que el capitán lo pidiera; desde entonces ni el mantenimiento ni el sondeo llamaron a Canvas "
+                      "con esos tokens, ni repitieron el aviso")
 
         # 6d. With every token dead, public feeds still update due dates and announcements ------------------
         canvas.calendar_feed = """BEGIN:VCALENDAR
@@ -1413,25 +1446,44 @@ END:VCALENDAR
         report.append("Con toda la cadena de tokens vencida, iCal actualizó una fecha y agregó un evento, Atom trajo "
                       "un anuncio, y Vinci siguió alertando sin mandar Authorization a esos feeds")
 
-        # 6e. A hidden terminal prompt re-seeds the chain; the token never passes through Telegram -------------
+        # 6e. The captain fills the form Vinci sent on its own, 26 min later: the chain comes back ---------------
+        canvas.mint(AUTO_FORM_TOKEN, "Token personal")  # the captain creates it in the aula's settings
+        sealed_auto = page_seal(auto_url, AUTO_FORM_TOKEN)
+        assert AUTO_FORM_TOKEN not in sealed_auto
+        auto_done = json.loads(run([bot, "canvas-submit"], T_RENEW_6, stdin=sealed_auto).stdout)
+        assert "Token verificado y guardado" in auto_done["respuesta"] and auto_done.get("quitar_teclado"), auto_done
+        from_form = parse_env_file(secrets)
+        assert from_form["CANVAS_TOKEN"] in canvas.valid_tokens and from_form["CANVAS_TOKEN"] != AUTO_FORM_TOKEN
+        assert "TOKEN_FORM_KEY" not in from_form, "la llave de un uso se borró al abrir el envío"
+        mark = len(canvas.requests)
+        run([bot, "sondeo"], T_RENEW_6)
+        assert not any("cadena automática del token" in m["text"] for m in take("Cadena resembrada con el formulario"))
+        assert any(not path.startswith("/feeds/") for _, path in canvas.requests[mark:]), "el sondeo volvió a leer el aula"
+        token_md.append(f"## El capitán pega el token en ese formulario 26 min después\n\nVinci responde:\n\n"
+                        f"```\n{plain(auto_done['respuesta'])}\n```\n")
+        report.append("26 minutos después del corte (un formulario de /token ya habría vencido), el capitán pegó un "
+                      "token en el formulario que Vinci mandó solo: Vinci lo verificó, dejó activo su sucesor y el "
+                      "sondeo volvió a leer el aula")
+
+        # 6f. A hidden terminal prompt re-seeds the chain too; the token never passes through Telegram ----------
         canvas.valid_tokens.add(NEW_CANVAS_TOKEN)
         canvas.mint(NEW_CANVAS_TOKEN, "Token personal")
-        reseed = run([bot, "resembrar", "--stdin"], T_RENEW_5, stdin=NEW_CANVAS_TOKEN + "\n")
+        reseed = run([bot, "resembrar", "--stdin"], T_RENEW_6, stdin=NEW_CANVAS_TOKEN + "\n")
         assert "verificado" in reseed.stdout.lower() and NEW_CANVAS_TOKEN not in reseed.stdout + reseed.stderr
         reseeded = parse_env_file(secrets)["CANVAS_TOKEN"]
         assert reseeded in canvas.valid_tokens
-        run([bot, "sondeo"], T_RENEW_5)
+        run([bot, "sondeo"], T_RENEW_6)
         after_reseed = take("Cadena resembrada")
         assert not any("cadena automática del token" in message["text"] for message in after_reseed)
-        reseeded_health = doctor("después de resembrar", T_RENEW_5, broken=False)
+        reseeded_health = doctor("después de resembrar", T_RENEW_6, broken=False)
         assert "✅ Token de Canvas: renovado hace un momento" in reseeded_health, reseeded_health
         report.append("`espol-bot doctor` mostró sondeo, lectura del aula, mantenimiento, edad del token y feeds sin "
                       "consultar el aula ni escribir al chat: todo ✅ con la cadena sana; tres horas sin que nada "
                       "corriera, ❌ en el sondeo, el mantenimiento y el token vencido (con qué revisar); con la "
                       "cadena cortada, ❌ en el token y cómo resembrarlo, con los feeds todavía activos; y ✅ otra "
                       "vez tras resembrar")
-        report.append("Tras el corte total, `espol-bot resembrar` leyó el token con entrada oculta, lo verificó y "
-                      "reactivó la cadena sin imprimirlo ni enviarlo por Telegram")
+        report.append("`espol-bot resembrar` también leyó un token con entrada oculta, lo verificó y lo dejó activo "
+                      "sin imprimirlo ni enviarlo por Telegram")
 
         equipo_md = ["# El equipo de bots, desde el chat con Vinci\n"]
         material_md = ["# El material de cada materia (lo que vio el modelo)\n"]
@@ -1476,7 +1528,7 @@ END:VCALENDAR
         secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
                        calendar_feed_url, announcement_feed_url, BOT_TOKEN,
                        *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
-                       REFUSED_FORM_TOKEN, PASTED_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
@@ -1534,7 +1586,7 @@ END:VCALENDAR
                        calendar_feed_url, announcement_feed_url, "/feeds/calendars/user-e2e.ics",
                        "/feeds/announcements/course-101.atom", BOT_TOKEN,
                        *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
-                       REFUSED_FORM_TOKEN, PASTED_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN,
                        *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
@@ -1688,7 +1740,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     # /estado: the health report, from the plugin and never from the model; nothing ran overnight
     status = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "/estado"), "vinci_bot", "Estado de Vinci")
     status_text = plain(status["text"])
-    for line in ("❌ Sondeo: no corre desde hace 9 h (mar 29 sep, 23:43)", "❌ Mantenimiento: no corre desde hace 9 h",
+    for line in ("❌ Sondeo: no corre desde hace 9 h (mar 29 sep, 23:59)", "❌ Mantenimiento: no corre desde hace 9 h",
                  "❌ Token de Canvas: se creó hace 9 h", "⚠️ Aula virtual: leída por última vez hace 9 h",
                  "En una terminal: hermes gateway status"):
         assert line in status_text, f"falta «{line}» en /estado:\n{status_text}"
@@ -1706,27 +1758,9 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     take("/estado")
 
     # /token: a new Canvas token from Telegram, encrypted on the phone; only ciphertext reaches Telegram and the plugin
-    node = shutil.which("node")
-
     def form_button(message: dict) -> tuple[str, str]:
         button = message["reply_markup"]["keyboard"][0][0]
         return button["text"], button["web_app"]["url"]
-
-    def page_seal(url: str, token: str) -> str:
-        """What the page does with the token the captain pastes: docs/token/form.js on Node's WebCrypto."""
-        key = parse_qs(urlsplit(url).query)["k"][0]
-        if node is None:  # the same RSA-OAEP / SHA-256 the page uses, without the page itself
-            from cryptography.hazmat.primitives import serialization
-            from espol_bot.token_form import OAEP
-            public = serialization.load_der_public_key(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4)))
-            return "v1." + base64.urlsafe_b64encode(public.encrypt(token.encode(), OAEP)).decode().rstrip("=")
-        script = (f"const page = await import({json.dumps((REPO / 'docs' / 'token' / 'form.js').as_uri())});"
-                  "if (!page.TOKEN_RE.test(process.argv[2])) { console.error('the page refuses it'); process.exit(3); }"
-                  "process.stdout.write(await page.seal(process.argv[1], process.argv[2]));")
-        proc = subprocess.run([node, "--input-type=module", "-e", script, key, token], capture_output=True, text=True,
-                              timeout=60)
-        assert proc.returncode == 0, proc.stderr
-        return proc.stdout
 
     def safe(text: str) -> str:
         return re.sub(r"k=[A-Za-z0-9_-]+", "k=<llave de un uso>", text)
@@ -1803,7 +1837,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
         holders = sorted({str(f) for f in files if token.encode() in f.read_bytes()})
         assert not holders, f"un token del aula apareció en {holders}"
     report.append("/token en el chat de Vinci, sin el modelo: un botón abrió el formulario, cuya página "
-                  + ("(docs/token/form.js, en Node) " if node else "(sin Node: el mismo cifrado en Python) ")
+                  + ("(docs/token/form.js, en Node) " if NODE else "(sin Node: el mismo cifrado en Python) ")
                   + "cifró el token con una llave de un uso; Telegram solo llevó el texto cifrado y Vinci resembró la "
                   "cadena. La llave sirvió una vez: los mismos datos otra vez, el botón de un /token anterior, un "
                   "token que el aula no acepta y un formulario vencido se rechazaron con un formulario nuevo, y los "

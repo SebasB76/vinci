@@ -3,8 +3,11 @@
 Each /token makes a one-time RSA key pair. Its public half rides in the URL of a Mini App keyboard
 button (docs/token/, a static page on GitHub Pages); the page encrypts the token on the phone with
 RSA-OAEP and sends back only the ciphertext, as the button's web_app_data. The private half waits in
-secrets.env until a ciphertext opens with it or FORM_TTL passes, and is then deleted: a ciphertext left
-in the chat history opens nothing later, and each new /token replaces the pending key.
+secrets.env until a ciphertext opens with it or the form expires, and is then deleted: a ciphertext left
+in the chat history opens nothing later, and each new form replaces the pending key.
+
+When Canvas refuses the token, the poller sends this same form on its own, valid for AUTO_FORM_TTL: the
+captain may only read it hours later, and does not have to type /token.
 
 The plugin `vinci-botones` runs `espol-bot canvas-form` for /token and `espol-bot canvas-submit` (the
 ciphertext on stdin) for the button's data, before Hermes sees either; the token never reaches the
@@ -32,8 +35,9 @@ from espol_bot.token_renewal import RenewalError, reseed
 log = logging.getLogger(__name__)
 
 KEY = "TOKEN_FORM_KEY"
-OPENED = "token_form_opened_at"
+EXPIRES = "token_form_expires_at"
 FORM_TTL = timedelta(minutes=15)
+AUTO_FORM_TTL = timedelta(hours=24)
 PREFIX = "v1."  # what the page puts before the base64url ciphertext
 BUTTON = "🔑 Pegar token"
 # WebCrypto's RSA-OAEP with hash SHA-256 also uses SHA-256 for MGF1.
@@ -46,30 +50,51 @@ class FormError(Exception):
 
 def open_form(cfg: BotConfig, now: datetime, intro: str = "") -> dict:
     """A fresh one-time key and the message with the button that opens the page with its public half."""
+    conn = connect(cfg.core.db_path)
+    try:
+        with file_lock(cfg.core.data_dir, "bot.lock"):  # the renewal rewrites secrets.env under it too
+            return new_form(cfg, conn, now, intro)
+    finally:
+        conn.close()
+
+
+def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelta = FORM_TTL) -> dict:
+    """open_form for a caller that already holds bot.lock (flock would block on a second open in this process)."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private = key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8,
                                 serialization.NoEncryption())
     public = key.public_key().public_bytes(serialization.Encoding.DER,
                                            serialization.PublicFormat.SubjectPublicKeyInfo)
-    conn = connect(cfg.core.db_path)
-    try:
-        with file_lock(cfg.core.data_dir, "bot.lock"):  # the renewal rewrites secrets.env under it too
-            update_secret_values({KEY: base64.b64encode(private).decode()})
-            set_meta(conn, OPENED, timefmt.iso(now))
-            conn.commit()
-    finally:
-        conn.close()
+    update_secret_values({KEY: base64.b64encode(private).decode()})
+    set_meta(conn, EXPIRES, timefmt.iso(now + ttl))
+    conn.commit()
     log.info("canvas-form: formulario abierto")
     separator = "&" if "?" in cfg.token_form_url else "?"
     url = cfg.token_form_url + separator + urlencode({"k": base64.urlsafe_b64encode(public).decode().rstrip("=")})
-    minutes = int(FORM_TTL.total_seconds() // 60)
     text = (f"{intro}🔑 <b>Token nuevo de Canvas</b>\n"
             f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
             "«+ Nuevo token de acceso».\n"
             f"2. Copia el token, toca «{BUTTON}» aquí abajo y pégalo.\n"
             "🔒 Se cifra en tu celular antes de salir: Telegram solo lleva un texto ilegible que únicamente tu PC "
-            f"puede abrir. El formulario sirve una vez y vence en {minutes} min.")
+            f"puede abrir. El formulario sirve una vez y vence en {_duration(ttl)}.")
     return {"respuesta": text, "web_app_button": {"text": BUTTON, "url": url}}
+
+
+def pending(conn, now: datetime) -> bool:
+    """Whether a form is still waiting for its ciphertext (from /token or sent by the poller)."""
+    expires = timefmt.parse(get_meta(conn, EXPIRES))
+    return bool(load_secret_values().get(KEY)) and expires is not None and now < expires
+
+
+def keyboard(button: dict) -> dict:
+    """The Bot API reply markup for a form's button: only a keyboard button may send web_app_data back."""
+    return {"keyboard": [[{"text": button["text"], "web_app": {"url": button["url"]}}]],
+            "resize_keyboard": True, "one_time_keyboard": True}
+
+
+def _duration(ttl: timedelta) -> str:
+    minutes = int(ttl.total_seconds() // 60)
+    return f"{minutes // 60} h" if minutes >= 60 and minutes % 60 == 0 else f"{minutes} min"
 
 
 def submit(cfg: BotConfig, data: str, now: datetime) -> dict:
@@ -113,12 +138,12 @@ def _open(cfg: BotConfig, data: str, now: datetime) -> str:
     try:
         with file_lock(cfg.core.data_dir, "bot.lock"):
             stored = load_secret_values().get(KEY, "")
-            opened = timefmt.parse(get_meta(conn, OPENED))
-            if not stored or opened is None:
+            expires = timefmt.parse(get_meta(conn, EXPIRES))
+            if not stored or expires is None:
                 raise FormError("Ese formulario ya se usó o venció.")
-            if now - opened > FORM_TTL:
+            if now > expires:
                 _forget(conn)
-                raise FormError(f"Ese formulario venció (dura {int(FORM_TTL.total_seconds() // 60)} min).")
+                raise FormError("Ese formulario venció.")
             key = serialization.load_der_private_key(base64.b64decode(stored), password=None)
             try:
                 plain = key.decrypt(sealed, OAEP)
@@ -135,5 +160,5 @@ def _open(cfg: BotConfig, data: str, now: datetime) -> str:
 
 def _forget(conn) -> None:
     update_secret_values({}, remove=(KEY,))
-    delete_meta(conn, OPENED)
+    delete_meta(conn, EXPIRES)
     conn.commit()

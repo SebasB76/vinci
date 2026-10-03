@@ -3,7 +3,8 @@
 `poll()` runs every `intervalo_minutos` from a Hermes no-agent cron job:
   1. sync the aula virtual (plus material download/indexing) through aula_core, gently: it is
      background work, so its requests are spaced and its material comes a slice per poll;
-     a token Canvas refused is not tried again (the captain hears once) until it changes;
+     a token Canvas refused is not tried again until it changes, and the captain gets the /token
+     form without asking for it;
   2. report, once per failure episode, each course resource that keeps failing;
   3. send one Telegram message per undelivered event (grouped when there are many);
   4. send the 24 h / 3 h reminders for unsubmitted deliverables (each with «✅ Ya lo entregué», for
@@ -38,7 +39,7 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import agenda, health, libros, materias, messages, priority, store
+from espol_bot import agenda, health, libros, materias, messages, priority, store, token_form
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -118,28 +119,36 @@ class Bot:
         return text
 
     def _token_refused(self) -> str:
-        """Tells the captain once per refused token (the polls leave Canvas alone until it changes)."""
+        """Sends the /token form on its own once per refused token, and again each ALERT_EVERY while none is
+        pending (the polls leave Canvas alone until the token changes)."""
         command = Path(sys.executable).with_name("espol-bot")
         floor = (" Los feeds públicos siguen actualizando fechas, eventos y anuncios." if feeds.configured() else
                  f" Para mantener fechas y anuncios aun sin token, configura sus feeds una vez con "
                  f"<code>{escape(str(command))} feeds</code>.")
-        text = ("La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
-                "Pulsa el botón, crea un token y mándame <b>/token</b>: te abro un formulario que lo cifra en tu "
-                "celular antes de enviarlo (no lo pegues en el chat)." + floor)
+        text = ("⚠️ La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
+                "No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular antes de "
+                "enviarlo (no lo pegues en el chat)." + floor)
         refused = self.aula.refused_token()
-        if refused and get_meta(self.conn, "bot_alert_token") != refused:
+        if not refused:
+            return text
+        now = self.aula.now()
+        last = timefmt.parse(get_meta(self.conn, "bot_alert_token_at"))
+        due = (get_meta(self.conn, "bot_alert_token") != refused
+               or ((last is None or now - last >= ALERT_EVERY) and not token_form.pending(self.conn, now)))
+        if due:
+            form = token_form.new_form(self.cfg, self.conn, now, text + "\n\n", ttl=token_form.AUTO_FORM_TTL)
             try:
-                markup = {"inline_keyboard": [[{"text": "🔑 Crear token nuevo",
-                                                 "url": self.cfg.core.canvas_url + "/profile/settings"}]]}
-                self.telegram.send(messages.alert(text), reply_markup=markup)
+                self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(form["web_app_button"]))
                 set_meta(self.conn, "bot_alert_token", refused)
+                set_meta(self.conn, "bot_alert_token_at", timefmt.iso(now))
                 self.conn.commit()
             except TelegramError as exc:
                 log.error("No pude avisar por Telegram: %s", exc)
         return text
 
     def _ok(self) -> None:
-        delete_meta(self.conn, "bot_fail_count_token", "bot_fail_count_red", "bot_alert_token")
+        delete_meta(self.conn, "bot_fail_count_token", "bot_fail_count_red", "bot_alert_token",
+                    "bot_alert_token_at")
         self.conn.commit()
 
     # -- poll ------------------------------------------------------------------------

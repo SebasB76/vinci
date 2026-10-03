@@ -62,7 +62,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
 | 🩺 **Estado del sistema** | Mándale `/estado` a Vinci (o corre `espol-bot doctor` en la terminal) y ves cuándo corrió el último sondeo, cuándo se leyó el aula, la edad del token de Canvas y si su cadena de renovación está sana, y qué feeds sin token están activos. Lo que está atrasado o roto sale con ❌ o ⚠️ y qué hacer. No usa el modelo. |
-| 🔑 **Token del aula desde Telegram** | Si la cadena del token se cortó, mándale `/token` a Vinci: te abre un formulario dentro de Telegram que cifra el token en tu celular antes de enviarlo. Telegram solo lleva un texto ilegible que únicamente tu PC puede abrir, y el modelo nunca lo ve. [Cómo funciona](#token-nuevo-desde-telegram-token). |
+| 🔑 **Token del aula desde Telegram** | Si la cadena del token se cortó, Vinci te manda solo un formulario (no hace falta escribir `/token`) dentro de Telegram que cifra el token en tu celular antes de enviarlo. Telegram solo lleva un texto ilegible que únicamente tu PC puede abrir, y el modelo nunca lo ve. [Cómo funciona](#token-nuevo-desde-telegram-token). |
 | 💻 **Terminal y Claude Code** | El comando `aula` consulta todo desde la terminal, y una skill le enseña a Claude Code a usarlo. |
 
 Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un brief) lo hacen scripts fijos que
@@ -301,9 +301,10 @@ solo lo contesta Vinci, y solo a ti.
 ### Token nuevo desde Telegram (`/token`)
 
 Si la PC estuvo apagada más de una hora, el token del aula vence y la cadena de renovación se corta. Para ponerle
-uno nuevo no hace falta abrir `secrets.env`:
+uno nuevo no hace falta abrir `secrets.env` ni escribir nada:
 
-1. Mándale `/token` a Vinci. Te responde con un enlace a tu perfil del aula y un botón «🔑 Pegar token».
+1. Abre el aviso de Vinci «La cadena automática del token de Canvas se cortó». Trae un enlace a tu perfil del aula
+   y un botón «🔑 Pegar token». Si no lo encuentras, mándale `/token` a Vinci y te llega el mismo formulario.
 2. En el aula, toca «+ Nuevo token de acceso» y copia el token.
 3. Toca «🔑 Pegar token»: se abre un formulario dentro de Telegram. Pega el token y toca «Enviar cifrado a Vinci».
 4. Vinci lo verifica con el aula, lo guarda y reanuda la renovación. Te confirma en el chat.
@@ -314,12 +315,13 @@ uno nuevo no hace falta abrir `secrets.env`:
 
 Cómo se protege el token:
 
-- **Se cifra en tu celular.** Cada `/token` genera un par de llaves de un solo uso. La pública va en el enlace del
+- **Se cifra en tu celular.** Cada formulario genera un par de llaves de un solo uso. La pública va en el enlace del
   botón y la página (`docs/token/`, publicada en GitHub Pages) cifra el token con ella (RSA-OAEP). Telegram solo
   lleva el texto cifrado y la llave privada nunca sale de tu PC (`secrets.env`, permisos 600).
 - **La página no se conecta a nada.** No carga scripts de terceros (ni el de Telegram) y su política de seguridad
   le prohíbe hacer conexiones: lo único que hace es entregarle a Telegram el texto cifrado.
-- **Sirve una vez y vence en 15 minutos.** La llave se borra al abrir el primer envío, así que el texto cifrado
+- **Sirve una vez y vence pronto.** El de `/token` vence en 15 minutos. El que Vinci manda solo vence en 24 horas,
+  porque quizá lo ves horas después; si vence sin usarse, Vinci te manda otro al día siguiente. La llave se borra al abrir el primer envío, así que el texto cifrado
   que queda en el historial del chat ya no abre nada. Un envío repetido, el botón de un `/token` anterior o uno
   vencido se rechazan y te llega un formulario nuevo.
 - **El modelo nunca lo ve.** El plugin atiende `/token` y el envío antes que Hermes. Si pegas un token del aula
@@ -696,8 +698,8 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 | `Faltan valores en secrets.env: …` | Completa esas claves (pasos 1 a 4) y vuelve a correr `./setup.sh`. |
 | `⚠ Telegram no aceptó el mensaje` | Mándale `/start` a tu bot de Vinci y revisa `TELEGRAM_BOT_TOKEN`. |
 | `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El token inicial no funcionó durante el setup. Crea otro (paso 3) y mándaselo a Vinci con `/token` (o ejecuta `.venv/bin/espol-bot resembrar`). |
-| Vinci dice que la cadena del token se cortó | Pulsa «🔑 Crear token nuevo», créalo y mándale `/token` a Vinci: [el formulario](#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
-| El formulario de `/token` dice que venció o que era de un `/token` anterior | Usa el botón del mensaje más reciente de Vinci: cada formulario sirve una vez y por 15 minutos. |
+| Vinci dice que la cadena del token se cortó | Crea un token nuevo en tu perfil del aula y pégalo con el botón «🔑 Pegar token» de ese mismo aviso: [el formulario](#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
+| El formulario de `/token` dice que venció o que era de un `/token` anterior | Usa el botón del mensaje más reciente de Vinci, o mándale `/token`: cada formulario sirve una vez, por 15 minutos (o 24 horas si Vinci lo mandó solo). |
 | Vinci te dice «Llevo un rato sin poder leer … de …» | Una parte de una materia falló tres veces seguidas. Lo sigue intentando y el resto funciona normal; te avisa de nuevo si vuelve a fallar después de recuperarse. |
 | `⚠ Agrega ~/.local/bin a tu PATH` | Agrégalo en tu `~/.bashrc` (o el de tu shell) para usar `aula`. |
 | `vinci: command not found` | `vinci` es el alias que Hermes crea para el perfil; sin él, usa `hermes -p vinci …`. |

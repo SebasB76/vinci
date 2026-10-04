@@ -19,6 +19,7 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
   encrypts a new Canvas token on the phone; the button's web_app_data (only ciphertext) goes to
   `espol-bot canvas-submit` on stdin, which decrypts it and reseeds the token chain.
 - A Canvas token pasted in any bot's chat: deleted and never used; Vinci answers with the /token form.
+- The `/` menu in the captain's chat: this bot's own commands (/estado, /token, /quiz) first, then Hermes's.
 
 Every answer that cites the material goes through `espol-bot citas` before it is sent (hook
 transform_llm_output): a citation of a page the bot was never shown becomes a warning, and a missing or
@@ -60,6 +61,13 @@ FORM_RE = re.compile(r"^/token(?:@\w+)?(?:\s|$)")
 QUICK = 3
 CITES = ("📄", "](")  # an answer without either cites nothing: it skips the check
 FAILED = {"respuesta": "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."}
+# Hermes's menu covers every private chat and lists only its own commands (and the default profile's skills).
+# A menu scoped to the captain's chat wins over it, so this one lists the project's commands before Hermes's.
+MENU = ([("quiz", "Quiz corto de un tema con el material: /quiz derivadas")] if SUBJECT else
+        [("estado", "Salud del sistema: sondeo, aula, token de Canvas y feeds"),
+         ("token", "Token nuevo de Canvas, cifrado en tu celular"),
+         ("quiz", "Quiz corto de un tema, del bot de la materia: /quiz derivadas")])
+_TASKS = set()  # asyncio keeps only a weak reference to a task
 
 
 async def _run(*args, stdin=None):
@@ -78,9 +86,27 @@ def _is_captain(user):
 
 def register(ctx):
     def _wire(application, adapter):
-        from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup,
-                              ReplyKeyboardRemove, Update, WebAppInfo)
+        from telegram import (BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup,
+                              KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, WebAppInfo)
         from telegram.ext import ApplicationHandlerStop, CallbackQueryHandler, TypeHandler
+
+        async def _publish_menu():
+            for _ in range(300):  # this factory runs before the bot connects; the Bot API waits for it
+                if application.running:
+                    break
+                await asyncio.sleep(1)
+            else:
+                return
+            try:  # the same list Hermes publishes, minus room for ours
+                from hermes_cli.commands_platforms import telegram_menu_commands, telegram_menu_max_commands
+                hermes, _ = await asyncio.to_thread(
+                    telegram_menu_commands, max_commands=max(1, telegram_menu_max_commands() - len(MENU)))
+                ours = {name for name, _ in MENU}
+                commands = [BotCommand(name, desc) for name, desc in
+                            MENU + [(name, desc) for name, desc in hermes if name not in ours]]
+                await application.bot.set_my_commands(commands, scope=BotCommandScopeChat(chat_id=int(CAPTAIN)))
+            except Exception as exc:  # the captain keeps Hermes's menu; typed commands still work
+                logger.warning("no pude publicar el menú de comandos: %s", exc)
 
         async def _say(context, chat_id, result):
             if result.get("respuesta"):
@@ -242,6 +268,9 @@ def register(ctx):
 
         application.add_handler(TypeHandler(Update, _intercept), group=-100)
         application.add_handler(CallbackQueryHandler(_on_button, pattern=PATTERN))
+        task = asyncio.ensure_future(_publish_menu())
+        _TASKS.add(task)
+        task.add_done_callback(_TASKS.discard)
 
     ctx.register_platform_handler("telegram", _wire)
     ctx.register_hook("transform_llm_output", _check_citations)

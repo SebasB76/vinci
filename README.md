@@ -273,11 +273,13 @@ pero nunca pulsarlo.
 - `/start` en cualquier bot: te saluda y te dice qué hace. En un bot de materia, además, cuándo es tu próxima clase
   y a qué hora te llega el brief.
 - `/quiz <tema>` en un bot de materia: un quiz corto del tema con su material. En Vinci, se lo pasa al bot de la
-  materia. Se escribe a mano: no aparece en el menú de comandos del bot.
+  materia.
 - `/estado` en el chat de Vinci: la salud del sistema, sin gastar tokens (mira [El estado del
   sistema](#el-estado-del-sistema)).
 - `/token` en el chat de Vinci: un formulario para poner un token nuevo del aula sin que Telegram lo lea (mira
   [Token nuevo desde Telegram](#token-nuevo-desde-telegram-token)).
+- Al escribir `/` en tu chat con un bot, el menú muestra primero estos comandos y debajo los de Hermes. Si no
+  aparecen, cierra y abre el chat: Telegram guarda el menú un rato.
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
 

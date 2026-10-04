@@ -136,6 +136,7 @@ class _Syncer:
                 "current_score": enrollment.get("computed_current_score"),
                 "current_grade": enrollment.get("computed_current_grade"),
                 "term_start": timefmt.normalize((c.get("term") or {}).get("start_at")),
+                "term_end": timefmt.normalize((c.get("term") or {}).get("end_at")),
                 "syllabus_body": c.get("syllabus_body"),
             })
         return courses
@@ -145,11 +146,13 @@ class _Syncer:
         known = self.conn.execute("SELECT 1 FROM courses WHERE id = ?", (c["id"],)).fetchone() is not None
         self.conn.execute(
             """INSERT INTO courses(id, name, course_code, term, html_url, current_score, current_grade, active, first_seen,
-                 term_start)
-               VALUES (:id, :name, :course_code, :term, :html_url, :current_score, :current_grade, 1, :now, :term_start)
+                 term_start, term_end)
+               VALUES (:id, :name, :course_code, :term, :html_url, :current_score, :current_grade, 1, :now, :term_start,
+                 :term_end)
                ON CONFLICT(id) DO UPDATE SET name=excluded.name, course_code=excluded.course_code, term=excluded.term,
                  html_url=excluded.html_url, current_score=excluded.current_score,
-                 current_grade=excluded.current_grade, active=1, term_start=excluded.term_start""",
+                 current_grade=excluded.current_grade, active=1, term_start=excluded.term_start,
+                 term_end=excluded.term_end""",
             {**c, "now": self.now_iso},
         )
         return known

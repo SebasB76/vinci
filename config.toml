@@ -19,6 +19,15 @@ request_interval_seconds = 1.0
 # puede usar esta copia; cámbialo solo si publicas la tuya.
 token_form_url = "https://sebasb76.github.io/vinci/token/"
 
+[dashboard]
+# El dashboard que abre el botón «📋 Entregas» del chat de Vinci (docs/dashboard/ publicado en GitHub Pages).
+# No guarda nada: Vinci le pasa tus entregas y novedades dentro del enlace del botón, que solo se abre en tu chat.
+# Déjalo vacío ("") para no usarlo; el chat vuelve a su botón de menú de siempre.
+url = "https://sebasb76.github.io/vinci/dashboard/"
+# Último día de clases, para la barra del semestre (AAAA-MM-DD). Si lo dejas vacío, se usa el fin del periodo
+# según el aula, que también cuenta los exámenes y la recuperación.
+semester_end = "2027-01-15"
+
 [general]
 # Zona horaria para fechas, recordatorios y el resumen.
 zona_horaria = "America/Guayaquil"

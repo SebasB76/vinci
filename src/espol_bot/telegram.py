@@ -121,6 +121,10 @@ class Telegram:
             raise TelegramError("Telegram no devolvió el token del bot nuevo")
         return token
 
+    def set_menu_button(self, button: dict | None) -> None:
+        """The button beside the captain's text field, in that chat only; None puts Telegram's default back."""
+        self._call("setChatMenuButton", {"chat_id": self._chat_id, "menu_button": button or {"type": "default"}})
+
     def my_name(self) -> str:
         return str(self._call("getMyName", {}, max_wait=PROFILE_MAX_WAIT).get("name") or "")
 

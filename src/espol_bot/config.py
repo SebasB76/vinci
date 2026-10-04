@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import time
+from datetime import date, time
 from pathlib import Path
 
 from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_values, section
@@ -15,6 +15,8 @@ PROFILE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 DEFAULT_TELEGRAM_API = "https://api.telegram.org"
 # The /token Mini App (docs/token/ on GitHub Pages). It holds no secret: any install can use this copy.
 DEFAULT_TOKEN_FORM_URL = "https://sebasb76.github.io/vinci/token/"
+# The dashboard behind Vinci's menu button (docs/dashboard/). It holds no data: the snapshot rides in its URL.
+DEFAULT_DASHBOARD_URL = "https://sebasb76.github.io/vinci/dashboard/"
 # Removed everywhere, whatever a platform list says (Hermes applies this last).
 BLOCKED_TOOLSETS = [
     "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
@@ -39,6 +41,8 @@ class BotConfig:
     hermes_model: str
     telegram_api: str
     token_form_url: str = DEFAULT_TOKEN_FORM_URL
+    dashboard_url: str = DEFAULT_DASHBOARD_URL  # empty: no dashboard, the chat keeps its usual menu button
+    semester_end: date | None = None             # the last day of classes; None: the aula term's end
     notes_folder: Path | None = None  # the captain's class notes (notes.py); None: not read
     notes_idle_minutes: int = 15
     vinci_toolsets: tuple[str, ...] = ()
@@ -111,6 +115,16 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not form_url.startswith("https://"):
         raise ConfigError("canvas.token_form_url debe empezar con https:// (Telegram solo abre Mini Apps así)")
 
+    dashboard = section(core.raw, "dashboard")
+    dashboard_url = str(dashboard.get("url", DEFAULT_DASHBOARD_URL) or "")
+    if dashboard_url and not dashboard_url.startswith("https://"):
+        raise ConfigError("dashboard.url debe empezar con https:// (Telegram solo abre Mini Apps así)")
+    end_raw = dashboard.get("semester_end") or None
+    try:
+        semester_end = end_raw if isinstance(end_raw, date) or end_raw is None else date.fromisoformat(str(end_raw))
+    except ValueError:
+        raise ConfigError(f"dashboard.semester_end debe ser una fecha AAAA-MM-DD, no {end_raw!r}") from None
+
     return BotConfig(
         core=core,
         poll_minutes=poll_minutes,
@@ -123,6 +137,8 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
         token_form_url=form_url,
+        dashboard_url=dashboard_url,
+        semester_end=semester_end,
         notes_folder=Path(folder).expanduser() if folder else None,
         notes_idle_minutes=idle,
         vinci_toolsets=_names(tools.get("vinci", []), "vinci"),

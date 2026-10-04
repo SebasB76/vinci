@@ -57,7 +57,9 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      shared now);
      «✅ Ya lo entregué» under a reminder (the assignment stops being pending everywhere and gets no more
      reminders; its undo brings it back); the captain's own to-do list from «anota: …» (its card, «¿qué tengo
-     esta semana?», the model-free reminder and 7:00 summary, closed with «✅ Hecho»); the grade calculator
+     esta semana?», the model-free reminder and 7:00 summary, closed with «✅ Hecho»); the dashboard behind
+     Vinci's menu button (the snapshot in its URL, sent again only when it changed, rendered by the page; a tick on
+     the page, /start s_<id>_ok, counts as «✅ Ya lo entregué» and is deleted, a stranger's does not count); the grade calculator
      (Cálculo's bot reads its syllabus and shows the scheme, asking how the first partial goes without its exam;
      the captain's answer and «✅ Guardar esquema» save it; the figures, a what-if and a grade given in chat are
      the tool's; Vinci says it does not know Física's scheme until the captain tells it); the deliverables'
@@ -131,7 +133,7 @@ from urllib.parse import parse_qs, urlsplit
 import yaml
 
 from aula_core.config import parse_env_file
-from espol_bot import skill_check
+from espol_bot import dashboard, skill_check
 from espol_bot.config import DEFAULT_TOKEN_FORM_URL
 
 HERE = Path(__file__).parent
@@ -2385,6 +2387,96 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspac
                   "«¿qué tengo esta semana?» y en el resumen de las 7:00; el sondeo mandó su recordatorio 2 h antes, "
                   "sin llamar al modelo; «✅ Hecho» en el recordatorio y en el resumen lo cerró y ya no se recordó más")
     take("Pendientes cerrados")
+
+    # 7e2b. The dashboard behind the menu button of Vinci's chat: the poll puts the snapshot in the button's URL
+    # (only when it changed), the page renders it, and a tick on the page reaches Vinci as /start s_<id>_ok, which
+    # the plugin runs as «✅ Ya lo entregué» (a stranger's is ignored) and the button gets a fresh snapshot.
+    def menu_urls(mark: int) -> list[str]:
+        found = []
+        for c in telegram.calls[mark:]:
+            button = c["params"].get("menu_button") if c["bot"] == "vinci_bot" and c["method"] == "setChatMenuButton" else None
+            button = json.loads(button) if isinstance(button, str) else button
+            if button and button.get("type") == "web_app":
+                assert button["text"] == "📋 Entregas" and str(c["params"]["chat_id"]) == CAPTAIN_ID, c
+                found.append(button["web_app"]["url"])
+        return found
+
+    def snapshot_of(url: str) -> dict:
+        page, fragment = url.split("#d=", 1)
+        assert page == "https://sebasb76.github.io/vinci/dashboard/" and len(url) <= dashboard.MAX_URL, url[:80]
+        return dashboard.decode(fragment)
+
+    def marked(assignment_id: int) -> bool:
+        conn = sqlite3.connect(data_dir / "espol.db")
+        try:
+            return conn.execute("SELECT 1 FROM marked_submitted WHERE assignment_id = ?", (assignment_id,)).fetchone() \
+                is not None
+        finally:
+            conn.close()
+
+    llm_before, mark = len(llm.requests), len(telegram.calls)
+    published = run([bot, "dashboard"], T_VINCI).stdout
+    assert "📋 Entregas" in published, published
+    snap = snapshot_of(menu_urls(mark)[-1])
+    titles = [i["title"] for i in snap["items"]]
+    assert snap["bot"] == "vinci_bot" and snap["v"] == 1 and snap["at"], snap
+    assert snap["term"]["name"] == "2026 - 2do Término" and snap["term"]["end"] == "2027-01-16T04:59:00Z", snap["term"]
+    assert "Leer el paper que recomendó el profe" in titles, "el pendiente abierto sin fecha sale en el dashboard"
+    assert "Examen parcial" not in titles and "Estudiar cap. 3" not in titles, "lo entregado y lo hecho no salen"
+    assert snap["news"] and all(n["kind"] in dashboard.NEWS_KINDS.values() for n in snap["news"]), snap["news"]
+    mark = len(telegram.calls)
+    run([bot, "sondeo"], T_VINCI)
+    assert menu_urls(mark) == [], "un sondeo sin cambios no vuelve a mandar el botón"
+
+    task = next(i for i in snap["items"] if i["id"].startswith("s"))
+    task_id = int(task["id"][1:])
+    other = next(i for i in snap["items"] if i["id"].startswith("s") and i is not task)
+    consumed(BOT_TOKEN, telegram.send_text(BOT_TOKEN, STRANGER, f"/start s_{other['id'][1:]}_ok"))
+    mark, calls = len(telegram.messages), len(telegram.calls)
+    update = telegram.send_text(BOT_TOKEN, CAPTAIN, f"/start s_{task_id}_ok")
+    ticked = wait_msg("vinci_bot", mark, "cuenta como entregada")
+    assert ticked["text"].startswith("📋 ") and task["title"] in ticked["text"], ticked["text"]
+    assert telegram.wait_for(lambda _: deleted(BOT_TOKEN, incoming_id(update)), 30), fail("el /start del dashboard no se borró")
+    assert marked(task_id) and not marked(int(other["id"][1:])), "solo cuenta la marca del capitán"
+    assert telegram.wait_for(lambda _: menu_urls(calls), 30), fail("el botón no se puso al día tras la marca")
+    after = snapshot_of(menu_urls(calls)[-1])
+    assert task["title"] not in [i["title"] for i in after["items"]], "lo marcado sale del dashboard"
+    mark, calls = len(telegram.messages), len(telegram.calls)
+    telegram.send_text(BOT_TOKEN, CAPTAIN, f"/start s_{task_id}_no")
+    undone = wait_msg("vinci_bot", mark, "vuelve a tus pendientes")
+    assert not marked(task_id) and telegram.wait_for(lambda _: menu_urls(calls), 30)
+    assert task["title"] in [i["title"] for i in snapshot_of(menu_urls(calls)[-1])["items"]], "deshacer lo devuelve"
+    assert len(llm.requests) == llm_before, "el dashboard y sus marcas no llaman al modelo"
+
+    dashboard_md = ["# El dashboard del botón «📋 Entregas»\n",
+                    f"Enlace del botón: {len(menu_urls(0)[-1])} caracteres; el resumen va después de `#d=`.\n",
+                    "## Lo que lleva el enlace (JSON, antes de comprimirlo)\n",
+                    f"```json\n{json.dumps(snap, ensure_ascii=False, indent=2)}\n```\n",
+                    "## Una marca desde la página\n",
+                    f"```\nEl capitán: /start s_{task_id}_ok   (lo abre la página; el plugin lo borra)\n"
+                    f"Vinci: {readable(ticked)}\nEl capitán: /start s_{task_id}_no\nVinci: {readable(undone)}\n```\n"]
+    if NODE:
+        css = (REPO / "docs" / "dashboard" / "dashboard.css").read_text(encoding="utf-8")
+        script = (f"const page = await import({json.dumps((REPO / 'docs' / 'dashboard' / 'dashboard.js').as_uri())});"
+                  "const data = await page.decode(page.readFragment(process.argv[1] + '&tgWebAppVersion=8.0').payload);"
+                  "process.stdout.write(page.view(data, new Date(process.argv[2]), {}, { inline: true }));")
+        proc = subprocess.run([NODE, "--input-type=module", "-e", script, "#" + menu_urls(0)[-1].split("#", 1)[1], T_VINCI],
+                              capture_output=True, text=True, timeout=60, env={**os.environ, "TZ": "America/Guayaquil"})
+        assert proc.returncode == 0, proc.stderr
+        assert "Leer el paper que recomendó el profe" in proc.stdout and "2026 - 2do Término" in proc.stdout, proc.stdout[:500]
+        (artifact / "dashboard.html").write_text(
+            f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" '
+            f'content="width=device-width, initial-scale=1"><title>Dashboard (prueba E2E)</title><style>{css}</style>'
+            f'</head><body><main>{proc.stdout}</main></body></html>', encoding="utf-8")
+        dashboard_md.append("La página, dibujada por `docs/dashboard/dashboard.js` (Node) con ese resumen, está en "
+                            "`dashboard.html`.\n")
+    (artifact / "dashboard.md").write_text("\n".join(dashboard_md), encoding="utf-8")
+    report.append("Dashboard «📋 Entregas»: `espol-bot dashboard` puso en el botón de menú del chat de Vinci (solo ese "
+                  "chat) un enlace a docs/dashboard/ con el resumen en el `#`: el semestre, lo pendiente sin lo entregado "
+                  "ni lo hecho y las novedades; un sondeo sin cambios no lo vuelve a mandar. La página lo abre y lo dibuja; "
+                  "su marca llega como /start s_<id>_ok, que el plugin borra y atiende como «✅ Ya lo entregué» (la de un "
+                  "extraño no cuenta), con el botón al día; /start s_<id>_no lo deshace. Nada de esto llama al modelo")
+    take("Dashboard")
 
     # 7e3. The grade calculator. Cálculo's bot reads its syllabus and shows the scheme, asking what the syllabus
     # cannot say (how the first partial goes without its exam, El Niño); the captain tells it and saves it with

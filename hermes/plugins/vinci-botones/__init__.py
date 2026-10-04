@@ -11,7 +11,9 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 - Any message carrying a bot token (for example BotFather's reply, forwarded): delete it
   from the chat and hand the token to `espol-bot token` on stdin.
 - /start: Hermes ignores it, so the bot greets with `espol-bot saludo` (who it is, and for a
-  subject bot when its next brief comes).
+  subject bot when its next brief comes). In Vinci's chat, `/start s_<id>_ok` (or `t_…`, `…_no`) is a tick
+  on the dashboard behind the menu button: the page opened Vinci's deep link. It runs as the
+  «✅ Ya lo entregué» / «✅ Hecho» button would (`espol-bot boton v1:s:<id>:ok`), and the /start is deleted.
 - The captain's vote in a subject bot's quiz poll (`poll_answer`): run `espol-bot quiz-respuesta`,
   which records it and, after the quiz's last question, answers the score to send.
 - /estado, in Vinci's chat: the system health from `espol-bot estado` (last poll and sync, token
@@ -37,6 +39,7 @@ event, so it never reaches the model or a session log.
 """
 
 import asyncio
+import html
 import json
 import logging
 import os
@@ -56,6 +59,7 @@ TOKEN_RE = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}\b")
 CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*\d)"
                              r"[A-Za-z0-9]{64}\b")
 START_RE = re.compile(r"^/start(?:@\w+)?(?:\s|$)")
+TICK_RE = re.compile(r"^/start(?:@\w+)?\s+([st])_(-?\d{1,20})_(ok|no)\s*$")  # a tick on the dashboard
 STATUS_RE = re.compile(r"^/estado(?:@\w+)?(?:\s|$)")
 FORM_RE = re.compile(r"^/token(?:@\w+)?(?:\s|$)")
 # Telegram gives up on a press left unanswered for a few seconds (the spinner times out, the toast is
@@ -174,6 +178,19 @@ def register(ctx):
                 f"{note} Pégalo en este formulario, que lo cifra antes de enviarlo (como ya pasó por Telegram, mejor "
                 f"crea uno nuevo).\n\n{result.get('respuesta') or ''}")})
 
+        async def _on_tick(context, message, tick):
+            try:  # the deep link's /start is only how the page reached the bot
+                await message.delete()
+            except Exception as exc:
+                logger.info("no pude borrar el /start del dashboard: %s", exc)
+            try:
+                result = await _run("boton", f"v1:{tick[1]}:{tick[2]}:{tick[3]}")
+            except Exception as exc:
+                logger.error("dashboard %s: %s", tick[0], exc)
+                result = FAILED
+            text = result.get("respuesta") or html.escape(result.get("aviso") or "")
+            await _say(context, message.chat_id, {"respuesta": f"📋 {text}" if text else ""})
+
         async def _intercept(update, context):
             if getattr(update, "managed_bot", None) is not None:
                 raise ApplicationHandlerStop  # handled through its service message below
@@ -213,6 +230,8 @@ def register(ctx):
                     await _on_token(context, message, match.group(0))
                 elif canvas is not None:
                     await _on_canvas_token(context, message)
+                elif _is_captain(message.from_user) and not SUBJECT and TICK_RE.match(message.text or ""):
+                    await _on_tick(context, message, TICK_RE.match(message.text or ""))
                 elif _is_captain(message.from_user):
                     command = (("estado",) if status else ("canvas-form",) if ask_form else
                                ("saludo", *(("--curso", SUBJECT) if SUBJECT else ())))

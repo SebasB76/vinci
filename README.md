@@ -50,6 +50,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | | |
 |---|---|
 | 🔔 **Avisos del aula virtual** | Revisa el aula cada 30 minutos y te avisa de tareas nuevas, cambios de fecha, anuncios, notas publicadas o cambiadas, material y enlaces nuevos y materias nuevas. Te recuerda cada entrega que aún no enviaste 24 h y 3 h antes. Si es un cuestionario (un control de lectura, un test), el aviso dice cuántas preguntas tiene, el tiempo para resolverlo, los intentos y cuándo abre y cierra; uno que abre a una hora fija por poco tiempo te avisa antes de abrir. Y a las 7:00 te manda el resumen de tu semana, con tus entregas en orden: lo que vence en 24 h y después lo que más vale en tu nota ([cómo las ordena](#el-resumen-de-las-700)). Si la entregaste en papel, por correo o en el laboratorio (el aula no se entera), pulsa «✅ Ya lo entregué» y no insiste más. |
+| 📋 **Dashboard de entregas** | El botón «📋 Entregas», al lado del campo de texto del chat de Vinci, abre una página dentro de Telegram con cuánto llevas del semestre, tus entregas pendientes (atrasadas, de hoy, de esta semana y más adelante) y las novedades del aula. Marcas una entrega con un toque y Vinci la cuenta como entregada. La página no se conecta a ningún servidor. [Cómo funciona](#el-dashboard-de-entregas). |
 | 📌 **Tu lista de pendientes** | «Anota: estudiar cap. 3 de Física para el viernes»: Vinci guarda lo que el aula no trae (lecturas, trámites, lo que el profe dijo en clase y no subió), con su materia y su fecha. Sale en el resumen de las 7:00 y en «¿qué tengo esta semana?», te lo recuerda 24 h y 3 h antes, y lo cierras con «✅ Hecho». |
 | 📊 **Calculadora de notas** | «¿Cómo voy?», «¿cuánto necesito en la lección para pasar?», «¿y si saco 70 en el examen?»: aplica los pesos de cada materia a tus notas del aula (y a las que le cuentas) y te dice cuánto llevas y qué promedio necesitas en lo que falta. Los pesos los saca del sílabo, de las políticas del curso y de los anuncios, incluido cómo maneja cada materia el primer parcial sin examen por El Niño; lo que no encuentra te lo pregunta, y se guarda solo cuando pulsas «✅ Guardar esquema». Las cuentas las hace un script, no el modelo. [Más sobre la calculadora](#la-calculadora-de-notas). |
 | 🤖 **Un bot por materia** | Le dices «arma mi equipo» y Vinci te propone un bot por cada materia de tu aula, que se crea con un toque tuyo. El teórico y el práctico de una materia comparten un solo bot. |
@@ -328,6 +329,36 @@ Antes de subir, Vinci revisa en el aula que la tarea reciba PDF, que siga abiert
 tenías una entrega, la tarjeta te avisa que esta sería un nuevo intento. Si algo falla en el camino (la red, el
 token), el botón sigue ahí para volver a intentarlo, y un doble toque no entrega dos veces.
 
+### El dashboard de entregas
+
+El botón «📋 Entregas» está al lado del campo de texto, en el chat de Vinci. Al tocarlo se abre una página dentro
+de Telegram con tres partes:
+
+- **El semestre:** una línea del primer al último día de clases, con la marca de hoy, el porcentaje que llevas, la
+  semana y los días que faltan. Cada entrega es un punto sobre la línea; tócalo y la página baja hasta esa entrega.
+- **Tus entregas pendientes:** las tareas sin entregar y tus pendientes anotados, en grupos (Atrasadas, Hoy, Esta
+  semana, Más adelante y Sin fecha). Cada una dice su materia, la hora, cuánto pesa en tu nota (si la calculadora
+  lo sabe) y el día. Toca el círculo para marcarla: es lo mismo que «✅ Ya lo entregué» o «✅ Hecho».
+- **Novedades:** los avisos del aula de los últimos 7 días, con un punto azul en lo que no has leído.
+
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="El dashboard dentro de Telegram: la línea del semestre con la marca de hoy, las entregas en Atrasadas, Hoy, Esta semana y Sin fecha, y las novedades del aula" width="300">
+</p>
+<p align="center"><sub>Con los datos ficticios de la prueba E2E.</sub></p>
+
+Cómo funciona:
+
+1. Después de cada sondeo en que algo cambió, Vinci arma un resumen con esos datos, lo comprime y lo pone en el
+   enlace del botón, después del `#`. Solo cambia el botón de tu chat.
+2. La página ([`docs/dashboard/`](docs/dashboard/), publicada en GitHub Pages) lee el resumen de su propio enlace.
+   No se conecta a ningún servidor, ni para leer ni para guardar.
+3. Al marcar una entrega, la página abre el chat de Vinci con un `/start` especial. El plugin lo atiende sin el
+   modelo, borra ese mensaje, te confirma en el chat y pone al día el botón.
+
+Si una entrega que marcaste sigue apareciendo, el resumen es anterior a tu toque: cierra la página y ábrela otra vez.
+Telegram guarda el botón un rato; si no lo ves, cierra y abre el chat. Para ponerlo al día sin esperar al sondeo,
+corre `.venv/bin/espol-bot dashboard`.
+
 ### Comandos
 
 - `/start` en cualquier bot: te saluda y te dice qué hace. En un bot de materia, además, cuándo es tu próxima clase
@@ -586,6 +617,8 @@ Todo lo ajustable está en [`config.toml`](config.toml). Después de cambiarlo, 
 | `canvas.url` | `https://aulavirtual.espol.edu.ec` | Tu aula virtual |
 | `canvas.cache_minutos` | `10` | Cuánto tiempo `aula` y los bots reutilizan los datos guardados antes de volver a leer el aula |
 | `canvas.request_interval_seconds` | `1.0` | Pausa mínima entre dos consultas del sondeo al aula (lo que preguntas en Telegram no espera) |
+| `dashboard.url` | `https://sebasb76.github.io/vinci/dashboard/` | La página del botón «📋 Entregas». Vacío (`""`): sin dashboard, y el chat vuelve a su botón de menú de siempre |
+| `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la línea del semestre. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
 | `notificaciones.intervalo_minutos` | `30` | Cada cuánto revisa el aula (mínimo 5) |
 | `notificaciones.recordatorios_horas` | `[24, 3]` | Recordatorios antes de cada entrega no enviada |
@@ -689,6 +722,10 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 - **Las skills pueden escribir.** `skill_manage` deja que un bot cree o edite skills, pero solo dentro de la carpeta
   `skills/` de su propio perfil. El texto no confiable del aula (un anuncio, un documento) podría intentar dirigirlo
   a que escriba una skill; `setup.sh` reescribe la skill de cada bot en cada corrida.
+- **El dashboard no se conecta a nada.** Tus entregas y novedades viajan en el enlace del botón «📋 Entregas»,
+  después del `#`, y solo ese botón de tu chat lo tiene. El navegador nunca le manda esa parte del enlace a GitHub
+  Pages, y la política de seguridad de la página le prohíbe hacer conexiones. Lo que marcas se queda en tu celular
+  y le llega a Vinci como un `/start` en su chat, que el plugin atiende sin el modelo.
 - **Un enlace se abre sin tu cuenta.** Un bot pide el documento de un enlace de forma anónima: sin tu token del
   aula, sin cookies (ni las que el sitio pone en el camino), sin credenciales de tu PC, revisando cada redirección y
   con tope de tamaño (`material.tamano_maximo_mb`) y de tiempo. Lo que trae es material para leer, nunca
@@ -800,6 +837,7 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 | `⚠ El gateway de Hermes no cargó el plugin …` | Reinicia el gateway: `hermes gateway stop && hermes gateway start`. |
 | Vinci te responde «No sé de qué materia es ese bot» | Pulsa primero «➕ Crear» en la materia que es, y revoca en @BotFather (`/revoke`) el token que mandaste. |
 | No te llega el brief | Revisa que guardaste el horario y que la clase está en él, que el bot está activo y que el gateway corre. Mándale `/start` al bot: te dice cuándo es tu próxima clase y a qué hora llega el brief. |
+| No ves el botón «📋 Entregas» en el chat de Vinci | Corre `.venv/bin/espol-bot dashboard`, que lo pone al día ya, y después cierra y abre el chat. Si dice que está apagado, revisa `dashboard.url` en `config.toml`. |
 | No te llegan avisos del aula | Mándale `/estado` a Vinci o corre `.venv/bin/espol-bot doctor`: te dice si el sondeo dejó de correr, si la cadena del token se cortó o si un feed falla, y qué hacer. |
 | Ningún bot responde | `hermes gateway status`; si está apagado, `hermes gateway start`. Si se apaga al cerrar sesión: `sudo loginctl enable-linger "$USER"`. |
 | El modelo no responde o falta la credencial | Configura el modelo en Hermes (`hermes model`). Si usas una `ANTHROPIC_API_KEY` y no el login de Anthropic, cada perfil lee su propio `.env`: agrégala al `.env` de `~/.hermes/profiles/vinci/` y de cada `vinci-<código>` (el setup conserva esa línea). |

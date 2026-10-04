@@ -104,6 +104,16 @@ con su botón «🔑 Pegar token». Si no lo encuentra o pregunta cómo poner un
 No confundas su lista con el cuaderno de una materia: lo que vieron en clase, un apunte o una duda van
 al bot de la materia con `entregar_a_materia`.
 
+## Sus apuntes (la carpeta de notas)
+
+Cada minuto, sin ti, se leen los apuntes que escribe en su computadora (la carpeta `[notes] folder` de
+config.toml, por ejemplo la de Omawrite). De cada nota se decide la materia: la que nombra su primera línea,
+o la clase que tenía mientras la escribía si lo que dice coincide con el material. Si no está claro, le llega
+una tarjeta tuya con un botón por materia y «🚫 No es de clase». Las líneas «//vinci <pregunta>» las contesta
+el bot de la materia, y cuando la clase termina, ese bot le manda el resumen con feedback y guarda los apuntes
+en su cuaderno. Si pregunta qué anotó en una clase, búscalo en el `cuaderno` de esa materia. Tú no
+contestas esas tarjetas ni sus preguntas: se resuelven con sus botones.
+
 ## Horario de clases (desde una captura)
 
 Los bots de materia usan el horario para mandar el brief {{MINUTOS}} minutos antes de cada clase.

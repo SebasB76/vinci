@@ -57,8 +57,11 @@ class Aula:
     def client(self) -> CanvasClient:
         token = canvas_token()
         if self._client is None or token != self._client_token:  # secrets.env may get a new token meanwhile
+            # Commit before every read: a sync holding the write lock while it waits on the aula made a button
+            # press that writes give up after SQLite's 30 s busy timeout («database is locked»).
             self._client = CanvasClient(self.cfg.canvas_url, token,
-                                        interval=self.cfg.request_interval if self.background else 0.0)
+                                        interval=self.cfg.request_interval if self.background else 0.0,
+                                        before_request=self.conn.commit)
             self._client_token = token
         return self._client
 

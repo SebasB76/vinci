@@ -11,8 +11,10 @@ commands, or sees a bot token.
 
 A subject bot: the same queries restricted to its own courses (theory and práctico), the classes of its
 subject, its grade calculator, its own notebook (read and write; attachments only from the files the
-captain sent it, which Hermes keeps in the profile's media cache), and short quizzes it sends as
-Telegram quiz polls, each question citing a page of its material or an entry of its notebook (quiz.py).
+captain sent it, which Hermes keeps in the profile's media cache), short quizzes it sends as
+Telegram quiz polls, each question citing a page of its material or an entry of its notebook (quiz.py), and
+the PDF of a handwritten activity built from the captain's photos, shown to the captain with «Entregar» under
+it; only that press hands it in (submission.py).
 
 Material is a catalog, not a pile of text: `archivos` lists every document and outside link of the
 courses (where it is, whether it is read yet) and each document is downloaded only when a bot needs
@@ -55,7 +57,7 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
-from espol_bot import agenda, citations, grades, horario, libros, materias, messages, priority, quiz, store
+from espol_bot import agenda, citations, grades, horario, libros, materias, messages, priority, quiz, store, submission
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -1352,6 +1354,56 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         finally:
             nb.close()
 
+    def prepare_submission(args):
+        assignment_id = _int(args["assignment_id"], "assignment_id", hi=10**12)
+        row = ctx.conn.execute(f"SELECT a.*, c.name AS course_name, {queries.DONE_SQL} AS done FROM assignments a "
+                               "JOIN courses c ON c.id = a.course_id WHERE a.id = ?", (assignment_id,)).fetchone()
+        if row is None or row["course_id"] not in course_ids():
+            raise ToolError("Esa tarea no es de tu materia: busca su «id» con tareas.")
+        name, now = row["name"], ctx.now()
+        if not row["active"]:
+            raise ToolError(f"«{name}» ya no está en el aula.")
+        types = set((row["submission_types"] or "").split(",")) - {""}
+        if "online_upload" not in types:
+            raise ToolError(f"«{name}» no recibe archivos en el aula (se entrega: {', '.join(sorted(types)) or 'nada'}). "
+                            "Díselo; no armes el PDF.")
+        lock = timefmt.parse(row["lock_at"])
+        if lock and lock < now:
+            raise ToolError(f"El aula cerró «{name}» el {timefmt.human(lock, ctx.cfg.core.tz)}. Díselo.")
+        paths = args.get("files")
+        if not isinstance(paths, list) or not paths or not all(isinstance(f, str) and f.strip() for f in paths):
+            raise ToolError("«files» es la lista de rutas de las fotos, en el orden de las páginas (o la de un PDF).")
+        if len(paths) > submission.MAX_PAGES:
+            raise ToolError(f"Son muchas fotos: armo PDF de hasta {submission.MAX_PAGES} páginas.")
+        sources = [_document(ctx, str(f)) for f in paths]
+        pdfs = [f for f in sources if f.suffix.lower() == ".pdf"]
+        if pdfs and len(sources) > 1:
+            raise ToolError("Un PDF va solo, sin fotos: o me pasas sus fotos, o su PDF.")
+        if not pdfs and any(f.suffix.lower() not in submission.IMAGE_TYPES for f in sources):
+            raise ToolError("Armo el PDF solo con fotos (JPG, PNG o WEBP), o tomo un PDF que te mandó.")
+        subject = ctx.subject()
+        dest = submission.new_pdf_path(ctx.cfg.core, subject.code, assignment_id, now)
+        try:
+            pages, thumb = submission.take_pdf(pdfs[0], dest) if pdfs else submission.build_pdf(sources, dest)
+        except submission.SubmitError as exc:
+            raise ToolError(str(exc)) from None
+        proposal_id = store.new_submission_proposal(ctx.conn, subject.code, row["course_id"], assignment_id, name,
+                                                    str(dest), pages, now)
+        card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
+                                        has_submission=bool(row["done"]), from_photos=not pdfs)
+        try:
+            Telegram(load_telegram_secrets(subject.code), api=ctx.cfg.telegram_api).send_document(
+                dest, submission.upload_name(name), card,
+                [(messages.submit_button(name), f"v1:u:{proposal_id}:ok"),
+                 (messages.SUBMIT_CANCEL_BUTTON, f"v1:u:{proposal_id}:no")], thumbnail=thumb)
+        except (TelegramError, ConfigError) as exc:
+            store.set_submission_state(ctx.conn, proposal_id, "cancelled", now)
+            raise ToolError(f"No pude mandarle el PDF por Telegram: {exc}") from None
+        return {"proposal": proposal_id, "assignment": name, "pages": pages,
+                "message": f"Le mandé el PDF con «{messages.submit_button(name)}» y «{messages.SUBMIT_CANCEL_BUTTON}». "
+                           "Se entrega solo cuando pulse Entregar; tú no puedes entregarlo. Dile en una línea que lo "
+                           "revise y lo entregue con el botón."}
+
     return [
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
         Tool("tareas", "Entregas pendientes de tu materia.", tareas,
@@ -1419,6 +1471,15 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
               "transcripcion": {"type": "string", "description": "texto de la nota de voz, si lo tienes"},
               "fecha_clase": {"type": "string", "description": "AAAA-MM-DD de la clase, si aplica"}},
              ["tipo", "resumen"], read_only=False),
+        Tool("prepare_submission", "Arma un PDF con las fotos de una actividad hecha a mano (una página por foto, en "
+             "el orden en que llegaron) o toma un PDF que te mandó, y se lo muestra en su chat con «📤 Entregar en "
+             "<tarea>» y «✖️ Cancelar». Solo se entrega en el aula cuando pulsa Entregar. La tarea tiene que recibir "
+             "archivos («online_upload»).", prepare_submission,
+             {"assignment_id": {"type": "integer", "description": "el «id» de la tarea (de tareas)"},
+              "files": {"type": "array", "items": {"type": "string"},
+                        "description": "las rutas de las fotos (Image attached at: …) en el orden de las páginas, o "
+                                       "la de un PDF (saved at: …)"}},
+             ["assignment_id", "files"], read_only=False),
         Tool("send_quiz", "Manda un quiz corto (/quiz) al chat del estudiante: una encuesta tipo quiz de Telegram por "
              "pregunta, que le muestra la respuesta correcta y tu explicación recién al responder; al terminar le llega "
              "su puntaje con la fuente de cada pregunta. Cada pregunta sale del material que leíste (file_id y page) o "

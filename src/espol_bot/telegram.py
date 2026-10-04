@@ -7,6 +7,7 @@ import json
 import logging
 import socket
 import time
+from pathlib import Path
 
 import requests
 
@@ -82,6 +83,22 @@ class Telegram:
         for i, part in enumerate(parts):
             # The buttons ride on the last part, right under the text they refer to.
             self._send_one(part, (reply_markup or keyboard(buttons or [])) if i == len(parts) - 1 else None)
+
+    def send_document(self, path: Path, filename: str, html_caption: str, buttons: list[tuple[str, str]] | None = None,
+                      *, thumbnail: bytes | None = None) -> dict:
+        """A file in the captain's chat, with its caption (up to 1024 characters) and inline buttons under it."""
+        payload = {"chat_id": self._chat_id, "caption": html_caption, "parse_mode": "HTML"}
+        markup = keyboard(buttons or [])
+        if markup:
+            payload["reply_markup"] = json.dumps(markup)
+        files = {"document": (filename, path.read_bytes(), "application/pdf")}
+        if thumbnail:
+            payload["thumbnail"] = "attach://thumb"
+            files["thumb"] = ("thumb.jpg", thumbnail, "image/jpeg")
+        message = self._call("sendDocument", payload, files=files)
+        self.sent += 1
+        self._sleep(0.4)
+        return message
 
     def send_poll(self, question: str, options: list[str], correct: int, explanation: str) -> dict:
         """A quiz poll in the captain's chat; not anonymous, so the bot receives the captain's vote (poll_answer)."""

@@ -396,3 +396,27 @@ def grading_card(name: str, lines: list[str], open_questions: list[str], sources
     parts.append(f"¿Está bien? Pulsa <b>{SCHEME_SAVE_BUTTON.split(' ', 1)[1]}</b> y calculo tus notas con esto. Si algo está mal, "
                  f"pulsa <b>{SCHEME_FIX_BUTTON.split(' ', 1)[1]}</b> y dime qué cambiar.")
     return "\n\n".join(parts)
+
+
+SUBMIT_CANCEL_BUTTON = "✖️ Cancelar"
+
+
+def submit_button(assignment: str) -> str:
+    short = assignment if len(assignment) <= 40 else assignment[:39].rstrip() + "…"
+    return f"📤 Entregar en «{short}»"
+
+
+def submission_card(assignment: str, course_name: str, due_at: str | None, pages: int, tz: ZoneInfo, now: datetime,
+                    *, has_submission: bool, from_photos: bool = True) -> str:
+    parts = [f"📤 <b>{e(assignment)}</b>",
+             course(course_name) + (f" · vence {e(timefmt.human(due_at, tz))}" if due_at else ""),
+             f"{pages} página{'s' if pages != 1 else ''}, "
+             + ("en el orden en que me mandaste las fotos." if from_photos else "del PDF que me mandaste.")]
+    due = timefmt.parse(due_at)
+    if due and due < now:
+        parts.append("⚠️ Ya venció: el aula la marcará como atrasada.")
+    if has_submission:
+        parts.append("⚠️ Ya tienes una entrega en esta tarea: esta sería un nuevo intento.")
+    parts.append("\nAbre el PDF y revisa que estén todas las hojas y se lean bien. La entrego en el aula solo cuando "
+                 "pulses <b>Entregar</b>.")
+    return "\n".join(parts)

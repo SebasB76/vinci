@@ -10,7 +10,7 @@ cada una de tus materias y te prepara para cada clase.
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Hermes Agent](https://img.shields.io/badge/corre%20en-Hermes%20Agent-7c3aed)
 ![Telegram](https://img.shields.io/badge/Telegram-bots-26A5E4?logo=telegram&logoColor=white)
-![Datos académicos: solo lectura](https://img.shields.io/badge/datos%20académicos-solo%20lectura-2e7d32)
+![Datos académicos: solo lectura, salvo tus entregas](https://img.shields.io/badge/datos%20académicos-solo%20lectura%20%2B%20tus%20entregas-2e7d32)
 ![Licencia: pendiente](https://img.shields.io/badge/licencia-pendiente-lightgrey)
 
 [Qué hace](#qué-hace) · [Cómo funciona](#cómo-funciona) · [Instalación](#instalación) ·
@@ -21,7 +21,8 @@ cada una de tus materias y te prepara para cada clase.
 
 > **In English:** Vinci is a self-hosted Telegram assistant for ESPOL students, built on
 > [Hermes Agent](https://github.com/NousResearch/hermes-agent). It reads your Canvas courses
-> (aulavirtual.espol.edu.ec) read-only, sends alerts and deadline reminders, and creates one Telegram bot per
+> (aulavirtual.espol.edu.ec) read-only (the one write: a PDF of your handwritten work, handed in when you press
+> «Entregar»), sends alerts and deadline reminders, and creates one Telegram bot per
 > subject from your own courses. Each subject bot sends a brief 30 minutes before every class, keeps a
 > notebook of what you covered, and answers questions from the course material with citations (file, page and
 > aula link, checked against what the bot actually read before it is sent). Everything runs on your PC and answers
@@ -55,6 +56,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 📚 **Brief antes de cada clase** | 30 minutos antes de cada clase de tu horario, el bot de esa materia te manda un repaso de la clase anterior, lo que vence, el material nuevo, 2 o 3 conceptos clave y una pregunta para hacerle al profe. |
 | 📓 **Cuaderno de cada materia** | Cuéntale al bot lo que vieron o mándale una foto de la pizarra, una nota de voz o un PDF: lo guarda con un resumen. Lleva tus dudas y los temas que te cuestan, y los usa en los briefs. |
 | 📄 **Preguntas sobre el material** | Cada bot tiene el catálogo de todo el material de su materia y baja lo que necesita. Se guía primero por el **libro principal** (el del sílabo, o el que tú le digas), busca en español y en inglés y te explica un tema, resume un capítulo o te hace preguntas tipo examen, citando archivo, página y el enlace del aula. [Más sobre el material](#el-material-de-cada-materia). |
+| 📤 **Entrega de actividades a mano** | ¿El profe pide la actividad escaneada en PDF? Tómale fotos a las hojas y mándaselas al bot de la materia (en un álbum, o con «súbelo al deber 3»). El bot junta las fotos en un PDF, una página por foto, en el orden en que las mandaste, y te lo muestra con «📤 Entregar en Deber 3». Abres el PDF, revisas, pulsas y queda entregado en el aula. Sin el botón no se entrega nada. [Cómo funciona](#entregar-una-actividad-hecha-a-mano). |
 | 🧠 **Quiz con `/quiz`** | Escríbele `/quiz derivadas` al bot de la materia y te manda un quiz corto (3 a 5 preguntas) como encuestas de Telegram, sacado de su material o de lo que le mandes (texto, foto o PDF). Cada respuesta se ve recién al contestar, con su explicación y la cita de archivo y página; al terminar te llega tu puntaje y lo que fallaste queda en el cuaderno como tema débil. A Vinci también le puedes escribir `/quiz`: se lo pasa al bot de la materia. |
 | 🔎 **Citas que se comprueban** | Cada respuesta con material cita archivo, página (o diapositiva) y el enlace del aula, copiados de lo que el bot leyó. Antes de enviarla se revisa cada cita: una página que el bot no leyó o un archivo que no está en el material se cambia por un aviso, y un enlace que falta o está mal se corrige. Si el material no trae lo que preguntas, te dice «No está en el material» y recién después te lo explica con lo que sabe, avisando que eso no sale del material. |
 | 📝 **Exámenes anteriores de DSpace** | «Consígueme exámenes de POO», «¿hay del 2024?», «resuélveme el último primer parcial»: Vinci y cada bot de materia buscan en [DSpace](https://www.dspace.espol.edu.ec), el repositorio público de ESPOL (unos 20 000 exámenes de todas las facultades), solo cuando se lo pides. Te avisa que está buscando, prueba otros nombres de la materia si el primero no encuentra nada y te los da del más nuevo al más viejo con su enlace. Si le pides resolver uno, lo baja, lo resuelve pregunta por pregunta citando la página y te dice que la resolución es suya, no la oficial. [Más sobre los exámenes](#exámenes-anteriores-dspace). |
@@ -250,6 +252,8 @@ Escríbele directo, como a un compañero que se sabe la materia:
 - «¿Cómo voy en la materia?» · «¿Y si saco 70 en la lección?» · «Saqué 16/20 en la lección de ayer» (una nota que
   no está en el aula).
 - «El libro principal es el Purcell», o el PDF del libro → lo usa primero al explicarte y en los briefs.
+- Las fotos de un deber hecho a mano → arma el PDF y te lo muestra con «📤 Entregar en …»
+  ([más abajo](#entregar-una-actividad-hecha-a-mano)).
 
 Un bot de materia solo sabe de la suya: si le preguntas de otra, te manda con Vinci.
 
@@ -264,10 +268,27 @@ Un bot de materia solo sabe de la suya: si le preguntas de otra, te manda con Vi
 | 🗄️ Archivar · ♻️ Reactivar · Cancelar | Cuando pides archivar o reactivar un bot | Apaga o vuelve a encender el bot de esa materia. |
 | ✅ Ya lo entregué | Debajo de cada recordatorio de una entrega | La cuenta como entregada (en papel, por correo, en el laboratorio): no te la recuerda más ni sale como pendiente. Se vuelve «↩️ Aún no lo entregué», que lo deshace. |
 | ✅ Hecho | En la tarjeta de un pendiente de tu lista, su recordatorio y el resumen de las 7:00 | Cierra ese pendiente. Se vuelve «↩️ Deshacer: …» con el nombre del pendiente, que lo deshace. |
+| 📤 Entregar en … · ✖️ Cancelar | Debajo del PDF que armó un bot de materia con tus fotos | Revisa otra vez la tarea en el aula y entrega el PDF ahí, o lo descarta. |
 | ✅ Guardar esquema · ✏️ Corregir | En la tarjeta de cómo se evalúa una materia (en el chat de Vinci o del bot de la materia) | Guarda esos pesos para la calculadora, o los descarta para que le digas qué cambiar. |
 
 Los botones los atiende el plugin, sin el modelo, y solo responden a tu ID. El modelo puede mostrarte un botón,
 pero nunca pulsarlo.
+
+### Entregar una actividad hecha a mano
+
+1. Tómale una foto a cada hoja, con la cámara de Telegram o del celular. No hace falta escanear.
+2. Mándale las fotos al bot de la materia, de una vez, en un álbum. Si quieres, agrega qué tarea es («deber 3»).
+3. El bot busca la tarea entre tus pendientes que reciben archivos. Si hay dos o más posibles, te pregunta cuál.
+4. Te llega el PDF con «📤 Entregar en Deber 3» y «✖️ Cancelar». Ábrelo y revisa que estén todas las hojas.
+5. Pulsa «Entregar». Vinci revisa otra vez la tarea en el aula, sube el PDF y te confirma con el enlace.
+
+Si faltaba una hoja o el orden está mal, díselo al bot («falta la hoja 2», «la última va primero»): arma otro PDF,
+y el anterior deja de valer. También le puedes mandar un PDF ya escaneado en vez de fotos. El bot no limpia ni
+endereza las fotos: sale lo que mandaste, así que tómalas con buena luz.
+
+Antes de subir, Vinci revisa en el aula que la tarea reciba PDF, que siga abierta y que te queden intentos. Si ya
+tenías una entrega, la tarjeta te avisa que esta sería un nuevo intento. Si algo falla en el camino (la red, el
+token), el botón sigue ahí para volver a intentarlo, y un doble toque no entrega dos veces.
 
 ### Comandos
 
@@ -600,6 +621,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 | `horario.toml` | Tu horario (y sus copias anteriores, `horario.anterior-*.toml`) |
 | `cuadernos/<CÓDIGO>/` | El cuaderno de cada materia (`cuaderno.db`, con sus quiz y tus respuestas) y sus adjuntos |
 | `entregas/<CÓDIGO>/` | Lo que Vinci le pasó a un bot y todavía no llegó a su cuaderno |
+| `submissions/<CÓDIGO>/` | Los PDF que un bot de materia armó con tus fotos para entregar |
 | `bot.log` | Registro del sondeo, la agenda y los botones |
 
 Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.hermes/profiles/vinci/` y
@@ -607,10 +629,12 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 
 ## Seguridad y privacidad
 
-- **Datos académicos de solo lectura.** El cliente académico de Canvas
-  ([`src/aula_core/canvas.py`](src/aula_core/canvas.py)) solo sabe hacer `GET`: no hay forma de entregar, publicar,
-  comentar ni cambiar cursos. Un componente separado hace `POST` y `DELETE` únicamente sobre los tokens propios
-  de Vinci, verifica el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
+- **Datos académicos de solo lectura, salvo tus entregas.** El cliente académico de Canvas
+  ([`src/aula_core/canvas.py`](src/aula_core/canvas.py)) solo sabe hacer `GET`. Lo único que Vinci escribe en tus
+  cursos es una entrega: [`src/espol_bot/submission.py`](src/espol_bot/submission.py) sube un PDF a una tarea
+  solo cuando pulsas «📤 Entregar» debajo de ese PDF, nunca porque el modelo lo pida. No publica, no comenta y no
+  cambia nada más. Otro componente hace `POST` y `DELETE` únicamente sobre los tokens propios de Vinci, verifica
+  el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
 - **Solo tú.** Cada bot acepta mensajes solo de tu ID de Telegram. A cualquier otra persona no le contesta nada (ni
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
 - **Herramientas cerradas de fábrica.** Ningún bot trae terminal, acceso a archivos, ejecución de código ni
@@ -627,8 +651,9 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   instrucciones para el bot.
 - **DSpace, también sin cuenta.** La búsqueda de exámenes usa la API pública de DSpace: solo `GET`, sin tu token,
   sin cookies ni credenciales, y solo cuando le preguntas por exámenes.
-- **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot y guardar el horario o cómo se
-  evalúa una materia ocurren solo cuando pulsas el botón; el modelo solo puede mostrártelo.
+- **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot, guardar el horario o cómo se
+  evalúa una materia y entregar una actividad en el aula ocurren solo cuando pulsas el botón; el modelo solo puede
+  mostrártelo.
 - **Los tokens de los bots nunca llegan al modelo.** El plugin atrapa cualquier mensaje con un token antes que
   Hermes, lo guarda y borra el mensaje del chat. Con «gestionar otros bots», el token ni siquiera pasa por el chat.
 - **El token del aula tampoco.** `/token` lo cifra en tu celular y Telegram solo lleva el texto cifrado. Un token del
@@ -642,7 +667,7 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 | `~/.hermes/profiles/<perfil>/.env` | El token del bot de ese perfil y tu ID como único usuario permitido |
 | Hermes | Tu acceso al modelo, según cómo lo configuraste con `hermes model` |
 
-**Qué sale de tu PC:** las consultas al aula virtual (con tu token, solo lectura); los mensajes y archivos que van y
+**Qué sale de tu PC:** las consultas al aula virtual (con tu token) y el PDF de una entrega que confirmaste; los mensajes y archivos que van y
 vienen por Telegram; y, cuando un bot usa el modelo, tu mensaje, lo que le mandaste y lo que sus herramientas
 leyeron para responderte (tareas, notas, anuncios, partes del material, entradas del cuaderno) van al proveedor
 del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, un bot abre un

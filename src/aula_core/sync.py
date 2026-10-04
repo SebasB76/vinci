@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -46,6 +47,9 @@ from aula_core.queries import quiz_info
 from aula_core.store import delete_meta, get_meta, set_meta
 
 log = logging.getLogger(__name__)
+
+# An assignment that asks for its handwritten pages scanned or photographed (a professor's own words).
+ASKS_SCAN = re.compile(r"escane|scann|a mano|manuscrit|fotograf", re.IGNORECASE)
 
 HIDDEN = (401, 403, 404)  # a tab or a file this student cannot see: not a failure
 PAGE_REFRESH = timedelta(days=1)  # a Page read through a link, when the course hides its Pages list
@@ -176,6 +180,8 @@ class _Syncer:
                 "html_url": a.get("html_url") or f"{self.cfg.canvas_url}/courses/{course['id']}/assignments/{a['id']}",
                 "points_possible": a.get("points_possible"),
                 "submission_types": ",".join(a.get("submission_types") or []),
+                "allowed_extensions": ",".join(x.lower().lstrip(".") for x in a.get("allowed_extensions") or []),
+                "asks_scan": int(bool(ASKS_SCAN.search(f"{a.get('name') or ''} {a.get('description') or ''}"))),
                 "sub_state": sub.get("workflow_state"),
                 "submitted_at": timefmt.normalize(sub.get("submitted_at")),
                 "score": sub.get("score"),
@@ -208,12 +214,15 @@ class _Syncer:
                               {**grade_info, "nota_anterior": prev["score"], "calificacion_anterior": prev["grade"]})
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
-                     sub_state, submitted_at, score, grade, graded_at, excused, missing, late, active, first_seen)
+                     allowed_extensions, asks_scan, sub_state, submitted_at, score, grade, graded_at, excused, missing,
+                     late, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
-                     :sub_state, :submitted_at, :score, :grade, :graded_at, :excused, :missing, :late, 1, :now)
+                     :allowed_extensions, :asks_scan, :sub_state, :submitted_at, :score, :grade, :graded_at, :excused,
+                     :missing, :late, 1, :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
-                     submission_types=excluded.submission_types, sub_state=excluded.sub_state,
+                     submission_types=excluded.submission_types, allowed_extensions=excluded.allowed_extensions,
+                     asks_scan=excluded.asks_scan, sub_state=excluded.sub_state,
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
                      late=excluded.late, active=1""",

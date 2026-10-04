@@ -48,6 +48,7 @@ class BotConfig:
     vinci_toolsets: tuple[str, ...] = ()
     subject_toolsets: tuple[str, ...] = ()
     subject_toolsets_by_code: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    handwritten_subjects: tuple[str, ...] = ()  # codes whose assignments the captain does by hand and hands in as a PDF
 
     def extra_toolsets(self, code: str | None) -> tuple[str, ...]:
         """Toolsets the captain switched on for Vinci (`code` None) or for one subject bot, in config.toml."""
@@ -100,6 +101,10 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not api.startswith(("https://", "http://")):
         raise ConfigError("ESPOL_TELEGRAM_API_BASE debe empezar con https://")
 
+    handwritten = section(core.raw, "submissions").get("handwritten", [])
+    if not isinstance(handwritten, list) or not all(isinstance(c, str) and c.strip() for c in handwritten):
+        raise ConfigError('[submissions] handwritten debe ser una lista de códigos de materia, ej. ["ESTG1034"]')
+
     notes = section(core.raw, "notes")
     folder = str(notes.get("folder") or "").strip()
     idle = int(notes.get("idle_minutes", 15))
@@ -139,6 +144,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         vinci_toolsets=_names(tools.get("vinci", []), "vinci"),
         subject_toolsets=_names(tools.get("materias", []), "materias"),
         subject_toolsets_by_code={code.upper(): _names(names, f"por_materia.{code}") for code, names in by_code.items()},
+        handwritten_subjects=tuple(c.strip().upper() for c in handwritten),
     )
 
 

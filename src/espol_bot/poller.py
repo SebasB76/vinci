@@ -103,6 +103,20 @@ class Bot:
             buttons = [(messages.handoff_button(s.display), f"v1:a:{alert_id}:{s.code}") for s in subjects]
         self.telegram.send(text, buttons + list(extra))
 
+    def _hand_in_hint(self, assignment_id: int, course_id: int) -> str:
+        """The line that points a handwritten, PDF-upload assignment at its subject bot; empty for any other."""
+        row = self.conn.execute("SELECT submission_types, allowed_extensions, asks_scan FROM assignments WHERE id = ?",
+                                (assignment_id,)).fetchone()
+        if row is None or "online_upload" not in (row["submission_types"] or "").split(","):
+            return ""
+        extensions = set((row["allowed_extensions"] or "").split(",")) - {""}
+        subjects = self._subjects_for([course_id])
+        if (extensions and "pdf" not in extensions) or not subjects:
+            return ""
+        if not (row["asks_scan"] or subjects[0].code.upper() in self.cfg.handwritten_subjects):
+            return ""
+        return "\n" + messages.hand_in_hint(subjects[0].handle())
+
     # -- failure handling ------------------------------------------------------------
 
     def _fail(self, key: str, text: str, *, threshold: int) -> str:
@@ -283,6 +297,8 @@ class Bot:
                 row = self.conn.execute("SELECT index_status FROM files WHERE id = ?", (ev["ref_id"],)).fetchone()
                 status = row["index_status"] if row else None
             text = messages.event_message(ev, self.tz, now, status)
+            if ev["kind"] == "new_assignment" and not ev.get("quiz"):
+                text += self._hand_in_hint(ev["ref_id"], ev["course_id"])
             self._send(text, [ev["course_id"]])
             result.sent.append(text)
             core_sync.mark_delivered(self.conn, [ev["id"]], now)
@@ -306,6 +322,7 @@ class Bot:
             if already:
                 continue
             text = messages.reminder_message(task, smallest, self.tz, now)
+            text += self._hand_in_hint(task["id"], task["curso_id"])
             self._send(text, [task["curso_id"]], [(messages.SUBMITTED_BUTTON, f"v1:s:{task['id']}:ok")])
             result.sent.append(text)
             result.reminders += 1

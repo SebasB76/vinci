@@ -12,7 +12,9 @@ saved as a PDF with Pillow (no text at all, like a photocopy run through a scann
 - serway-physics.pdf: the main book of Física (English), which the captain drops in libros/FISG1002/;
 - lectura-vectores-escaneada.pdf: a scanned reading of Física (a formula OCR misreads);
 - ejercicios-derivadas-escaneados.pdf: a scanned exercise sheet the captain sends Cálculo (prose OCR reads well);
-- politicas-del-curso.pdf, guia-laboratorio-1.pdf: what Física's Google Doc and Drive file hand over (FakeWeb).
+- politicas-del-curso.pdf, guia-laboratorio-1.pdf: what Física's Google Doc and Drive file hand over (FakeWeb);
+- examen-calculo-2025-2s-1p.pdf, examen-calculo-2024-1s-1p.pdf, examen-poo-2026-1s-1p.docx: past exams in ESPOL's
+  DSpace (FakeDSpace); the 2024 one repeats the 2025 chain-rule question with other data, as professors do.
 """
 
 from __future__ import annotations
@@ -218,6 +220,39 @@ def make_lab_guide(path: Path) -> None:
     ])
 
 
+
+def make_exam(path: Path, period: str, pages: list[list[str]]) -> None:
+    header = ["ESCUELA SUPERIOR POLITÉCNICA DEL LITORAL", f"CÁLCULO DE UNA VARIABLE - PRIMERA EVALUACIÓN {period}",
+              "Nombre: ______________________    Paralelo: ____"]
+    write_pdf(path, [_lines(header + pages[0])] + [_lines(page) for page in pages[1:]])
+
+
+def make_exam_docx(path: Path) -> None:
+    import datetime as _dt
+
+    from docx import Document
+
+    doc = Document()
+    for line in ("ESCUELA SUPERIOR POLITÉCNICA DEL LITORAL", "PROGRAMACIÓN ORIENTADA A OBJETOS - PRIMERA EVALUACIÓN 2026-1S",
+                 "Tema 1 (40 puntos): Explique la diferencia entre sobrecarga y sobreescritura de métodos en Java.",
+                 "Tema 2 (60 puntos): Diseñe la clase abstracta Figura con el método area() y dos subclases."):
+        doc.add_paragraph(line)
+    doc.core_properties.author = "ESPOL"
+    doc.core_properties.created = doc.core_properties.modified = _dt.datetime(2026, 9, 1)
+    doc.save(str(path))
+
+
+EXAMS = {
+    "examen-calculo-2025-2s-1p.pdf": ("2025-2S", [
+        ["Tema 1 (20 puntos): Derive f(x) = sen(x^2) usando la regla de la cadena.",
+         "Tema 2 (30 puntos): Calcule el límite de (1 - cos x) / x^2 cuando x tiende a 0."],
+        ["Tema 3 (50 puntos): Un rectángulo tiene perímetro 20 m. Determine sus dimensiones",
+         "para que su área sea máxima y justifique que es un máximo."]]),
+    "examen-calculo-2024-1s-1p.pdf": ("2024-1S", [
+        ["Tema 1 (25 puntos): Derive g(x) = sen(x^3) usando la regla de la cadena.",
+         "Tema 2 (75 puntos): Un rectángulo tiene perímetro 40 m. Halle el de área máxima."]]),
+}
+
 SCAN_PAGES = [["Lectura 1: suma de vectores", "Regla del paralelogramo:", "R = A + B, |R|^2 = A^2 + B^2 + 2AB cos(t)"],
               ["Componentes de un vector", "Ax = A cos(t)   Ay = A sen(t)", "A = Ax i + Ay j"]]
 EXERCISE_PAGES = [["Hoja de ejercicios 2: derivadas", "Resuelve cada ejercicio y justifica cada paso.",
@@ -275,4 +310,7 @@ if __name__ == "__main__":
     make_scan(OUT / "ejercicios-derivadas-escaneados.pdf", EXERCISE_PAGES, "Hoja de ejercicios 2")
     make_policies(OUT / "politicas-del-curso.pdf")
     make_lab_guide(OUT / "guia-laboratorio-1.pdf")
+    for name, (period, pages) in EXAMS.items():
+        make_exam(OUT / name, period, pages)
+    make_exam_docx(OUT / "examen-poo-2026-1s-1p.docx")
     print(f"Fixtures escritos en {OUT}")

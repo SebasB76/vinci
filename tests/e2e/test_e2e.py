@@ -131,7 +131,8 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 from fake_servers import (  # noqa: E402
-    DRIVE_FILE, ESPOL_ONLY_SHARE, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas, FakeTelegram, FakeWeb, ScriptedLLM)
+    DRIVE_FILE, ESPOL_ONLY_SHARE, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas, FakeDSpace, FakeTelegram, FakeWeb,
+    ScriptedLLM)
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -381,6 +382,15 @@ def _problem(raw: str) -> str:
     return "⚠️ " + str(data)[:400]
 
 
+# Past exams the captain asks to solve: (the names the model searches DSpace by, the filters it adds).
+EXAMS_TO_SOLVE = {
+    "resuélveme el primer parcial más reciente": (["cálculo de una variable"], {"evaluation": "1er parcial"}),
+    "resuélveme el examen de POO del 2026": (["programación orientada a objetos"], {"from_year": 2026}),
+    "resuélveme el primer parcial 2025-2S de cálculo": (["cálculo de una variable"],
+                                                        {"from_year": 2025, "to_year": 2025, "evaluation": "1er parcial"}),
+}
+
+
 def _call(name: str, **args) -> dict:
     return {"tool_calls": [(name, args)]}
 
@@ -408,8 +418,33 @@ class Script:
             return self.vinci(text, called, results)
         return self.subject(subject_of(req) or bot, text, called, results)
 
+    def exams(self, prefix: str, text: str, called: list[str], results: list[str]) -> dict | None:
+        """Past exams from DSpace: a list found by a second name after a first one finds nothing, and an exam solved
+        question by question, each citing its page."""
+        find, open_ = f"mcp__{prefix}__find_past_exams", f"mcp__{prefix}__open_past_exam"
+        last = _json(results[-1]) if results else None
+        if "exámenes anteriores de POO" in text:
+            if not called:
+                return _call(find, names=["POO"])
+            if called == [find]:
+                return _call(find, names=["programación orientada a objetos", "prog orientada objetos"])
+            return {"content": "Encontré estos exámenes de Programación Orientada a Objetos en DSpace:\n" + "\n".join(
+                f"- {e.get('period', 'sin fecha')} · {e.get('evaluation', 'examen')}"
+                + (f" · paralelo {e['group']}" if e.get("group") else "") + f": {e['url']}" for e in last["exams"])}
+        for ask, (names, filters) in EXAMS_TO_SOLVE.items():
+            if ask in text:
+                if not called:
+                    return _call(find, names=names, **filters)
+                if called == [find]:
+                    return _call(open_, exam_id=last["exams"][0]["exam_id"])
+                questions = [f"- {line} ({page['cita']})" for page in last["contenido"]
+                             for line in page["texto"].splitlines() if line.startswith("Tema")]
+                return {"content": f"Resolución de {last['archivo']}:\n" + "\n".join(questions)
+                                   + "\nLa resolución es mía, no la oficial del profesor."}
+        return None
+
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
-        flow = self.vinci_material(text, called, results)
+        flow = self.exams("vinci", text, called, results) or self.vinci_material(text, called, results)
         if flow is not None:
             return flow
         if results:
@@ -569,7 +604,7 @@ class Script:
         return None
 
     def subject(self, name: str, text: str, called: list[str], results: list[str]) -> dict:
-        flow = self.quiz(name, text, called, results)
+        flow = self.quiz(name, text, called, results) or self.exams("materia", text, called, results)
         if flow is not None:
             return flow
         if re.search(r"^TAREA: brief_de_clase", text, re.M):  # the skill quotes it mid-line
@@ -875,7 +910,7 @@ def test_e2e(tmp_path):
     pwned = tmp_path / "pwned"
 
     with FakeCanvas(CANVAS_TOKEN) as canvas, FakeTelegram({BOT_TOKEN: USERNAMES[BOT_TOKEN]}) as telegram, \
-            FakeWeb() as web:
+            FakeWeb() as web, FakeDSpace() as dspace:
         calendar_feed_url = f"{canvas.base}/feeds/calendars/user-e2e.ics"
         announcement_feed_url = f"{canvas.base}/feeds/announcements/course-101.atom"
         canvas.web = web.base
@@ -889,7 +924,8 @@ def test_e2e(tmp_path):
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
-        config += f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here\n"
+        hosts += f', "dspace.espol.edu.ec" = "{dspace.base}"'
+        config += f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
         secrets = tmp_path / "secrets.env"
@@ -908,6 +944,7 @@ def test_e2e(tmp_path):
             text = text.replace(announcement_feed_url, "<announcement-feed>")
             text = text.replace(canvas.base, "https://aulavirtual.test").replace(telegram.base, "https://telegram.test")
             text = text.replace(llm.base, "https://llm.test").replace(web.base, "https://profesor.test")
+            text = text.replace(dspace.base, "https://dspace.test")
             text = text.replace(str(data_dir), "<datos>").replace(str(home), "<home>").replace(str(tmp_path), "<tmp>")
             text = text.replace(str(REPO), "<repo>").replace(str(VENV_BIN), "<repo>/.venv/bin")
             if hermes:
@@ -1612,7 +1649,7 @@ END:VCALENDAR
         "(la página que recibió el modelo), `ocr.md` (los escaneos leídos una vez con OCR), `party.md` (con la foto "
         "de cada bot, `foto-<bot>.jpg`), `pendientes.md` "
         "(«Ya lo entregué» y la lista de pendientes), `citas.md` (citas con archivo, página y enlace, «No está en el "
-        "material» y las citas de memoria que no pasaron), `notas.md` (la calculadora de notas), `prioridad.md` "
+        "material» y las citas de memoria que no pasaron), `examenes.md` (exámenes anteriores de DSpace), `notas.md` (la calculadora de notas), `prioridad.md` "
         "(el orden de las entregas con sus pesos), `estado.md` "
         "(`espol-bot doctor` y /estado), `token.md` (/token: el token del aula cifrado en el celular), "
         "`hermes_herramientas.json`, `resumen_diario.txt`, `recuperacion.json`, `cli.md`, `canvas_requests.log`, "
@@ -1621,8 +1658,8 @@ END:VCALENDAR
     (artifact / "REPORTE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
-               equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,
+def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspace, llm, run, take, report, gateway,
+               artifact, equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,
                real_tesseract, ocr_log, ocr_off, normalize, estado_md, token_md, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
@@ -2871,6 +2908,95 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "capitán: antes de enviarse, la página 9 que el capítulo no tiene y un libro que no está en el "
                   "material se cambiaron por un aviso, y el enlace inventado de la página 2 se corrigió al del aula")
     take("Citas verificables")
+
+    # 7f5. Past exams from ESPOL's DSpace, only when asked: a search that tries another name when the first finds
+    # nothing (one notice in the chat for both), an exam solved by Cálculo's bot (stored inside a multipart envelope)
+    # and by Vinci (a DOCX titled .pdf), each question cited by page; an exam another bot has is not downloaded again
+    assert dspace.requests == [], "nadie le pide nada a DSpace hasta que el capitán pregunta por exámenes"
+    exam_url = "https://www.dspace.espol.edu.ec/handle/123456789/{}".format
+    calc_courses = [r["id"] for r in db_rows("SELECT id FROM courses WHERE course_code LIKE '%MATG1049'")]
+
+    def said_since(mark: int, user: str) -> list[str]:
+        return [readable(m) for m in telegram.messages[mark:] if m["bot"] == user]
+
+    mark = len(telegram.messages)
+    poo = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "consígueme exámenes anteriores de POO"), "vinci_bot",
+               "Encontré")
+    poo_said = said_since(mark, "vinci_bot")
+    assert poo_said == ["🔎 Un momento, busco exámenes anteriores en DSpace, el repositorio de ESPOL…", readable(poo)], \
+        "un solo aviso de que busca, antes de la respuesta, aunque probó dos veces"
+    nothing = tool_result(lambda d: d.get("found_by_name") == {"POO": 0})
+    assert nothing["exams"] == [] and "prueba otras formas del nombre" in nothing["note"], nothing
+    found = tool_result(lambda d: "prog orientada objetos" in d.get("found_by_name", {}))
+    assert found["found_by_name"] == {"programación orientada a objetos": 2, "prog orientada objetos": 3}, found
+    assert [(e["exam_id"], e["period"], e["evaluation"]) for e in found["exams"]] == [
+        (90201, "2026-1S", "1er parcial"), (90202, "2025-2S", "2do parcial"), (90203, "2012-1S", "2do parcial")], \
+        "del más nuevo al más viejo, también el título del formato viejo"
+    assert all(exam_url(n) in readable(poo) for n in (90201, 90202, 90203)), readable(poo)
+
+    mark = len(telegram.messages)
+    solved = turn(lambda: telegram.send_text(MATG, CAPTAIN, "resuélveme el primer parcial más reciente"),
+                  "vinci_calculo_bot", "Resolución")
+    calc_said = said_since(mark, "vinci_calculo_bot")
+    assert calc_said == ["🔎 Un momento, busco exámenes anteriores en DSpace, el repositorio de ESPOL…",
+                         "📥 Bajo el examen de DSpace para leerlo…", readable(solved)], calc_said
+    calc_search = tool_result(lambda d: d.get("found_by_name") == {"cálculo de una variable": 4})
+    assert [e["exam_id"] for e in calc_search["exams"]] == [90101, 90103, 90104], \
+        "solo primeros parciales, sin la tesis que también dice «examen» y «cálculo de una variable»"
+    opened = tool_result(lambda d: d.get("url") == exam_url(90101) and "contenido" in d)
+    cite = f"📄 [EXA-2025-2S-CÁLCULO DE UNA VARIABLE-3-1Par.pdf, página {{}}]({exam_url(90101)})".format
+    assert [c["cita"] for c in opened["contenido"]] == [cite(1), cite(2)] and "sen(x^2)" in opened["contenido"][0]["texto"]
+    assert cite(1) in readable(solved) and cite(2) in readable(solved) and "⚠️" not in readable(solved), \
+        "la cita de cada pregunta pasa la revisión de citas"
+    stored = db_rows("SELECT * FROM files WHERE html_url = ?", exam_url(90101))
+    assert len(stored) == 1 and stored[0]["course_id"] in calc_courses and stored[0]["source"] == "DSpace ESPOL" \
+        and stored[0]["pages"] == 2 and stored[0]["index_status"] == "ok", stored
+    assert Path(stored[0]["local_path"]).read_bytes().startswith(b"%PDF"), "se guarda el PDF, sin el sobre multipart"
+
+    poo_solved = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "resuélveme el examen de POO del 2026"),
+                      "vinci_bot", "Resolución")
+    poo_cite = f"📄 [EXA-2026-1S-PROGRAMACIÓN ORIENTADA A OBJETOS-2-1Par.docx, sección 1]({exam_url(90201)})"
+    assert poo_cite in readable(poo_solved) and "sobrecarga" in readable(poo_solved) \
+        and "⚠️" not in readable(poo_solved), readable(poo_solved)
+    shelf = db_rows("SELECT * FROM courses WHERE id < 0")
+    assert [(c["id"], c["active"]) for c in shelf] == [(-1, 0)], "los exámenes de Vinci van a un curso inactivo"
+    assert db_rows("SELECT course_id FROM files WHERE html_url = ?", exam_url(90201)) == [{"course_id": -1}]
+
+    again = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "resuélveme el primer parcial 2025-2S de cálculo"),
+                 "vinci_bot", "Resolución")
+    assert cite(1) in readable(again) and "⚠️" not in readable(again), readable(again)
+    retrieved = [path for _, path in dspace.requests if path.endswith("/retrieve")]
+    assert sorted(retrieved) == ["/rest/bitstreams/file-90101/retrieve", "/rest/bitstreams/file-90201/retrieve"], \
+        "Vinci lee la copia que ya bajó el bot de Cálculo"
+    assert all(method == "GET" for method, _ in dspace.requests)
+    for headers in dspace.headers:
+        assert not {key.lower() for key in headers} & {"authorization", "cookie"} and "7~" not in json.dumps(headers), \
+            f"DSpace recibió credenciales: {headers}"
+    examenes_md = ["# Exámenes anteriores de DSpace\n",
+                   "Nada le pidió algo a DSpace en los sondeos: la primera consulta llegó con la primera pregunta.\n",
+                   "## Vinci: «consígueme exámenes anteriores de POO»\n",
+                   "Primero buscó «POO», que no está en ningún título:\n",
+                   f"```json\n{json.dumps(nothing, ensure_ascii=False, indent=1)}\n```\n",
+                   "Después probó el nombre completo y abreviado:\n",
+                   f"```json\n{json.dumps(found, ensure_ascii=False, indent=1)}\n```\n",
+                   "Llegó a Telegram:\n", "```\n" + "\n\n".join(poo_said) + "\n```\n",
+                   "## El bot de Cálculo: «resuélveme el primer parcial más reciente»\n",
+                   f"```json\n{json.dumps(calc_search, ensure_ascii=False, indent=1)}\n```\n",
+                   "Llegó a Telegram:\n", "```\n" + "\n\n".join(calc_said) + "\n```\n",
+                   "## Vinci: un DOCX con título .pdf, y la copia que ya tenía el bot de Cálculo\n",
+                   f"```\n{readable(poo_solved)}\n\n{readable(again)}\n```\n",
+                   "Lo que pidió el bot a DSpace (todo GET, sin token ni cookies):\n",
+                   "```\n" + "\n".join(f"{m} {path}" for m, path in dspace.requests) + "\n```\n"]
+    (artifact / "examenes.md").write_text(normalize("\n".join(examenes_md)), encoding="utf-8")
+    report.append("Exámenes anteriores de DSpace, solo cuando el capitán pregunta (los sondeos no le pidieron nada): Vinci "
+                  "buscó «POO», no encontró nada y probó el nombre completo y abreviado, con un solo aviso «🔎 busco "
+                  "exámenes…» en el chat; dio la lista del más nuevo al más viejo, también un título del formato viejo "
+                  "(2012), sin la tesis. El bot de Cálculo resolvió el primer parcial más reciente: lo bajó (sacándolo "
+                  "del sobre multipart en que DSpace lo guarda), lo leyó como un PDF del material y citó cada pregunta "
+                  "con su página y el enlace de DSpace, sin que la revisión de citas cambiara nada. Vinci resolvió un "
+                  "DOCX que DSpace titula .pdf y leyó sin volver a bajarlo el examen que ya tenía el bot de Cálculo. Todo "
+                  "con GET, sin token ni cookies")
+    take("Exámenes anteriores de DSpace")
 
     # 7g. Vinci reads the notebooks but cannot write them or reach a terminal
     read = turn(lambda: telegram.send_text(BOT_TOKEN, CAPTAIN, "¿qué hay en el cuaderno de cálculo?"),

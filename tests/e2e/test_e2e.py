@@ -1980,7 +1980,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     mark_calls = len(telegram.calls)
     polling({"vinci_calculo_bot", "vinci_fisica_bot"}, mark_calls, timeout=150)
     report.append("El mismo gateway de Hermes empezó a atender a los dos bots nuevos solo, sin reiniciarlo")
-    menu = captain_menu("vinci_calculo_bot", mark_calls)
+    menu = captain_menu("vinci_calculo_bot", 0)  # the gateway may serve it before mark_calls was taken
     assert menu[0] == "quiz" and not {"estado", "token"} & set(menu) and "new" in menu, menu
     report.append("En el chat de Cálculo, el menú «/» muestra primero /quiz; /estado y /token son solo de Vinci")
     hello = wait_msg("vinci_calculo_bot", mark_start, "Soy el bot de Cálculo de una Variable", timeout=120)

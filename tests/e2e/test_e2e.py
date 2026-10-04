@@ -29,7 +29,8 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      token fetched with getManagedBotToken), Física from BotFather's forwarded reply (caught,
      deleted, never seen by the model; a repeated, an unknown and a stranger's token handled).
      Every press is answered at once, even one whose work is slow; a second «Crear» does not
-     resend; the /start the captain sends Cálculo before the gateway serves it gets a greeting.
+     resend; the /start the captain sends Cálculo before the gateway serves it gets a greeting. The «/» menu
+     in the captain's chat lists each bot's own commands (Vinci: /estado, /token, /quiz) before Hermes's.
      /token: Vinci answers with a Mini App button whose page (docs/token/form.js, run by Node) encrypts the
      captain's new Canvas token; only the ciphertext reaches Telegram and the plugin, which reseeds the chain
      (the form is one-time: a replay, a button of an earlier /token, a token the aula refuses, an expired form
@@ -1655,6 +1656,14 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                                timeout)
         assert ok, fail(f"el gateway no empezó a escuchar a {sorted(users)}")
 
+    def captain_menu(user: str, mark: int) -> list[str]:
+        call = telegram.wait_for(lambda t: next((c for c in t.calls[mark:] if c["bot"] == user
+                                                 and c["method"] == "setMyCommands"
+                                                 and c["params"].get("scope") == {"type": "chat", "chat_id": CAPTAIN}),
+                                                None), 60)
+        assert call, fail(f"{user} no publicó el menú de comandos del chat del capitán")
+        return [c["command"] for c in call["params"]["commands"]]
+
     def wait_msg(user: str, mark: int, contains: str, timeout: float = 120) -> dict:
         def found(t):
             return next((m for m in t.messages[mark:] if m["bot"] == user and contains in readable(m)), None)
@@ -1735,6 +1744,11 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     sessions = [time.time()]  # when the gateway starts and stops serving
     gateway.start()
     polling({"vinci_bot"}, mark_calls)
+    menu = captain_menu("vinci_bot", mark_calls)
+    assert menu[:3] == ["estado", "token", "quiz"] and {"new", "status", "help"} <= set(menu), menu
+    assert len(menu) == len(set(menu)) <= 100, menu
+    report.append(f"Al escribir «/» en el chat de Vinci, el menú muestra primero /estado, /token y /quiz y después "
+                  f"los comandos de Hermes ({len(menu)} en total)")
     take("Gateway encendido (solo Vinci)")
 
     # /estado: the health report, from the plugin and never from the model; nothing ran overnight
@@ -1966,6 +1980,9 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
     mark_calls = len(telegram.calls)
     polling({"vinci_calculo_bot", "vinci_fisica_bot"}, mark_calls, timeout=150)
     report.append("El mismo gateway de Hermes empezó a atender a los dos bots nuevos solo, sin reiniciarlo")
+    menu = captain_menu("vinci_calculo_bot", 0)  # the gateway may serve it before mark_calls was taken
+    assert menu[0] == "quiz" and not {"estado", "token"} & set(menu) and "new" in menu, menu
+    report.append("En el chat de Cálculo, el menú «/» muestra primero /quiz; /estado y /token son solo de Vinci")
     hello = wait_msg("vinci_calculo_bot", mark_start, "Soy el bot de Cálculo de una Variable", timeout=120)
     assert "Todavía no tengo tu horario" in plain(hello["text"])
     starts = [r for r in llm.requests for m in r.get("messages") or []

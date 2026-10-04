@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vinci · Propuesta A</title>
+  <link rel="stylesheet" href="tg.css">
+  <script src="data.js"></script>
+  <style>
+    main { max-width: 480px; margin: 0 auto; padding: 14px 14px 28px; }
+    .top { display: flex; align-items: center; gap: 10px; padding: 4px 4px 14px; }
+    .top h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+    .top .hint { font-size: 13px; }
+    .top .pill { margin-left: auto; }
+    h2 { margin: 18px 16px 6px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tg-hint-color); }
+    .group { background: var(--tg-section-bg-color); border-radius: 14px; overflow: hidden; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; min-width: 0; }
+    .row + .row, .row + details, details + details, details + .row { border-top: 1px solid var(--line); }
+    .row .body { flex: 1; min-width: 0; }
+    .row .title { font-weight: 500; }
+    .row .sub { font-size: 13px; color: var(--tg-hint-color); }
+    .now { padding: 14px; display: grid; gap: 10px; }
+    .now .head { display: flex; gap: 12px; align-items: center; }
+    .count { margin-left: auto; text-align: right; }
+    .count b { display: block; font-size: 22px; color: var(--tg-button-color); line-height: 1.1; }
+    .count span { font-size: 12px; color: var(--tg-hint-color); }
+    .brief { font-size: 14px; padding: 10px 12px; border-radius: 10px; background: var(--tg-secondary-bg-color); }
+    .urgent { border-left: 3px solid var(--bad); }
+    .urgent .due { color: var(--bad); font-weight: 600; }
+    details > summary { list-style: none; cursor: pointer; }
+    details > summary::-webkit-details-marker { display: none; }
+    .chev { color: var(--tg-hint-color); transition: transform .15s; }
+    details[open] .chev { transform: rotate(90deg); }
+    .bar { position: relative; height: 6px; border-radius: 3px; background: var(--line); margin-top: 6px; }
+    .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--s); }
+    .bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--tg-text-color); opacity: .55; }
+    .detail { padding: 2px 14px 14px 62px; display: grid; gap: 10px; font-size: 14px; }
+    .comp { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 12px; font-size: 13px; }
+    .comp .hint { text-align: right; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag { font-size: 12px; padding: 3px 8px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 15%, transparent); }
+    .days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 12px 10px; }
+    .day { text-align: center; padding: 6px 0; border-radius: 10px; font-size: 12px; cursor: pointer; border: 0; background: none; }
+    .day b { display: block; font-size: 15px; }
+    .day[aria-pressed="true"] { background: var(--tg-button-color); color: var(--tg-button-text-color); }
+    .day .marks { display: flex; justify-content: center; gap: 2px; height: 6px; margin-top: 3px; }
+    .day .marks i { width: 5px; height: 5px; border-radius: 50%; background: var(--tg-hint-color); }
+    .day .marks i.due { background: var(--bad); }
+    .day[aria-pressed="true"] .marks i { background: var(--tg-button-text-color); }
+    .done-row { opacity: .45; }
+    .done-row .title { text-decoration: line-through; }
+    .foot { margin: 18px 6px 0; font-size: 12px; color: var(--tg-hint-color); display: flex; gap: 6px; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <img class="avatar" src="avatars/wizard.jpg" alt="">
+    <div><h1>Tu semestre</h1><div class="hint" id="when"></div></div>
+    <span class="pill s-ok" id="health">● Al día</span>
+  </div>
+
+  <div class="group now" id="now"></div>
+
+  <h2>Vence en 24 h</h2>
+  <div class="group" id="urgent"></div>
+
+  <h2>Materias</h2>
+  <div class="group" id="subjects"></div>
+
+  <h2>Semana</h2>
+  <div class="group"><div class="days" id="days"></div><div id="dayList"></div></div>
+
+  <h2>Entregas y pendientes</h2>
+  <div class="group" id="deliverables"></div>
+
+  <h2>Novedades</h2>
+  <div class="group" id="news"></div>
+
+  <div class="foot" id="foot"></div>
+</main>
+<script>
+const S = window.SNAPSHOT;
+const $ = (id) => document.getElementById(id);
+$("when").textContent = "Datos de " + S.generated;
+
+const nc = S.nextClass, ncs = subjectOf(nc.code);
+$("now").innerHTML = `
+  <div class="head">
+    <img class="avatar" src="avatars/${ncs.avatar}" alt="">
+    <div class="ellipsis"><div class="sub hint" style="font-size:12px">PRÓXIMA CLASE</div>
+      <b>${ncs.name}</b><div class="hint" style="font-size:13px">${nc.start}–${nc.end} · ${nc.room}</div></div>
+    <div class="count"><b>${nc.inMin} min</b><span>para empezar</span></div>
+  </div>
+  <div class="brief">📚 ${nc.brief}</div>
+  <div class="actions"><button class="btn primary" data-toast="Abre el chat de @${ncs.bot} con el brief">Abrir el brief</button></div>`;
+
+const renderDeliverable = (d) => {
+  const s = subjectOf(d.code);
+  const icon = d.kind === "cuestionario" ? "⏱️" : d.kind === "pendiente" ? "📌" : "📝";
+  return `<div class="row ${d.hours <= 24 ? "urgent" : ""}" data-id="${d.id}">
+    <span style="font-size:20px">${icon}</span>
+    <div class="body"><div class="title ellipsis">${d.title}</div>
+      <div class="sub ellipsis"><span class="due">${d.due}</span> · ${s ? s.name : "Personal"}${d.weight ? ` · vale ${d.weight}%` : ""}${d.quiz ? `<br>${d.quiz}` : ""}</div></div>
+    <button class="btn" data-done="${d.id}">${d.kind === "pendiente" ? "Hecho" : "Ya lo entregué"}</button>
+  </div>`;
+};
+$("urgent").innerHTML = S.deliverables.filter((d) => d.hours <= 24).map(renderDeliverable).join("");
+$("deliverables").innerHTML = S.deliverables.filter((d) => d.hours > 24).map(renderDeliverable).join("");
+
+$("subjects").innerHTML = S.subjects.map((s) => {
+  const g = grade(s), next = S.deliverables.find((d) => d.code === s.code && d.kind !== "pendiente");
+  const line = g.state === "none" ? "Dile a Vinci los pesos de la nota"
+    : `Llevas ${fmt(g.avg)} · necesitas ${fmt(g.need)}`;
+  const comps = s.components.map(([n, w, sc]) => `<span class="ellipsis">${n}</span><span class="hint">${w}%</span><b>${sc ?? "—"}</b>`).join("");
+  return `<details class="s-${g.state}">
+    <summary class="row">
+      <img class="avatar" src="avatars/${s.avatar}" alt="">
+      <div class="body"><div class="title ellipsis">${s.name}</div><div class="sub ellipsis">${line}</div>
+        ${g.state === "none" ? "" : `<div class="bar"><i style="width:${g.avg}%"></i><u style="left:${S.passing}%"></u></div>`}</div>
+      <span class="pill">${STATE_LABEL[g.state]}</span><span class="chev">›</span>
+    </summary>
+    <div class="detail">
+      ${comps ? `<div class="hint">Te falta el ${fmt(g.rest)}% de la nota. Para pasar con ${S.passing} necesitas ${fmt(g.need)} en promedio.</div><div class="comp">${comps}</div>` : ""}
+      ${next ? `<div>📝 Próxima entrega: <b>${next.title}</b>, ${next.due}</div>` : ""}
+      ${s.weak.length ? `<div class="tags">${s.weak.map((w) => `<span class="tag">⚠️ ${w}</span>`).join("")}</div>` : ""}
+      ${s.doubts.length ? `<div class="hint">❓ ${s.doubts.length} duda${s.doubts.length > 1 ? "s" : ""} abierta${s.doubts.length > 1 ? "s" : ""}</div>` : ""}
+      <div class="hint">🧠 Último quiz: ${s.quiz.topic}, ${s.quiz.score}/${s.quiz.of} (${s.quiz.when})</div>
+      <div class="actions">
+        <button class="btn" data-toast="Abre el chat de @${s.bot}">🎓 Abrir el bot</button>
+        <button class="btn" data-toast="Manda /quiz ${s.weak[0] || ""} al bot de ${s.name}">🧠 Quiz de ${s.weak[0] || "la materia"}</button>
+      </div>
+    </div>
+  </details>`;
+}).join("");
+
+let day = 0;
+function renderWeek() {
+  $("days").innerHTML = S.days.map((d, i) => {
+    const [name, num] = d.split(" ");
+    const marks = S.classes.filter((c) => c.day === i).map(() => "<i></i>").join("")
+      + S.deliverables.filter((x) => x.day === i).map(() => '<i class="due"></i>').join("");
+    return `<button class="day" aria-pressed="${i === day}" data-day="${i}">${name}<b>${num}</b><span class="marks">${marks}</span></button>`;
+  }).join("");
+  const items = [
+    ...S.classes.filter((c) => c.day === day).map((c) => ({ t: c.start, html: `<span class="dot" style="background:var(--tg-button-color)"></span><div class="body"><div class="title ellipsis">${subjectOf(c.code).name}</div><div class="sub">${c.start}–${c.end} · ${c.room}</div></div>` })),
+    ...S.deliverables.filter((d) => d.day === day).map((d) => ({ t: "23:59", html: `<span class="dot s-bad"></span><div class="body"><div class="title ellipsis">${d.title}</div><div class="sub">Vence ${d.due}</div></div>` })),
+  ].sort((a, b) => a.t.localeCompare(b.t));
+  $("dayList").innerHTML = items.length ? items.map((x) => `<div class="row">${x.html}</div>`).join("")
+    : `<div class="row hint" style="justify-content:center">Día libre 🎉</div>`;
+}
+renderWeek();
+
+$("news").innerHTML = S.news.map((n) => `<div class="row"><span style="font-size:20px">${n.icon}</span>
+  <div class="body"><div class="title ellipsis">${n.text}</div><div class="sub ellipsis">${n.kind} · ${subjectOf(n.code).name} · ${n.when}</div></div></div>`).join("");
+
+$("foot").innerHTML = `<span class="dot s-ok"></span> Aula leída ${S.status.poll} · token de ${S.status.token} · renovación ${S.status.chain}`;
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-toast],[data-done],[data-day]");
+  if (!t) return;
+  if (t.dataset.day) { day = +t.dataset.day; renderWeek(); }
+  else if (t.dataset.done) {
+    const row = t.closest(".row"); row.classList.toggle("done-row");
+    const on = row.classList.contains("done-row");
+    t.textContent = on ? "Deshacer" : (t.closest(".row").querySelector("span").textContent === "📌" ? "Hecho" : "Ya lo entregué");
+    if (on) toast("Le manda a Vinci el mismo aviso que «✅ Ya lo entregué»");
+  } else toast(t.dataset.toast);
+});
+</script>
+</body>
+</html>

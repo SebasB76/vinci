@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard de Vinci: tres versiones simples</title>
+  <link rel="stylesheet" href="tg.css">
+  <script src="data.js"></script>
+  <style>
+    body { background: var(--tg-secondary-bg-color); }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 20px 60px; }
+    header.top { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 8px; }
+    header.top h1 { margin: 0; font-size: 28px; letter-spacing: -.02em; }
+    header.top p { margin: 6px 0 0; color: var(--tg-hint-color); max-width: 760px; }
+    .theme { margin-left: auto; display: inline-flex; background: var(--tg-section-bg-color); border-radius: 10px; padding: 3px; }
+    .theme button { border: 0; background: none; padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--tg-hint-color); }
+    .theme button[aria-pressed="true"] { background: var(--tg-button-color); color: var(--tg-button-text-color); }
+    .assume { margin: 16px 0 26px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+    .assume span { background: var(--tg-section-bg-color); padding: 6px 10px; border-radius: 8px; }
+    .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 28px; align-items: start; }
+    .opt { min-width: 0; display: grid; gap: 14px; justify-items: center; }
+    .opt h2 { margin: 0; font-size: 20px; text-align: center; }
+    .opt h2 small { display: block; font-size: 13px; font-weight: 500; color: var(--tg-hint-color); margin-top: 2px; }
+    .phone { width: 375px; max-width: 100%; height: 760px; border-radius: 38px; padding: 10px; background: #0b0d10;
+             box-shadow: 0 18px 50px rgb(0 0 0 / .25); position: relative; }
+    .screen { width: 100%; height: 100%; border-radius: 29px; overflow: hidden; display: flex; flex-direction: column; background: var(--tg-bg-color); }
+    .tgbar { flex: none; height: 52px; display: flex; align-items: center; gap: 10px; padding: 14px 14px 0; font-size: 14px; background: var(--tg-bg-color); }
+    .tgbar .x { color: var(--tg-button-color); font-weight: 500; }
+    .tgbar .ttl { flex: 1; text-align: center; font-weight: 600; line-height: 1.1; }
+    .tgbar .ttl small { display: block; font-size: 11px; font-weight: 400; color: var(--tg-hint-color); }
+    .tgbar .more { color: var(--tg-button-color); font-size: 20px; }
+    iframe { flex: 1; width: 100%; border: 0; display: block; }
+    .card { width: 100%; max-width: 420px; background: var(--tg-section-bg-color); border-radius: 16px; padding: 16px; font-size: 14px; }
+    .card p { margin: 0 0 10px; }
+    .card h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--tg-hint-color); }
+    .card ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+    .card .plus li::marker { content: "＋ "; color: var(--ok); }
+    .card .minus li::marker { content: "－ "; color: var(--bad); }
+    .rec { border: 2px solid var(--tg-button-color); }
+    .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--tg-button-color); color: var(--tg-button-text-color); margin-bottom: 8px; }
+    .open { font-size: 13px; color: var(--tg-button-color); text-decoration: none; font-weight: 600; }
+    form.choose { margin-top: 36px; background: var(--tg-section-bg-color); border-radius: 18px; padding: 20px; display: grid; gap: 16px; max-width: 860px; margin-inline: auto; }
+    form.choose h2 { margin: 0; font-size: 20px; }
+    fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+    legend { font-weight: 600; margin-bottom: 8px; }
+    .radios { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+    .radios label, .checks label { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--tg-secondary-bg-color); cursor: pointer; }
+    .radios label:has(input:checked), .checks label:has(input:checked) { outline: 2px solid var(--tg-button-color); }
+    .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+    textarea { width: 100%; min-height: 80px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--tg-bg-color); color: inherit; padding: 10px; font: inherit; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .queued { font-size: 13px; color: var(--ok); }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Dashboard de Vinci: tres versiones simples</h1>
+      <p>Las tres muestran solo lo que te importa: cuánto llevas del semestre (II PAO 2026, del 24 sep al 15 ene), tus entregas pendientes y las novedades.
+        Cambia cómo se ven. Los datos de las entregas son los ficticios de la prueba E2E.</p>
+    </div>
+    <div class="theme" role="group" aria-label="Tema">
+      <button type="button" data-theme-btn="light">☀️ Claro</button>
+      <button type="button" data-theme-btn="dark">🌙 Oscuro</button>
+    </div>
+  </header>
+
+  <div class="options" style="margin-top:24px">
+    <section class="opt">
+      <h2>Simple · Lista<small>La que armamos antes</small></h2>
+      <div class="phone"><div class="screen"><div class="tgbar"><span class="x">✕ Cerrar</span><span class="ttl">Vinci<small>mini app</small></span><span class="more">⋯</span></div>
+        <iframe data-src="simple.html" title="Simple · Lista"></iframe></div></div>
+      <div class="card">
+        
+        <p>Una barra del semestre arriba, la lista de entregas en el orden del resumen de las 7:00 y las novedades debajo.</p>
+        <h3>A favor</h3><ul class="plus"><li>Lo ves todo de una vez, sin tocar nada.</li><li>Se parece a Telegram y es la más fácil de construir.</li></ul>
+        <h3>En contra</h3><ul class="minus"><li>Todas las entregas pesan igual a la vista: hay que leer para saber qué urge.</li></ul>
+        <a class="open" href="simple.html" target="_blank">Abrir sola ↗</a>
+      </div>
+    </section>
+    <section class="opt">
+      <h2>D · Foco<small>Una entrega a la vez</small></h2>
+      <div class="phone"><div class="screen"><div class="tgbar"><span class="x">✕ Cerrar</span><span class="ttl">Vinci<small>mini app</small></span><span class="more">⋯</span></div>
+        <iframe data-src="d.html" title="D · Foco"></iframe></div></div>
+      <div class="card rec">
+        <span class="badge">Mi recomendación</span>
+        <p>La entrega más urgente ocupa la pantalla, con una cuenta regresiva y un botón grande. Al pulsar «Ya lo entregué», pasa la siguiente. El semestre se ve como una barra de 17 tramos, uno por semana. Las novedades se abren con la campana.</p>
+        <h3>A favor</h3><ul class="plus"><li>Sabes qué hacer ahora sin pensar.</li><li>Marcar una entrega se siente como avanzar.</li><li>Las novedades no estorban: quedan detrás de la campana.</li></ul>
+        <h3>En contra</h3><ul class="minus"><li>Para ver las novedades hay que tocar la campana.</li><li>La cuenta regresiva asusta un poco cuando falta poco.</li></ul>
+        <a class="open" href="d.html" target="_blank">Abrir sola ↗</a>
+      </div>
+    </section>
+    <section class="opt">
+      <h2>E · Línea del semestre<small>Calendario y recordatorios</small></h2>
+      <div class="phone"><div class="screen"><div class="tgbar"><span class="x">✕ Cerrar</span><span class="ttl">Vinci<small>mini app</small></span><span class="more">⋯</span></div>
+        <iframe data-src="e.html" title="E · Línea del semestre"></iframe></div></div>
+      <div class="card">
+        
+        <p>El semestre completo es una línea del 24 sep al 15 ene, con un punto por entrega y la marca de hoy. Debajo, las entregas van agrupadas en Hoy, Esta semana y Más adelante, con un círculo para marcarlas. Las novedades sin leer llevan un punto azul.</p>
+        <h3>A favor</h3><ul class="plus"><li>Ves cuánto falta y cuándo se cargan las entregas en todo el semestre.</li><li>Los grupos por fecha se leen rápido.</li><li>Las novedades se marcan como leídas.</li></ul>
+        <h3>En contra</h3><ul class="minus"><li>Al inicio del semestre, los puntos de la línea quedan juntos.</li><li>Es la más alta: hay que bajar para ver las novedades.</li></ul>
+        <a class="open" href="e.html" target="_blank">Abrir sola ↗</a>
+      </div>
+    </section>
+  </div>
+
+  <form class="choose" data-lavish-question="dashboard-simple"
+        onsubmit="event.preventDefault(); const f = new FormData(this); const pick = f.get('propuesta'); const note = (f.get('comentario') || '').trim(); if (!pick) { this.querySelector('.queued').textContent = 'Elige una opción primero.'; return; } const text = 'Dashboard: elijo ' + pick + (note ? '. Comentario: ' + note : ''); window.lavish?.queuePrompt(text, { tag: 'choice', text, element: this, queueKey: 'dashboard-simple', data: { question: 'dashboard-simple', propuesta: pick, comentario: note } }); this.querySelector('.queued').textContent = window.lavish ? 'En cola. Pulsa «Send to Agent» arriba para mandármelo.' : 'Dime tu elección en el chat.';">
+    <h2>¿Cuál eliges?</h2>
+    <div class="radios">
+      <label><input type="radio" name="propuesta" value="la Simple (lista)"> Simple · Lista</label>
+      <label><input type="radio" name="propuesta" value="la D (foco)"> D · Foco</label>
+      <label><input type="radio" name="propuesta" value="la E (línea del semestre)"> E · Línea del semestre</label>
+    </div>
+    <textarea name="comentario" placeholder="Qué tomarías de otra, qué cambiarías"></textarea>
+    <div class="row"><button class="btn primary" type="submit">Poner en cola mi elección</button><span class="queued" role="status" aria-live="polite"></span></div>
+    <p class="hint" style="font-size:13px;margin:0">Las primeras propuestas siguen aquí: <a class="open" href="a.html" target="_blank">A</a> · <a class="open" href="b.html" target="_blank">B</a> · <a class="open" href="c.html" target="_blank">C</a></p>
+  </form>
+</div>
+<script>
+const setTheme = (t) => {
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll("[data-theme-btn]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.themeBtn === t));
+  document.querySelectorAll("iframe[data-src]").forEach((f) => (f.src = `${f.dataset.src}?theme=${t}`));
+};
+document.querySelectorAll("[data-theme-btn]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeBtn)));
+setTheme(document.documentElement.dataset.theme);
+</script>
+</body>
+</html>

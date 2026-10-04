@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vinci · Propuesta B</title>
+  <link rel="stylesheet" href="tg.css">
+  <script src="data.js"></script>
+  <style>
+    body { padding-bottom: 72px; }
+    main { max-width: 480px; margin: 0 auto; padding: 16px 14px 20px; }
+    .view[hidden] { display: none; }
+    h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+    h2 { margin: 22px 2px 10px; font-size: 17px; }
+    .sub { font-size: 13px; color: var(--tg-hint-color); }
+    .alert { margin-top: 14px; display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px;
+             background: color-mix(in srgb, var(--bad) 12%, var(--tg-section-bg-color)); }
+    .alert b { color: var(--bad); }
+    .alert .body { flex: 1; min-width: 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .card { background: var(--tg-section-bg-color); border-radius: 18px; padding: 14px; border: 0; text-align: left;
+            cursor: pointer; display: grid; gap: 8px; min-width: 0; position: relative; }
+    .card .name { font-weight: 600; font-size: 14px; line-height: 1.25; min-height: 2.5em; }
+    .card .pill { justify-self: start; }
+    .card .meta { font-size: 12px; color: var(--tg-hint-color); }
+    .card .av { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border-radius: 50%; }
+    .ring { width: 76px; height: 76px; position: relative; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring .v { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; line-height: 1; }
+    .ring .v b { font-size: 20px; } .ring .v small { font-size: 10px; color: var(--tg-hint-color); }
+    .next { display: flex; gap: 12px; align-items: center; background: var(--tg-section-bg-color); border-radius: 18px; padding: 14px; }
+    .next .big { font-size: 26px; font-weight: 700; color: var(--tg-button-color); line-height: 1; text-align: center; }
+    .next .big small { display: block; font-size: 11px; font-weight: 500; color: var(--tg-hint-color); }
+    .list { background: var(--tg-section-bg-color); border-radius: 16px; overflow: hidden; }
+    .li { display: flex; gap: 12px; align-items: center; padding: 11px 14px; min-width: 0; }
+    .li + .li { border-top: 1px solid var(--line); }
+    .li .body { flex: 1; min-width: 0; }
+    .tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center;
+              background: var(--tg-bg-color); border-top: 1px solid var(--line); padding: 6px 0 calc(6px + env(safe-area-inset-bottom)); z-index: 5; }
+    .tabbar button { flex: 1; max-width: 160px; border: 0; background: none; cursor: pointer; font-size: 11px; color: var(--tg-hint-color); display: grid; gap: 1px; padding: 4px; }
+    .tabbar button span { font-size: 20px; filter: grayscale(1); opacity: .7; }
+    .tabbar button[aria-selected="true"] { color: var(--tg-button-color); font-weight: 600; }
+    .tabbar button[aria-selected="true"] span { filter: none; opacity: 1; }
+    .sheet-bg { position: fixed; inset: 0; background: rgb(0 0 0 / .35); opacity: 0; pointer-events: none; transition: .2s; z-index: 10; }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow: auto; z-index: 11;
+             background: var(--tg-secondary-bg-color); border-radius: 20px 20px 0 0; padding: 8px 14px 24px;
+             transform: translateY(100%); transition: transform .25s ease; max-width: 480px; margin: 0 auto; }
+    .open .sheet-bg { opacity: 1; pointer-events: auto; } .open .sheet { transform: none; }
+    .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+    .sheet-head { display: flex; gap: 14px; align-items: center; }
+    .sheet-head h3 { margin: 0; font-size: 18px; line-height: 1.2; }
+    .box { background: var(--tg-section-bg-color); border-radius: 16px; padding: 14px; margin-top: 12px; }
+    .box h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--tg-hint-color); }
+    .comp { display: grid; grid-template-columns: minmax(0, 1fr) 36px 92px 30px; align-items: center; gap: 8px 8px; font-size: 13px; }
+    .comp input[type=range] { width: 100%; accent-color: var(--tg-button-color); }
+    .comp .w { color: var(--tg-hint-color); text-align: right; }
+    .comp .sc { text-align: right; font-weight: 600; }
+    .comp .fixed { grid-column: span 2; height: 6px; border-radius: 3px; background: var(--line); position: relative; }
+    .comp .fixed i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--tg-hint-color); }
+    .result { margin-top: 12px; padding: 12px; border-radius: 12px; text-align: center; font-size: 15px;
+              background: color-mix(in srgb, var(--s) 14%, transparent); color: var(--s); }
+    .result b { font-size: 22px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { border: 0; cursor: pointer; padding: 6px 10px; border-radius: 10px; font-size: 13px;
+            background: color-mix(in srgb, var(--warn) 15%, transparent); }
+    .score { margin-left: auto; font-weight: 700; }
+    .daycol { display: grid; gap: 8px; }
+    .dayhead { font-weight: 600; font-size: 14px; margin: 12px 2px 2px; }
+    .dayhead.today { color: var(--tg-button-color); }
+  </style>
+</head>
+<body>
+<main>
+  <section class="view" id="v-home">
+    <div class="sub" id="when"></div>
+    <h1>Tus materias</h1>
+    <div class="alert" id="alert"></div>
+    <h2>Próxima clase</h2>
+    <div class="next" id="next"></div>
+    <h2>Cómo vas</h2>
+    <div class="grid" id="cards"></div>
+    <h2>Novedades</h2>
+    <div class="list" id="news"></div>
+    <p class="sub" style="text-align:center;margin-top:18px" id="foot"></p>
+  </section>
+
+  <section class="view" id="v-week" hidden>
+    <div class="sub">Clases y entregas</div>
+    <h1>Esta semana</h1>
+    <div class="daycol" id="week"></div>
+  </section>
+
+  <section class="view" id="v-study" hidden>
+    <div class="sub">Lo que te cuesta, según tus quizzes y tus dudas</div>
+    <h1>Estudio</h1>
+    <h2>Temas débiles</h2>
+    <div class="list" id="weak"></div>
+    <h2>Últimos quizzes</h2>
+    <div class="list" id="quizzes"></div>
+    <h2>Dudas abiertas</h2>
+    <div class="list" id="doubts"></div>
+  </section>
+</main>
+
+<nav class="tabbar" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="home"><span>🏠</span>Materias</button>
+  <button role="tab" aria-selected="false" data-tab="week"><span>🗓️</span>Semana</button>
+  <button role="tab" aria-selected="false" data-tab="study"><span>🧠</span>Estudio</button>
+</nav>
+
+<div id="sheetWrap"><div class="sheet-bg" data-close></div><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+<script>
+const S = window.SNAPSHOT;
+const $ = (id) => document.getElementById(id);
+$("when").textContent = "Datos de " + S.generated;
+
+const ring = (g, size = 76) => {
+  const r = size / 2 - 6, c = 2 * Math.PI * r, v = g.state === "none" ? 0 : g.avg;
+  return `<div class="ring s-${g.state}" style="width:${size}px;height:${size}px"><svg width="${size}" height="${size}">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="7"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--s)" stroke-width="7" stroke-linecap="round"
+      stroke-dasharray="${c * v / 100} ${c}"/></svg>
+    <div class="v"><div><b>${g.state === "none" ? "?" : fmt(g.avg)}</b><br><small>${g.state === "none" ? "sin pesos" : "promedio"}</small></div></div></div>`;
+};
+
+const urgent = S.deliverables.filter((d) => d.hours <= 24);
+$("alert").innerHTML = `<span style="font-size:22px">⏰</span><div class="body"><b>${urgent.length} entrega vence hoy</b>
+  <div class="sub ellipsis">${urgent.map((d) => `${d.title} · ${subjectOf(d.code).name} · ${d.due}`).join(", ")}</div></div>
+  <button class="btn" data-done>Ya lo entregué</button>`;
+
+const nc = S.nextClass, ncs = subjectOf(nc.code);
+$("next").innerHTML = `<div class="big">${nc.inMin}<small>min</small></div>
+  <div style="flex:1;min-width:0"><b class="ellipsis" style="display:block">${ncs.name}</b>
+  <div class="sub">${nc.start}–${nc.end} · ${nc.room}</div><div class="sub" style="margin-top:4px">📚 ${nc.brief}</div></div>`;
+
+$("cards").innerHTML = S.subjects.map((s, i) => {
+  const g = grade(s), next = S.deliverables.find((d) => d.code === s.code && d.kind !== "pendiente");
+  return `<button class="card s-${g.state}" data-subject="${i}">
+    <img class="av" src="avatars/${s.avatar}" alt="">
+    ${ring(g)}
+    <div class="name">${s.name}</div>
+    <span class="pill">${g.state === "none" ? STATE_LABEL.none : `Necesitas ${fmt(g.need)}`}</span>
+    <div class="meta ellipsis">${next ? `📝 ${next.title} · ${next.due}` : "Sin entregas pendientes"}</div>
+  </button>`;
+}).join("");
+
+$("news").innerHTML = S.news.map((n) => `<div class="li"><span style="font-size:20px">${n.icon}</span><div class="body">
+  <div class="ellipsis">${n.text}</div><div class="sub ellipsis">${subjectOf(n.code).name} · ${n.when}</div></div></div>`).join("");
+$("foot").textContent = `🟢 Aula leída ${S.status.poll} · token de ${S.status.token} · renovación ${S.status.chain}`;
+
+$("week").innerHTML = S.days.map((d, i) => {
+  const rows = [
+    ...S.classes.filter((c) => c.day === i).map((c) => ({ t: c.start, h: `<span class="dot" style="background:var(--tg-button-color)"></span><div class="body"><div class="ellipsis">${subjectOf(c.code).name}</div><div class="sub">${c.start}–${c.end} · ${c.room}</div></div>` })),
+    ...S.deliverables.filter((x) => x.day === i).map((x) => ({ t: "99", h: `<span>${x.kind === "pendiente" ? "📌" : "📝"}</span><div class="body"><div class="ellipsis">${x.title}</div><div class="sub">${x.due}${x.weight ? ` · vale ${x.weight}%` : ""}</div></div>` })),
+  ].sort((a, b) => a.t.localeCompare(b.t));
+  return `<div class="dayhead ${i === 0 ? "today" : ""}">${i === 0 ? "Hoy · " : ""}${d}</div>
+    <div class="list">${rows.length ? rows.map((r) => `<div class="li">${r.h}</div>`).join("") : `<div class="li sub">Día libre</div>`}</div>`;
+}).join("");
+
+$("weak").innerHTML = S.subjects.flatMap((s) => s.weak.map((w) => `<div class="li"><img class="avatar" style="width:28px;height:28px" src="avatars/${s.avatar}" alt="">
+  <div class="body"><div class="ellipsis">${w}</div><div class="sub ellipsis">${s.name}</div></div>
+  <button class="btn" data-toast="Manda /quiz ${w} al bot de ${s.name}">🧠 Quiz</button></div>`)).join("");
+$("quizzes").innerHTML = S.subjects.map((s) => {
+  const st = s.quiz.score / s.quiz.of >= .8 ? "ok" : s.quiz.score / s.quiz.of >= .6 ? "warn" : "bad";
+  return `<div class="li s-${st}"><div class="body"><div class="ellipsis">${s.quiz.topic}</div><div class="sub ellipsis">${s.name} · ${s.quiz.when}</div></div>
+  <span class="pill">${s.quiz.score}/${s.quiz.of}</span></div>`;
+}).join("");
+$("doubts").innerHTML = S.subjects.flatMap((s) => s.doubts.map((q) => `<div class="li"><span>❓</span><div class="body"><div>${q}</div><div class="sub ellipsis">${s.name}</div></div></div>`)).join("");
+
+function openSheet(i) {
+  const s = S.subjects[i], g = grade(s);
+  const pending = s.components.filter((c) => c[2] == null);
+  const sim = Object.fromEntries(pending.map(([n]) => [n, Math.ceil(g.need ?? 70)]));
+  const draw = () => {
+    const r = grade(s, sim), st = r.final >= S.passing ? "ok" : "bad";
+    $("result").className = `result s-${st}`;
+    $("result").innerHTML = `Con esas notas terminas con <b>${fmt(r.final)}</b><br>${st === "ok" ? "✅ Pasas" : `❌ Te faltan ${fmt(S.passing - r.final)} puntos`}`;
+  };
+  $("sheet").innerHTML = `<div class="grab"></div>
+    <div class="sheet-head s-${g.state}">${ring(g, 70)}<div style="min-width:0"><h3>${s.name}</h3>
+      <span class="pill">${STATE_LABEL[g.state]}</span>
+      <div class="sub" style="margin-top:4px">${g.state === "none" ? "Vinci todavía no sabe cuánto pesa cada parte." : `Calificado el ${g.graded}% · necesitas ${fmt(g.need)} en lo que falta`}</div></div></div>
+    ${g.state === "none" ? `<div class="box"><button class="btn primary" style="width:100%" data-toast="Abre a Vinci con «¿cuánto pesa cada parte de ${s.name}?»">Decirle a Vinci los pesos</button></div>` : `
+    <div class="box"><h4>¿Y si saco…?</h4><div class="comp">
+      ${s.components.map(([n, w, sc]) => sc != null
+        ? `<span class="ellipsis">${n}</span><span class="w">${w}%</span><span class="fixed"><i style="width:${sc}%"></i></span><span class="sc">${sc}</span>`
+        : `<span class="ellipsis">${n}</span><span class="w">${w}%</span><input type="range" min="0" max="100" value="${sim[n]}" data-comp="${n}" aria-label="${n}"><span class="sc" data-out="${n}">${sim[n]}</span>`).join("")}
+    </div><div class="result" id="result"></div></div>`}
+    <div class="box"><h4>Lo que viene</h4>${S.deliverables.filter((d) => d.code === s.code).map((d) => `<div class="li" style="padding:6px 0">📝 <div class="body"><div class="ellipsis">${d.title}</div><div class="sub">${d.due}${d.weight ? ` · vale ${d.weight}%` : ""}</div></div></div>`).join("") || '<div class="sub">Nada pendiente</div>'}</div>
+    <div class="box"><h4>Para estudiar</h4><div class="chips">${s.weak.map((w) => `<button class="chip" data-toast="Manda /quiz ${w} al bot de ${s.name}">🧠 ${w}</button>`).join("")}</div>
+      <div class="sub" style="margin-top:8px">Último quiz: ${s.quiz.topic}, ${s.quiz.score}/${s.quiz.of} · ${s.doubts.length} duda(s) abierta(s)</div></div>
+    <div class="box" style="display:flex;gap:8px"><button class="btn primary" style="flex:1" data-toast="Abre el chat de @${s.bot}">🎓 Abrir el bot de la materia</button></div>`;
+  document.body.classList.add("open");
+  $("sheet").querySelectorAll("input[type=range]").forEach((el) => el.addEventListener("input", () => {
+    sim[el.dataset.comp] = +el.value; $("sheet").querySelector(`[data-out="${el.dataset.comp}"]`).textContent = el.value; draw();
+  }));
+  if (g.state !== "none") draw();
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-tab],[data-subject],[data-close],[data-toast],[data-done]");
+  if (!t) return;
+  if (t.dataset.tab) {
+    document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b === t));
+    document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "v-" + t.dataset.tab));
+    scrollTo(0, 0);
+  } else if (t.dataset.subject) openSheet(+t.dataset.subject);
+  else if ("close" in t.dataset) document.body.classList.remove("open");
+  else if ("done" in t.dataset) { t.className = "btn done"; t.textContent = "✓ Avisado"; toast("Le manda a Vinci el mismo aviso que «✅ Ya lo entregué»"); }
+  else toast(t.dataset.toast);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vinci · Propuesta D</title>
+  <link rel="stylesheet" href="tg.css">
+  <script src="data.js"></script>
+  <style>
+    body { background: var(--tg-bg-color); }
+    main { max-width: 480px; margin: 0 auto; padding: 12px 16px 28px; }
+    .stories { display: grid; grid-auto-flow: column; gap: 3px; }
+    .stories i { height: 4px; border-radius: 2px; background: var(--line); }
+    .stories i.on { background: var(--tg-button-color); }
+    .stories i.now { background: linear-gradient(90deg, var(--tg-button-color) var(--p), var(--line) var(--p)); }
+    .bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--tg-hint-color); }
+    .bell { margin-left: auto; white-space: nowrap; flex: none; border: 0; background: var(--tg-secondary-bg-color); border-radius: 999px; padding: 6px 12px;
+            cursor: pointer; font-size: 13px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+    .bell b { background: var(--bad); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 6px; }
+    .kicker { margin: 26px 0 10px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--tg-hint-color); }
+    .hero { border-radius: 24px; padding: 20px; background: var(--tg-secondary-bg-color); display: grid; gap: 14px;
+            transition: transform .3s ease, opacity .3s ease; }
+    .hero.leave { transform: translateX(-110%); opacity: 0; }
+    .hero.enter { transform: translateX(40%); opacity: 0; }
+    .hero .who { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--tg-hint-color); min-width: 0; }
+    .hero .who img { width: 30px; height: 30px; border-radius: 50%; }
+    .hero h1 { margin: 0; font-size: 28px; line-height: 1.12; letter-spacing: -.02em; }
+    .clock { display: flex; gap: 8px; align-items: flex-end; }
+    .clock div { background: var(--tg-bg-color); border-radius: 14px; padding: 10px 0 8px; width: 74px; text-align: center; }
+    .clock b { display: block; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+    .clock span { font-size: 11px; color: var(--tg-hint-color); }
+    .hot .clock b { color: var(--bad); }
+    .facts { display: flex; flex-wrap: wrap; gap: 6px; }
+    .facts span { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--tg-bg-color); }
+    .cta { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .cta .btn { padding: 14px; font-size: 15px; border-radius: 14px; }
+    .next { display: grid; gap: 2px; }
+    .item { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border: 0; background: none; text-align: left; cursor: pointer; width: 100%; min-width: 0; }
+    .item + .item { border-top: 1px solid var(--line); }
+    .item img { width: 32px; height: 32px; border-radius: 50%; flex: none; }
+    .item .body { flex: 1; min-width: 0; }
+    .item .t { font-weight: 500; }
+    .item .s { font-size: 13px; color: var(--tg-hint-color); }
+    .item .in { font-size: 13px; font-weight: 600; color: var(--tg-hint-color); white-space: nowrap; }
+    .empty { text-align: center; padding: 30px 0; font-size: 18px; }
+    .sheet-bg { position: fixed; inset: 0; background: rgb(0 0 0 / .35); opacity: 0; pointer-events: none; transition: .2s; z-index: 10; }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 80vh; overflow: auto; z-index: 11; max-width: 480px; margin: 0 auto;
+             background: var(--tg-bg-color); border-radius: 20px 20px 0 0; padding: 8px 16px 24px; transform: translateY(100%); transition: transform .25s; }
+    .open .sheet-bg { opacity: 1; pointer-events: auto; } .open .sheet { transform: none; }
+    .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 14px; }
+    .sheet h2 { margin: 0 0 6px; font-size: 18px; }
+    .nw { display: flex; gap: 12px; padding: 11px 0; }
+    .nw + .nw { border-top: 1px solid var(--line); }
+    .nw .s { font-size: 13px; color: var(--tg-hint-color); }
+    .foot { text-align: center; font-size: 12px; color: var(--tg-hint-color); margin-top: 22px; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="stories" id="stories" aria-hidden="true"></div>
+  <div class="bar"><span id="semText"></span>
+    <button class="bell" data-news>🔔 Novedades <b id="newsCount"></b></button></div>
+
+  <div class="kicker">Lo que sigue</div>
+  <article class="hero" id="hero"></article>
+
+  <div class="kicker">Después</div>
+  <div class="next" id="next"></div>
+
+  <div class="foot" id="foot"></div>
+</main>
+
+<div id="sheetWrap"><div class="sheet-bg" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Novedades"><div class="grab"></div><h2>Novedades</h2><div id="news"></div></div></div>
+
+<script>
+const S = window.SNAPSHOT, sem = semester();
+const $ = (id) => document.getElementById(id);
+// The hero is the 7:00 summary's first item; what follows goes by date, the order a countdown suggests.
+const queue = [S.deliverables[0], ...S.deliverables.slice(1).sort((a, b) => a.hours - b.hours)];
+
+$("stories").style.gridTemplateColumns = `repeat(${sem.weeks}, 1fr)`;
+$("stories").innerHTML = Array.from({ length: sem.weeks }, (_, i) => {
+  const w = i + 1;
+  if (w < sem.week) return '<i class="on"></i>';
+  if (w > sem.week) return "<i></i>";
+  const into = ((sem.now - sem.start) / 864e5 - (sem.week - 1) * 7) / 7 * 100;
+  return `<i class="now" style="--p:${into}%"></i>`;
+}).join("");
+$("semText").textContent = `Semana ${sem.week} de ${sem.weeks} · ${sem.pct}%`;
+$("newsCount").textContent = S.news.length;
+
+const avatar = (d) => (subjectOf(d.code) ? `avatars/${subjectOf(d.code).avatar}` : "avatars/wizard.jpg");
+const inText = (h) => (h < 24 ? `en ${h} h` : h < 24 * 14 ? `en ${Math.round(h / 24)} d` : `en ${Math.round(h / 24 / 7)} sem`);
+
+function render() {
+  const d = queue[0];
+  if (!d) { $("hero").innerHTML = '<div class="empty">🎉 No tienes nada pendiente</div>'; $("next").innerHTML = ""; return; }
+  const s = subjectOf(d.code), h = d.hours, days = Math.floor(h / 24);
+  const clock = h < 48
+    ? `<div><b>${String(h).padStart(2, "0")}</b><span>horas</span></div><div><b>39</b><span>minutos</span></div>`
+    : `<div><b>${days}</b><span>días</span></div><div><b>${h % 24}</b><span>horas</span></div>`;
+  $("hero").className = "hero" + (h <= 24 ? " hot" : "");
+  $("hero").innerHTML = `
+    <div class="who"><img src="${avatar(d)}" alt=""><span class="ellipsis">${s ? s.name : "Personal"}</span></div>
+    <h1>${d.title}</h1>
+    <div class="clock">${clock}</div>
+    <div class="facts"><span>📅 ${d.due}</span>${d.weight ? `<span>⚖️ vale ${d.weight}% de la nota</span>` : ""}${d.quiz ? `<span>⏱️ ${d.quiz}</span>` : ""}</div>
+    <div class="cta"><button class="btn primary" data-done>${d.kind === "pendiente" ? "✅ Hecho" : "✅ Ya lo entregué"}</button>
+      ${s ? `<button class="btn" data-toast="Abre la tarea en el aula virtual">Abrir ↗</button>` : ""}</div>`;
+  $("next").innerHTML = queue.slice(1).map((x, i) => `<button class="item" data-pick="${i + 1}">
+    <img src="${avatar(x)}" alt=""><div class="body"><div class="t ellipsis">${x.kind === "pendiente" ? "📌 " : ""}${x.title}</div>
+    <div class="s ellipsis">${x.due}${x.weight ? ` · vale ${x.weight}%` : ""}</div></div><span class="in">${inText(x.hours)}</span></button>`).join("");
+}
+render();
+
+function swap(change) {
+  const hero = $("hero"); hero.classList.add("leave");
+  setTimeout(() => { change(); render(); hero.classList.add("enter"); requestAnimationFrame(() => requestAnimationFrame(() => hero.classList.remove("enter"))); }, 280);
+}
+
+$("news").innerHTML = S.news.map((n) => `<div class="nw"><span style="font-size:20px">${n.icon}</span><div style="min-width:0">
+  <div>${n.text}</div><div class="s">${n.kind} · ${subjectOf(n.code).name} · ${n.when}</div></div></div>`).join("");
+$("foot").textContent = `Aula leída ${S.status.poll} · datos de ${S.generated}`;
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-done],[data-pick],[data-news],[data-close],[data-toast]");
+  if (!t) return;
+  if ("done" in t.dataset) { toast("Le manda a Vinci el mismo aviso que «✅ Ya lo entregué»"); swap(() => queue.shift()); }
+  else if (t.dataset.pick) { const i = +t.dataset.pick; swap(() => queue.unshift(...queue.splice(i, 1))); scrollTo({ top: 0, behavior: "smooth" }); }
+  else if ("news" in t.dataset) document.body.classList.add("open");
+  else if ("close" in t.dataset) document.body.classList.remove("open");
+  else toast(t.dataset.toast);
+});
+</script>
+</body>
+</html>

@@ -20,6 +20,10 @@
   grading_scheme_proposals
                        schemes a bot read from the syllabus or heard from the captain, waiting for that press
   manual_grades        grades the captain told a bot about that Canvas does not have (a lesson on paper)
+  class_notes          each Markdown note in the captain's notes folder (notes.py): its subject once decided
+                       (and how), whether Vinci asked or the captain said it is not from class, and the text
+                       last handed to the subject bot for a summary
+  note_questions       the «//vinci …» lines of a note, each handed to the subject bot once
 """
 
 from __future__ import annotations
@@ -114,6 +118,30 @@ CREATE TABLE IF NOT EXISTS horario_propuestas (
     estado TEXT NOT NULL DEFAULT 'pendiente',
     resuelto TEXT
 );
+CREATE TABLE IF NOT EXISTS class_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    digest TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    subject TEXT,
+    decided_by TEXT,
+    ignored INTEGER NOT NULL DEFAULT 0,
+    asked_at TEXT,
+    announced_at TEXT,
+    summarized_text TEXT,
+    summarized_at TEXT,
+    handed_images TEXT NOT NULL DEFAULT '[]',
+    checked_digest TEXT,
+    gone_at TEXT
+);
+CREATE TABLE IF NOT EXISTS note_questions (
+    note_id INTEGER NOT NULL,
+    question TEXT NOT NULL,
+    seen_at TEXT NOT NULL,
+    handoff_id INTEGER,
+    PRIMARY KEY (note_id, question)
+);
 CREATE TABLE IF NOT EXISTS shown_pages (
     bot TEXT NOT NULL,
     file_id INTEGER NOT NULL,
@@ -168,12 +196,14 @@ def queue_handoff(conn: sqlite3.Connection, code: str, origin: str, text: str, n
     return int(cur.lastrowid), True
 
 
-def claim_handoffs(conn: sqlite3.Connection, code: str, now: datetime, limit: int = 5) -> list[dict]:
+def claim_handoffs(conn: sqlite3.Connection, code: str, now: datetime, limit: int = 5, *,
+                   origins: tuple[str, ...] = (), exclude: bool = False) -> list[dict]:
     """The oldest unclaimed handoffs for `code` (up to `limit`), each marked claimed atomically
-    so it is handed to the subject bot at most once."""
+    so it is handed to the subject bot at most once. `origins` keeps only those (or, with `exclude`, the rest)."""
     claimed = []
-    rows = conn.execute("SELECT * FROM entregas WHERE materia = ? AND reclamado IS NULL ORDER BY id LIMIT ?",
-                        (code, limit)).fetchall()
+    only = (f" AND origen {'NOT IN' if exclude else 'IN'} ({','.join('?' * len(origins))})") if origins else ""
+    rows = conn.execute(f"SELECT * FROM entregas WHERE materia = ? AND reclamado IS NULL{only} ORDER BY id LIMIT ?",
+                        (code, *origins, limit)).fetchall()
     for row in rows:
         cur = conn.execute("UPDATE entregas SET reclamado = ? WHERE id = ? AND reclamado IS NULL",
                            (timefmt.iso(now), row["id"]))
@@ -329,3 +359,74 @@ def set_manual_grade(conn: sqlite3.Connection, subject: str, period: str, compon
             (subject, period, component, label, score, out_of, timefmt.iso(now)))
     conn.commit()
     return cur.rowcount == 1
+
+
+# -- class notes -------------------------------------------------------------------------
+
+
+def _note(row: sqlite3.Row) -> dict:
+    return {**dict(row), "ignored": bool(row["ignored"]), "handed_images": json.loads(row["handed_images"])}
+
+
+def class_note(conn: sqlite3.Connection, note_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM class_notes WHERE id = ?", (note_id,)).fetchone()
+    return _note(row) if row else None
+
+
+def see_note(conn: sqlite3.Connection, path: str, digest: str, now: datetime, *, old: bool = False) -> dict:
+    """The note at `path` as of this scan: new ones start now, and a changed text moves `changed_at` to now.
+    An `old` note (written long before Vinci first saw it) is recorded as ignored."""
+    stamp = timefmt.iso(now)
+    conn.execute("INSERT INTO class_notes(path, digest, first_seen, changed_at, ignored) VALUES (?, ?, ?, ?, ?) "
+                 "ON CONFLICT(path) DO UPDATE SET changed_at = CASE WHEN digest != excluded.digest "
+                 "THEN excluded.changed_at ELSE changed_at END, digest = excluded.digest, gone_at = NULL",
+                 (path, digest, stamp, stamp, int(old)))
+    conn.commit()
+    return _note(conn.execute("SELECT * FROM class_notes WHERE path = ?", (path,)).fetchone())
+
+
+def notes_gone(conn: sqlite3.Connection, present: set[str], now: datetime) -> None:
+    for row in conn.execute("SELECT id, path FROM class_notes WHERE gone_at IS NULL").fetchall():
+        if row["path"] not in present:
+            conn.execute("UPDATE class_notes SET gone_at = ? WHERE id = ?", (timefmt.iso(now), row["id"]))
+    conn.commit()
+
+
+def set_note_subject(conn: sqlite3.Connection, note_id: int, code: str, how: str) -> None:
+    """A note moved to another subject is summarized there from the start."""
+    conn.execute("UPDATE class_notes SET summarized_text = CASE WHEN subject IS ? THEN summarized_text END, "
+                 "handed_images = CASE WHEN subject IS ? THEN handed_images ELSE '[]' END, "
+                 "subject = ?, decided_by = ?, ignored = 0 WHERE id = ?", (code, code, code, how, note_id))
+    conn.commit()
+
+
+def update_note(conn: sqlite3.Connection, note_id: int, **values) -> None:
+    allowed = {"ignored", "asked_at", "announced_at", "summarized_text", "summarized_at", "handed_images",
+               "checked_digest"}
+    assert set(values) <= allowed, values
+    if "handed_images" in values:
+        values["handed_images"] = json.dumps(values["handed_images"], ensure_ascii=False)
+    for key in ("asked_at", "announced_at", "summarized_at"):
+        if isinstance(values.get(key), datetime):
+            values[key] = timefmt.iso(values[key])
+    conn.execute(f"UPDATE class_notes SET {', '.join(f'{k} = ?' for k in values)} WHERE id = ?",
+                 (*values.values(), note_id))
+    conn.commit()
+
+
+def see_question(conn: sqlite3.Connection, note_id: int, question: str, now: datetime) -> None:
+    conn.execute("INSERT OR IGNORE INTO note_questions(note_id, question, seen_at) VALUES (?, ?, ?)",
+                 (note_id, question, timefmt.iso(now)))
+    conn.commit()
+
+
+def unsent_questions(conn: sqlite3.Connection, note_id: int) -> list[str]:
+    rows = conn.execute("SELECT question FROM note_questions WHERE note_id = ? AND handoff_id IS NULL "
+                        "ORDER BY seen_at, rowid", (note_id,)).fetchall()
+    return [r["question"] for r in rows]
+
+
+def question_sent(conn: sqlite3.Connection, note_id: int, question: str, handoff_id: int) -> None:
+    conn.execute("UPDATE note_questions SET handoff_id = ? WHERE note_id = ? AND question = ?",
+                 (handoff_id, note_id, question))
+    conn.commit()

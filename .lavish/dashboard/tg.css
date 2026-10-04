@@ -1,0 +1,66 @@
+/* The /token form's Telegram tokens (docs/token/form.css). In Telegram, tgWebAppThemeParams overrides them. */
+:root {
+  --tg-bg-color: #ffffff;
+  --tg-secondary-bg-color: #f1f2f6;
+  --tg-section-bg-color: #ffffff;
+  --tg-text-color: #0f1419;
+  --tg-hint-color: #6b7480;
+  --tg-button-color: #2b7de9;
+  --tg-button-text-color: #ffffff;
+  --tg-destructive-text-color: #d93a3a;
+  --ok: #1f9d55;
+  --warn: #d98a0b;
+  --bad: var(--tg-destructive-text-color);
+  --none: var(--tg-hint-color);
+  --line: color-mix(in srgb, var(--tg-hint-color) 22%, transparent);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --tg-bg-color: #17212b;
+  --tg-secondary-bg-color: #0e1621;
+  --tg-section-bg-color: #17212b;
+  --tg-text-color: #f5f5f5;
+  --tg-hint-color: #8b98a5;
+  --tg-button-color: #5288c1;
+  --tg-button-text-color: #ffffff;
+  --tg-destructive-text-color: #ff6b6b;
+  --ok: #4cc38a;
+  --warn: #f0b13d;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--tg-secondary-bg-color);
+  color: var(--tg-text-color);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+button { font: inherit; color: inherit; }
+.hint { color: var(--tg-hint-color); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: none; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+.s-ok { --s: var(--ok); } .s-warn { --s: var(--warn); } .s-bad { --s: var(--bad); } .s-none { --s: var(--none); }
+.dot { background: var(--s, var(--none)); }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  color: var(--s, var(--tg-hint-color)); background: color-mix(in srgb, var(--s, var(--tg-hint-color)) 14%, transparent);
+}
+.btn {
+  border: 0; border-radius: 10px; padding: 9px 12px; cursor: pointer; font-weight: 600; font-size: 14px;
+  background: color-mix(in srgb, var(--tg-button-color) 14%, transparent); color: var(--tg-button-color);
+}
+.btn.primary { background: var(--tg-button-color); color: var(--tg-button-text-color); }
+.btn.done { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.toast {
+  position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 20px); opacity: 0; transition: .2s;
+  background: color-mix(in srgb, var(--tg-text-color) 88%, transparent); color: var(--tg-bg-color);
+  padding: 9px 14px; border-radius: 10px; font-size: 13px; max-width: 90%; pointer-events: none; z-index: 50;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }

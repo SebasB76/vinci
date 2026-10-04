@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vinci · Entregas</title>
+  <link rel="stylesheet" href="tg.css">
+  <script src="data.js"></script>
+  <style>
+    main { max-width: 480px; margin: 0 auto; padding: 16px 14px 28px; }
+    .sem { background: var(--tg-section-bg-color); border-radius: 16px; padding: 14px 16px; }
+    .sem .head { display: flex; align-items: baseline; gap: 8px; }
+    .sem .head b { font-size: 15px; }
+    .sem .head .pct { margin-left: auto; font-size: 22px; font-weight: 700; color: var(--tg-button-color); }
+    .track { position: relative; height: 8px; border-radius: 4px; background: var(--line); margin: 10px 0 6px; }
+    .track i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--tg-button-color); }
+    .sem .hint { font-size: 13px; display: flex; justify-content: space-between; }
+    h2 { margin: 22px 16px 6px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tg-hint-color);
+         display: flex; gap: 8px; }
+    h2 span { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+    .group { background: var(--tg-section-bg-color); border-radius: 14px; overflow: hidden; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; min-width: 0; }
+    .row + .row { border-top: 1px solid var(--line); }
+    .row .body { flex: 1; min-width: 0; }
+    .row .title { font-weight: 500; }
+    .row .sub { font-size: 13px; color: var(--tg-hint-color); }
+    .icon { font-size: 20px; flex: none; }
+    .row .btn { padding: 7px 10px; font-size: 13px; flex: none; }
+    .urgent { box-shadow: inset 3px 0 0 var(--bad); }
+    .urgent .due { color: var(--bad); font-weight: 600; }
+    .done-row { opacity: .45; }
+    .done-row .title { text-decoration: line-through; }
+    details > summary { cursor: pointer; padding: 12px 14px; font-weight: 600; list-style: none; display: flex; }
+    details > summary::-webkit-details-marker { display: none; }
+    details > summary::after { content: "›"; margin-left: auto; color: var(--tg-hint-color); transition: transform .15s; }
+    details[open] > summary::after { transform: rotate(90deg); }
+    details .row { border-top: 1px solid var(--line); }
+    .foot { text-align: center; font-size: 12px; color: var(--tg-hint-color); margin-top: 18px; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="sem" aria-label="Avance del semestre">
+    <div class="head"><b id="semWeek"></b><span class="hint" id="semName"></span><span class="pct" id="semPct"></span></div>
+    <div class="track"><i id="semBar"></i></div>
+    <div class="hint"><span>Empezó el 24 sep</span><span id="semLeft"></span></div>
+  </section>
+
+  <h2>Entregas pendientes <span id="count"></span></h2>
+  <div class="group" id="deliverables"></div>
+
+  <h2>Novedades</h2>
+  <div class="group"><details id="news" open></details></div>
+
+  <div class="foot" id="foot"></div>
+</main>
+<script>
+const S = window.SNAPSHOT;
+const $ = (id) => document.getElementById(id);
+const sem = semester();
+$("semWeek").textContent = `Semana ${sem.week} de ${sem.weeks}`;
+$("semName").textContent = sem.name;
+$("semPct").textContent = sem.pct + "%";
+$("semBar").style.width = sem.pct + "%";
+$("semLeft").textContent = `Termina el 15 ene · faltan ${sem.weeksLeft} semanas`;
+const label = (d) => (d.kind === "pendiente" ? "Hecho" : "Ya lo entregué");
+
+$("count").textContent = `${S.deliverables.length} · ${S.deliverables.filter((d) => d.hours <= 24).length} vence hoy`;
+$("deliverables").innerHTML = S.deliverables.map((d) => {
+  const s = subjectOf(d.code);
+  const icon = d.kind === "cuestionario" ? "⏱️" : d.kind === "pendiente" ? "📌" : "📝";
+  return `<div class="row ${d.hours <= 24 ? "urgent" : ""}">
+    <span class="icon">${icon}</span>
+    <div class="body"><div class="title ellipsis">${d.title}</div>
+      <div class="sub ellipsis"><span class="due">${d.due}</span>${d.weight ? ` · vale ${d.weight}%` : ""}</div>
+      <div class="sub ellipsis">${s ? s.name : "Personal"}</div>
+      ${d.quiz ? `<div class="sub ellipsis">${d.quiz}</div>` : ""}</div>
+    <button class="btn" data-label="${label(d)}">${label(d)}</button>
+  </div>`;
+}).join("");
+
+$("news").innerHTML = `<summary>${S.news.length} cosas nuevas desde ayer</summary>` + S.news.map((n) => `<div class="row">
+  <span class="icon">${n.icon}</span><div class="body"><div class="title ellipsis">${n.text}</div>
+  <div class="sub ellipsis">${n.kind} · ${subjectOf(n.code).name} · ${n.when}</div></div></div>`).join("");
+
+$("foot").textContent = `Aula leída ${S.status.poll} · datos de ${S.generated}`;
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-label]");
+  if (!b) return;
+  const row = b.closest(".row"), on = row.classList.toggle("done-row");
+  b.textContent = on ? "Deshacer" : b.dataset.label;
+  if (on) toast("Le manda a Vinci el mismo aviso que «✅ Ya lo entregué»");
+});
+</script>
+</body>
+</html>

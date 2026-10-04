@@ -33,6 +33,7 @@ The Canvas token stays inside this process: no tool ever returns it.
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import shutil
 import uuid
@@ -1311,6 +1312,32 @@ def page_image(cfg: BotConfig, code: str, file_id: int, page: int) -> dict:
         raise ToolError(str(exc)) from None
     finally:
         ctx.aula.close()
+
+
+def entry_image(cfg: BotConfig, code: str, entry_id: int) -> dict:
+    """A photo of the subject's notebook (a board photo, a capture from the captain's notes), as a JPEG: what the
+    plugin's ver_foto shows the model."""
+    from PIL import Image
+
+    notebook = Notebook(cfg.core, code.upper(), read_only=True)
+    try:
+        entry = notebook.entry(entry_id)
+    except NotebookError as exc:
+        raise ToolError(str(exc)) from None
+    finally:
+        notebook.close()
+    if entry["tipo"] != "foto" or not entry["archivo"] or not Path(entry["archivo"]).is_file():
+        raise ToolError(f"La entrada {entry_id} no es una foto de tu cuaderno.")
+    try:
+        with Image.open(entry["archivo"]) as image:
+            image = image.convert("RGB")
+            image.thumbnail((extract.PAGE_IMAGE_EDGE, extract.PAGE_IMAGE_EDGE))
+            out = io.BytesIO()
+            image.save(out, "JPEG", quality=80)
+    except OSError as exc:
+        raise ToolError(f"No pude abrir la foto #{entry_id}: {exc}") from None
+    return {"entrada": entry_id, "texto": entry["texto"], "fecha_clase": entry["fecha_clase"],
+            "tipo": "image/jpeg", "imagen": base64.b64encode(out.getvalue()).decode()}
 
 
 def check_citations(cfg: BotConfig, code: str | None, text: str) -> dict:

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vinci · Propuesta C</title>
+  <link rel="stylesheet" href="tg.css">
+  <script src="data.js"></script>
+  <style>
+    main { max-width: 480px; margin: 0 auto; padding: 16px 0 28px; }
+    .pad { padding: 0 14px; }
+    .hello { display: flex; align-items: flex-end; gap: 10px; }
+    .hello h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; line-height: 1.1; }
+    .hello .pill { margin-left: auto; margin-bottom: 4px; }
+    h2 { display: flex; align-items: baseline; gap: 8px; margin: 22px 14px 10px; font-size: 17px; }
+    h2 .hint { font-size: 13px; font-weight: 400; margin-left: auto; }
+    .strip { display: flex; gap: 8px; overflow-x: auto; padding: 14px 14px 4px; scrollbar-width: none; }
+    .strip::-webkit-scrollbar { display: none; }
+    .chip { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1.5px solid transparent;
+            background: var(--tg-section-bg-color); cursor: pointer; max-width: 210px; }
+    .chip img { width: 26px; height: 26px; border-radius: 50%; }
+    .chip .n { font-size: 13px; font-weight: 600; }
+    .chip .g { font-size: 12px; font-weight: 700; color: var(--s); }
+    .chip[aria-pressed="true"] { border-color: var(--tg-button-color); background: color-mix(in srgb, var(--tg-button-color) 12%, var(--tg-section-bg-color)); }
+    .panel { background: var(--tg-section-bg-color); border-radius: 18px; margin: 0 14px; }
+    .tl { position: relative; padding: 14px 14px 14px 74px; }
+    .tl::before { content: ""; position: absolute; left: 62px; top: 18px; bottom: 18px; width: 2px; background: var(--line); }
+    .ev { position: relative; padding: 8px 0; min-width: 0; }
+    .ev .t { position: absolute; left: -72px; top: 9px; width: 44px; text-align: right; font-size: 12px; font-weight: 600; color: var(--tg-hint-color); }
+    .ev::before { content: ""; position: absolute; left: -16px; top: 13px; width: 10px; height: 10px; border-radius: 50%;
+                  background: var(--c, var(--tg-button-color)); box-shadow: 0 0 0 3px var(--tg-section-bg-color); }
+    .ev .card { padding: 9px 12px; border-radius: 12px; background: color-mix(in srgb, var(--c, var(--tg-button-color)) 11%, transparent); }
+    .ev .card b { display: block; font-size: 14px; }
+    .ev .card span { font-size: 12px; color: var(--tg-hint-color); }
+    .ev.nowline { padding: 2px 0; }
+    .ev.nowline::before { background: var(--bad); }
+    .ev.nowline .t { color: var(--bad); top: 2px; }
+    .ev.nowline .line { height: 2px; background: var(--bad); margin-top: 6px; border-radius: 1px; }
+    .ev.due { --c: var(--bad); }
+    .ev .count { float: right; font-weight: 700; color: var(--tg-button-color); font-size: 13px; }
+    .wk { display: grid; grid-template-columns: 26px repeat(7, minmax(0, 1fr)); gap: 3px; padding: 12px 10px 10px 4px; }
+    .wk .dh { text-align: center; font-size: 11px; color: var(--tg-hint-color); padding-bottom: 4px; }
+    .wk .dh.today { color: var(--tg-button-color); font-weight: 700; }
+    .wk .col { position: relative; height: 170px; border-radius: 8px; background: var(--tg-secondary-bg-color); }
+    .wk .axis { position: relative; height: 170px; font-size: 9px; color: var(--tg-hint-color); }
+    .wk .axis span { position: absolute; right: 2px; transform: translateY(-50%); }
+    .blk { position: absolute; left: 2px; right: 2px; border-radius: 5px; background: var(--c); opacity: .85; }
+    .dl { position: absolute; left: 1px; right: 1px; height: 3px; border-radius: 2px; background: var(--bad); }
+    .dl::after { content: "!"; position: absolute; right: 0; top: -13px; font-size: 10px; font-weight: 800; color: var(--bad); }
+    .faded { opacity: .18 !important; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 14px 12px; font-size: 11px; color: var(--tg-hint-color); }
+    .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+    .pr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px 14px; align-items: center; }
+    .pr + .pr { border-top: 1px solid var(--line); }
+    .pr .ttl { font-weight: 600; font-size: 14px; }
+    .pr .meta { font-size: 12px; color: var(--tg-hint-color); }
+    .pr .wbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--tg-hint-color); }
+    .pr .wbar div { flex: 1; height: 5px; border-radius: 3px; background: var(--line); position: relative; }
+    .pr .wbar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--tg-button-color); }
+    .pr .left { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 8px; white-space: nowrap; text-align: center; }
+    .pr .left.hot { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+    .pr .left.cool { background: var(--tg-secondary-bg-color); color: var(--tg-hint-color); }
+    .pr.hidden { display: none; }
+    .pr.done { opacity: .4; } .pr.done .ttl { text-decoration: line-through; }
+    details.news summary { cursor: pointer; padding: 12px 14px; font-weight: 600; list-style: none; display: flex; }
+    details.news summary::after { content: "›"; margin-left: auto; color: var(--tg-hint-color); transition: .15s; }
+    details.news[open] summary::after { transform: rotate(90deg); }
+    .nw { display: flex; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 14px; min-width: 0; }
+    .nw .body { min-width: 0; flex: 1; }
+    .foot { text-align: center; font-size: 12px; color: var(--tg-hint-color); margin-top: 18px; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="pad hello">
+    <div><div class="hint" style="font-size:13px" id="when"></div><h1>Lunes 5<br>de octubre</h1></div>
+    <span class="pill s-ok">● Aula al día</span>
+  </div>
+  <div class="strip" id="strip" aria-label="Filtrar por materia"></div>
+
+  <h2>Hoy <span class="hint">toca una materia arriba para filtrar</span></h2>
+  <div class="panel tl" id="today"></div>
+
+  <h2>Semana</h2>
+  <div class="panel"><div class="wk" id="wk"></div><div class="legend" id="legend"></div></div>
+
+  <h2>Entregas <span class="hint">urgente primero, luego lo que más pesa</span></h2>
+  <div class="panel" id="prio"></div>
+
+  <h2>Novedades</h2>
+  <div class="panel"><details class="news" id="news"></details></div>
+
+  <div class="foot" id="foot"></div>
+</main>
+<script>
+const S = window.SNAPSHOT;
+const $ = (id) => document.getElementById(id);
+const COLORS = { ESTG1034: "#e0567a", ADSG1026: "#2fa86b", SOFG1007: "#3b82f6", CCPG1041: "#d98a0b", CCPG1055: "#8b5cf6" };
+const short = (s) => s.name.replace("Dirección de Proyectos Informáticos", "Dir. de Proyectos").replace("Ciencias de la Sostenibilidad", "Sostenibilidad").replace("Ingeniería de Software I", "Ing. de Software I");
+let filter = null;
+$("when").textContent = "Datos de " + S.generated;
+
+$("strip").innerHTML = S.subjects.map((s) => {
+  const g = grade(s);
+  return `<button class="chip s-${g.state}" data-code="${s.code}" aria-pressed="false"><img src="avatars/${s.avatar}" alt="">
+    <span class="n ellipsis">${short(s)}</span><span class="g">${g.state === "none" ? "?" : fmt(g.avg)}</span><span class="dot"></span></button>`;
+}).join("");
+
+function renderToday() {
+  const nc = S.nextClass;
+  const evs = [
+    { t: "08:20", now: true },
+    ...S.classes.filter((c) => c.day === 0).map((c) => ({ t: c.start, code: c.code,
+      html: `${c.code === nc.code ? `<span class="count">en ${nc.inMin} min</span>` : ""}<b>${subjectOf(c.code).name}</b><span>${c.start}–${c.end} · ${c.room}</span>
+             ${c.code === nc.code ? `<div style="font-size:12px;margin-top:4px">📚 ${nc.brief}</div>` : ""}` })),
+    ...S.deliverables.filter((d) => d.day === 0).map((d) => ({ t: "23:59", code: d.code, due: true,
+      html: `<b>Vence: ${d.title}</b><span>${subjectOf(d.code).name} · vale ${d.weight}% de la nota</span>` })),
+  ].sort((a, b) => a.t.localeCompare(b.t));
+  $("today").innerHTML = evs.map((e) => e.now
+    ? `<div class="ev nowline"><span class="t">${e.t}</span><div class="line"></div></div>`
+    : `<div class="ev ${e.due ? "due" : ""} ${filter && e.code !== filter ? "faded" : ""}" style="${e.due ? "" : `--c:${COLORS[e.code]}`}">
+         <span class="t">${e.t}</span><div class="card">${e.html}</div></div>`).join("");
+}
+
+function renderWeek() {
+  const H0 = 7, H1 = 24, pos = (hm) => { const [h, m] = hm.split(":").map(Number); return ((h + m / 60 - H0) / (H1 - H0)) * 100; };
+  const axis = [8, 12, 16, 20].map((h) => `<span style="top:${pos(h + ":00")}%">${h}</span>`).join("");
+  $("wk").innerHTML = `<div></div>` + S.days.map((d, i) => `<div class="dh ${i === 0 ? "today" : ""}">${d.split(" ")[0]}<br><b>${d.split(" ")[1]}</b></div>`).join("")
+    + `<div class="axis">${axis}</div>` + S.days.map((_, i) => `<div class="col">
+      ${S.classes.filter((c) => c.day === i).map((c) => `<div class="blk ${filter && c.code !== filter ? "faded" : ""}" title="${subjectOf(c.code).name} ${c.start}"
+        style="--c:${COLORS[c.code]};top:${pos(c.start)}%;height:${pos(c.end) - pos(c.start)}%"></div>`).join("")}
+      ${S.deliverables.filter((x) => x.day === i && x.kind !== "pendiente").map((x) => `<div class="dl ${filter && x.code !== filter ? "faded" : ""}"
+        title="${x.title}" style="top:${pos(x.due.includes(":") ? x.due.split(" ")[1] : "23:59")}%"></div>`).join("")}
+    </div>`).join("");
+  $("legend").innerHTML = S.subjects.map((s) => `<span><i style="background:${COLORS[s.code]}"></i>${short(s)}</span>`).join("")
+    + `<span><i style="background:var(--bad);height:3px;vertical-align:2px"></i>Vence</span>`;
+}
+
+const left = (h) => (h < 24 ? `en ${h} h` : `en ${Math.round(h / 24)} d`);
+$("prio").innerHTML = S.deliverables.map((d) => {
+  const s = subjectOf(d.code);
+  return `<div class="pr" data-code="${d.code}">
+    <div style="min-width:0"><div class="ttl ellipsis">${d.kind === "cuestionario" ? "⏱️ " : d.kind === "pendiente" ? "📌 " : ""}${d.title}</div>
+      <div class="meta ellipsis">${s ? short(s) : "Personal"} · ${d.due}${d.quiz ? ` · ${d.quiz}` : ""}</div></div>
+    <div style="display:grid;gap:6px;justify-items:end"><span class="left ${d.hours <= 24 ? "hot" : "cool"}">${left(d.hours)}</span>
+      <button class="btn" style="padding:5px 9px;font-size:12px" data-done>${d.kind === "pendiente" ? "Hecho" : "Entregado"}</button></div>
+    ${d.weight ? `<div class="wbar">Peso<div><i style="width:${d.weight * 4}%"></i></div>${d.weight}% de la nota</div>` : ""}
+  </div>`;
+}).join("");
+
+$("news").innerHTML = `<summary>${S.news.length} cosas nuevas desde ayer</summary>` + S.news.map((n) => `<div class="nw" data-code="${n.code}">
+  <span>${n.icon}</span><div class="body"><div class="ellipsis">${n.text}</div><div class="hint ellipsis" style="font-size:12px">${n.kind} · ${short(subjectOf(n.code))} · ${n.when}</div></div></div>`).join("");
+$("foot").textContent = `Aula leída ${S.status.poll} · token de ${S.status.token} · renovación ${S.status.chain}`;
+
+function applyFilter() {
+  renderToday(); renderWeek();
+  document.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", c.dataset.code === filter));
+  document.querySelectorAll(".pr").forEach((r) => r.classList.toggle("hidden", !!filter && r.dataset.code !== filter));
+}
+applyFilter();
+
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip"), done = e.target.closest("[data-done]");
+  if (chip) {
+    filter = filter === chip.dataset.code ? null : chip.dataset.code; applyFilter();
+    if (filter) { const s = subjectOf(filter), g = grade(s);
+      toast(g.state === "none" ? `${s.name}: sin esquema de notas` : `${s.name}: llevas ${fmt(g.avg)}, necesitas ${fmt(g.need)} en lo que falta`); }
+  } else if (done) {
+    const row = done.closest(".pr"); row.classList.toggle("done");
+    done.textContent = row.classList.contains("done") ? "Deshacer" : "Entregado";
+    if (row.classList.contains("done")) toast("Le manda a Vinci el mismo aviso que «✅ Ya lo entregué»");
+  }
+});
+</script>
+</body>
+</html>

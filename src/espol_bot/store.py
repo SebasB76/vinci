@@ -20,13 +20,16 @@
   grading_scheme_proposals
                        schemes a bot read from the syllabus or heard from the captain, waiting for that press
   manual_grades        grades the captain told a bot about that Canvas does not have (a lesson on paper)
+  submission_proposals PDFs a subject bot built from the captain's photos for an assignment, waiting for
+                       «Entregar» (pending → submitting → submitted; or cancelled, replaced by a newer
+                       PDF for the same assignment, or failed when the aula refuses it for good)
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aula_core import timefmt
 
@@ -113,6 +116,18 @@ CREATE TABLE IF NOT EXISTS horario_propuestas (
     creado TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'pendiente',
     resuelto TEXT
+);
+CREATE TABLE IF NOT EXISTS submission_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject TEXT NOT NULL,
+    course_id INTEGER NOT NULL,
+    assignment_id INTEGER NOT NULL,
+    assignment_name TEXT NOT NULL,
+    pdf TEXT NOT NULL,
+    pages INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    updated_at TEXT
 );
 CREATE TABLE IF NOT EXISTS shown_pages (
     bot TEXT NOT NULL,
@@ -327,5 +342,50 @@ def set_manual_grade(conn: sqlite3.Connection, subject: str, period: str, compon
             "(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(subject, period, component, label) DO UPDATE SET score = excluded.score,"
             " out_of = excluded.out_of, recorded_at = excluded.recorded_at",
             (subject, period, component, label, score, out_of, timefmt.iso(now)))
+    conn.commit()
+    return cur.rowcount == 1
+
+
+# -- submissions --------------------------------------------------------------------------
+
+# A press whose process died mid-upload leaves its proposal «submitting»; after this long it may be pressed again.
+STUCK_SUBMISSION_MINUTES = 10
+
+
+def new_submission_proposal(conn: sqlite3.Connection, subject: str, course_id: int, assignment_id: int,
+                            assignment_name: str, pdf: str, pages: int, now: datetime) -> int:
+    """A newer PDF for the same assignment replaces the pending one: its card stops working."""
+    conn.execute("UPDATE submission_proposals SET state = 'replaced', updated_at = ? "
+                 "WHERE assignment_id = ? AND state = 'pending'", (timefmt.iso(now), assignment_id))
+    cur = conn.execute(
+        "INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)", (subject, course_id, assignment_id, assignment_name, pdf, pages, timefmt.iso(now)))
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def submission_proposal(conn: sqlite3.Connection, proposal_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM submission_proposals WHERE id = ?", (proposal_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def claim_submission(conn: sqlite3.Connection, proposal_id: int, now: datetime) -> bool:
+    """pending → submitting, once: a double press uploads nothing twice."""
+    stuck = timefmt.iso(now - timedelta(minutes=STUCK_SUBMISSION_MINUTES))
+    cur = conn.execute("UPDATE submission_proposals SET state = 'submitting', updated_at = ? WHERE id = ? AND "
+                       "(state = 'pending' OR (state = 'submitting' AND updated_at < ?))",
+                       (timefmt.iso(now), proposal_id, stuck))
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def set_submission_state(conn: sqlite3.Connection, proposal_id: int, state: str, now: datetime,
+                         only_from: str | None = None) -> bool:
+    sql = "UPDATE submission_proposals SET state = ?, updated_at = ? WHERE id = ?"
+    params = [state, timefmt.iso(now), proposal_id]
+    if only_from:
+        sql += " AND state = ?"
+        params.append(only_from)
+    cur = conn.execute(sql, params)
     conn.commit()
     return cur.rowcount == 1

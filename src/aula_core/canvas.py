@@ -1,8 +1,9 @@
 """Read-only Canvas LMS REST client.
 
-Every Canvas request in the bot goes through `CanvasClient`, and the client only
-knows how to issue HTTP GET. There is deliberately no code path that submits,
-posts, messages, or changes anything on the aula virtual.
+Every Canvas read goes through `CanvasClient`, and the client only knows how to
+issue HTTP GET: it cannot submit, post, message, or change anything on the aula
+virtual. The one write to course data, handing in a PDF after the captain's press,
+lives apart in espol_bot.submission.
 
 Behaviour, per the public Canvas API docs:
 - Bearer auth with the student's personal access token.

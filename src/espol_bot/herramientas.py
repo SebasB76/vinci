@@ -29,25 +29,35 @@ handwriting.
 Each page a tool shows comes with its citation and is recorded, so the answer's citations can be
 checked before they are sent (citations.py).
 
+Past exams come from ESPOL's public DSpace, only when asked (aula_core/dspace.py): `find_past_exams` searches it
+live, after a line in the captain's chat that says so, and `open_past_exam` downloads one into the material (a
+subject bot's own course; for Vinci an inactive course of its own), so it is read and cited like any document.
+
 The Canvas token stays inside this process: no tool ever returns it.
 """
 
 from __future__ import annotations
 
 import base64
+import io
 import logging
+import re
 import shutil
+import sqlite3
+import time
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from aula_core import Aula, extract, ocr, queries, search, timefmt
+from aula_core import Aula, dspace, extract, materials, ocr, queries, search, timefmt
 from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
+from aula_core.store import get_meta, set_meta
 from espol_bot import agenda, citations, grades, horario, libros, materias, messages, priority, quiz, store, submission
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
@@ -70,6 +80,8 @@ CATALOG_LIMIT = 60   # documents listed without a name filter; the rest is one `
 FILTERED_LIMIT = 100
 LINK_LIMIT = 25
 HIT_CHARS = 1500
+NOTICE_GAP = 20  # seconds between the end of one search and the next that says nothing
+MAX_EXAM_NAMES = 6
 INLINE_OCR_SECONDS = 60  # of OCR for a file a bot just brought, well inside Hermes' 180 s for a tool call
 READ_WHAT = "Dime «archivo_id» (un documento de archivos) o «enlace_id» (un enlace de archivos o de un anuncio)."
 READ_PROPERTIES = {
@@ -79,6 +91,24 @@ READ_PROPERTIES = {
     "reintentar": {"type": "boolean", "description": "con enlace_id: pruébalo otra vez aunque hace poco pidió iniciar "
                                                      "sesión (el estudiante dice que ya lo compartieron)"},
 }
+
+EXAM_SEARCH = ("Busca exámenes anteriores de ESPOL en DSpace, el repositorio público de la universidad (sin cuenta), por el "
+               "nombre de la materia: los títulos no traen el código. Del más nuevo al más viejo, con período, parcial, "
+               "paralelo y enlace. Busca en vivo y le avisa al estudiante que estás buscando.")
+EXAM_SEARCH_PROPERTIES = {
+    "names": {"type": "array", "items": {"type": "string"},
+              "description": "formas del nombre como puede estar en el título: el completo («Programación Orientada a "
+                             "Objetos»), abreviado como lo escribe un profesor («Prog. Orientada a Objetos»), el nombre "
+                             "viejo, una materia parecida. Cada una pide todas sus palabras, sin importar tildes ni "
+                             "mayúsculas; una sigla («POO») casi nunca está en el título"},
+    "from_year": {"type": "integer", "description": "solo desde este año"},
+    "to_year": {"type": "integer", "description": "solo hasta este año"},
+    "evaluation": {"type": "string", "enum": list(dspace.ORDER)},
+    "n": {"type": "integer", "description": "cuántos mostrar (por defecto 20)"},
+}
+EXAM_OPEN = ("Baja un examen de DSpace (su exam_id, de find_past_exams) y lo lee por páginas, cada una con su «cita»: "
+             "para resolverlo o comparar sus preguntas. Queda en el material (leer_archivo, buscar_material).")
+EXAM_OPEN_PROPERTIES = {"exam_id": {"type": "integer"}, "pages": {"type": "string", "description": "rango, ej. 1-3"}}
 
 
 @dataclass
@@ -317,6 +347,115 @@ def _open_link(ctx: Ctx, link_id: int, retry: bool) -> int:
         raise ToolError(str(exc)) from None
     _read_now(ctx, file_id)
     return file_id
+
+
+@contextmanager
+def _working(ctx: Ctx, kind: str, text: str):
+    """A line in the captain's chat while a slow tool works («busco exámenes…»). Not again while the same work goes
+    on (a bot trying another name a few seconds after the last search ended). Wall-clock time: AULA_NOW only moves
+    the academic calendar."""
+    key = f"notice:{ctx.bot}:{kind}"
+    last = get_meta(ctx.conn, key)
+    if not last or time.time() - float(last) >= NOTICE_GAP:
+        try:
+            Telegram(load_telegram_secrets(ctx.code), api=ctx.cfg.telegram_api).send(text)
+        except (TelegramError, ConfigError) as exc:  # a courtesy: the work goes on without it
+            log.warning("aviso «%s»: %s", kind, exc)
+    try:
+        yield
+    finally:
+        try:
+            set_meta(ctx.conn, key, str(time.time()))
+            ctx.conn.commit()  # an open write would lock every other bot's tools out of the database
+        except sqlite3.Error as exc:
+            log.warning("aviso «%s»: %s", kind, exc)
+
+
+def _find_exams(ctx: Ctx, args: dict) -> dict:
+    names = list(dict.fromkeys(" ".join(str(n).split()) for n in args.get("names") or [] if str(n).strip()))
+    if not names:
+        raise ToolError("Dime en «names» al menos un nombre de la materia.")
+    if len(names) > MAX_EXAM_NAMES:
+        raise ToolError(f"Hasta {MAX_EXAM_NAMES} nombres por búsqueda: deja los más probables.")
+    first = _int(args.get("from_year"), "from_year", None, 1990, 2100)
+    last = _int(args.get("to_year"), "to_year", None, 1990, 2100)
+    evaluation = args.get("evaluation") or None
+    if evaluation and evaluation not in dspace.ORDER:
+        raise ToolError(f"«evaluation» debe ser uno de: {', '.join(dspace.ORDER)}.")
+    n = _int(args.get("n"), "n", 20, 1, 60)
+    try:
+        with _working(ctx, "dspace", "🔎 Un momento, busco exámenes anteriores en DSpace, el repositorio de ESPOL…"):
+            exams, counts = dspace.search(ctx.cfg.core, names)
+    except dspace.DSpaceError as exc:
+        raise ToolError(f"No pude buscar en DSpace: {exc}. Dile que lo intente más tarde o que busque en "
+                        f"{dspace.BASE}.") from None
+    kept = [e for e in exams if (not first or (e.year or 0) >= first) and (not last or (e.year or 9999) <= last)
+            and (not evaluation or e.evaluation == evaluation)]
+    subjects: dict[str, dict] = {}
+    for exam in kept:  # newest first, so each subject is shown as its newest exam spells it
+        entry = subjects.setdefault(normalized_name(exam.subject), {"subject": exam.subject, "exams": 0, "years": []})
+        entry["exams"] += 1
+        entry["years"] += [exam.year] if exam.year else []
+    result: dict = {"exams": [{key: value for key, value in (
+        ("exam_id", e.exam_id), ("title", e.title), ("subject", e.subject), ("period", e.period),
+        ("evaluation", e.evaluation), ("group", e.group), ("faculty", e.faculty), ("url", e.url)) if value}
+        for e in kept[:n]], "total": len(kept), "found_by_name": counts}
+    if len(subjects) > 1:
+        result["subjects"] = [{"subject": s["subject"], "exams": s["exams"],
+                               **({"years": f"{min(s['years'])}–{max(s['years'])}"} if s["years"] else {})}
+                              for s in sorted(subjects.values(), key=lambda s: -s["exams"])[:15]]
+    notes = []
+    if not kept:
+        notes.append(f"Con esos filtros no queda ninguno (sin filtros hay {len(exams)})." if exams else
+                     "DSpace no tiene exámenes con esos nombres.")
+        notes.append("Antes de decirle que no hay, prueba otras formas del nombre: el completo, abreviado como lo "
+                     "escribe un profesor («Prog. Orientada a Objetos»), el nombre viejo de la materia, una materia "
+                     "parecida o una palabra clave del nombre. Si tampoco aparece, díselo así; nunca inventes un examen.")
+    else:
+        notes.append("Van del más nuevo al más viejo; dile el período de cada uno (los de hace muchos años pueden ser "
+                     "de otro sílabo). Para leerlo o resolverlo, open_past_exam con su exam_id.")
+    if result.get("subjects"):
+        notes.append("Salieron varias materias («subjects»): quédate con las que son la suya o pregúntale.")
+    if len(kept) > n:
+        notes.append(f"Muestro {n} de {len(kept)}: filtra con from_year, to_year o evaluation, o pide más con «n».")
+    if any(count < 0 for count in counts.values()):
+        notes.append(f"Un nombre es demasiado general (más de {dspace.MAX_MATCHES} títulos): usa más palabras.")
+    result["note"] = " ".join(notes)
+    return result
+
+
+def _open_exam(ctx: Ctx, args: dict, course_id: int, scope: list[int] | None) -> dict:
+    """Downloads an exam from DSpace into the material of `course_id` (once: a copy another bot already has is
+    reused) and reads it like any document, each page with its citation."""
+    exam_id = _int(args.get("exam_id"), "exam_id", None, 1, 10**9)
+    if exam_id is None:
+        raise ToolError("Dime «exam_id» (de find_past_exams).")
+    url = dspace.page_url(exam_id)
+    copies = [r for r in ctx.conn.execute("SELECT id, course_id, display_name, local_path FROM files "
+                                          "WHERE html_url = ? AND active = 1 ORDER BY id DESC", (url,))
+              if r["local_path"] and Path(r["local_path"]).exists()]
+    file_id = next((r["id"] for r in copies if scope is None or r["course_id"] in scope), None)
+    if file_id is None and copies:
+        file_id = materials.add_local(ctx.conn, ctx.cfg.core, course_id, Path(copies[0]["local_path"]),
+                                      name=copies[0]["display_name"], source=dspace.SOURCE, html_url=url, in_place=True)
+    if file_id is None:
+        try:
+            with _working(ctx, "dspace-open", "📥 Bajo el examen de DSpace para leerlo…"):
+                exam, document, kind = dspace.fetch(ctx.cfg.core, exam_id)
+        except dspace.DSpaceError as exc:
+            raise ToolError(f"No pude bajar ese examen: {exc}. Dale el enlace para que lo abra: {url}") from None
+        path = ctx.cfg.core.data_dir / "dspace" / f"{exam_id}.{kind}"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(document)
+        name = re.sub(r"\.(?:pdf|docx?|pptx?)$", "", exam.title, flags=re.I)
+        file_id = materials.add_local(ctx.conn, ctx.cfg.core, course_id, path, name=safe_filename(f"{name}.{kind}"),
+                                      source=dspace.SOURCE, html_url=url, in_place=True)
+        _read_now(ctx, file_id)
+    result = _read(ctx, file_id, args.get("pages"), can_fetch=ctx.code is not None)
+    result["nota"] = ("Es un examen de DSpace, sin resolución oficial: si lo resuelves, hazlo pregunta por pregunta con "
+                      "su explicación y di que la resolución es tuya. Cita cada pregunta con la «cita» de su página. Si "
+                      "te faltan páginas, leer_archivo con su archivo_id.")
+    return result
 
 
 def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: dict | None) -> dict:
@@ -746,6 +885,12 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
+    def find_exams(args):
+        return _find_exams(ctx, args)
+
+    def open_exam(args):
+        return _open_exam(ctx, args, dspace.shelf(ctx.conn, ctx.now()), None)
+
     def libro(args):
         try:
             subject = materias.resolve(ctx.subjects(), str(args["materia"]))
@@ -942,6 +1087,8 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("leer_archivo", "Lee el texto de un archivo del material por páginas, cada una con su «cita»; con "
              "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del "
              "estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
+        Tool("find_past_exams", EXAM_SEARCH, find_exams, EXAM_SEARCH_PROPERTIES, ["names"]),
+        Tool("open_past_exam", EXAM_OPEN, open_exam, EXAM_OPEN_PROPERTIES, ["exam_id"], read_only=False),
         Tool("libro_principal", "El libro principal de una materia (la bibliografía BÁSICA del sílabo): cuál es y "
              "si hay PDF. Si el estudiante te dice cuál es («el libro de Estadística es Zurita»), pásalo en «titulo» "
              "y queda guardado para su bot.", libro,
@@ -1107,6 +1254,13 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
                               main=bool(args.get("libro_principal")))
         _read_now(ctx, fid)
         return {**file_result(fid), "libro_principal": bool(args.get("libro_principal"))}
+
+    def find_exams(args):
+        return _find_exams(ctx, args)
+
+    def open_exam(args):
+        ids = course_ids()
+        return _open_exam(ctx, args, ids[0], ids)
 
     def horario_(args):
         return _schedule_json(ctx, ctx.code)
@@ -1297,6 +1451,8 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              {"ruta": {"type": "string", "description": "ruta del documento que te llegó («saved at: …», o la del "
                                                          "adjunto en tu cuaderno)"},
                        "libro_principal": {"type": "boolean"}}, ["ruta"], read_only=False),
+        Tool("find_past_exams", EXAM_SEARCH, find_exams, EXAM_SEARCH_PROPERTIES, ["names"]),
+        Tool("open_past_exam", EXAM_OPEN, open_exam, EXAM_OPEN_PROPERTIES, ["exam_id"], read_only=False),
         Tool("horario", "Las clases de tu materia según el horario.", horario_),
         Tool("cuaderno", "Lee tu cuaderno: lo visto en cada clase, apuntes, dudas, temas débiles y adjuntos.",
              cuaderno, {"tipo": {"type": "string", "enum": list(KINDS)}, "n": {"type": "integer"},
@@ -1372,6 +1528,32 @@ def page_image(cfg: BotConfig, code: str, file_id: int, page: int) -> dict:
         raise ToolError(str(exc)) from None
     finally:
         ctx.aula.close()
+
+
+def entry_image(cfg: BotConfig, code: str, entry_id: int) -> dict:
+    """A photo of the subject's notebook (a board photo, a capture from the captain's notes), as a JPEG: what the
+    plugin's ver_foto shows the model."""
+    from PIL import Image
+
+    notebook = Notebook(cfg.core, code.upper(), read_only=True)
+    try:
+        entry = notebook.entry(entry_id)
+    except NotebookError as exc:
+        raise ToolError(str(exc)) from None
+    finally:
+        notebook.close()
+    if entry["tipo"] != "foto" or not entry["archivo"] or not Path(entry["archivo"]).is_file():
+        raise ToolError(f"La entrada {entry_id} no es una foto de tu cuaderno.")
+    try:
+        with Image.open(entry["archivo"]) as image:
+            image = image.convert("RGB")
+            image.thumbnail((extract.PAGE_IMAGE_EDGE, extract.PAGE_IMAGE_EDGE))
+            out = io.BytesIO()
+            image.save(out, "JPEG", quality=80)
+    except OSError as exc:
+        raise ToolError(f"No pude abrir la foto #{entry_id}: {exc}") from None
+    return {"entrada": entry_id, "texto": entry["texto"], "fecha_clase": entry["fecha_clase"],
+            "tipo": "image/jpeg", "imagen": base64.b64encode(out.getvalue()).decode()}
 
 
 def check_citations(cfg: BotConfig, code: str | None, text: str) -> dict:

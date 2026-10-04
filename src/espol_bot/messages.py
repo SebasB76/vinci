@@ -425,3 +425,29 @@ def submission_card(assignment: str, course_name: str, due_at: str | None, pages
     parts.append("\nAbre el PDF y revisa que estén todas las hojas y se lean bien. La entrego en el aula solo cuando "
                  "pulses <b>Entregar</b>.")
     return "\n".join(parts)
+
+
+NOTE_CHANGE_BUTTON = "✏️ Cambiar materia"
+NOTE_NOT_CLASS_BUTTON = "🚫 No es de clase"
+
+
+def note_assigned(title: str, display: str) -> str:
+    return (f"📝 Leo tu nota «{e(title)}» como apuntes de <b>{e(display)}</b>. Cuando termine la clase, su bot te "
+            "manda el resumen.")
+
+
+def note_which_subject(title: str, waiting: int = 0) -> str:
+    text = f"📝 ¿De qué materia es tu nota «{e(title)}»?"
+    if waiting:
+        text += (" Tiene una pregunta //vinci esperando." if waiting == 1 else
+                 f" Tiene {waiting} preguntas //vinci esperando.")
+    return text + "\nSi no es de clase, no la leo más."
+
+
+def note_ignored(title: str) -> str:
+    return f"👌 Listo: «{e(title)}» no es de clase. No la leo más."
+
+
+def note_chosen(title: str, display: str, handle: str) -> str:
+    return (f"✅ Tu nota «{e(title)}» va a {e(handle)}. Te contesta las preguntas //vinci y, cuando termines de "
+            "escribir, te manda el resumen.")

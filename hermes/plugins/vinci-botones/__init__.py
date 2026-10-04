@@ -26,9 +26,10 @@ Every answer that cites the material goes through `espol-bot citas` before it is
 transform_llm_output): a citation of a page the bot was never shown becomes a warning, and a missing or
 wrong aula link is set right. If the check fails, the answer goes as it is.
 
-A subject bot also gets the tool `ver_pagina` (toolset vinci-paginas): a page of one of its own
-downloaded PDFs, from `espol-bot pagina`, handed to the model as an image. A scanned book has
-next to no text, and an MCP tool's image reaches the model only as a file path.
+A subject bot also gets the tools `ver_pagina` and `ver_foto` (toolset vinci-paginas): a page of one of its
+own downloaded PDFs (`espol-bot pagina`), or a photo of its notebook (`espol-bot foto`: a board photo, a
+capture from the captain's notes), handed to the model as an image. A scanned book has next to no text, and
+an MCP tool's image reaches the model only as a file path.
 
 These run in group -100, before every Hermes handler, and stop the update there
 (ApplicationHandlerStop): a token or a bot-creation message never becomes a Hermes
@@ -278,6 +279,8 @@ def register(ctx):
     if SUBJECT:
         ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
                           is_async=True, description=PAGE_TOOL["description"])
+        ctx.register_tool(name="ver_foto", toolset="vinci-paginas", schema=PHOTO_TOOL, handler=_see_photo,
+                          is_async=True, description=PHOTO_TOOL["description"])
 
 
 def _check_citations(response_text="", **_):
@@ -318,6 +321,34 @@ async def _see_page(args, **_):
         return json.dumps({"error": result["error"]}, ensure_ascii=False)
     text = (f"Página {result['pagina']} de {result.get('paginas') or '?'} de «{result['archivo']}» (archivo "
             f"{result['archivo_id']}), como imagen: léela tú y cita esa página así: {result['cita']}")
+    return {"_multimodal": True, "text_summary": text,
+            "content": [{"type": "text", "text": text},
+                        {"type": "image_url", "image_url": {"url": f"data:{result['tipo']};base64,{result['imagen']}"}}]}
+
+
+PHOTO_TOOL = {
+    "name": "ver_foto",
+    "description": "Muestra como imagen una foto de tu cuaderno (tipo «foto»: una pizarra, una captura de los "
+                   "apuntes del estudiante), para leerla tú. Una foto por llamada.",
+    "parameters": {"type": "object", "properties": {
+        "entrada": {"type": "integer", "description": "el número de la entrada del cuaderno (foto #N)"}},
+        "required": ["entrada"]},
+}
+
+
+async def _see_photo(args, **_):
+    try:
+        entry = int(args["entrada"])
+    except (KeyError, TypeError, ValueError):
+        return json.dumps({"error": "Dime «entrada» como número."}, ensure_ascii=False)
+    try:
+        result = await _run("foto", "--curso", SUBJECT, str(entry))
+    except Exception as exc:
+        logger.error("ver_foto: %s", exc)
+        return json.dumps({"error": "No pude mostrar la foto; intenta de nuevo."}, ensure_ascii=False)
+    if result.get("error"):
+        return json.dumps({"error": result["error"]}, ensure_ascii=False)
+    text = f"Foto #{result['entrada']} de tu cuaderno ({result['texto']}), como imagen: léela tú."
     return {"_multimodal": True, "text_summary": text,
             "content": [{"type": "text", "text": text},
                         {"type": "image_url", "image_url": {"url": f"data:{result['tipo']};base64,{result['imagen']}"}}]}

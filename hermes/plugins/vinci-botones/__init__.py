@@ -76,10 +76,16 @@ MENU = ([("quiz", "Quiz corto de un tema con el material: /quiz derivadas")] if 
 _TASKS = set()  # asyncio keeps only a weak reference to a task
 
 
+def _env():
+    # The gateway's PYTHONPATH points at its own Python's packages: espol-bot runs on another Python and would
+    # load their C extensions (Pillow fails with «cannot import name '_imaging'»).
+    return {**{k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}, **ENV}
+
+
 async def _run(*args, stdin=None):
     proc = await asyncio.create_subprocess_exec(
         BOT, *args, stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env={**os.environ, **ENV})
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=_env())
     out, err = await asyncio.wait_for(proc.communicate(stdin.encode() if stdin is not None else None), timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(err.decode(errors="replace").strip()[-500:] or f"exit {proc.returncode}")
@@ -307,7 +313,7 @@ def _check_citations(response_text="", **_):
         return None
     try:
         proc = subprocess.run([BOT, "citas", *(("--curso", SUBJECT) if SUBJECT else ())], input=response_text,
-                              capture_output=True, text=True, timeout=20, env={**os.environ, **ENV})
+                              capture_output=True, text=True, timeout=20, env=_env())
         return json.loads(proc.stdout or "{}").get("respuesta") or None
     except Exception as exc:  # never hold an answer back over the check
         logger.error("citas: %s", exc)

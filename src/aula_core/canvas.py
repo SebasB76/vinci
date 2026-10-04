@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -51,7 +51,7 @@ class ThrottledError(CanvasError):
 
 class CanvasClient:
     def __init__(self, base_url: str, token: str, *, timeout: float = 30.0, sleep=time.sleep,
-                 interval: float = 0.0):
+                 interval: float = 0.0, before_request: Callable[[], None] | None = None):
         self.base_url = base_url.rstrip("/")
         self.api = self.base_url + "/api/v1"
         self._host = urlsplit(self.base_url).netloc
@@ -59,6 +59,7 @@ class CanvasClient:
         self._sleep = sleep
         self._interval = interval
         self._last = 0.0
+        self._before_request = before_request
         self._session = requests.Session()
         self._session.headers.update({"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT})
         self.requests_made = 0
@@ -70,6 +71,8 @@ class CanvasClient:
             # Never send the token to another host. Redirects to file storage are
             # followed by requests itself, which drops Authorization across hosts.
             raise CanvasError(f"URL fuera del aula virtual, no se consulta: {url}")
+        if self._before_request:
+            self._before_request()
         delay = 1.0
         throttled = False
         for attempt in range(MAX_RETRIES + 1):

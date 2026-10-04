@@ -166,9 +166,20 @@ CREATE TABLE IF NOT EXISTS shown_pages (
 );
 """
 
+# Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS leaves an existing table as it was.
+ADDED_COLUMNS = {
+    "class_notes": ["checked_digest TEXT"],
+}
+
 
 def ensure(conn: sqlite3.Connection) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
+    for table, columns in ADDED_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for column in columns:
+            if column.split()[0] not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+    conn.commit()
     return conn
 
 

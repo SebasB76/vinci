@@ -68,15 +68,7 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      as Telegram quiz polls citing its material (a citation of a page it never read refused first), the
      captain's votes scored with no model (a stranger's and a repeated one ignored) and what was missed noted
      as a weak topic; Física quizzes from the PDF sent after a bare /quiz; Vinci hands /quiz to Cálculo,
-     which also cites its notebook's board photo; the
-     captain's notes folder (~/Notes, Omawrite's), read every minute with no model: a note with no title written
-     in Cálculo's class about what its material covers becomes Cálculo's (Vinci says so, with «Cambiar materia»);
-     each finished «//vinci …» line reaches Cálculo's bot once (one still being typed waits) and is answered from
-     the material; after the class the note and a copy of its capture go to the notebook, the bot looks at the
-     capture (ver_foto) and sends the summary with feedback, and text added later gets an update of just that;
-     another tab of that hour about something else is not decided by the schedule (Vinci asks; «No es de
-     clase» silences it), Física's topic written with no class is decided by the captain's press, and a
-     shopping list never leaves the PC; Física
+     which also cites its notebook's board photo; Física
      archived from Vinci's card and the gateway restarted: no repeated brief, Física
      offline, and what the captain sent Vinci meanwhile gets its answer; reactivated from
      Vinci's card, the same gateway serves it again. Each agenda really runs every minute.
@@ -281,7 +273,7 @@ FIS_SCHEME = {
 
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
-SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina", "ver_foto"} | SKILL_TOOLS
+SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina"} | SKILL_TOOLS
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
 VOICE_RE = re.compile(r"(?:voice message: |audio is available at: )([^\s\]]+)")
@@ -598,8 +590,6 @@ class Script:
                 f"4) Conceptos clave: regla de la cadena, derivada de una composición "
                 f"(📄 {source or 'sin material'})",
                 "5) Pregunta para clase: ¿cuándo conviene derivar de forma implícita?"])}
-        if re.search(r"^TAREA: apuntes_de_clase", text, re.M):
-            return self.class_notes(name, text, called, results)
         if re.search(r"^TAREA: entrega_de_vinci", text, re.M):
             count = len(re.findall(r"^Entrega #\d+", text, re.M))
             photos = len(re.findall(r"^  - foto #\d+", text, re.M))
@@ -639,35 +629,6 @@ class Script:
         if "qué material" in text:
             return _call("mcp__materia__archivos")
         return {"content": f"Hola, soy el bot de {name}."}
-
-    def class_notes(self, name: str, text: str, called: list[str], results: list[str]) -> dict:
-        """The notes task: look at each capture, note the class, answer each //vinci question from the material."""
-        photos = re.findall(r"^  - foto #(\d+)", text, re.M)
-        asked = re.findall(r"^Pregunta //vinci #\d+ en su nota «[^»]*»:\n(.+)$", text, re.M)
-        notes = re.search(r"^(Sus apuntes|Lo que agregó a sus apuntes después del resumen anterior) «([^»]*)».*"
-                          r"fecha_clase (\d{4}-\d{2}-\d{2})\)", text, re.M)
-        if notes and called.count("ver_foto") < len(photos):
-            return _call("ver_foto", entrada=int(photos[called.count("ver_foto")]))
-        if notes and "mcp__materia__anotar" not in called:
-            return _call("mcp__materia__anotar", tipo="clase", fecha_clase=notes[3],
-                         texto=f"- {notes[2]}: lo que el estudiante anotó en clase (y sus capturas).")
-        if asked and "mcp__materia__buscar_material" not in called:
-            return _call("mcp__materia__buscar_material", pregunta="regla de la cadena", traduccion="chain rule")
-        parts = []
-        if asked:
-            hits = next((h["resultados"] for h in map(_json, results) if isinstance(h, dict) and h.get("resultados")),
-                        [])
-            source = f"{hits[0]['archivo']}, {hits[0].get('unidad') or 'página'} {hits[0]['pagina']}" if hits else None
-            parts += [f"✍️ //vinci: {q}\nPor la regla de la cadena: la derivada de afuera por la de adentro "
-                      f"(📄 {source or 'sin material'})." for q in asked]
-        if notes:
-            seen = sum(1 for r in results if "como imagen" in r)
-            update = notes[1].startswith("Lo que agregó")
-            parts.append(f"📝 Tus apuntes de {name} ({notes[3]})" + (
-                "\nLo nuevo: un ejemplo más de la regla de la cadena." if update else
-                f"\n1) Resumen: «{notes[2]}», con {len(photos)} captura(s) que miré ({seen}).\n"
-                "2) Feedback: compara tu definición con la del material y repasa sus ejemplos."))
-        return {"content": "\n\n".join(parts) or "Listo."}
 
     def quiz(self, name: str, text: str, called: list[str], results: list[str]) -> dict | None:
         """/quiz on a subject bot (a topic, or the material it is sent next) and a quiz Vinci handed over."""
@@ -1024,12 +985,10 @@ def test_e2e(tmp_path):
             assert (profile / "memories" / "MEMORY.md").read_text() == "El estudiante prefiere respuestas cortas.\n"
             assert not (profile / "scripts" / "espol-sondeo.sh").exists()
             jobs = json.loads((profile / "cron" / "jobs.json").read_text())["jobs"]
-            assert sorted(j["name"] for j in jobs) == ["vinci-apuntes", "vinci-mantenimiento", "vinci-resumen",
-                                                       "vinci-sondeo"], jobs
+            assert sorted(j["name"] for j in jobs) == ["vinci-mantenimiento", "vinci-resumen", "vinci-sondeo"], jobs
             by_name = {j["name"]: j for j in jobs}
             assert by_name["vinci-sondeo"]["schedule_display"] == "15,45 * * * *", "cada 30 min, lejos del resumen"
             assert by_name["vinci-mantenimiento"]["schedule_display"] == "2,12,22,32,42,52 * * * *"
-            assert by_name["vinci-apuntes"]["schedule_display"] == "* * * * *", "la carpeta de notas, cada minuto"
             assert by_name["vinci-resumen"]["schedule"].get("expr") == "0 7 * * *" or \
                 by_name["vinci-resumen"]["schedule_display"] == "0 7 * * *"
             assert all(j["no_agent"] and j["deliver"] == f"telegram:{CAPTAIN_ID}" for j in jobs)
@@ -1534,10 +1493,6 @@ END:VCALENDAR
                    "falso; la respuesta correcta y la explicación con su cita se ven recién al responder.\n"]
         horario_md = ["# Horario desde una captura (se guarda solo con el botón del capitán)\n"]
         briefs_md = ["# Brief antes de clase\n"]
-        apuntes_md = ["# Tus apuntes: la carpeta de notas, //vinci y el resumen de cada clase\n",
-                      "Lo que el capitán escribe en ~/Notes (la carpeta de notas de Omawrite), lo que corre "
-                      "`espol-bot notes` (el cron de Vinci, cada minuto, con el reloj de cada paso) y lo que llega a "
-                      "Telegram.\n"]
         party_md = ["# Tu party: el nombre y la foto de cada bot\n",
                     "Cada bot de materia se llama solo como su materia. Cada foto es la que el bot subió a Telegram "
                     "(setMyProfilePhoto), tal como la recibió el Telegram falso; el texto citado abre su SOUL.md.\n"]
@@ -1614,7 +1569,6 @@ END:VCALENDAR
         (artifact / "quiz.md").write_text(normalize("\n".join(quiz_md)), encoding="utf-8")
         (artifact / "horario.md").write_text(normalize("\n".join(horario_md)), encoding="utf-8")
         (artifact / "briefs.md").write_text(normalize("\n".join(briefs_md)), encoding="utf-8")
-        (artifact / "apuntes.md").write_text(normalize("\n".join(apuntes_md)), encoding="utf-8")
         (artifact / "party.md").write_text(normalize("\n".join(party_md)), encoding="utf-8")
         cuadernos_md = ["# Cuadernos de los bots de materia (al final de la prueba)\n"]
         for code in SUBJECT_TOKENS:
@@ -1669,7 +1623,7 @@ END:VCALENDAR
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, run, take, report, gateway, artifact,
                equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,
-               real_tesseract, ocr_log, ocr_off, normalize, estado_md, token_md, apuntes_md, **_) -> None:
+               real_tesseract, ocr_log, ocr_off, normalize, estado_md, token_md, **_) -> None:
     """Sections 6-8: the gateway session (team, schedule, routing, agenda, notebooks, archive and
     reactivation) and the last setup.sh. The caller owns `gateway` and always stops it."""
     bot = str(VENV_BIN / "espol-bot")
@@ -3053,191 +3007,6 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, llm, 
                   "tema, armó el quiz con el PDF que le mandó el capitán; y Vinci pasó «/quiz derivadas de cálculo» al "
                   "bot de Cálculo, que citó la foto de la pizarra de su cuaderno")
     take("/quiz: quiz cortos con el material")
-
-    # 7g2. the captain's class notes: the notes folder (Omawrite's), //vinci and the summary of each class
-    notes_dir = home / "Notes"
-    (notes_dir / "images").mkdir(parents=True)
-    capture = notes_dir / "images" / "pasted-20260930-091200.png"
-    from PIL import Image
-    Image.open(FILES / "pizarra.jpg").save(capture)  # Omawrite pastes PNG
-
-    def notes_at(now: str) -> None:
-        out = run([bot, "notes"], now)
-        assert not out.stdout.strip() and not out.stderr.strip(), (out.stdout, out.stderr)
-
-    def note_rows() -> dict[str, dict]:
-        conn = sqlite3.connect(data_dir / "espol.db")
-        conn.row_factory = sqlite3.Row
-        try:
-            return {Path(r["path"]).name: dict(r) for r in conn.execute("SELECT * FROM class_notes")}
-        finally:
-            conn.close()
-
-    def note_handoffs() -> list[dict]:
-        return [h for h in handoffs() if h["origen"] in ("note_question", "note_summary")]
-
-    def vinci_cards(mark: int) -> list[dict]:
-        return [m for m in telegram.messages[mark:] if m["bot"] == "vinci_bot" and "📝" in readable(m)]
-
-    def jpeg_images() -> int:
-        return sum(1 for req in llm.requests for m in req.get("messages") or [] if isinstance(m.get("content"), list)
-                   for part in m["content"] if isinstance(part, dict) and part.get("type") == "image_url"
-                   and str(part["image_url"].get("url", "")).startswith("data:image/jpeg;base64,"))
-
-    def step(title: str, when: str, files: dict[str, str] | None = None, said: list[dict] | None = None) -> None:
-        block = [f"## {title}\n", f"Reloj: `{when}`\n"]
-        for name, text in (files or {}).items():
-            block.append(f"`~/Notes/{name}`:\n\n```markdown\n{text.rstrip()}\n```\n")
-        for m in said or []:
-            keys = "".join(f"[{b['text']}]" for b in buttons(m))
-            block.append(f"@{m['bot']}:\n\n```\n{readable(m)}" + (f"\n{keys}" if keys else "") + "\n```\n")
-        apuntes_md.append("\n".join(block))
-
-    # Wednesday, Cálculo 09:00–11:00: a tab with no title, a capture of the board and a //vinci line.
-    class_note = notes_dir / "2026-09-30-0905.md"
-    class_text = ("Derivadas de funciones compuestas\n\nRegla de la cadena: la derivada de f(g(x)) es f'(g(x)) por "
-                  "g'(x). El profe derivó sen(x²) en la pizarra y la composición de funciones se deriva de afuera "
-                  "hacia adentro.\n\n![](images/pasted-20260930-091200.png)\n\n"
-                  "//vinci ¿por qué la derivada de sen(x²) lleva 2x?\n\nderivada interna, derivada externa\n\n"
-                  "//vinci y la derivada de cos(3x)")  # still being typed: not asked yet
-    class_note.write_text(class_text, encoding="utf-8")
-    mark = len(telegram.messages)
-    notes_at("2026-09-30T09:05:00-05:00")
-    assigned = vinci_cards(mark)
-    assert len(assigned) == 1 and "como apuntes de <b>Cálculo de una Variable</b>" in assigned[0]["text"], \
-        [readable(m) for m in assigned]
-    assert [b["text"] for b in buttons(assigned[0])] == ["✏️ Cambiar materia"]
-    asked = [json.loads(h["texto"])["question"] for h in note_handoffs()]
-    assert asked == ["¿por qué la derivada de sen(x²) lleva 2x?"], "la línea a medio escribir todavía no se pregunta"
-    answer = wait_msg("vinci_calculo_bot", mark, "✍️ //vinci: ¿por qué la derivada de sen(x²) lleva 2x?", timeout=200)
-    assert re.search(r"📄 \[?[^\]\n⚠️]+\.pdf, página \d+", readable(answer)) and "⚠️" not in readable(answer), \
-        "la respuesta cita una página del material que el bot leyó (la revisión de citas no la cambió)"
-    step("Cálculo, en clase (miércoles 09:05): una nota sin título, una captura y una línea //vinci",
-         "2026-09-30T09:05", {class_note.name: class_text}, [assigned[0], answer])
-
-    class_text = class_text + ("\n\nchain rule en inglés; ejemplo del ejercicio 4 con la derivada del área, el profe "
-                               "dijo que entra en la lección del viernes")
-    class_note.write_text(class_text, encoding="utf-8")
-    mark = len(telegram.messages)
-    notes_at("2026-09-30T09:20:00-05:00")
-    second = wait_msg("vinci_calculo_bot", mark, "✍️ //vinci: y la derivada de cos(3x)", timeout=200)
-    assert len(note_handoffs()) == 2 and not vinci_cards(mark), "una pregunta por línea, y la tarjeta una sola vez"
-
-    # The same class, a tab about something else: the schedule alone does not decide.
-    side_note = notes_dir / "2026-09-30-0930.md"
-    side_text = "ideas para la app del proyecto: login con google, modo oscuro y notificaciones push en el celular"
-    side_note.write_text(side_text, encoding="utf-8")
-    notes_at("2026-09-30T09:30:00-05:00")
-    notes_at("2026-09-30T10:50:00-05:00")
-    assert len(note_handoffs()) == 2, "en plena clase no hay resumen, aunque la nota lleve rato sin cambios"
-    assert not vinci_cards(mark), "mientras dura la clase no se pregunta por la nota dudosa"
-    step("09:20: termina la segunda línea //vinci y sigue escribiendo; 09:30, otra pestaña; 10:50, la clase sigue",
-         "2026-09-30T09:20", None, [second])
-
-    images_before = jpeg_images()
-    mark = len(telegram.messages)
-    notes_at("2026-09-30T11:20:00-05:00")
-    summary = wait_msg("vinci_calculo_bot", mark, "📝 Tus apuntes de Cálculo de una Variable (2026-09-30)", timeout=200)
-    assert "con 1 captura(s) que miré (1)" in readable(summary)
-    assert jpeg_images() > images_before, "la captura llegó al modelo como imagen (ver_foto)"
-    which = vinci_cards(mark)
-    assert len(which) == 1 and "¿De qué materia es tu nota «ideas para la app del proyecto" in readable(which[0])
-    assert [b["text"] for b in buttons(which[0])] == ["📘 Cálculo de una Variable", "📘 Física I", "🚫 No es de clase"], \
-        "la materia de esa hora primero"
-    task = next(t for t in cron_tasks("apuntes_de_clase") if "Sus apuntes «Derivadas" in t)
-    calc_notes = [e for e in entries(data_dir, "MATG1049") if e["origen"] == "notes"]
-    photo = next(e for e in calc_notes if e["tipo"] == "foto")
-    raw = next(e for e in calc_notes if e["tipo"] == "apunte")
-    assert (data_dir / "cuadernos" / "MATG1049" / photo["archivo"]).read_bytes() == capture.read_bytes()
-    assert capture.exists(), "la captura se copió al cuaderno: tu carpeta queda igual"
-    assert f"![](foto #{photo['id']})" in raw["texto"] and "//vinci" not in raw["texto"]
-    assert raw["fecha_clase"] == photo["fecha_clase"] == "2026-09-30"
-    assert "(clase: miércoles 30 sep, 09:00–11:00; fecha_clase 2026-09-30)" in task, task
-    assert any(e["tipo"] == "clase" and e["fecha_clase"] == "2026-09-30" and "Derivadas" in e["texto"]
-               for e in entries(data_dir, "MATG1049")), "el bot registró lo visto en clase"
-    step("11:20: la clase terminó y la nota lleva 2 h sin cambios; la otra pestaña de esa hora", "2026-09-30T11:20",
-         {side_note.name: side_text}, [summary, which[0]])
-    calls = len(telegram.calls)
-    telegram.press(BOT_TOKEN, CAPTAIN, which[0], next(b["callback_data"] for b in buttons(which[0])
-                                                      if b["text"] == "🚫 No es de clase"))
-    said = toast(calls, "Listo, no es de clase")["params"]["text"]
-    apuntes_md.append(f"[🚫 No es de clase] → «{said}»\n")
-    apuntes_md.append("Lo que la agenda le pasó al bot de Cálculo:\n\n```\n"
-                      f"{task[task.index('TAREA: apuntes_de_clase'):]}\n```\n")
-
-    mark = len(telegram.messages)
-    calls = len(telegram.calls)
-    telegram.press(BOT_TOKEN, CAPTAIN, assigned[0], buttons(assigned[0])[0]["callback_data"])
-    toast(calls, "Elige la materia")
-    change = telegram.wait_for(lambda _: vinci_cards(mark), 30)
-    assert change and [b["text"] for b in buttons(change[0])][0] == "📘 Cálculo de una Variable"
-    calls = len(telegram.calls)
-    telegram.press(BOT_TOKEN, CAPTAIN, change[0], buttons(change[0])[0]["callback_data"])
-    toast(calls, "Ya era de Cálculo de una Variable")
-    handed = len(note_handoffs())
-    notes_at("2026-09-30T11:25:00-05:00")
-    assert len(note_handoffs()) == handed, "ni la nota descartada ni la ya resumida vuelven a salir"
-
-    # Text added after the summary gets a short update of just that.
-    class_text += ("\n\nEn la tarde repasé: la derivada de e^(5x) es 5·e^(5x), otra vez la regla de la cadena con la "
-                   "función de adentro lineal, y la de ln(x² + 1) es 2x / (x² + 1).")
-    class_note.write_text(class_text, encoding="utf-8")
-    notes_at("2026-09-30T15:00:00-05:00")
-    mark = len(telegram.messages)
-    notes_at("2026-09-30T15:20:00-05:00")
-    update = wait_msg("vinci_calculo_bot", mark, "Lo nuevo:", timeout=200)
-    added = json.loads(note_handoffs()[-1]["texto"])
-    assert added["kind"] == "update" and added["text"].startswith("En la tarde repasé") and "Regla" not in added["text"]
-
-    # A shopping list at night: no class, nothing like any subject. It never leaves the PC.
-    junk = notes_dir / "2026-09-30-2100.md"
-    junk.write_text("lista del súper: leche, pan, huevos, arroz y jabón", encoding="utf-8")
-    mark, handed = len(telegram.messages), len(note_handoffs())
-    notes_at("2026-09-30T21:00:00-05:00")
-    notes_at("2026-09-30T21:40:00-05:00")
-
-    # Física's topic written with no class going on: Vinci asks, and the captain's press decides.
-    fis_note = notes_dir / "2026-09-30-2110.md"
-    fis_text = ("Tiro parabólico\n\nMovimiento parabólico: la cinemática del proyectil separa la velocidad inicial "
-                "en dos componentes; el alcance máximo sale con un ángulo de lanzamiento de 45 grados y la altura "
-                "máxima cuando la velocidad vertical es cero.")
-    fis_note.write_text(fis_text, encoding="utf-8")
-    notes_at("2026-09-30T21:10:00-05:00")
-    notes_at("2026-09-30T21:40:00-05:00")
-    asked_fis = vinci_cards(mark)
-    assert len(asked_fis) == 1 and "«Tiro parabólico»" in readable(asked_fis[0]), [readable(m) for m in asked_fis]
-    assert buttons(asked_fis[0])[0]["text"] == "📘 Física I", "la materia de su contenido primero"
-    assert len(note_handoffs()) == handed and note_rows()[junk.name]["asked_at"] is None, "la lista del súper, nada"
-    asked_shot = json.loads(json.dumps(asked_fis[0]))  # the press removes its buttons
-    calls = len(telegram.calls)
-    telegram.press(BOT_TOKEN, CAPTAIN, asked_fis[0], buttons(asked_fis[0])[0]["callback_data"])
-    toast(calls, "Va a Física I")
-    mark = len(telegram.messages)
-    notes_at("2026-09-30T21:41:00-05:00")
-    fis_summary = wait_msg("vinci_fisica_bot", mark, "📝 Tus apuntes de Física I (2026-09-30)", timeout=200)
-    # The next step restarts the gateway: let this agenda job finish first, or Hermes redelivers it empty.
-    sent_at = datetime.now().astimezone().isoformat()
-    assert telegram.wait_for(lambda _: (last_run("FISG1002") or "") > sent_at, 200), fail("la agenda de Física no volvió")
-    rows = note_rows()
-    assert rows[fis_note.name]["subject"] == "FISG1002" and rows[fis_note.name]["decided_by"] == "captain"
-    assert rows[side_note.name]["ignored"] == 1 and rows[class_note.name]["decided_by"] == "schedule"
-    notes_at("2026-09-30T22:30:00-05:00")
-    assert not vinci_cards(mark) and len(note_handoffs()) == handed + 1
-    step("Más tarde: lo que agregó a la nota de Cálculo, una lista del súper y un tema de Física sin clase",
-         "2026-09-30T21:40", {junk.name: junk.read_text(), fis_note.name: fis_text},
-         [update, asked_shot, fis_summary])
-    apuntes_md.append("## Cómo quedó cada nota\n\n| Nota | Materia | Cómo se decidió | Descartada |\n|---|---|---|---|\n"
-                      + "\n".join(f"| {name} | {r['subject'] or '—'} | {r['decided_by'] or '—'} | "
-                                  f"{'sí' if r['ignored'] else 'no'} |" for name, r in sorted(rows.items())) + "\n")
-    report.append("Apuntes (la carpeta de notas de Omawrite, leída cada minuto sin el modelo): una nota sin título "
-                  "escrita en la clase de Cálculo, que habla de lo mismo que su material, quedó de Cálculo con un aviso "
-                  "de Vinci; cada línea «//vinci …» terminada llegó una vez al bot de Cálculo, que la contestó citando "
-                  "el material (la que estaba a medio escribir esperó); al terminar la clase el bot guardó la nota y su "
-                  "captura en su cuaderno (una copia), miró la captura con ver_foto y mandó el resumen con feedback; "
-                  "lo que agregó en la tarde trajo solo lo nuevo. Otra pestaña de esa hora sobre otra cosa no se "
-                  "decidió por el horario: Vinci preguntó y «No es de clase» la apagó. Un tema de Física sin clase "
-                  "se decidió con el botón, y una lista del súper nunca salió de la PC")
-    take("Apuntes: la carpeta de notas")
 
     # 7h. archive Física from Vinci's card, restart the gateway: no repeated brief, Física offline
     mark = len(telegram.messages)

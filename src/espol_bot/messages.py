@@ -396,29 +396,3 @@ def grading_card(name: str, lines: list[str], open_questions: list[str], sources
     parts.append(f"¿Está bien? Pulsa <b>{SCHEME_SAVE_BUTTON.split(' ', 1)[1]}</b> y calculo tus notas con esto. Si algo está mal, "
                  f"pulsa <b>{SCHEME_FIX_BUTTON.split(' ', 1)[1]}</b> y dime qué cambiar.")
     return "\n\n".join(parts)
-
-
-NOTE_CHANGE_BUTTON = "✏️ Cambiar materia"
-NOTE_NOT_CLASS_BUTTON = "🚫 No es de clase"
-
-
-def note_assigned(title: str, display: str) -> str:
-    return (f"📝 Leo tu nota «{e(title)}» como apuntes de <b>{e(display)}</b>. Cuando termine la clase, su bot te "
-            "manda el resumen.")
-
-
-def note_which_subject(title: str, waiting: int = 0) -> str:
-    text = f"📝 ¿De qué materia es tu nota «{e(title)}»?"
-    if waiting:
-        text += (" Tiene una pregunta //vinci esperando." if waiting == 1 else
-                 f" Tiene {waiting} preguntas //vinci esperando.")
-    return text + "\nSi no es de clase, no la leo más."
-
-
-def note_ignored(title: str) -> str:
-    return f"👌 Listo: «{e(title)}» no es de clase. No la leo más."
-
-
-def note_chosen(title: str, display: str, handle: str) -> str:
-    return (f"✅ Tu nota «{e(title)}» va a {e(handle)}. Te contesta las preguntas //vinci y, cuando termines de "
-            "escribir, te manda el resumen.")

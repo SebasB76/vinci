@@ -425,7 +425,7 @@ class Setup:
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "quiz" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "quiz" / "SKILL.md", values))
         for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen",
-                                "vinci-mantenimiento.sh": "mantenimiento", "vinci-apuntes.sh": "notes"}.items():
+                                "vinci-mantenimiento.sh": "mantenimiento"}.items():
             changed |= _write_if_changed(profile / "scripts" / script,
                                          _render(TEMPLATES / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
         plugin_changed = self._install_plugin(profile, values)
@@ -442,7 +442,6 @@ class Setup:
                            "vinci-mantenimiento.sh", no_agent=True)
         self.reconcile_job(name, "vinci-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
                            "vinci-resumen.sh", no_agent=True)
-        self.reconcile_job(name, "vinci-apuntes", "* * * * *", "vinci-apuntes.sh", no_agent=True)
 
     @staticmethod
     def _install_plugin(profile: Path, values: dict[str, str]) -> bool:

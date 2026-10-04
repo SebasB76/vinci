@@ -22,10 +22,6 @@ plugin should show:
                           subject bot's): saves it as how that subject is graded and answers how the captain
                           is doing under it
   v1:g:<propuesta>:no     «Corregir»: discards it
-  v1:k:<nota>:<CÓDIGO>    a subject under a note of the captain's notes folder (notes.py): the note is that
-                          subject's, its //vinci questions and its summary go to that bot
-  v1:k:<nota>:no          «No es de clase»: the note is never read again
-  v1:k:<nota>:cambiar     «Cambiar materia»: sends the card with every subject
 
 No model is involved: the schedule and a grading scheme are saved, and a bot created or archived,
 only by the captain's own press.
@@ -43,7 +39,7 @@ from espol_bot import equipo, grades, horario, materias, messages, store
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([aghckxrnst]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
+PATTERN = re.compile(r"v1:([aghcxrnst]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
@@ -76,9 +72,6 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
             return _todo_done(conn, ref, arg == "ok", now)
         if kind == "g":
             return _grading_scheme(cfg, conn, ref, arg == "ok", now)
-        if kind == "k":
-            from espol_bot import notes
-            return notes.choose(cfg, conn, ref, arg, now)
         return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()

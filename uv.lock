@@ -341,7 +341,6 @@ source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "fonttools" },
-    { name = "pillow" },
     { name = "pypdf" },
     { name = "pypdfium2" },
     { name = "python-docx" },
@@ -359,7 +358,6 @@ dev = [
 requires-dist = [
     { name = "cryptography", specifier = ">=42" },
     { name = "fonttools", specifier = ">=4.50" },
-    { name = "pillow", specifier = ">=10" },
     { name = "pypdf", specifier = ">=4.0" },
     { name = "pypdfium2", specifier = ">=4.30" },
     { name = "python-docx", specifier = ">=1.1" },

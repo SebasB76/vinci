@@ -60,7 +60,9 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 📤 **Entrega de actividades a mano** | ¿El profe pide la actividad escaneada en PDF? Tómale fotos a las hojas y mándaselas al bot de la materia (en un álbum, o con «súbelo al deber 3»). El bot junta las fotos en un PDF, una página por foto, en el orden en que las mandaste, y te lo muestra con «📤 Entregar en Deber 3». Abres el PDF, revisas, pulsas y queda entregado en el aula. Sin el botón no se entrega nada. [Cómo funciona](#entregar-una-actividad-hecha-a-mano). |
 | 🧠 **Quiz con `/quiz`** | Escríbele `/quiz derivadas` al bot de la materia y te manda un quiz corto (3 a 5 preguntas) como encuestas de Telegram, sacado de su material o de lo que le mandes (texto, foto o PDF). Cada respuesta se ve recién al contestar, con su explicación y la cita de archivo y página; al terminar te llega tu puntaje y lo que fallaste queda en el cuaderno como tema débil. A Vinci también le puedes escribir `/quiz`: se lo pasa al bot de la materia. |
 | 🔎 **Citas que se comprueban** | Cada respuesta con material cita archivo, página (o diapositiva) y el enlace del aula, copiados de lo que el bot leyó. Antes de enviarla se revisa cada cita: una página que el bot no leyó o un archivo que no está en el material se cambia por un aviso, y un enlace que falta o está mal se corrige. Si el material no trae lo que preguntas, te dice «No está en el material» y recién después te lo explica con lo que sabe, avisando que eso no sale del material. |
+| 📝 **Exámenes anteriores de DSpace** | «Consígueme exámenes de POO», «¿hay del 2024?», «resuélveme el último primer parcial»: Vinci y cada bot de materia buscan en [DSpace](https://www.dspace.espol.edu.ec), el repositorio público de ESPOL (unos 20 000 exámenes de todas las facultades), solo cuando se lo pides. Te avisa que está buscando, prueba otros nombres de la materia si el primero no encuentra nada y te los da del más nuevo al más viejo con su enlace. Si le pides resolver uno, lo baja, lo resuelve pregunta por pregunta citando la página y te dice que la resolución es suya, no la oficial. [Más sobre los exámenes](#exámenes-anteriores-dspace). |
 | 📑 **PDFs escaneados que se pueden buscar** | Un PDF escaneado (una fotocopia, una hoja de ejercicios) se lee con OCR una sola vez, al bajarlo, y desde ahí la búsqueda lo encuentra como cualquier PDF. Las fórmulas, figuras y la letra a mano, que el OCR lee mal, el bot las sigue mirando como imagen. Necesita `tesseract` ([cómo](#pdfs-escaneados-ocr)). |
+| ✍️ **Tus apuntes, sin pasárselos** | Escribe en clase como siempre, en [Omawrite](#tus-apuntes-de-clase) (o cualquier editor que guarde Markdown en una carpeta). Vinci revisa tu carpeta de notas cada minuto y decide de qué materia es cada nota: por su título, o por la clase que tenías si lo que escribes se parece a su material. Una línea `//vinci <pregunta>` te la contesta el bot de la materia con el material del curso. Cuando la clase termina, ese bot guarda la nota y tus capturas en su cuaderno y te manda el resumen de tu resumen con feedback. Si no está claro, Vinci te pregunta con un botón por materia, y una nota que no es de clase nunca sale de tu PC. |
 | 🧭 **Vinci ve todo junto** | Contesta sobre cualquier materia, arma planes de estudio con tus entregas y tus clases, lee los cuadernos de todos los bots y busca en la web. Le mandas «tengo esto de Física» con una foto y se lo pasa al bot correcto. |
 | 🎓 **Traspaso con un botón** | Debajo de cada aviso hay un botón «🎓 Consultar con …»: el bot de la materia recibe el aviso y te explica qué implica en su chat. |
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
@@ -99,7 +101,7 @@ Así está organizado el repositorio:
 
 | Carpeta | Qué hay |
 |---|---|
-| `src/aula_core/` | El núcleo: cliente de Canvas que solo sabe hacer GET, la base local (SQLite), la sincronización, el catálogo del material, el sílabo, la descarga e indexado y la búsqueda de texto completo. No sabe nada de Telegram ni de Hermes. |
+| `src/aula_core/` | El núcleo: cliente de Canvas que solo sabe hacer GET, la base local (SQLite), la sincronización, el catálogo del material, el sílabo, la descarga e indexado, la búsqueda de texto completo y los exámenes de DSpace. No sabe nada de Telegram ni de Hermes. |
 | `src/aula/` | El comando `aula`, encima del núcleo. |
 | `src/espol_bot/` | Vinci y los bots de materia: sondeo y avisos, agenda de briefs, cuadernos, horario, libro principal, el equipo de bots, las herramientas MCP y la configuración de los perfiles de Hermes. |
 | `hermes/` | Las plantillas de cada bot (su `SOUL.md` y su skill), el plugin `vinci-botones`, las fotos de perfil (`avatars/`) y `characters.toml`. |
@@ -257,6 +259,39 @@ Escríbele directo, como a un compañero que se sabe la materia:
 
 Un bot de materia solo sabe de la suya: si le preguntas de otra, te manda con Vinci.
 
+### Tus apuntes de clase
+
+Vinci lee tu carpeta de notas (`~/Notes` por defecto) cada minuto, sin usar el modelo. Para que tus apuntes
+lleguen solos:
+
+1. Abre Omawrite y pon la carpeta de notas en `~/.config/Omacom/omawrite.conf`:
+
+   ```ini
+   [notes]
+   directory=~/Notes
+   ```
+
+   Con eso, cada pestaña nueva se guarda sola en `~/Notes` desde la primera letra, con sus capturas en
+   `~/Notes/images/`. Al cerrarla, Omawrite te pregunta si la conservas o la borras. (Obsidian u otro editor
+   sirven igual: pon su carpeta en `[notes] folder` de `config.toml`.)
+2. Escribe en clase como siempre. Si quieres, pon la materia en la primera línea («Estadística 4/10»).
+3. Para preguntar algo en plena clase, escribe una línea `//vinci ¿por qué la varianza se divide para n-1?` y
+   presiona `Enter`. El bot de la materia te contesta por Telegram, citando el material.
+
+Cómo decide Vinci de qué materia es una nota:
+
+| Lo que hay | Qué hace |
+|---|---|
+| La materia en la primera línea | Es de esa materia |
+| La escribiste en la hora de una clase, y habla de lo mismo que su material | Es de esa materia; Vinci te avisa con «✏️ Cambiar materia» |
+| Solo la hora, o solo el contenido | Vinci te pregunta con un botón por materia y «🚫 No es de clase» |
+| Nada que la una a una clase (una lista del súper en la noche) | Nada: no sale de tu PC |
+
+Cuando la clase terminó y la nota lleva 15 minutos sin cambios (`[notes] idle_minutes`), el bot de la materia
+guarda la nota y una copia de tus capturas en su cuaderno, las mira y te manda «📝 Tus apuntes de …»: el resumen
+de tu resumen y feedback comparado con el material. Lo que agregues después llega como una actualización corta. Una nota que ya tenía más de un día
+cuando Vinci la vio por primera vez no se lee: activar esto no manda toda tu carpeta de golpe.
+
 ### Los botones
 
 | Botón | Dónde aparece | Qué hace |
@@ -412,6 +447,26 @@ disco ni el contexto del modelo:
   enlace para que los abras tú.
 - **Documentos que le mandas:** un PDF, DOCX o PPTX del curso que le mandas al bot pasa a su material y se puede
   buscar; lo que es tuyo (un deber resuelto, tus apuntes) va al cuaderno.
+
+### Exámenes anteriores (DSpace)
+
+[DSpace](https://www.dspace.espol.edu.ec) es el repositorio público de ESPOL. Tiene unos 20 000 exámenes de todas
+las facultades, del 2007 a hoy, sin solución. Vinci y los bots de materia saben que existe y lo usan solo cuando
+les preguntas por exámenes: nada corre en segundo plano.
+
+1. Le pides exámenes a Vinci (de cualquier materia) o al bot de la materia. Puedes pedir años o un parcial.
+2. El bot te avisa «🔎 Un momento, busco exámenes anteriores en DSpace…» y busca en vivo. Una búsqueda tarda de 1 a
+   20 segundos.
+3. Los títulos de DSpace no traen el código de la materia, así que el bot busca por el nombre y prueba otras formas
+   si la primera no encuentra nada: el nombre completo, abreviado («Prog. Orientada a Objetos»), el nombre viejo o
+   una materia parecida.
+4. Te da la lista del más nuevo al más viejo, con período, parcial, paralelo y enlace.
+5. Si le pides resolver uno, lo baja, lo lee como cualquier PDF del material y lo resuelve pregunta por pregunta,
+   citando la página del examen. Te dice que la resolución es suya. Si le pides comparar, lee los más nuevos y te dice
+   qué temas salen más y qué preguntas se repiten con otros datos.
+
+Un examen bajado queda en el material del bot (`~/.local/share/espol-academic-bot/dspace/`) y no se vuelve a bajar.
+Los Word viejos (`.doc`) no se pueden leer: el bot te da su enlace.
 
 ### Citas que puedes comprobar
 
@@ -569,6 +624,8 @@ Todo lo ajustable está en [`config.toml`](config.toml). Después de cambiarlo, 
 | `material.extensiones` | `["pdf", "pptx", "docx"]` | Qué archivos del aula leen los bots (además de las páginas web de un enlace) |
 | `material.tamano_maximo_mb` | `200` | Nada más grande que esto se baja |
 | `material.max_mb_per_sync` | `50` | Cuántos MB de sílabos baja como máximo cada sondeo; los demás, en los siguientes |
+| `notes.folder` | `~/Notes` | Tu carpeta de apuntes en Markdown ([cómo](#tus-apuntes-de-clase)); vacía, no la lee |
+| `notes.idle_minutes` | `15` | Minutos sin cambios para dar una nota por terminada (entre 5 y 240) |
 | `almacenamiento.carpeta_datos` | `~/.local/share/espol-academic-bot` | Base de datos, material y cuadernos |
 | `hermes.perfil` | `vinci` | Perfil de Vinci; cada materia usa `<perfil>-<código>` |
 | `hermes.proveedor` · `hermes.modelo` | `anthropic` · `claude-sonnet-5-5` | Modelo de Vinci y de los bots de materia |
@@ -625,7 +682,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 
 | Archivo | Qué es |
 |---|---|
-| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas y las páginas del material que leyó cada bot (con eso se revisan sus citas) |
+| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas, las páginas del material que leyó cada bot (con eso se revisan sus citas) y de qué materia es cada nota de tu carpeta de apuntes |
 | `materiales/<curso>/` | Los archivos descargados del aula, una carpeta por curso (y en `recibidos/`, el material que le mandaste a un bot) |
 | `libros/<CÓDIGO>/` | Donde pones el PDF del libro principal de una materia si pesa más de 20 MB |
 | `tessdata/` | Los modelos de OCR de español e inglés que bajó `setup.sh` |
@@ -647,6 +704,10 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   solo cuando pulsas «📤 Entregar» debajo de ese PDF, nunca porque el modelo lo pida. No publica, no comenta y no
   cambia nada más. Otro componente hace `POST` y `DELETE` únicamente sobre los tokens propios de Vinci, verifica
   el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
+- **Tus apuntes salen solo si son de clase.** Vinci lee tu carpeta de notas en tu PC, sin el modelo. Al modelo
+  solo llegan las notas que quedaron de una materia (por su título, por la clase y su material, o por tu botón) y
+  las líneas `//vinci`; una nota sin relación con ninguna clase no sale de tu PC. Tus archivos nunca se cambian:
+  el cuaderno guarda una copia.
 - **Solo tú.** Cada bot acepta mensajes solo de tu ID de Telegram. A cualquier otra persona no le contesta nada (ni
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
 - **Herramientas cerradas de fábrica.** Ningún bot trae terminal, acceso a archivos, ejecución de código ni
@@ -665,6 +726,8 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   aula, sin cookies (ni las que el sitio pone en el camino), sin credenciales de tu PC, revisando cada redirección y
   con tope de tamaño (`material.tamano_maximo_mb`) y de tiempo. Lo que trae es material para leer, nunca
   instrucciones para el bot.
+- **DSpace, también sin cuenta.** La búsqueda de exámenes usa la API pública de DSpace: solo `GET`, sin tu token,
+  sin cookies ni credenciales, y solo cuando le preguntas por exámenes.
 - **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot, guardar el horario o cómo se
   evalúa una materia y entregar una actividad en el aula ocurren solo cuando pulsas el botón; el modelo solo puede
   mostrártelo.
@@ -684,8 +747,8 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 **Qué sale de tu PC:** las consultas al aula virtual (con tu token) y el PDF de una entrega que confirmaste; los mensajes y archivos que van y
 vienen por Telegram; y, cuando un bot usa el modelo, tu mensaje, lo que le mandaste y lo que sus herramientas
 leyeron para responderte (tareas, notas, anuncios, partes del material, entradas del cuaderno) van al proveedor
-del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, y un bot abre un
-enlace del aula (sin tu cuenta) cuando le hace falta. Los datos guardados se quedan en tu PC.
+del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, un bot abre un
+enlace del aula (sin tu cuenta) cuando le hace falta, y busca y baja exámenes de DSpace cuando se los pides. Los datos guardados se quedan en tu PC.
 
 Si encuentras un problema de seguridad, no lo publiques en un issue con detalles: avísale primero al dueño del
 repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.

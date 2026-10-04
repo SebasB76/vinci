@@ -1,0 +1,18 @@
+[
+  {"handle": "123456789/90101", "name": "EXA-2025-2S-CÁLCULO DE UNA VARIABLE-3-1Par.pdf", "collection": "Exámenes - ICM",
+   "file": "examen-calculo-2025-2s-1p.pdf", "wrapped": true},
+  {"handle": "123456789/90102", "name": "EXA-2025-2S-CÁLCULO DE UNA VARIABLE-3-2Par.pdf", "collection": "Exámenes - ICM",
+   "file": "examen-calculo-2024-1s-1p.pdf"},
+  {"handle": "123456789/90103", "name": "EXA-2024-1S-CÁLCULO DE UNA VARIABLE-5-1Par.pdf", "collection": "Exámenes - ICM",
+   "file": "examen-calculo-2024-1s-1p.pdf"},
+  {"handle": "123456789/90104", "name": "Examen de Cálculo de una Variable del 2012-1S de la 1° evaluación",
+   "collection": "Exámenes-FCNM", "file": "examen-calculo-2024-1s-1p.pdf"},
+  {"handle": "123456789/90105", "name": "Examen complexivo: cálculo de una variable aplicado a vigas",
+   "collection": "Tesis de Ingeniería Civil", "file": null},
+  {"handle": "123456789/90201", "name": "EXA-2026-1S-PROGRAMACIÓN ORIENTADA A OBJETOS-2-1Par.pdf",
+   "collection": "Exámenes - FIEC", "file": "examen-poo-2026-1s-1p.docx"},
+  {"handle": "123456789/90202", "name": "EXA-2025-2S-PROGRAMACIÓN ORIENTADA A OBJETOS-5-2Par.pdf",
+   "collection": "Exámenes - FIEC", "file": "examen-calculo-2024-1s-1p.pdf"},
+  {"handle": "123456789/90203", "name": "Examen de Prog. Avanzada Orientada A Objetos del 2012-1S de la 2° evaluación",
+   "collection": "Exámenes - FIEC", "file": "examen-calculo-2024-1s-1p.pdf"}
+]

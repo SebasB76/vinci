@@ -32,6 +32,11 @@
                                      score to send (the plugin calls it)
     espol-bot citas [--curso CÓDIGO] an answer read from stdin with its citations checked against the pages
                                      that bot was shown (the plugin runs it before an answer is sent)
+    espol-bot notes                  read the captain's notes folder: each note's subject, its //vinci
+                                     questions and, once its class is over, its summary (Vinci's no-agent
+                                     cron, every minute)
+    espol-bot foto --curso CÓDIGO <entrada>
+                                     a photo of the subject's notebook as a JPEG, for the plugin's ver_foto
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -188,6 +193,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("archivo_id", type=int)
     p.add_argument("pagina", type=int)
+    sub.add_parser("notes", help="leer tu carpeta de apuntes y pasárselos a los bots de materia (cron de Vinci)")
+    p = sub.add_parser("foto", help="una foto del cuaderno como imagen (la usa ver_foto, del plugin vinci-botones)")
+    p.add_argument("--curso", required=True, help="código de la materia")
+    p.add_argument("entrada", type=int)
     p = sub.add_parser("quiz-respuesta", help="una respuesta a un quiz (la usa el plugin vinci-botones)")
     p.add_argument("--curso", required=True, help="código de la materia")
     p.add_argument("poll_id")
@@ -232,6 +241,19 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot.mcp_server import ToolError
             try:
                 result = herramientas.page_image(cfg, args.curso, args.archivo_id, args.pagina)
+            except ToolError as exc:
+                result = {"error": str(exc)}
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if args.cmd == "notes":
+            from espol_bot import notes
+            notes.scan(cfg, now_utc())
+            return 0
+        if args.cmd == "foto":
+            from espol_bot import herramientas
+            from espol_bot.mcp_server import ToolError
+            try:
+                result = herramientas.entry_image(cfg, args.curso, args.entrada)
             except ToolError as exc:
                 result = {"error": str(exc)}
             print(json.dumps(result, ensure_ascii=False))

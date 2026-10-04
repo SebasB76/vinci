@@ -33,6 +33,11 @@ every photo each bot set. Every chat message a bot sends is kept in order. As Te
 deleteWebhook with drop_pending_updates discards what the bot had queued; a (token, method) in
 `slow` answers that many seconds late.
 
+FakeDSpace stands in for ESPOL's DSpace (www.dspace.espol.edu.ec, through `[test] link_hosts`): the REST
+`filtered-items` search, which runs a `matches` title regex the way DSpace does, an item by its handle with its
+bitstreams, and their download. Items come from fixtures/dspace/items.json; one is stored inside the
+multipart/form-data envelope it was uploaded with, as many real ones are. It records every request with its headers.
+
 BrokenIPv6 makes a server reachable as `localhost` where IPv6 is broken and IPv4 works, like
 the captain's network towards api.telegram.org: `localhost` resolves to ::1 first, and a listener
 there with a full accept queue drops every new SYN, so an IPv6 connect hangs until it times out.
@@ -359,6 +364,66 @@ class _WebHandler(_Quiet):
             return self._send(404, b"not found", "text/plain")
         return self._send(200, path.read_bytes(), "text/html; charset=utf-8")
 
+
+
+class FakeDSpace(_Server):
+    def __init__(self):
+        super().__init__(_DSpaceHandler)
+        self.items = json.loads((FIXTURES / "dspace" / "items.json").read_text(encoding="utf-8"))
+        self.requests: list[tuple[str, str]] = []
+        self.headers: list[dict] = []
+        self.lock = threading.Lock()
+
+    def item_json(self, item: dict, expand: str) -> dict:
+        number = item["handle"].split("/")[1]
+        data = {"uuid": f"item-{number}", "name": item["name"], "handle": item["handle"], "type": "item"}
+        if "parentCollection" in expand:
+            data["parentCollection"] = {"name": item["collection"], "type": "collection"}
+        if "bitstreams" in expand:
+            data["bitstreams"] = [{"name": "license.txt", "bundleName": "LICENSE", "sizeBytes": 1748,
+                                   "retrieveLink": f"/rest/bitstreams/license-{number}/retrieve"}]
+            if item["file"]:
+                size = (FIXTURES / "files" / item["file"]).stat().st_size
+                data["bitstreams"].append({"name": item["name"], "bundleName": "ORIGINAL", "sizeBytes": size,
+                                           "retrieveLink": f"/rest/bitstreams/file-{number}/retrieve"})
+        return data
+
+
+class _DSpaceHandler(_Quiet):
+    def _refuse(self):
+        self.server.owner.requests.append((self.command, self.path))
+        self._send(405, b"", "text/plain")
+
+    do_POST = do_PUT = do_DELETE = _refuse
+
+    def do_GET(self):
+        dspace: FakeDSpace = self.server.owner
+        with dspace.lock:
+            dspace.requests.append(("GET", self.path))
+            dspace.headers.append(dict(self.headers))
+        parts = urlsplit(self.path)
+        query = parse_qsl(parts.query)
+        if parts.path == "/rest/filtered-items":
+            values = [v for k, v in query if k == "query_val[]"]
+            hits = [i for i in dspace.items if all(re.search(v, i["name"]) for v in values)]
+            expand = dict(query).get("expand", "")
+            return self._json(200, {"items": [dspace.item_json(i, expand) for i in hits], "item-count": len(hits),
+                                    "unfiltered-item-count": len(hits)})
+        if match := re.fullmatch(r"/rest/handle/(\d+/\d+)", parts.path):
+            item = next((i for i in dspace.items if i["handle"] == match[1]), None)
+            if item is None:  # DSpace answers an unknown handle with Tomcat's error page
+                return self._send(500, b"<html><title>Apache Tomcat - Error report</title></html>", "text/html")
+            return self._json(200, dspace.item_json(item, dict(query).get("expand", "")))
+        if match := re.fullmatch(r"/rest/bitstreams/file-(\d+)/retrieve", parts.path):
+            item = next(i for i in dspace.items if i["handle"].endswith("/" + match[1]))
+            body = (FIXTURES / "files" / item["file"]).read_bytes()
+            if item.get("wrapped"):
+                boundary = b"------------------------------8d72aff9bce40eb"
+                body = (b"\r\n" + boundary + b'\r\nContent-Disposition: form-data; name="file";filename="'
+                        + item["name"].encode() + b'"\r\n Content-Type: application/octet-stream\r\n\r\n'
+                        + body + b"\r\n" + boundary + b"--\r\n")
+            return self._send(200, body, "application/octet-stream")
+        return self._send(404, b"not found", "text/plain")
 
 class FakeTelegram(_Server):
     """bots: {token: username}; a bot's name starts as its username. Chat ids are the captain's

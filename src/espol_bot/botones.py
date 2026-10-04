@@ -25,6 +25,10 @@ plugin should show:
   v1:u:<entrega>:ok       «📤 Entregar en <tarea>» under the PDF a subject bot built from the captain's photos:
                           checks the assignment in the aula again and hands the PDF in (submission.py)
   v1:u:<entrega>:no       «Cancelar»: discards it
+  v1:k:<nota>:<CÓDIGO>    a subject under a note of the captain's notes folder (notes.py): the note is that
+                          subject's, its //vinci questions and its summary go to that bot
+  v1:k:<nota>:no          «No es de clase»: the note is never read again
+  v1:k:<nota>:cambiar     «Cambiar materia»: sends the card with every subject
 
 A tick on the dashboard comes in as `v1:s:…` or `v1:t:…` too (dashboard.py); either one, from the chat or the
 dashboard, refreshes the snapshot behind the menu button.
@@ -46,7 +50,7 @@ from espol_bot import dashboard, equipo, grades, horario, materias, messages, st
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([aghcxrnstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
+PATTERN = re.compile(r"v1:([aghckxrnstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
@@ -81,6 +85,9 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
             return _grading_scheme(cfg, conn, ref, arg == "ok", now)
         if kind == "u":
             return _hand_in(cfg, conn, ref, arg == "ok", now)
+        if kind == "k":
+            from espol_bot import notes
+            return notes.choose(cfg, conn, ref, arg, now)
         return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()

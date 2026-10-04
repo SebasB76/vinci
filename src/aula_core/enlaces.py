@@ -72,9 +72,9 @@ def _provider(kind: str) -> str:
     return "google" if kind.startswith("google") else kind if kind in LOGIN else "web"
 
 
-def _route(url: str, cfg: CoreConfig) -> str:
+def route(url: str, cfg: CoreConfig) -> str:
     """Where a request for `url` really goes. `[test] link_hosts` in config.toml ({host: base}) sends a host
-    and its subdomains to a local stand-in: the E2E test's Google and SharePoint. A real install has none."""
+    and its subdomains to a local stand-in: the E2E test's Google, SharePoint and DSpace. A real install has none."""
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
     for name, base in section(cfg.raw, "test").get("link_hosts", {}).items():
@@ -111,7 +111,7 @@ def _login(url: str, kind: str) -> str | None:
     return LOGIN[_provider(kind)] if LOGIN_PATH.search(urlsplit(url).path) else None
 
 
-def _extension(body: bytes, content_type: str) -> str | None:
+def sniff(body: bytes, content_type: str) -> str | None:
     """What the bytes are, by their content (Drive sends every file as application/octet-stream)."""
     if body.startswith(b"%PDF"):
         return "pdf"
@@ -196,7 +196,7 @@ def _download(link_url: str, kind: str, cfg: CoreConfig) -> tuple[bytes, str, st
         for _ in range(MAX_REDIRECTS + 1):
             if time.monotonic() - started > DEADLINE:
                 raise _Refused(f"tardó más de {DEADLINE} s en responder", lasting=False)
-            target = _route(url, cfg)
+            target = route(url, cfg)
             _public_host(target, cfg.canvas_url)
             try:
                 resp = session.get(target, timeout=TIMEOUT, stream=True, allow_redirects=False)
@@ -223,7 +223,7 @@ def _download(link_url: str, kind: str, cfg: CoreConfig) -> tuple[bytes, str, st
                     raise _Refused(f"el sitio respondió {status}")
                 body = _body(resp, max_bytes, started)
                 content_type = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
-                ext = _extension(body, content_type)
+                ext = sniff(body, content_type)
                 if ext == "html" and not confirmed and (confirm := _drive_confirm(url, body)):
                     url, confirmed = confirm, True
                     continue

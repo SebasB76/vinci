@@ -5,7 +5,9 @@ Deterministic and model-free. Each run prints one of:
   - a pre-class brief task, with every fact the brief needs (last class from the
     notebook, what is due, the main book, new material and links, open doubts), when a
     class of this subject starts within `brief_minutos_antes`;
-  - a handoff task with everything Vinci (or an alert button) queued for this subject.
+  - a handoff task with everything Vinci (or an alert button) queued for this subject;
+  - a notes task: the //vinci questions and the finished class notes of the captain's notes
+    folder (notes.py), when there is no other handoff waiting.
 
 Only the agent run that follows writes anything with the model, and its answer is
 delivered by Hermes to the subject bot's own chat. Each class start is claimed in
@@ -23,7 +25,7 @@ from pathlib import Path
 
 from aula_core import Aula, queries, timefmt
 from aula_core.config import ConfigError
-from espol_bot import horario, libros, materias, store
+from espol_bot import horario, libros, materias, notes, store
 from espol_bot.config import BotConfig
 from espol_bot.cuaderno import FILE_KINDS, Notebook
 
@@ -249,10 +251,15 @@ def run(cfg: BotConfig, code: str, now: datetime) -> str:
             if store.claim_brief(conn, subject.code, start, now):
                 log.info("agenda %s: brief de la clase %s", code, start.isoformat())
                 return brief_task(cfg, subject, start, found[clase], list(found), now)
-        items = store.claim_handoffs(conn, subject.code, now)
+        # One kind of task per tick: the notes wait for the next minute.
+        items = store.claim_handoffs(conn, subject.code, now, origins=notes.ORIGINS, exclude=True)
+        noted = [] if items else store.claim_handoffs(conn, subject.code, now, origins=notes.ORIGINS)
     finally:
         aula.close()
     if items:
         log.info("agenda %s: entregas %s", code, ", ".join(f"#{i['id']}" for i in items))
         return handoff_task(cfg, subject, items, now)
+    if noted:
+        log.info("agenda %s: apuntes %s", code, ", ".join(f"#{i['id']}" for i in noted))
+        return notes.task(cfg, subject, noted, now)
     return SKIP

@@ -47,6 +47,14 @@ max_mensajes_por_sondeo = 8
 # pregunta para la clase) estos minutos antes de cada clase de tu horario.
 brief_minutos_antes = 30
 
+[notes]
+# La carpeta donde escribes tus apuntes en Markdown (Omawrite con su carpeta de notas, Obsidian…). Vinci la revisa
+# cada minuto: decide de qué materia es cada nota, le pasa al bot de la materia las líneas «//vinci <pregunta>» y,
+# cuando la clase terminó y la nota lleva un rato sin cambios, le pide el resumen. Vacía: no lee nada.
+folder = "~/Notes"
+# Minutos sin cambios para dar una nota por terminada.
+idle_minutes = 15
+
 [material]
 # Tipos de archivo del aula que los bots leen (además de las páginas web que abren desde un enlace).
 # Solo el sílabo de cada curso se baja solo; lo demás queda en el catálogo y el bot de la materia

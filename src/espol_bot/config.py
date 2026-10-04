@@ -1,4 +1,4 @@
-"""Bot-specific settings: [notificaciones], [clases] and [hermes] from config.toml, plus
+"""Bot-specific settings: [notificaciones], [clases], [notes] and [hermes] from config.toml, plus
 the Telegram secrets. The core settings come from aula_core.config."""
 
 from __future__ import annotations
@@ -7,6 +7,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import time
+from pathlib import Path
 
 from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_values, section
 
@@ -38,6 +39,8 @@ class BotConfig:
     hermes_model: str
     telegram_api: str
     token_form_url: str = DEFAULT_TOKEN_FORM_URL
+    notes_folder: Path | None = None  # the captain's class notes (notes.py); None: not read
+    notes_idle_minutes: int = 15
     vinci_toolsets: tuple[str, ...] = ()
     subject_toolsets: tuple[str, ...] = ()
     subject_toolsets_by_code: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -93,6 +96,12 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not api.startswith(("https://", "http://")):
         raise ConfigError("ESPOL_TELEGRAM_API_BASE debe empezar con https://")
 
+    notes = section(core.raw, "notes")
+    folder = str(notes.get("folder") or "").strip()
+    idle = int(notes.get("idle_minutes", 15))
+    if not 5 <= idle <= 240:
+        raise ConfigError("[notes] idle_minutes debe estar entre 5 y 240")
+
     form_url = str(section(core.raw, "canvas").get("token_form_url") or DEFAULT_TOKEN_FORM_URL)
     if not form_url.startswith("https://"):
         raise ConfigError("canvas.token_form_url debe empezar con https:// (Telegram solo abre Mini Apps así)")
@@ -109,6 +118,8 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
         token_form_url=form_url,
+        notes_folder=Path(folder).expanduser() if folder else None,
+        notes_idle_minutes=idle,
         vinci_toolsets=_names(tools.get("vinci", []), "vinci"),
         subject_toolsets=_names(tools.get("materias", []), "materias"),
         subject_toolsets_by_code={code.upper(): _names(names, f"por_materia.{code}") for code, names in by_code.items()},

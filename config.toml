@@ -38,6 +38,12 @@ max_mensajes_por_sondeo = 8
 # pregunta para la clase) estos minutos antes de cada clase de tu horario.
 brief_minutos_antes = 30
 
+[submissions]
+# Materias cuyas actividades haces a mano y entregas en PDF (por su código). En el aviso de una tarea nueva y en
+# sus recordatorios, Vinci te recuerda que le mandes las fotos al bot de la materia, que arma el PDF y la entrega.
+# También lo recuerda en cualquier materia cuando la tarea pide escanear o hacerla a mano.
+handwritten = ["ESTG1034"]
+
 [material]
 # Tipos de archivo del aula que los bots leen (además de las páginas web que abren desde un enlace).
 # Solo el sílabo de cada curso se baja solo; lo demás queda en el catálogo y el bot de la materia

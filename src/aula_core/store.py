@@ -207,6 +207,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
 # Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS leaves an existing table as it was.
 ADDED_COLUMNS = {
     "courses": ["term_start TEXT"],
+    "assignments": ["allowed_extensions TEXT", "asks_scan INTEGER NOT NULL DEFAULT 0"],
     "announcements": ["material TEXT"],
     "links": ["checked_at TEXT", "problem TEXT"],
     "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",

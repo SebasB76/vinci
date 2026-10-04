@@ -155,6 +155,11 @@ def digest(events: list[dict], tz: ZoneInfo) -> str:
     return "\n\n".join(blocks)
 
 
+def hand_in_hint(handle: str) -> str:
+    """Under an assignment the captain does by hand: the subject bot hands it in from the photos."""
+    return f"📸 ¿La hiciste a mano? Mándale las fotos de las hojas a {e(handle)}: arma el PDF y la entrega con un botón."
+
+
 def reminder_message(task: dict, hours: int, tz: ZoneInfo, now: datetime) -> str:
     offline = "\n(No tiene entrega en línea: revisa cómo se entrega.)" if task["sin_entrega_en_linea"] else ""
     if quiz := task.get("quiz"):

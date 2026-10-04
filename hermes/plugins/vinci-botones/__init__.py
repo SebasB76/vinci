@@ -4,7 +4,8 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 
 - Inline buttons (callback data `v1:...`): run `espol-bot boton <data>`, which queues a
   handoff, saves or discards a schedule proposal or a grading scheme, creates / archives a subject
-  bot, marks an assignment as handed in or closes a to-do (the pressed button then turns into its undo).
+  bot, marks an assignment as handed in or closes a to-do (the pressed button then turns into its undo), or
+  hands in to the aula the PDF a subject bot built from the captain's photos.
 - A bot created for Vinci to manage (`managed_bot_created`): run `espol-bot bot-creado <id>`,
   which fetches its token from Telegram and provisions it.
 - Any message carrying a bot token (for example BotFather's reply, forwarded): delete it

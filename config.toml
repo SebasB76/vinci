@@ -5,7 +5,8 @@
 # (la frecuencia del sondeo y la hora del resumen viven en los cron jobs de Hermes).
 
 [canvas]
-# Tu aula virtual (Canvas LMS). Los datos académicos solo se leen; Vinci también crea y borra
+# Tu aula virtual (Canvas LMS). Los datos académicos solo se leen, salvo el PDF que entregas con el botón
+# «📤 Entregar» de un bot de materia; Vinci también crea y borra
 # exclusivamente sus propios tokens para esquivar el vencimiento oculto de una hora de ESPOL.
 url = "https://aulavirtual.espol.edu.ec"
 # El comando `aula` reutiliza los datos locales si tienen menos de estos minutos;

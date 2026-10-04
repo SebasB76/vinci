@@ -22,9 +22,12 @@ plugin should show:
                           subject bot's): saves it as how that subject is graded and answers how the captain
                           is doing under it
   v1:g:<propuesta>:no     «Corregir»: discards it
+  v1:u:<entrega>:ok       «📤 Entregar en <tarea>» under the PDF a subject bot built from the captain's photos:
+                          checks the assignment in the aula again and hands the PDF in (submission.py)
+  v1:u:<entrega>:no       «Cancelar»: discards it
 
-No model is involved: the schedule and a grading scheme are saved, and a bot created or archived,
-only by the captain's own press.
+No model is involved: the schedule and a grading scheme are saved, a bot created or archived, and a PDF
+handed in to the aula only by the captain's own press.
 """
 
 from __future__ import annotations
@@ -32,14 +35,15 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from aula_core import Aula, timefmt
 from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
-from espol_bot import equipo, grades, horario, materias, messages, store
+from espol_bot import equipo, grades, horario, materias, messages, store, submission
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([aghcxrnst]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
+PATTERN = re.compile(r"v1:([aghcxrnstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
@@ -72,6 +76,8 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
             return _todo_done(conn, ref, arg == "ok", now)
         if kind == "g":
             return _grading_scheme(cfg, conn, ref, arg == "ok", now)
+        if kind == "u":
+            return _hand_in(cfg, conn, ref, arg == "ok", now)
         return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()
@@ -129,6 +135,65 @@ def _grading_scheme(cfg: BotConfig, conn, proposal_id: int, save: bool, now: dat
     if subject is not None:
         reply += "\n\n" + messages.e(grades.status(conn, subject, cfg.core.tz)["summary"])
     return _answer("Esquema guardado", reply, remove_buttons=True)
+
+
+SUBMISSION_STATE = {
+    "submitting": "La estoy entregando; espera un momento.",
+    "submitted": "Ya la entregué en el aula.",
+    "cancelled": "La cancelaste. Si quieres entregarla, mándame las fotos otra vez.",
+    "replaced": "Este PDF ya no vale: te mandé uno más nuevo para la misma tarea.",
+    "failed": "El aula no la aceptó; mira el mensaje de abajo.",
+}
+
+
+def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetime) -> dict:
+    proposal = store.submission_proposal(conn, proposal_id)
+    if proposal is None:
+        return _answer("No encuentro esa entrega.")
+    name = messages.e(proposal["assignment_name"])
+    if not hand_in:
+        if not store.set_submission_state(conn, proposal_id, "cancelled", now, only_from="pending"):
+            return _answer(SUBMISSION_STATE.get(proposal["state"], "Esa entrega ya no está pendiente."))
+        return _answer("No la entregué", f"👌 Listo, no entregué «{name}».", remove_buttons=True)
+    if not store.claim_submission(conn, proposal_id, now):
+        return _answer(SUBMISSION_STATE.get(proposal["state"], "Esa entrega ya no está pendiente."))
+    pdf = Path(proposal["pdf"])
+    created = timefmt.parse(proposal["created_at"]) or now
+    try:
+        if not pdf.is_file():
+            raise submission.SubmitError("ya no encuentro el PDF en tu PC. Mándame las fotos otra vez.", final=True)
+        assignment = submission.check(cfg.core, proposal["course_id"], proposal["assignment_id"], created)
+        result = submission.submit(cfg.core, proposal["course_id"], proposal["assignment_id"], pdf,
+                                   submission.upload_name(proposal["assignment_name"]))
+    except submission.AlreadySubmitted as exc:
+        store.set_submission_state(conn, proposal_id, "submitted", now)
+        _mark_submitted(conn, proposal["assignment_id"], exc.submitted_at)
+        when = timefmt.human(exc.submitted_at, cfg.core.tz)
+        return _answer("Ya estaba entregada", f"✅ El aula ya tiene una entrega de «{name}» del {messages.e(when)}, "
+                                              "posterior a este PDF: no subí otra.", remove_buttons=True)
+    except submission.SubmitError as exc:
+        store.set_submission_state(conn, proposal_id, "failed" if exc.final else "pending", now)
+        retry = "" if exc.final else " Puedes volver a pulsar «Entregar»."
+        return _answer("No pude entregarla", f"⚠️ No pude entregar «{name}»: {messages.e(exc)}{retry}",
+                       remove_buttons=exc.final)
+    store.set_submission_state(conn, proposal_id, "submitted", now)
+    submitted_at = result.get("submitted_at") or timefmt.iso(now)
+    _mark_submitted(conn, proposal["assignment_id"], submitted_at)
+    pages = proposal["pages"]
+    reply = (f"✅ <b>Entregué «{name}»</b> en el aula: {pages} página{'s' if pages != 1 else ''}, "
+             f"{messages.e(timefmt.human(submitted_at, cfg.core.tz))}.")
+    if result.get("late"):
+        reply += " El aula la marcó como atrasada."
+    if assignment.get("html_url"):
+        reply += "\n" + messages.link(assignment["html_url"], "Ver la entrega en el aula")
+    return _answer("Entregada", reply, remove_buttons=True)
+
+
+def _mark_submitted(conn, assignment_id: int, submitted_at: str) -> None:
+    """Until the next sync reads it from the aula, so reminders and the summary stop listing it now."""
+    conn.execute("UPDATE assignments SET sub_state = 'submitted', submitted_at = ? WHERE id = ?",
+                 (timefmt.normalize(submitted_at), assignment_id))
+    conn.commit()
 
 
 def _team(cfg: BotConfig, kind: str, code: str, now: datetime) -> dict:

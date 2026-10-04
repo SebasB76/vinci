@@ -11,7 +11,8 @@
      what went in on paper, by email or in the lab, which Canvas never learns about) and for the
      captain's own to-dos (store.todos, each with «✅ Hecho»); and, for a quiz that opens at a set time for
      a short window (a 30-minute test in class), «abre en 15 min» before it opens, or «ya abrió» right after;
-  5. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
+  5. point the menu button of Vinci's chat at a fresh dashboard when what it shows changed (dashboard.py);
+  6. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
      that bot's chat, for its main book's PDF when there is none it can read (libros.py).
 Then (`read_scans`, outside the poll's lock) OCR of the scanned pages still waiting, OCR_MINUTES a run.
 `summary()` runs at `resumen_diario` and sends the week at a glance, the open to-dos included.
@@ -39,7 +40,7 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import agenda, health, libros, materias, messages, priority, store, token_form
+from espol_bot import agenda, dashboard, health, libros, materias, messages, priority, store, token_form
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -222,6 +223,10 @@ class Bot:
             log.error("%s", exc)
             problems.append(f"Telegram no aceptó un mensaje ({exc})")
             result.error = str(exc)
+        try:
+            dashboard.publish(self.conn, self.cfg, self.telegram, self.team, now)
+        except TelegramError as exc:  # the menu button keeps the last snapshot until the next poll
+            log.warning("dashboard: %s", exc)
         self._main_books(result, now)
         health.record_run(self.conn, health.POLL_RUN, now, error="; ".join(problems) or None)
         return result

@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("feeds", help="guardar de forma privada los feeds iCal y RSS/Atom")
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu Telegram")
+    sub.add_parser("dashboard", help="poner ya el dashboard al día en el botón de menú del chat de Vinci")
     sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización, token y feeds (solo lectura)")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
@@ -269,6 +270,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         with file_lock(cfg.core.data_dir, "bot.lock"):
             bot = Bot(cfg, telegram)
+            if args.cmd == "dashboard":
+                from espol_bot import dashboard
+                url = dashboard.publish(bot.conn, cfg, telegram, bot.team, bot.aula.now(), force=True)
+                print(f"Botón «{dashboard.BUTTON}» al día ({len(url)} caracteres en su enlace)." if url else
+                      "El dashboard está apagado: dashboard.url está vacío en config.toml.")
+                return 0
             if args.cmd == "sondeo":
                 result = bot.poll()
             elif args.cmd == "mantenimiento":

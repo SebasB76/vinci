@@ -26,6 +26,9 @@ plugin should show:
                           checks the assignment in the aula again and hands the PDF in (submission.py)
   v1:u:<entrega>:no       «Cancelar»: discards it
 
+A tick on the dashboard comes in as `v1:s:…` or `v1:t:…` too (dashboard.py); either one, from the chat or the
+dashboard, refreshes the snapshot behind the menu button.
+
 No model is involved: the schedule and a grading scheme are saved, a bot created or archived, and a PDF
 handed in to the aula only by the captain's own press.
 """
@@ -39,7 +42,7 @@ from pathlib import Path
 
 from aula_core import Aula, timefmt
 from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
-from espol_bot import equipo, grades, horario, materias, messages, store, submission
+from espol_bot import dashboard, equipo, grades, horario, materias, messages, store, submission
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
@@ -70,10 +73,10 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
         conn = store.ensure(aula.conn)
         if kind == "a":
             return _handoff(cfg, conn, ref, arg.upper(), now)
-        if kind == "s":
-            return _submitted(conn, ref, arg == "ok", now)
-        if kind == "t":
-            return _todo_done(conn, ref, arg == "ok", now)
+        if kind in "st":
+            answer = (_submitted if kind == "s" else _todo_done)(conn, ref, arg == "ok", now)
+            dashboard.refresh(cfg, conn, now)
+            return answer
         if kind == "g":
             return _grading_scheme(cfg, conn, ref, arg == "ok", now)
         if kind == "u":

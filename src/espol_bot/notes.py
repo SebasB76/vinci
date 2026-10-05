@@ -427,3 +427,33 @@ def task(cfg: BotConfig, subject: materias.Subject, items: list[dict], now: date
         ]
     lines.append("Sé breve (máx. ~200 palabras). No inventes lo que no dicen los apuntes ni el material.")
     return "\n".join(lines)
+
+
+def for_subject(conn, cfg: BotConfig, code: str, now: datetime, limit: int = 3) -> dict:
+    """The captain's latest notes of `code` as they are on disk right now, for the subject bot's chat: a note it
+    is asked about mid-class has not reached its notebook yet."""
+    rows = conn.execute("SELECT * FROM class_notes WHERE subject = ? AND ignored = 0 AND gone_at IS NULL "
+                        "AND changed_at >= ? ORDER BY changed_at DESC LIMIT ?",
+                        (code, timefmt.iso(now - timedelta(days=14)), limit)).fetchall()
+    found = []
+    for row in rows:
+        path = Path(row["path"])
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        changed = timefmt.parse(row["changed_at"])
+        found.append({
+            "nota": title(text),
+            "empezada": timefmt.human(row["first_seen"], cfg.core.tz),
+            "ultimo_cambio": f"{timefmt.human(row['changed_at'], cfg.core.tz)} ({timefmt.until(changed, now)})",
+            "resumen_enviado": row["summarized_text"] == text,
+            "capturas": len(images(text, path)),
+            "texto": body(text)[-MAX_SUMMARY_CHARS // max(1, len(rows)):],
+        })
+    return {"apuntes": found, "nota": (
+        "Son sus apuntes tal como están ahora en su computadora (las capturas no se ven aquí; llegan con el resumen). "
+        "Cuando la clase termina y deja de escribir, te llegan para el resumen. Para preguntarte algo en plena clase, "
+        "puede escribir en su nota una línea «//vinci <pregunta>» y presionar Enter." if found else
+        "No hay apuntes suyos de esta materia en los últimos 14 días. Escribe en su carpeta de notas (Omawrite): "
+        "una nota que nombra la materia en su primera línea, o que escribe en tu clase, te llega sola.")}

@@ -1307,6 +1307,10 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
     def notebook() -> Notebook:
         return Notebook(ctx.cfg.core, ctx.subject().code)
 
+    def class_notes(args):
+        from espol_bot import notes
+        return notes.for_subject(ctx.conn, ctx.cfg, ctx.subject().code, ctx.now(), _int(args.get("n"), "n", 3, 1, 5))
+
     def cuaderno(args):
         nb = notebook()
         try:
@@ -1483,6 +1487,9 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         Tool("find_past_exams", EXAM_SEARCH, find_exams, EXAM_SEARCH_PROPERTIES, ["names"]),
         Tool("open_past_exam", EXAM_OPEN, open_exam, EXAM_OPEN_PROPERTIES, ["exam_id"], read_only=False),
         Tool("horario", "Las clases de tu materia según el horario.", horario_),
+        Tool("class_notes", "Lee los apuntes que el estudiante escribe en su computadora (su carpeta de notas) de "
+             "tu materia, tal como están ahora, aunque la clase no haya terminado y no estén en tu cuaderno.",
+             class_notes, {"n": {"type": "integer", "description": "cuántas notas, las más recientes (1-5)"}}),
         Tool("cuaderno", "Lee tu cuaderno: lo visto en cada clase, apuntes, dudas, temas débiles y adjuntos.",
              cuaderno, {"tipo": {"type": "string", "enum": list(KINDS)}, "n": {"type": "integer"},
                         "abiertas": {"type": "boolean", "description": "solo dudas/temas sin resolver"}}),

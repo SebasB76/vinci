@@ -160,17 +160,27 @@ def hand_in_hint(handle: str) -> str:
     return f"📸 ¿La hiciste a mano? Mándale las fotos de las hojas a {e(handle)}: arma el PDF y la entrega con un botón."
 
 
-def reminder_message(task: dict, hours: int, tz: ZoneInfo, now: datetime) -> str:
+def stale_notice(stale, tz: ZoneInfo) -> str:
+    """The line on top of what the poll sends while the aula cannot be read (health.Stale)."""
+    fix = " Renuévalo con /token." if stale.token else ""
+    return (f"⚠️ <b>No leo el aula virtual desde el {e(timefmt.human(stale.since, tz))}</b>: {e(stale.why)}.{fix} "
+            "Lo que sigue es lo que había a esa hora: lo que entregaste después todavía sale como pendiente.")
+
+
+def reminder_message(task: dict, hours: int, tz: ZoneInfo, now: datetime, stale=None) -> str:
     offline = "\n(No tiene entrega en línea: revisa cómo se entrega.)" if task["sin_entrega_en_linea"] else ""
+    since = f"Al {e(timefmt.human(stale.since, tz))}" if stale else ""
+    answered = f"{since} no lo habías respondido (no leo el aula desde entonces)." if stale else "Aún no lo has respondido."
+    handed = f"{since} no la habías entregado (no leo el aula desde entonces)." if stale else "Aún no la has entregado."
     if quiz := task.get("quiz"):
         return (f"⏰ <b>Recordatorio: vence {e(timefmt.until(task['vence'], now))}</b>\n"
                 f"{course(task['curso'])}: {e(task['tarea'])}\n{quiz_facts(quiz)}\n{_quiz_opens(quiz, tz, now)}"
                 f"Entrega: {e(timefmt.human(task['vence'], tz))}{_quiz_closes(quiz, task['vence'], tz)}\n"
-                f"Aún no lo has respondido.\n{link(task['url'])}")
+                f"{answered}\n{link(task['url'])}")
     return (f"⏰ <b>Recordatorio: vence {e(timefmt.until(task['vence'], now))}</b>\n"
             f"{course(task['curso'])}: {e(task['tarea'])}\n"
             f"Entrega: {e(timefmt.human(task['vence'], tz))}\n"
-            f"Aún no la has entregado.{offline}\n{link(task['url'])}")
+            f"{handed}{offline}\n{link(task['url'])}")
 
 
 def quiz_opening(task: dict, tz: ZoneInfo, now: datetime) -> str:
@@ -231,14 +241,15 @@ TIER_TITLE = {"urgent": "Vence en menos de 24 h", "weighted": "Después, lo que 
 
 
 def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
-                   tz: ZoneInfo, now: datetime, undated_todos: list[dict] = ()) -> str:
-    """`entries`: the week's deliverables and the overdue ones, in priority.ordered's order."""
+                   tz: ZoneInfo, now: datetime, undated_todos: list[dict] = (), stale=None) -> str:
+    """`entries`: the week's deliverables and the overdue ones, in priority.ordered's order. `stale`
+    (health.Stale): the aula could not be read lately, so what is pending is how it was then."""
     today = now.astimezone(tz).date()
     end = today + timedelta(days=6)
     head = (f"☀️ <b>Resumen de tu semana</b>\n"
             f"{_day_label(today, today)} {today.day} {timefmt.MONTHS[today.month - 1]} → "
             f"{timefmt.DAYS[end.weekday()]} {end.day} {timefmt.MONTHS[end.month - 1]}")
-    blocks = [head]
+    blocks = [head] + ([stale_notice(stale, tz)] if stale else [])
     upcoming = [x for x in entries if x.tier != "overdue"]
     overdue = [x for x in entries if x.tier == "overdue"]
     if upcoming:
@@ -252,7 +263,8 @@ def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
     else:
         blocks.append("No tienes entregas pendientes esta semana. 🎉")
     if overdue:
-        blocks.append(f"<b>Atrasadas sin entregar ({len(overdue)})</b>\n" + "\n".join(
+        title = f"Atrasadas sin entregar al {e(timefmt.human(stale.since, tz))}" if stale else "Atrasadas sin entregar"
+        blocks.append(f"<b>{title} ({len(overdue)})</b>\n" + "\n".join(
             _deliverable(x, tz, now) for x in overdue))
     unschemed = list(dict.fromkeys(e(short_name(x.item["curso"])) for x in entries if x.unknown == "no_scheme"))
     if unschemed:

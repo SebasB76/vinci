@@ -21,9 +21,10 @@ from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 
-from aula_core import PAUSED_KEY, REFUSED_KEY, feeds, timefmt, token_fingerprint
+from aula_core import PAUSED_KEY, REFUSED_KEY, Aula, feeds, timefmt, token_fingerprint
 from aula_core.config import ConfigError, load_secret_values
-from aula_core.store import set_meta
+from aula_core.store import get_meta, set_meta
+from aula_core.sync import last_sync
 from espol_bot import token_renewal
 from espol_bot.config import BotConfig
 
@@ -111,6 +112,32 @@ def _poll(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Che
     if run.get("error"):
         return Check(name, WARN, f"corrió {ago(at)}, con un problema: {run['error']}")
     return Check(name, OK, f"corrió {ago(at)}; corre cada {cfg.poll_minutes} min.")
+
+
+
+@dataclass(frozen=True)
+class Stale:
+    since: datetime  # the last time the aula was read
+    why: str
+    token: bool  # Canvas refused the token: only a new one (/token) brings the aula back
+
+
+def aula_stale(aula: Aula, poll_minutes: int, now: datetime) -> Stale | None:
+    """Since when the saved copy of the aula is old (two polls missed) and why, or None while it is fresh. What it
+    says about submissions and grades then is how they were at `since`, not now."""
+    last = last_sync(aula.conn)
+    if last is None or now - last <= timedelta(minutes=2 * poll_minutes):
+        return None
+    try:
+        refused = aula.refused_token()
+    except ConfigError:
+        refused = None
+    paused = timefmt.parse(get_meta(aula.conn, PAUSED_KEY))
+    if refused:
+        return Stale(last, "Canvas rechazó el token y la cadena de renovación se cortó", True)
+    if paused and now < paused:
+        return Stale(last, "el aula virtual pidió bajar el ritmo", False)
+    return Stale(last, "no pude leer el aula virtual", False)
 
 
 def _sync(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Check:

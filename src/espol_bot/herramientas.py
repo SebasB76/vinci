@@ -58,7 +58,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
-from espol_bot import agenda, citations, grades, horario, libros, materias, messages, priority, quiz, store, submission
+from espol_bot import (agenda, citations, grades, health, horario, libros, materias, messages, priority, quiz, store,
+                       submission)
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -117,6 +118,7 @@ class Ctx:
     hermes_home: Path | None = None
     code: str | None = None
     _aula: Aula | None = field(default=None, repr=False)
+    stale: health.Stale | None = field(default=None, repr=False)  # set by refresh() when the aula's copy is old
 
     @property
     def aula(self) -> Aula:
@@ -158,9 +160,36 @@ class Ctx:
             if not queries.courses(self.conn):
                 raise ToolError(f"No pude leer el aula virtual: {exc}") from None
             log.warning("uso los datos guardados: %s", exc)
+        self.stale = health.aula_stale(self.aula, self.cfg.poll_minutes, self.now())
 
 
 # -- shared helpers ------------------------------------------------------------------------
+
+
+def _stale_note(ctx: Ctx) -> str:
+    since = timefmt.human(ctx.stale.since, ctx.cfg.core.tz)
+    fix = (", y que renueve el token: " + ("con /token en este chat" if ctx.code is None else "mandándole /token a Vinci")
+           if ctx.stale.token else "")
+    return (f"No pude leer el aula virtual desde el {since} ({ctx.stale.why}): estos datos son de esa hora, y lo que "
+            f"entregó, publicaron o calificaron después no aparece. Empieza tu respuesta diciéndoselo{fix}. Nunca le "
+            f"digas que algo sigue sin entregar o sin nota: di «al {since} no estaba entregada».")
+
+
+def _noting_stale(ctx: Ctx, tools: list[Tool]) -> list[Tool]:
+    """Every tool whose answer came from an old copy of the aula says so in «stale_data», so the model does not
+    present how things were then (a homework not handed in yet) as how they are now."""
+    def wrap(handler):
+        def run(args):
+            ctx.stale = None
+            result = handler(args)
+            if ctx.stale is None:
+                return result
+            note = _stale_note(ctx)
+            return {**result, "stale_data": note} if isinstance(result, dict) else {"items": result, "stale_data": note}
+        return run
+    for tool in tools:
+        tool.handler = wrap(tool.handler)
+    return tools
 
 
 def _int(value, name: str, default: int | None = None, lo: int = 1, hi: int = 365) -> int | None:
@@ -1044,7 +1073,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
                             "♻️ Reactivar")
 
     materia = {"materia": {"type": "string", "description": "materia (nombre o código); vacío = todas"}}
-    return [
+    return _noting_stale(ctx, [
         Tool("materias", "Los bots de materia del estudiante: nombre, código, @usuario y estado.", materias_),
         Tool("semana", "Vista general: clases de los próximos días (según el horario); en «pendientes», las entregas "
              "pendientes y atrasadas de todas las materias y lo de su lista con fecha, ya en orden de prioridad "
@@ -1135,7 +1164,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
         Tool("reactivar_materia", "Le muestra un botón para reactivar el bot archivado de una materia.", reactivar,
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
-    ]
+    ])
 
 
 # -- subject bot -----------------------------------------------------------------------------
@@ -1405,7 +1434,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
                            "Se entrega solo cuando pulse Entregar; tú no puedes entregarlo. Dile en una línea que lo "
                            "revise y lo entregue con el botón."}
 
-    return [
+    return _noting_stale(ctx, [
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
         Tool("tareas", "Entregas pendientes de tu materia.", tareas,
              {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
@@ -1502,7 +1531,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
                                                                      "(una foto, un apunte, un texto que te pasó)"}},
                   "required": ["question", "options", "answer", "explanation"]}}},
              ["topic", "questions"], read_only=False),
-    ]
+    ])
 
 
 def page_image(cfg: BotConfig, code: str, file_id: int, page: int) -> dict:

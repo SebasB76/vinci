@@ -306,6 +306,7 @@ class Bot:
     def _send_reminders(self, result: PollResult, now: datetime) -> None:
         horizon = max(self.cfg.reminder_hours)
         upcoming = queries.pending(self.conn, now, days=horizon // 24 + 1, overdue_days=0)
+        stale = health.aula_stale(self.aula, self.cfg.poll_minutes, now)
         for task in upcoming:
             due = timefmt.parse(task["vence"])
             if due is None or due <= now:
@@ -321,7 +322,7 @@ class Bot:
             ).fetchone()
             if already:
                 continue
-            text = messages.reminder_message(task, smallest, self.tz, now)
+            text = messages.reminder_message(task, smallest, self.tz, now, stale)
             text += self._hand_in_hint(task["id"], task["curso_id"])
             self._send(text, [task["curso_id"]], [(messages.SUBMITTED_BUTTON, f"v1:s:{task['id']}:ok")])
             result.sent.append(text)
@@ -400,7 +401,8 @@ class Bot:
         shown = [e.item for e in entries if e.todo and e.tier != "overdue"] + \
             [e.item for e in entries if e.todo and e.tier == "overdue"] + undated
         done = [(messages.todo_done_button(t["text"]), f"v1:t:{t['id']}:ok") for t in shown[:MAX_BUTTONS]]
-        text = messages.weekly_summary(entries, len(week) - len(pending), recent, self.tz, now, undated)
+        text = messages.weekly_summary(entries, len(week) - len(pending), recent, self.tz, now, undated,
+                                       health.aula_stale(self.aula, self.cfg.poll_minutes, now))
         return text, courses, done
 
     def summary(self, *, sync_first: bool = True) -> PollResult:

@@ -74,7 +74,7 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      captain's notes folder (~/Notes, Omawrite's), read every minute with no model: a note with no title written
      in Cálculo's class about what its material covers becomes Cálculo's (Vinci says so, with «Cambiar materia»);
      each finished «//vinci …» line reaches Cálculo's bot once (one still being typed waits) and is answered from
-     the material; after the class the note and a copy of its capture go to the notebook, the bot looks at the
+     the material; asked in its chat mid-class, the bot reads the note as it is on disk (class_notes); after the class the note and a copy of its capture go to the notebook, the bot looks at the
      capture (ver_foto) and sends the summary with feedback, and text added later gets an update of just that;
      another tab of that hour about something else is not decided by the schedule (Vinci asks; «No es de
      clase» silences it), Física's topic written with no class is decided by the captain's press, and a
@@ -648,6 +648,16 @@ class Script:
                 if not called:
                     return _call("mcp__materia__buscar_material", pregunta=question, traduccion=english)
                 return {"content": self.cited_answer(_json(results[-1]), name, general)}
+        if "estás leyendo mis apuntes" in text:
+            if not called:
+                return _call("mcp__materia__class_notes")
+            found = _json(results[-1])
+            notes = found.get("apuntes") if isinstance(found, dict) else None
+            if not notes:
+                return {"content": _problem(results[-1])}
+            last = notes[0]["texto"].strip().splitlines()[-1]
+            return {"content": f"Sí: veo tu nota «{notes[0]['nota']}» tal como está ahora; lo último que anotaste: "
+                               f"«{last}». Para preguntarme algo en clase, escribe una línea //vinci."}
         if "en qué página está la regla de L'Hôpital" in text:
             return {"content": FROM_MEMORY}
         flow = self.grades(text, called, results)
@@ -3349,8 +3359,12 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspac
     notes_at("2026-09-30T10:50:00-05:00")
     assert len(note_handoffs()) == 2, "en plena clase no hay resumen, aunque la nota lleve rato sin cambios"
     assert not vinci_cards(mark), "mientras dura la clase no se pregunta por la nota dudosa"
+    # Mid-class, in the bot's chat: the note is not in its notebook yet, but the bot reads it as it is now.
+    live = turn(lambda: telegram.send_text(MATG, CAPTAIN, "¿estás leyendo mis apuntes de hoy?"), "vinci_calculo_bot",
+                "Sí: veo tu nota «Derivadas de funciones compuestas»", timeout=200)
+    assert "entra en la lección del viernes" in readable(live), "lo último que escribió, leído del disco"
     step("09:20: termina la segunda línea //vinci y sigue escribiendo; 09:30, otra pestaña; 10:50, la clase sigue",
-         "2026-09-30T09:20", None, [second])
+         "2026-09-30T09:20", None, [second, live])
 
     images_before = jpeg_images()
     mark = len(telegram.messages)

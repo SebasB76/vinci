@@ -1,0 +1,10 @@
+# {{MARKER}}. Se sobrescribe cada vez que corres setup.sh.
+name: vinci-whatsapp
+version: 1.0.0
+description: "Ordena cada mensaje de WhatsApp antes que Hermes, sin el modelo: los comandos del estudiante (/amigo, «activa este grupo»), el token cifrado de un amigo (se lo pasa a espol-bot sin que el modelo lo vea) y la respuesta a quien todavía no tiene su Vinci. Solo contesta en los grupos que el estudiante activó."
+author: espol-academic-bot
+kind: standalone
+provides_hooks:
+  - pre_gateway_dispatch
+platforms:
+  - linux

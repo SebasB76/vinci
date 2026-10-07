@@ -58,8 +58,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
-from espol_bot import (agenda, citations, grades, health, horario, libros, materias, messages, priority, quiz, store,
-                       submission)
+from espol_bot import (agenda, citations, diapositivas, grades, health, horario, libros, materias, messages, priority,
+                       quiz, store, submission)
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -110,6 +110,32 @@ EXAM_SEARCH_PROPERTIES = {
 EXAM_OPEN = ("Baja un examen de DSpace (su exam_id, de find_past_exams) y lo lee por páginas, cada una con su «cita»: "
              "para resolverlo o comparar sus preguntas. Queda en el material (leer_archivo, buscar_material).")
 EXAM_OPEN_PROPERTIES = {"exam_id": {"type": "integer"}, "pages": {"type": "string", "description": "rango, ej. 1-3"}}
+SLIDES = ("Arma una presentación (.pptx) con el esquema que escribiste: una portada y una diapositiva por tema, con sus "
+          "puntos y, si quieres, notas para el que expone. Devuelve la «ruta»: escríbela tal cual en tu respuesta, en "
+          "una línea aparte y fuera de un bloque de código, y el archivo le llega al chat.")
+SLIDES_PROPERTIES = {
+    "titulo": {"type": "string", "description": "el título de la portada"},
+    "subtitulo": {"type": "string", "description": "materia, integrantes o fecha, si los dijeron"},
+    "diapositivas": {"type": "array", "maxItems": diapositivas.MAX_SLIDES, "items": {
+        "type": "object",
+        "properties": {"titulo": {"type": "string"},
+                       "puntos": {"type": "array", "items": {"type": "string"}, "maxItems": diapositivas.MAX_POINTS,
+                                  "description": "frases cortas, una idea cada una"},
+                       "notas": {"type": "string", "description": "lo que dice el que expone (opcional)"}},
+        "required": ["titulo", "puntos"]}},
+}
+# What someone who is not this Vinci's owner may still run, should they reach it (the plugin's pre_tool_call hook
+# blocks the rest), each with the arguments they may not pass: course material, past exams and slides. Nothing of
+# the owner's own: deliverables, announcements, grades, lists, schedule, notebooks or Vinci's memory.
+GUEST_TOOLS: dict[str, frozenset[str]] = {
+    name: frozenset() for name in (
+        "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas")
+} | {"libro_principal": frozenset({"titulo"})}
+# A friend's own Vinci (amigos.py): Vinci's reading tools over the friend's aula. No subject bots, notebooks,
+# schedule, lists or cards: those need the captain's team and Telegram's buttons.
+FRIEND_TOOLS = frozenset({
+    "semana", "tareas", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas"})
 
 
 @dataclass
@@ -853,6 +879,20 @@ def _newest_audio(ctx: Ctx) -> Path | None:
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
 
+def _slides_tool(ctx: Ctx) -> Tool:
+    def crear(args):
+        if ctx.hermes_home is None:
+            raise ToolError("No sé dónde guardar el archivo: este servidor corre sin --hermes-home.")
+        try:
+            path = diapositivas.build(ctx.hermes_home / "cache" / "documents", args.get("titulo"),
+                                      args.get("diapositivas") or [], args.get("subtitulo") or "", ctx.now())
+        except diapositivas.SlidesError as exc:
+            raise ToolError(f"No pude armar la presentación: {exc}.") from None
+        return {"ruta": str(path), "diapositivas": len(args["diapositivas"]) + 1}
+
+    return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
+
+
 def vinci_tools(ctx: Ctx) -> list[Tool]:
     def materias_(args):
         subjects = ctx.subjects()
@@ -900,7 +940,8 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         subject = _vinci_subject(ctx, args.get("materia"))
         books = _books(ctx, [subject] if subject else ctx.subjects())
         prefer = set().union(*(libros.file_ids(b) for b in books.values()))
-        return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=False)
+        # A friend's Vinci has no subject bots to fetch a document for it: it fetches its own.
+        return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=bool(ctx.cfg.friend))
 
     def leer(args):
         if args.get("enlace_id") not in (None, ""):
@@ -910,7 +951,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         else:
             raise ToolError(READ_WHAT)
         try:
-            return _read(ctx, fid, args.get("paginas"), can_fetch=False)
+            return _read(ctx, fid, args.get("paginas"), can_fetch=bool(ctx.cfg.friend))
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -1164,7 +1205,12 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
         Tool("reactivar_materia", "Le muestra un botón para reactivar el bot archivado de una materia.", reactivar,
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
+        _slides_tool(ctx),
     ])
+
+
+def friend_tools(ctx: Ctx) -> list[Tool]:
+    return [t for t in vinci_tools(ctx) if t.name in FRIEND_TOOLS]
 
 
 # -- subject bot -----------------------------------------------------------------------------
@@ -1538,6 +1584,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
                                                                      "(una foto, un apunte, un texto que te pasó)"}},
                   "required": ["question", "options", "answer", "explanation"]}}},
              ["topic", "questions"], read_only=False),
+        _slides_tool(ctx),
     ])
 
 

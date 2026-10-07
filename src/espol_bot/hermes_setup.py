@@ -67,7 +67,7 @@ from aula_core.config import (
     secrets_path,
     update_secret_values,
 )
-from espol_bot import characters, materias, skill_check
+from espol_bot import characters, herramientas, materias, skill_check
 from espol_bot.config import (
     BLOCKED_TOOLSETS,
     DEFAULT_TELEGRAM_API,
@@ -75,6 +75,7 @@ from espol_bot.config import (
     TelegramSecrets,
     captain_id,
     token_key,
+    whatsapp_settings,
 )
 from espol_bot.telegram import Telegram, TelegramError
 
@@ -91,6 +92,12 @@ APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 # Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
 # 25K verbatim tail already weigh ~50K, so a lower trigger would summarize again every question or two.
 COMPRESSION_THRESHOLD_TOKENS = 80_000
+# Hermes tools (besides the MCP ones in herramientas.GUEST_TOOLS) someone in a WhatsApp group other than the
+# captain may use: the web and reading skills and past chats. Not memory or skill_manage: what a guest says must
+# never become something Vinci remembers or does for the captain.
+GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "session_search", "clarify"]
+WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
+WHATSAPP_PLUGIN = "vinci-whatsapp"
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -159,9 +166,17 @@ class Setup:
         self.configured: list[tuple[str, str]] = []  # (profile, its pinned skill) for check_skills
         self.secrets = load_secret_values()
         self.captain = captain_id(self.secrets)
+        self.whatsapp = whatsapp_settings(self.secrets)
+        guests = {**{f"mcp__vinci__{name}": sorted(args) for name, args in herramientas.GUEST_TOOLS.items()},
+                  **{name: [] for name in GUEST_HERMES_TOOLS}}
         self.values = {"BOT": str(self.bot_bin), "CONFIG": str(config_path()), "SECRETS": str(secrets_path()),
                        "MARKER": MARKER, "USER_ID": self.captain, "MINUTOS": str(cfg.brief_minutes),
-                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes}
+                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes,
+                       # Whose Vinci a profile is, on WhatsApp: the captain's number here, a friend's in theirs.
+                       "WHATSAPP_OWNER": self.whatsapp.captain if self.whatsapp else "",
+                       "GUEST_TOOLS": json.dumps(guests, sort_keys=True),
+                       # A friend's profile points the same code at its own folder (amigos.env); empty here.
+                       "DATA_DIR": "", "AMIGO": "", "ENV_EXTRA": ""}
 
     # -- plumbing -------------------------------------------------------------------------
 
@@ -245,7 +260,7 @@ class Setup:
         managed = {
             "model": {"provider": self.cfg.hermes_provider, "default": self.cfg.hermes_model},
             "timezone": str(self.cfg.core.tz),
-            "platform_toolsets": {"telegram": toolsets, "cli": toolsets,
+            "platform_toolsets": {"telegram": toolsets, "whatsapp": toolsets, "cli": toolsets,
                                   "cron": [t for t in toolsets if t not in ("clarify", "session_search")]},
             "agent": {"disabled_toolsets": blocked},
             "tools": {"tool_search": {"enabled": "off"}},
@@ -259,6 +274,8 @@ class Setup:
             "approvals": {"deny": APPROVALS_DENY},
             # Only the captain (TELEGRAM_ALLOWED_USERS): anyone else gets silence, not a pairing code.
             "unauthorized_dm_behavior": "ignore",
+            # Hermes' WhatsApp default posts a line per tool call («⚙️ mcp__vinci__semana…»); Telegram's is off.
+            "display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
             # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
@@ -284,8 +301,9 @@ class Setup:
         return json.loads(jobs_file.read_text(encoding="utf-8")).get("jobs", []) if jobs_file.exists() else []
 
     def reconcile_job(self, name: str, job_name: str, schedule: str, script: str, *, no_agent: bool,
-                      prompt: str | None = None, skills: tuple[str, ...] = (), enabled: bool = True) -> None:
-        deliver = f"telegram:{self.captain}"
+                      prompt: str | None = None, skills: tuple[str, ...] = (), enabled: bool = True,
+                      deliver: str | None = None) -> None:
+        deliver = deliver or f"telegram:{self.captain}"
         existing = [j for j in self.jobs(name) if j.get("name") == job_name]
         if not existing:
             self.run("-p", name, "cron", "create", schedule, *([prompt] if prompt else []), "--script", script,
@@ -444,6 +462,141 @@ class Setup:
                            "vinci-resumen.sh", no_agent=True)
         self.reconcile_job(name, "vinci-apuntes", "* * * * *", "vinci-apuntes.sh", no_agent=True)
 
+    def whatsapp_session(self) -> Path:
+        return self.root / "platforms" / "whatsapp" / "session"
+
+    def whatsapp_on(self) -> None:
+        """Vinci on WhatsApp. Hermes' WhatsApp bridge belongs to the default profile (one number for the whole
+        gateway), so this is the one step that writes the default profile: its .env (who may write), its
+        config.yaml (a route per sender: the captain to Vinci, each friend to their own Vinci) and its plugin
+        vinci-whatsapp, which sorts every WhatsApp message before Hermes does (hermes/plugins/vinci-whatsapp)."""
+        wa = self.whatsapp
+        if wa is None:
+            return
+        from espol_bot import amigos
+        friends = amigos.active(self.cfg)
+        paired = (self.whatsapp_session() / "creds.json").exists()
+        env = {"WHATSAPP_MODE": "bot", "WHATSAPP_ALLOWED_USERS": ",".join([wa.captain, *(f.numero for f in friends)]),
+               "WHATSAPP_HOME_CHANNEL": wa.captain,
+               # Every group reaches the plugin, which answers only in the groups the captain turned on; only a
+               # mention of Vinci gets that far, the rest of a group's talk stays in the bridge. Hermes accepts an
+               # open group policy only with allow-all: the plugin drops strangers, and the catch-all route below
+               # sends any it missed to Vinci's guest tools, never to the default profile.
+               "WHATSAPP_GROUP_POLICY": "open", "WHATSAPP_ALLOW_ALL_USERS": "true", "WHATSAPP_REQUIRE_MENTION": "true"}
+        if paired:  # enabled without a session, every gateway start would wait on a bridge that only shows a QR
+            env["WHATSAPP_ENABLED"] = "true"
+        changed = update_secret_values(env, remove=("WHATSAPP_GROUP_ALLOWED_USERS",), path=self.root / ".env")
+
+        config_file = self.root / "config.yaml"
+        current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
+        current = current if isinstance(current, dict) else {}
+        merged = copy.deepcopy(current)
+        gateway = merged.setdefault("gateway", {})
+        gateway["multiplex_profiles"] = True
+        routes = [r for r in gateway.get("profile_routes") or []
+                  if not str((r or {}).get("name", "")).startswith(WHATSAPP_ROUTE_PREFIX)]
+        for key, number, profile in [("captain", wa.captain, self.cfg.hermes_profile),
+                                     *((f.slug, f.numero, amigos.profile_name(f)) for f in friends)]:
+            routes += self._whatsapp_routes(f"{WHATSAPP_ROUTE_PREFIX}{key}", number, profile)
+        routes.append({"name": f"{WHATSAPP_ROUTE_PREFIX}others", "platform": "whatsapp",
+                       "profile": self.cfg.hermes_profile})
+        gateway["profile_routes"] = routes
+        section = merged.setdefault("whatsapp", {})
+        section.pop("group_allowed_chats", None)  # groups are the plugin's now
+        section.update({
+            "reply_prefix": "",
+            "unauthorized_dm_behavior": "ignore",
+            # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list.
+            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b"],
+        })
+        test = self.cfg.core.raw.get("test") or {}
+        if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port
+            section["bridge_port"] = int(str(test["whatsapp_puente"]).rsplit(":", 1)[1])
+            section["bridge_script"] = str(test["whatsapp_script"])
+        _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}}})
+        plugins = merged.setdefault("plugins", {})
+        enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
+        plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
+        if merged != current:
+            changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
+
+        values = {**self.values, "CAPTAIN": wa.captain, "REGISTRY": str(amigos.registry_path(self.cfg)),
+                  "GROUPS": str(amigos.groups_path(self.cfg)), "BRIDGE": self.cfg.whatsapp_bridge,
+                  "RESTART": "" if test.get("whatsapp_sin_reinicio") else "1"}
+        # The gateway runs pre_gateway_dispatch with the plugins of the profile the sender is routed to, so the
+        # plugin goes in every profile a WhatsApp route reaches, plus the default for anything unrouted.
+        routed = [self.profile_dir(self.cfg.hermes_profile), *(self.profile_dir(amigos.profile_name(f)) for f in friends)]
+        for home in [self.root, *routed]:
+            plugin_changed = home != self.root and self.managed_config(home, {}, plugins=[WHATSAPP_PLUGIN])
+            for plugin_file in sorted((TEMPLATES / "plugins" / WHATSAPP_PLUGIN).glob("*.*")):
+                plugin_changed |= _write_if_changed(home / "plugins" / WHATSAPP_PLUGIN / plugin_file.name,
+                                                    _render(plugin_file, values))
+            if plugin_changed:
+                self._reload_gateway_plugins(home)
+            changed |= plugin_changed
+        who = f"tu chat y {len(friends)} amigo{'s' if len(friends) != 1 else ''}" if friends else "tu chat"
+        print(f"• WhatsApp: {who} y los grupos que actives {'(actualizado)' if changed else '(sin cambios)'}")
+        if not paired:
+            print("⚠ WhatsApp: el número de Vinci no está vinculado. Corre `.venv/bin/espol-bot whatsapp-vincular "
+                  "<número>` y vuelve a correr ./setup.sh.")
+        elif changed:
+            print("  Reinicia el gateway para que lo tome: hermes gateway restart")
+
+    def _whatsapp_routes(self, name: str, number: str, profile: str) -> list[dict]:
+        """One person's routes. Hermes compares a route's user_id with the sender as the bridge gives it: the
+        phone JID, or the LID when WhatsApp hides the number (known once the session saw it). In a private
+        chat, the chat_id route matches either form."""
+        senders = [f"{number}@s.whatsapp.net"]
+        try:
+            lid = json.loads((self.whatsapp_session() / f"lid-mapping-{number}.json").read_text(encoding="utf-8"))
+            senders += [f"{str(lid).split('@')[0]}@lid"] if str(lid).strip() else []
+        except (OSError, ValueError):
+            pass
+        return [*({"name": name, "platform": "whatsapp", "user_id": s, "profile": profile} for s in senders),
+                {"name": name, "platform": "whatsapp", "chat_id": number, "profile": profile}]
+
+    def friend(self, friend) -> None:
+        """A friend's own Vinci (amigos.py): a profile like Vinci's, over the friend's folder, answering on WhatsApp
+        only; its poll, token renewal and 7:00 summary write to the friend's chat through the bridge."""
+        from espol_bot import amigos
+        name = amigos.profile_name(friend)
+        profile = self.ensure_profile(name, f"El Vinci de {friend.nombre}: su aula de ESPOL por WhatsApp.", alias=False)
+        env = amigos.env(self.cfg, friend)
+        toolsets, blocked = VINCI_TOOLSETS, BLOCKED_TOOLSETS
+        managed = self.base_config(toolsets, blocked, "vinci", ["amigo", "--hermes-home", str(profile)], "amigo")
+        managed["mcp_servers"]["vinci"]["env"].update(env)
+        changed = self.managed_config(profile, managed, plugins=[PLUGIN])
+        self.configured.append((name, "amigo"))
+        extra = "".join(f"export {key}='{env[key]}'\n" for key in ("AULA_DATA_DIR", "ESPOL_AMIGO"))
+        values = {**self.values, "PROFILE_HOME": str(profile), "NOMBRE": friend.nombre, "CODIGO": "",
+                  "SECRETS": env["AULA_SECRETS"], "DATA_DIR": env["AULA_DATA_DIR"], "AMIGO": friend.slug,
+                  "WHATSAPP_OWNER": friend.numero, "ENV_EXTRA": extra}
+        changed |= _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "amigo" / "SOUL.md", values))
+        changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "amigo" / "SKILL.md",
+                                     _render(TEMPLATES / "amigo" / "SKILL.md", values))
+        for script, command in {"amigo-sondeo.sh": "sondeo", "amigo-resumen.sh": "resumen",
+                                "amigo-mantenimiento.sh": "mantenimiento"}.items():
+            changed |= _write_if_changed(profile / "scripts" / script,
+                                         _render(TEMPLATES / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
+        plugin_changed = self._install_plugin(profile, values)
+        if plugin_changed:
+            self._reload_gateway_plugins(profile)
+        print(f"• Vinci de {friend.nombre}: {'instalado' if changed | plugin_changed else 'sin cambios'}")
+        self.reconcile_job(name, "amigo-sondeo", poll_schedule(self.cfg.poll_minutes, self.cfg.summary_time.minute),
+                           "amigo-sondeo.sh", no_agent=True, deliver="local")
+        self.reconcile_job(name, "amigo-mantenimiento", "2,12,22,32,42,52 * * * *", "amigo-mantenimiento.sh",
+                           no_agent=True, deliver="local")
+        self.reconcile_job(name, "amigo-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
+                           "amigo-resumen.sh", no_agent=True, deliver="local")
+
+    def drop_friend(self, friend) -> None:
+        from espol_bot import amigos
+        name = amigos.profile_name(friend)
+        if self.profile_dir(name).is_dir():
+            (self.profile_dir(name) / "gateway.parked").touch()  # the running gateway lets it go first
+            self.run("profile", "delete", "-y", name)
+            print(f"• Vinci de {friend.nombre}: perfil borrado")
+
     @staticmethod
     def _install_plugin(profile: Path, values: dict[str, str]) -> bool:
         changed = False
@@ -568,6 +721,10 @@ class Setup:
 def provision(cfg: BotConfig, *, hermes_bin: str | None = None) -> int:
     setup = Setup(cfg, hermes_bin=hermes_bin)
     setup.vinci()
+    from espol_bot import amigos
+    for friend in amigos.active(cfg):
+        setup.friend(friend)
+    setup.whatsapp_on()
     subjects = materias.load(cfg.core)
     stray = sorted(set(cfg.subject_toolsets_by_code) - {s.code for s in subjects})
     if stray:

@@ -141,3 +141,10 @@ input::placeholder { color: var(--tg-hint-color); opacity: 0.7; }
 .steps li { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; color: var(--tg-hint-color); }
 .steps li > span { flex: none; font-size: 20px; line-height: 1.2; }
 .steps b { color: var(--tg-text-color); font-weight: 600; }
+
+#copy textarea {
+  width: 100%; box-sizing: border-box; margin: 6px 0 10px; padding: 10px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--tg-hint-color, #888) 40%, transparent);
+  font: 12px/1.4 ui-monospace, monospace; word-break: break-all; resize: none;
+  background: transparent; color: inherit;
+}

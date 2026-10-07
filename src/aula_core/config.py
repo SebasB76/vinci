@@ -7,6 +7,7 @@ layers built on top (the bot) parse their own sections from `CoreConfig.raw`.
 Environment overrides (used by setup.sh's wrappers and by the E2E test):
   AULA_CONFIG   path to config.toml (default: repo root)
   AULA_SECRETS  path to secrets.env (default: repo root)
+  AULA_DATA_DIR the data folder, over [almacenamiento] carpeta_datos (a friend's aula: espol_bot/amigos.py)
   AULA_NOW      ISO-8601 timestamp with offset that replaces the current time
 """
 
@@ -95,7 +96,8 @@ def load_config(path: Path | None = None) -> CoreConfig:
         max_file_mb=float(material.get("tamano_maximo_mb", 200)),
         max_mb_per_sync=max(0.0, float(material.get("max_mb_per_sync", 50))),
         request_interval=max(0.0, float(canvas.get("request_interval_seconds", 1.0))),
-        data_dir=Path(os.path.expanduser(str(storage.get("carpeta_datos", "~/.local/share/espol-academic-bot")))),
+        data_dir=Path(os.path.expanduser(os.environ.get("AULA_DATA_DIR")
+                                         or str(storage.get("carpeta_datos", "~/.local/share/espol-academic-bot")))),
         config_path=path,
         raw=raw,
     )

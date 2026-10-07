@@ -195,6 +195,25 @@ class TokenRenewal:
             raise RenewalError(f"Canvas no aceptó el token nuevo ({response.status_code}); conservé el anterior",
                                response.status_code)
 
+    def revoke(self) -> int:
+        """Delete every token of this chain from the aula, the current one last (it deletes the others):
+        a friend left Vinci. Best-effort; returns how many went."""
+        current = load_secret_values().get("CANVAS_TOKEN", "")
+        if not current:
+            return 0
+        current_id = self._find_token_id(current)
+        deleted = 0
+        ids = [self._integer(item.get("id")) for item in self._list_tokens(current) if item.get("purpose") == PURPOSE]
+        for token_id in [i for i in ids if i is not None and i != current_id] + [current_id]:
+            if token_id is None:
+                continue
+            try:
+                self._delete(current, token_id)
+                deleted += 1
+            except RenewalError:
+                pass  # what is left dies with Canvas' hour
+        return deleted
+
     def _find_token_id(self, token: str) -> int | None:
         matches = [item.get("id") for item in self._list_tokens(token)
                    if (hint := self._hint(item)) and token.startswith(hint)]

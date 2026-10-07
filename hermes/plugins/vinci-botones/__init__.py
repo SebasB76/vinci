@@ -24,6 +24,11 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 - A Canvas token pasted in any bot's chat: deleted and never used; Vinci answers with the /token form.
 - The `/` menu in the captain's chat: this bot's own commands (/estado, /token, /quiz) first, then Hermes's.
 
+On WhatsApp, Hermes routes each sender to their own Vinci (the captain's, or a friend's: amigos.py), and the plugin
+of the default profile drops whoever has none. Should anyone else still reach this Vinci, they get only the tools in
+GUEST_TOOLS (hook pre_tool_call): the course material, a past exam, slides, the web; never the owner's deliverables,
+grades, lists, schedule or memory. When the hook cannot tell who asks, it blocks.
+
 Every answer that cites the material goes through `espol-bot citas` before it is sent (hook
 transform_llm_output): a citation of a page the bot was never shown becomes a warning, and a missing or
 wrong aula link is set right. If the check fails, the answer goes as it is.
@@ -50,8 +55,16 @@ logger = logging.getLogger("vinci-botones")
 
 BOT = "{{BOT}}"
 CAPTAIN = "{{USER_ID}}"
-ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}"}
+# A friend's Vinci (amigos.py) runs the same commands over the friend's folder.
+ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}",
+       "AULA_DATA_DIR": "{{DATA_DIR}}", "ESPOL_AMIGO": "{{AMIGO}}"}
 SUBJECT = "{{CODIGO}}"  # this bot's subject code; empty for Vinci
+WHATSAPP_OWNER = "{{WHATSAPP_OWNER}}"  # whose Vinci this is, on WhatsApp: the captain's number, or a friend's
+# Tool name → the arguments a guest may not pass (herramientas.GUEST_TOOLS plus a few Hermes tools).
+GUEST_TOOLS = json.loads('''{{GUEST_TOOLS}}''')
+GUEST_BLOCKED = ("Eso es del dueño de este Vinci (su aula, sus notas, sus listas o la memoria de Vinci): solo él "
+                 "puede pedirlo. Explícale a quien lo pidió que para tener lo suyo tiene que pedirle al dueño que lo "
+                 "agregue, y ofrécele lo que sí puedes: el material de los cursos, exámenes anteriores o diapositivas.")
 PATTERN = r"^v1:"
 TOKEN_RE = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}\b")
 # ESPOL's aula tokens are 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~". Mixed case keeps
@@ -301,11 +314,37 @@ def register(ctx):
 
     ctx.register_platform_handler("telegram", _wire)
     ctx.register_hook("transform_llm_output", _check_citations)
+    ctx.register_hook("pre_tool_call", _guard_guests)
     if SUBJECT:
         ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
                           is_async=True, description=PAGE_TOOL["description"])
         ctx.register_tool(name="ver_foto", toolset="vinci-paginas", schema=PHOTO_TOOL, handler=_see_photo,
                           is_async=True, description=PHOTO_TOOL["description"])
+
+
+def _whatsapp_number(user_id):
+    # «593…@s.whatsapp.net» or «593…:12@s.whatsapp.net» (a device) → «593…»; a LID («…@lid») is no number.
+    user_id = str(user_id or "")
+    return "" if user_id.endswith("@lid") else re.sub(r"[:@].*$", "", user_id)
+
+
+def _guard_guests(tool_name="", args=None, **_):
+    try:
+        from gateway.session_context import get_session_env
+        if get_session_env("HERMES_SESSION_PLATFORM", "") != "whatsapp":
+            return None
+        senders = {_whatsapp_number(get_session_env(key, "")) for key in
+                   ("HERMES_SESSION_USER_ID", "HERMES_SESSION_USER_ID_ALT")}
+        if WHATSAPP_OWNER and WHATSAPP_OWNER in senders:
+            return None
+        forbidden = GUEST_TOOLS.get(tool_name)
+        if forbidden is not None and not set(args or {}) & set(forbidden):
+            return None
+    except Exception as exc:  # who asks is unknown: only what a guest may do goes through
+        logger.error("no pude saber quién pide %s: %s", tool_name, exc)
+        if tool_name in GUEST_TOOLS and not GUEST_TOOLS[tool_name]:
+            return None
+    return {"action": "block", "message": GUEST_BLOCKED}
 
 
 def _check_citations(response_text="", **_):

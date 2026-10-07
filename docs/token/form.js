@@ -1,6 +1,7 @@
 // The /token Mini App: encrypts a Canvas token on the phone with the one-time public key in ?k= and hands
 // Telegram only the ciphertext, as web_app_data. It makes no network request (the page's CSP forbids them)
 // and talks to Telegram through its documented web events, so no third-party script ever sees the token.
+// With ?w=1 (a friend's Vinci, on WhatsApp) it opens in any browser and shows the ciphertext to copy into the chat.
 // espol_bot/token_form.py holds the private half and decrypts it with the same RSA-OAEP / SHA-256.
 
 export const PREFIX = "v1.";
@@ -59,19 +60,25 @@ function init() {
   applyTheme(location.hash);
   const $ = (id) => document.getElementById(id);
   const form = $("form"), input = $("token"), send = $("send"), reveal = $("reveal"), status = $("status");
-  const publicKey = new URLSearchParams(location.search).get("k") || "";
+  const params = new URLSearchParams(location.search);
+  const publicKey = params.get("k") || "";
+  const whatsapp = params.get("w") === "1";
   const say = (text, kind = "error") => {
     status.textContent = text;
     status.dataset.kind = kind;
   };
   const inTelegram = Boolean(window.TelegramWebviewProxy) || window.parent !== window;
-  if (!publicKey || !inTelegram) {
+  if (!publicKey || !(inTelegram || whatsapp)) {
     say("Este formulario se abre desde el botón «🔑 Pegar token» que te manda Vinci cuando le escribes /token.");
     input.disabled = send.disabled = reveal.disabled = true;
     return;
   }
-  postEvent("web_app_ready");
-  postEvent("web_app_expand");
+  if (whatsapp) {
+    send.textContent = "Cifrar";
+  } else {
+    postEvent("web_app_ready");
+    postEvent("web_app_expand");
+  }
 
   reveal.addEventListener("click", () => {
     const hidden = input.type === "password";
@@ -94,6 +101,10 @@ function init() {
     try {
       const data = await seal(publicKey, token);
       input.value = "";
+      if (whatsapp) {
+        showCopy(data);
+        return;
+      }
       postEvent("web_app_data_send", { data });
       say("🔒 Enviado cifrado. Vinci te confirma en el chat.", "ok");
     } catch {
@@ -101,6 +112,22 @@ function init() {
       say("No pude cifrarlo. Vuelve a pedir /token y abre el formulario nuevo.");
     }
   });
+
+  function showCopy(data) {
+    const sealed = $("sealed"), copy = $("copy-button");
+    form.hidden = true;
+    $("copy").hidden = false;
+    sealed.value = data;
+    copy.addEventListener("click", async () => {
+      sealed.select();
+      try {
+        await navigator.clipboard.writeText(data);
+        copy.textContent = "✅ Copiado";
+      } catch {
+        copy.textContent = "Selecciónalo y cópialo";
+      }
+    });
+  }
 }
 
 if (typeof document !== "undefined") init();

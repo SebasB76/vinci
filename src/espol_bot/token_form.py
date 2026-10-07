@@ -9,6 +9,10 @@ in the chat history opens nothing later, and each new form replaces the pending 
 When Canvas refuses the token, the poller sends this same form on its own, valid for AUTO_FORM_TTL: the
 captain may only read it hours later, and does not have to type /token.
 
+A friend's Vinci (amigos.py) talks on WhatsApp, which has no Mini Apps: its form is a plain link (?w=1) whose page
+shows the ciphertext to copy, and the friend pastes it in the chat; the plugin of the default profile takes it out
+of the chat before Hermes sees it (`espol-bot amigo token`).
+
 The plugin `vinci-botones` runs `espol-bot canvas-form` for /token and `espol-bot canvas-submit` (the
 ciphertext on stdin) for the button's data, before Hermes sees either; the token never reaches the
 model, a session log or bot.log.
@@ -48,18 +52,21 @@ class FormError(Exception):
     """The data cannot become a token: expired form, a stale button, or something that is not the page's."""
 
 
-def open_form(cfg: BotConfig, now: datetime, intro: str = "") -> dict:
-    """A fresh one-time key and the message with the button that opens the page with its public half."""
+def open_form(cfg: BotConfig, now: datetime, intro: str = "", *, whatsapp: bool = False) -> dict:
+    """A fresh one-time key and the message with the button that opens the page with its public half (on WhatsApp,
+    which has no Mini Apps, a link to the page in its copy mode)."""
     conn = connect(cfg.core.db_path)
     try:
         with file_lock(cfg.core.data_dir, "bot.lock"):  # the renewal rewrites secrets.env under it too
-            return new_form(cfg, conn, now, intro)
+            return new_form(cfg, conn, now, intro, whatsapp=whatsapp)
     finally:
         conn.close()
 
 
-def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelta = FORM_TTL) -> dict:
+def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelta = FORM_TTL, *,
+             whatsapp: bool = False) -> dict:
     """open_form for a caller that already holds bot.lock (flock would block on a second open in this process)."""
+    whatsapp = whatsapp or bool(cfg.friend)  # a friend's Vinci talks only on WhatsApp
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private = key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8,
                                 serialization.NoEncryption())
@@ -70,7 +77,17 @@ def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelt
     conn.commit()
     log.info("canvas-form: formulario abierto")
     separator = "&" if "?" in cfg.token_form_url else "?"
-    url = cfg.token_form_url + separator + urlencode({"k": base64.urlsafe_b64encode(public).decode().rstrip("=")})
+    query = {"k": base64.urlsafe_b64encode(public).decode().rstrip("="), **({"w": "1"} if whatsapp else {})}
+    url = cfg.token_form_url + separator + urlencode(query)
+    if whatsapp:
+        text = (f"{intro}🔑 <b>Tu token del aula</b>\n"
+                f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
+                "«+ Nuevo token de acceso» (en «Propósito» pon Vinci).\n"
+                f"2. Copia el token y abre esta página: {e(url)}\n"
+                "3. Pega el token ahí, toca «Cifrar» y pega aquí el texto que te da (empieza con v1.).\n"
+                "🔒 Se cifra en tu celular: por este chat solo pasa un texto ilegible que únicamente la PC de Vinci "
+                f"puede abrir. El enlace sirve una vez y vence en {_duration(ttl)}.")
+        return {"respuesta": text, "url": url}
     text = (f"{intro}🔑 <b>Token nuevo de Canvas</b>\n"
             f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
             "«+ Nuevo token de acceso».\n"
@@ -97,33 +114,34 @@ def _duration(ttl: timedelta) -> str:
     return f"{minutes // 60} h" if minutes >= 60 and minutes % 60 == 0 else f"{minutes} min"
 
 
-def submit(cfg: BotConfig, data: str, now: datetime) -> dict:
+def submit(cfg: BotConfig, data: str, now: datetime, *, whatsapp: bool = False) -> dict:
     """The page's ciphertext: open it with the pending one-time key, which is then deleted, and reseed the chain.
     Anything that does not end in a working token answers with a fresh form."""
     try:
         token = _open(cfg, data.strip(), now)
     except FormError as exc:
         log.info("canvas-submit: %s", exc)
-        return open_form(cfg, now, f"⌛ {exc} Te abro otro:\n\n")
+        return open_form(cfg, now, f"⌛ {exc} Te abro otro:\n\n", whatsapp=whatsapp)
     try:
         result = reseed(cfg.core, token, now)
     except RenewalError as exc:
         log.info("canvas-submit: reseed falló (%s)", exc.status)
         intro = ("❌ El aula virtual no aceptó ese token (¿lo copiaste completo?). Crea otro y pégalo:\n\n"
                  if exc.status == 401 else f"❌ No pude comprobarlo con el aula virtual: {e(exc)}. Pégalo otra vez:\n\n")
-        return open_form(cfg, now, intro)
+        return open_form(cfg, now, intro, whatsapp=whatsapp)
     finally:
         token = ""
     if result.chain_cut:
-        return open_form(cfg, now, "❌ Canvas aceptó el token pero lo rechazó al renovarlo. Crea otro y pégalo:\n\n")
+        return open_form(cfg, now, "❌ Canvas aceptó el token pero lo rechazó al renovarlo. Crea otro y pégalo:\n\n",
+                         whatsapp=whatsapp)
     if result.renewal_error:
         log.info("canvas-submit: token resembrado; la renovación falló (%s)", result.renewal_error)
         return {"respuesta": "✅ Token verificado y guardado. La renovación automática falló esta vez; el "
-                             "mantenimiento la reintentará solo.", "quitar_teclado": True}
+                             "mantenimiento la reintentará solo.", "quitar_teclado": True, "ok": True}
     log.info("canvas-submit: token resembrado")
     suffix = " y su sucesor automático ya quedó activo" if result.renewed else ""
     return {"respuesta": f"✅ Token verificado y guardado{suffix}. La cadena de renovación volvió a funcionar.",
-            "quitar_teclado": True}
+            "quitar_teclado": True, "ok": True}
 
 
 def _open(cfg: BotConfig, data: str, now: datetime) -> str:

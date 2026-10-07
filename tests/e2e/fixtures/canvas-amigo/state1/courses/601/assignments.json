@@ -1,0 +1,34 @@
+[
+  {
+    "id": 66001,
+    "course_id": 601,
+    "name": "Taller 2: Integrales dobles",
+    "description": "<p>Taller 2: Integrales dobles.</p>",
+    "due_at": "2026-10-02T04:59:00Z",
+    "lock_at": null,
+    "unlock_at": null,
+    "points_possible": 10,
+    "submission_types": [
+      "online_upload"
+    ],
+    "allowed_extensions": [
+      "pdf"
+    ],
+    "published": true,
+    "workflow_state": "published",
+    "created_at": "2026-09-20T15:00:00Z",
+    "updated_at": "2026-09-20T15:00:00Z",
+    "html_url": "{{BASE}}/courses/601/assignments/66001",
+    "submission": {
+      "assignment_id": 66001,
+      "workflow_state": "unsubmitted",
+      "submitted_at": null,
+      "score": null,
+      "grade": null,
+      "graded_at": null,
+      "excused": null,
+      "missing": false,
+      "late": false
+    }
+  }
+]

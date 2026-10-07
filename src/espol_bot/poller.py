@@ -143,6 +143,9 @@ class Bot:
         text = ("⚠️ La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
                 "No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular antes de "
                 "enviarlo (no lo pegues en el chat)." + floor)
+        if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no feeds, no /token, the form is a link (token_form.py)
+            text = ("⚠️ Tu token del aula dejó de funcionar (la PC de Vinci pudo estar apagada más de una hora). "
+                    "Para que vuelva a leer tu aula, crea uno nuevo; no lo pegues tal cual en el chat.")
         refused = self.aula.refused_token()
         if not refused:
             return text
@@ -153,7 +156,8 @@ class Bot:
         if due:
             form = token_form.new_form(self.cfg, self.conn, now, text + "\n\n", ttl=token_form.AUTO_FORM_TTL)
             try:
-                self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(form["web_app_button"]))
+                button = form.get("web_app_button")
+                self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(button) if button else None)
                 set_meta(self.conn, "bot_alert_token", refused)
                 set_meta(self.conn, "bot_alert_token_at", timefmt.iso(now))
                 self.conn.commit()

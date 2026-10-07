@@ -33,6 +33,9 @@ every photo each bot set. Every chat message a bot sends is kept in order. As Te
 deleteWebhook with drop_pending_updates discards what the bot had queued; a (token, method) in
 `slow` answers that many seconds late.
 
+FakeWhatsApp stands in for Hermes' WhatsApp bridge (bridge.js, a Baileys client on localhost): Hermes adopts it as
+a bridge already running, takes what people write from GET /messages and records every message it sends.
+
 FakeDSpace stands in for ESPOL's DSpace (www.dspace.espol.edu.ec, through `[test] link_hosts`): the REST
 `filtered-items` search, which runs a `matches` title regex the way DSpace does, an item by its handle with its
 bitstreams, and their download. Items come from fixtures/dspace/items.json; one is stored inside the
@@ -49,6 +52,8 @@ the request offers, and it records each request (including the tools offered).
 
 from __future__ import annotations
 
+import hashlib
+import itertools
 import json
 import re
 import socket
@@ -107,7 +112,25 @@ class FakeCanvas(_Server):
         self.web = "http://web.invalid"
         self.calendar_feed = ""
         self.announcement_feeds: dict[str, str] = {}
+        # Other students' accounts (a friend's Vinci): token → [fixtures folder, state]. A token minted with one
+        # belongs to the same account; the captain's are the rest.
+        self.accounts: dict[str, list] = {}
         self.lock = threading.Lock()
+
+    def add_account(self, token: str, fixtures: str, purpose: str = "Vinci") -> None:
+        token_id = self.mint(token, purpose)
+        with self.lock:
+            self.accounts[token] = [FIXTURES / fixtures, "state1"]
+        assert token_id
+
+    def set_account_state(self, fixtures: str, state: str) -> None:
+        with self.lock:
+            for account in self.accounts.values():
+                if account[0] == FIXTURES / fixtures:
+                    account[1] = state
+
+    def account_of(self, token: str) -> list | None:
+        return self.accounts.get(token)
 
     @property
     def token(self) -> str:
@@ -118,7 +141,7 @@ class FakeCanvas(_Server):
         """Compatibility with older E2E stages: make exactly this token valid."""
         with self.lock:
             self._token = value
-            self.valid_tokens = {value}
+            self.valid_tokens = {value} | {t for t in self.valid_tokens if t in self.accounts}
             self.token_ids.setdefault(value, self.next_token)
             self.next_token = max(self.next_token, self.token_ids[value] + 1)
 
@@ -149,10 +172,11 @@ class FakeCanvas(_Server):
                 "app_name": "User-Generated", "visible_token": token if fresh else f"{token[:5]}...",
                 "can_manually_regenerate": True}
 
-    def load(self, api_path: str):
+    def load(self, api_path: str, account: list | None = None):
+        fixtures, current = account or (self.fixtures, self.state)
         # Each stateN holds only what changed since the one before it.
-        for state in (f"state{n}" for n in range(int(self.state.removeprefix("state")), 0, -1)):
-            path = self.fixtures / state / (api_path.strip("/") + ".json")
+        for state in (f"state{n}" for n in range(int(current.removeprefix("state")), 0, -1)):
+            path = fixtures / state / (api_path.strip("/") + ".json")
             if path.is_file():
                 text = path.read_text(encoding="utf-8").replace("{{BASE}}", self.base).replace("{{WEB}}", self.web)
                 return json.loads(text)
@@ -185,6 +209,85 @@ class _Quiet(BaseHTTPRequestHandler):
 
     def _json(self, status: int, data, headers=None):
         self._send(status, json.dumps(data, ensure_ascii=False).encode(), headers=headers)
+
+
+class FakeWhatsApp(_Server):
+    """Hermes' WhatsApp bridge (scripts/whatsapp-bridge/bridge.js), as the adapter sees it: GET /health and
+    /messages, POST /send, /send-media, /typing, /read. Hermes adopts a running bridge whose scriptHash matches
+    the bridge.js it would start (here a stand-in file, `script`), so no Node process or WhatsApp is involved."""
+
+    BOT = "593990000000@s.whatsapp.net"
+
+    def __init__(self, script: Path):
+        super().__init__(_WhatsAppHandler)
+        self.script = script
+        self.inbox: list[dict] = []    # what Hermes picks up on its next GET /messages
+        self.sent: list[dict] = []     # every POST: {"path", **payload}
+        self.served: list[float] = []  # when Hermes polled /messages
+        self.lock = threading.Lock()
+        self._ids = itertools.count(1)
+
+    def script_hash(self) -> str:
+        return hashlib.sha256(self.script.read_bytes()).hexdigest()[:16]
+
+    def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False) -> str:
+        """A message someone writes: in a private chat (`chat` is the sender's JID) or a group (…@g.us)."""
+        message_id = f"E2E{next(self._ids):06d}"
+        with self.lock:
+            self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
+                               "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
+                               "isGroup": group, "body": text, "hasMedia": False, "mediaType": "", "mediaUrls": [],
+                               "mentionedIds": [], "botIds": [self.BOT], "timestamp": int(time.time()),
+                               "fromMe": False})
+        return message_id
+
+    def polled_since(self, mark: float) -> bool:
+        with self.lock:
+            return any(t >= mark for t in self.served)
+
+    def messages_to(self, chat: str, since: int = 0) -> list[dict]:
+        with self.lock:
+            return [m for m in self.sent[since:] if m.get("chatId") == chat and m["path"] in ("send", "send-media")]
+
+    def wait_for(self, predicate, timeout: float = 60):
+        end = time.time() + timeout
+        while time.time() < end:
+            found = predicate(self)  # it reads through messages_to / polled_since, which take the lock
+            if found:
+                return found
+            time.sleep(0.2)
+        return None
+
+
+class _WhatsAppHandler(_Quiet):
+    def do_GET(self):
+        bridge: FakeWhatsApp = self.server.owner
+        path = urlsplit(self.path).path
+        if path == "/health":
+            return self._json(200, {"status": "connected", "scriptHash": bridge.script_hash(),
+                                    "sendReadReceipts": False, "queueLength": len(bridge.inbox)})
+        if path == "/messages":
+            with bridge.lock:
+                batch, bridge.inbox = bridge.inbox, []
+                bridge.served.append(time.time())
+            return self._json(200, batch)
+        if path.startswith("/chat/"):
+            chat = unquote(path[len("/chat/"):])
+            return self._json(200, {"name": chat.split("@")[0], "isGroup": chat.endswith("@g.us"), "participants": []})
+        return self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        bridge: FakeWhatsApp = self.server.owner
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            payload = {}
+        path = urlsplit(self.path).path.strip("/")
+        with bridge.lock:
+            bridge.sent.append({"path": path, **payload})
+            message_id = f"OUT{len(bridge.sent):06d}"
+        return self._json(200, {"success": True, "messageId": message_id})
 
 
 class _CanvasHandler(_Quiet):
@@ -220,7 +323,10 @@ class _CanvasHandler(_Quiet):
             return self._json(400, [{"message": "token[purpose] is missing"}])
         token = f"7~{canvas.next_token:03d}-renovado-e2e-xxxxxxxxxxxxxxxx"
         canvas.mint(token, purpose)
+        requester = self.headers.get("Authorization", "").removeprefix("Bearer ")
         with canvas.lock:
+            if requester in canvas.accounts:
+                canvas.accounts[token] = canvas.accounts[requester]
             canvas.created.append(token)
             return self._json(200, canvas.token_json(token, fresh=True))
 
@@ -259,12 +365,15 @@ class _CanvasHandler(_Quiet):
                               {"WWW-Authenticate": 'Bearer realm="canvas-lms"'})
         quota = {"X-Rate-Limit-Remaining": "599.12", "X-Request-Cost": "0.018"}
 
+        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+        account = canvas.account_of(token)
         if url.path == "/api/v1/users/self":
-            return self._json(200, {"id": 42, "name": "Estudiante E2E"}, quota)
+            return self._json(200, {"id": 43, "name": "Amigo E2E"} if account else
+                              {"id": 42, "name": "Estudiante E2E"}, quota)
         if url.path == "/api/v1/users/self/user_generated_tokens":
             with canvas.lock:
-                tokens = [canvas.token_json(token) for token, token_id in canvas.token_ids.items()
-                          if token_id not in canvas.deleted]
+                tokens = [canvas.token_json(t) for t, token_id in canvas.token_ids.items()
+                          if token_id not in canvas.deleted and canvas.accounts.get(t) is account]
             return self._json(200, tokens, quota)
 
         if url.path.startswith("/files/") and url.path.endswith("/download"):
@@ -286,7 +395,7 @@ class _CanvasHandler(_Quiet):
             return self._send(429, b"429 Too Many Requests (Rate Limit Exceeded)", "text/plain",
                               {"X-Rate-Limit-Remaining": "0.0", "Retry-After": "0"})
 
-        data = canvas.load(url.path[len("/api/v1/"):])
+        data = canvas.load(url.path[len("/api/v1/"):], account)
         if data is None:
             return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]}, quota)
         if isinstance(data, dict) and "__status" in data:

@@ -68,6 +68,8 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
 | 🩺 **Estado del sistema** | Mándale `/estado` a Vinci (o corre `espol-bot doctor` en la terminal) y ves cuándo corrió el último sondeo, cuándo se leyó el aula, la edad del token de Canvas y si su cadena de renovación está sana, y qué feeds sin token están activos. Lo que está atrasado o roto sale con ❌ o ⚠️ y qué hacer. No usa el modelo. |
 | 🔑 **Token del aula desde Telegram** | Si la cadena del token se cortó, Vinci te manda solo un formulario (no hace falta escribir `/token`) dentro de Telegram que cifra el token en tu celular antes de enviarlo. Telegram solo lleva un texto ilegible que únicamente tu PC puede abrir, y el modelo nunca lo ve. [Cómo funciona](#token-nuevo-desde-telegram-token). |
+| 💬 **Vinci en WhatsApp, también para tus amigos** | Con un número aparte, Vinci contesta por WhatsApp: tu chat con él y los grupos que enciendes con «@vinci activa este grupo». En un grupo contesta a quien lo menciona, y cada amigo que agregas (`/amigo agregar`) tiene su propio Vinci, con su token y su aula: «@vinci qué tengo esta semana» le contesta a cada uno con lo suyo. [Cómo funciona](#vinci-en-whatsapp). |
+| 🖼️ **Diapositivas** | «Hazme unas diapositivas de integrales dobles»: Vinci y cada bot de materia arman un `.pptx` (portada y una diapositiva por tema, con notas del orador) y te lo mandan al chat. |
 | 💻 **Terminal y Claude Code** | El comando `aula` consulta todo desde la terminal, y una skill le enseña a Claude Code a usarlo. |
 
 Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un brief) lo hacen scripts fijos que
@@ -371,6 +373,7 @@ corre `.venv/bin/espol-bot dashboard`.
   [Token nuevo desde Telegram](#token-nuevo-desde-telegram-token)).
 - Al escribir `/` en tu chat con un bot, el menú muestra primero estos comandos y debajo los de Hermes. Si no
   aparecen, cierra y abre el chat: Telegram guarda el menú un rato.
+- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz` (mira [Vinci en WhatsApp](#vinci-en-whatsapp)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
 
@@ -608,6 +611,55 @@ tienen menos de 10 minutos; si no, vuelve a leer el aula (y si no puede, te mues
 **Con Claude Code:** en cualquier sesión de Claude Code en tu PC puedes pedir «bájate el PDF de la semana 3 de
 Cálculo y explícame el ejercicio 4»; la skill `aula` le enseña a usar el comando.
 
+## Vinci en WhatsApp
+
+Vinci también contesta por WhatsApp, a través del puente de WhatsApp de Hermes. Usa un número aparte (un chip
+prepago basta): el puente es un cliente no oficial, y WhatsApp puede bloquear el número que lo usa. No pongas tu
+número personal.
+
+1. Pon tu número en `secrets.env`: `WHATSAPP_CAPTAIN=593…` (código de país, sin «+» y sin el 0 inicial).
+2. Detén el gateway: `hermes gateway stop`.
+3. Corre `.venv/bin/espol-bot whatsapp-vincular 593…` con el número de Vinci. Te muestra un código de 8 letras.
+4. En el celular con el chip de Vinci, abre WhatsApp → Dispositivos vinculados → Vincular con el número de
+   teléfono, y escribe el código.
+5. Corre `./setup.sh` y arranca el gateway: `hermes gateway start`.
+
+**Tu chat.** Escríbele a Vinci por privado: es el mismo Vinci de Telegram, con tu aula y tu memoria. Las tarjetas
+con botones (crear un bot, guardar el horario, entregar) siguen solo en Telegram.
+
+**Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
+contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. «@vinci desactiva
+este grupo» lo apaga. Solo tú puedes encender o apagar un grupo.
+
+**Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
+
+1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.
+2. Vinci le escribe a Angel por privado con un enlace a la página del token (la misma de `/token`, en modo WhatsApp).
+3. Angel crea un token en el aula, lo pega en la página y pulsa «Cifrar». La página le da un texto cifrado para
+   copiar.
+4. Angel pega ese texto en su chat con Vinci. Vinci verifica el token, lee su aula y le confirma sus materias.
+
+Desde ahí, «@vinci qué tengo esta semana» le contesta a Angel con lo suyo y a ti con lo tuyo, en el mismo grupo o
+por privado. Su Vinci le avisa de sus tareas nuevas por su chat de WhatsApp y renueva su token como el tuyo.
+`/amigos` te muestra la lista y `/amigo quitar Angel` borra su Vinci, sus datos y los tokens que creó su cadena.
+
+**Comandos por WhatsApp.** Tú y cada amigo con su Vinci tienen los mismos comandos, cada uno sobre su propia aula,
+y Vinci los contesta sin gastar tokens:
+
+| Comando | Qué hace |
+|---|---|
+| `/start` | Saluda y muestra los comandos |
+| `/estado` | La salud del sistema, como en Telegram |
+| `/token` | Un enlace a la página del token: pegas ahí el token nuevo, tocas «Cifrar» y pegas en el chat el texto que te da |
+| `/quiz <tema>` | Un quiz corto en el mismo chat, una pregunta a la vez (WhatsApp no tiene encuestas) |
+| `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
+
+En un grupo, `/estado` y `/token` te piden escribirlos por privado.
+
+A quien todavía no tiene su Vinci, Vinci le contesta que te pida que lo agregues, sin usar el modelo y sin
+mostrarle nada tuyo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
+`secrets.env`.
+
 ## Configuración
 
 Todo lo ajustable está en [`config.toml`](config.toml). Después de cambiarlo, corre `./setup.sh` otra vez.
@@ -714,6 +766,11 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   el cuaderno guarda una copia.
 - **Solo tú.** Cada bot acepta mensajes solo de tu ID de Telegram. A cualquier otra persona no le contesta nada (ni
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
+- **En WhatsApp, cada uno con lo suyo.** Hermes manda cada mensaje al Vinci de quien lo escribe: el tuyo o el de
+  un amigo que agregaste. Un amigo nunca llega a tu Vinci, y si alguien llegara al Vinci de otro, el plugin le
+  niega las herramientas con datos del dueño (su aula, sus notas, sus listas). A quien no tiene su Vinci le
+  contesta el plugin, sin el modelo. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
+  aula pegado tal cual en WhatsApp no se usa: Vinci le pide que lo borre.
 - **Herramientas cerradas de fábrica.** Ningún bot trae terminal, acceso a archivos, ejecución de código ni
   navegador: solo sus herramientas fijas, su memoria y las skills de Hermes. Vinci además busca en la web; un bot
   de materia ve solo su materia y no busca en la web: solo abre los enlaces que muestra el aula de su materia,
@@ -746,6 +803,8 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 |---|---|
 | `secrets.env` (en esta carpeta, permisos 600, fuera de git) | Tokens de Canvas y Telegram, las URLs secretas de los feeds iCal/Atom y, mientras un `/token` espera, su llave privada de un uso |
 | `~/.hermes/profiles/<perfil>/.env` | El token del bot de ese perfil y tu ID como único usuario permitido |
+| `amigos/<nombre>/secrets.env` (en la carpeta de datos, permisos 600) | El token del aula de ese amigo y su número de WhatsApp |
+| `~/.hermes/platforms/whatsapp/session/` | La sesión de WhatsApp del número de Vinci: quien la tenga escribe como Vinci |
 | Hermes | Tu acceso al modelo, según cómo lo configuraste con `hermes model` |
 
 **Qué sale de tu PC:** las consultas al aula virtual (con tu token) y el PDF de una entrega que confirmaste; los mensajes y archivos que van y
@@ -811,6 +870,9 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 - **Qué prueba una cita:** que el bot leyó esa página de ese archivo, no que la página diga exactamente lo que el
   bot resume. Ábrela con su enlace si te importa el detalle.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
+- **WhatsApp no es oficial:** el puente de Hermes es un cliente no oficial de WhatsApp (Baileys). WhatsApp puede
+  bloquear el número de Vinci, por eso va en un chip aparte. En WhatsApp no hay botones: los avisos de un amigo
+  llegan como texto.
 - **Tu PC tiene que estar encendida:** con la PC apagada o el gateway detenido no hay avisos ni briefs. Lo que le
   escribas a un bot mientras tanto te lo responde al volver, y los cambios del aula llegan en la siguiente revisión;
   el brief de una clase que ya empezó no se manda.

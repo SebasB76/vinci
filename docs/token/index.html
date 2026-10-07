@@ -8,8 +8,8 @@
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
   <title>Token del aula</title>
-  <link rel="stylesheet" href="form.css?v=2">
-  <script type="module" src="form.js?v=2"></script>
+  <link rel="stylesheet" href="form.css?v=3">
+  <script type="module" src="form.js?v=3"></script>
 </head>
 <body>
   <main>
@@ -30,13 +30,20 @@
       <button id="send" type="submit" class="send">Enviar cifrado a Vinci</button>
     </form>
 
+    <section id="copy" hidden>
+      <label for="sealed">Tu token, cifrado</label>
+      <textarea id="sealed" rows="6" readonly spellcheck="false"></textarea>
+      <button id="copy-button" type="button" class="send">Copiar</button>
+      <p class="lead">Pégalo en tu chat privado con Vinci en WhatsApp.</p>
+    </section>
+
     <ol class="steps">
       <li><span aria-hidden="true">📱</span><div><b>Se cifra aquí, en tu celular.</b> Esta página no se conecta a
         ningún servidor.</div></li>
-      <li><span aria-hidden="true">✉️</span><div><b>Telegram solo lleva un texto ilegible.</b> Ni Telegram ni el
-        modelo ven tu token.</div></li>
-      <li><span aria-hidden="true">💻</span><div><b>Solo tu PC lo puede abrir.</b> La llave sirve una vez y vence en
-        15 minutos.</div></li>
+      <li><span aria-hidden="true">✉️</span><div><b>El chat solo lleva un texto ilegible.</b> Ni Telegram, ni WhatsApp,
+        ni el modelo ven tu token.</div></li>
+      <li><span aria-hidden="true">💻</span><div><b>Solo la PC de Vinci lo puede abrir.</b> La llave sirve una vez y
+        vence pronto.</div></li>
     </ol>
   </main>
 </body>

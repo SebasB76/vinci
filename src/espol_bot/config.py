@@ -13,6 +13,7 @@ from aula_core.config import ConfigError, CoreConfig, load_config, load_secret_v
 
 PROFILE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 DEFAULT_TELEGRAM_API = "https://api.telegram.org"
+DEFAULT_WHATSAPP_BRIDGE = "http://127.0.0.1:3000"  # Hermes' bridge.js listens there unless whatsapp.bridge_port says
 # The /token Mini App (docs/token/ on GitHub Pages). It holds no secret: any install can use this copy.
 DEFAULT_TOKEN_FORM_URL = "https://sebasb76.github.io/vinci/token/"
 # The dashboard behind Vinci's menu button (docs/dashboard/). It holds no data: the snapshot rides in its URL.
@@ -49,6 +50,8 @@ class BotConfig:
     subject_toolsets: tuple[str, ...] = ()
     subject_toolsets_by_code: dict[str, tuple[str, ...]] = field(default_factory=dict)
     handwritten_subjects: tuple[str, ...] = ()  # codes whose assignments the captain does by hand and hands in as a PDF
+    friend: str | None = None  # a friend's Vinci (amigos.py): its slug; None for the captain's own
+    whatsapp_bridge: str = DEFAULT_WHATSAPP_BRIDGE  # Hermes' WhatsApp bridge, where a friend's alerts go out
 
     def extra_toolsets(self, code: str | None) -> tuple[str, ...]:
         """Toolsets the captain switched on for Vinci (`code` None) or for one subject bot, in config.toml."""
@@ -125,6 +128,9 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     except ValueError:
         raise ConfigError(f"dashboard.semester_end debe ser una fecha AAAA-MM-DD, no {end_raw!r}") from None
 
+    friend = os.environ.get("ESPOL_AMIGO") or None
+    bridge = str(section(core.raw, "test").get("whatsapp_puente") or DEFAULT_WHATSAPP_BRIDGE).rstrip("/")
+
     return BotConfig(
         core=core,
         poll_minutes=poll_minutes,
@@ -137,14 +143,17 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
         token_form_url=form_url,
-        dashboard_url=dashboard_url,
+        # A friend's Vinci answers on WhatsApp: no Telegram dashboard, and the class notes are the captain's.
+        dashboard_url="" if friend else dashboard_url,
         semester_end=semester_end,
-        notes_folder=Path(folder).expanduser() if folder else None,
+        notes_folder=Path(folder).expanduser() if folder and not friend else None,
         notes_idle_minutes=idle,
         vinci_toolsets=_names(tools.get("vinci", []), "vinci"),
         subject_toolsets=_names(tools.get("materias", []), "materias"),
         subject_toolsets_by_code={code.upper(): _names(names, f"por_materia.{code}") for code, names in by_code.items()},
         handwritten_subjects=tuple(c.strip().upper() for c in handwritten),
+        friend=friend,
+        whatsapp_bridge=bridge,
     )
 
 
@@ -166,6 +175,24 @@ def captain_id(values: dict[str, str] | None = None) -> str:
     if not re.fullmatch(r"\d+", user_id):
         raise ConfigError("TELEGRAM_USER_ID debe ser tu ID numérico de Telegram (pídeselo a @userinfobot)")
     return user_id
+
+
+@dataclass(frozen=True)
+class WhatsApp:
+    captain: str  # the captain's number, country code and no «+» (593…)
+
+
+def whatsapp_settings(values: dict[str, str] | None = None) -> WhatsApp | None:
+    """Vinci on WhatsApp, or None when secrets.env has no WHATSAPP_CAPTAIN (Telegram only). The groups and the
+    friends live in the data folder (amigos.py): the captain changes them from the chat."""
+    values = load_secret_values() if values is None else values
+    captain = re.sub(r"[\s+-]", "", values.get("WHATSAPP_CAPTAIN", ""))
+    if not captain:
+        return None
+    if not re.fullmatch(r"\d{8,15}", captain):
+        raise ConfigError("WHATSAPP_CAPTAIN debe ser tu número de WhatsApp con el código de país y sin «+» "
+                          "(en Ecuador: 593 y el número sin el 0 inicial)")
+    return WhatsApp(captain)
 
 
 def token_key(code: str | None = None) -> str:

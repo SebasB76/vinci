@@ -38,6 +38,7 @@ misma materia.
 | Ver una foto de tu cuaderno (pizarra, captura de sus apuntes) | `ver_foto` |
 | Mandarle un quiz corto (/quiz) | `send_quiz` |
 | Armar el PDF de una actividad hecha a mano para que la entregue | `prepare_submission` |
+| Una presentación (.pptx) para exponer, con tu material | `crear_diapositivas` (`titulo`, `diapositivas`) |
 
 ## El cuaderno
 

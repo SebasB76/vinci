@@ -37,6 +37,17 @@
                                      cron, every minute)
     espol-bot foto --curso CÓDIGO <entrada>
                                      a photo of the subject's notebook as a JPEG, for the plugin's ver_foto
+    espol-bot whatsapp-vincular [número]
+                                     link Vinci's WhatsApp number to Hermes with a code typed on its phone,
+                                     then list its groups; the gateway must be stopped
+    espol-bot amigo agregar|quitar|lista|token
+                                     a friend's own Vinci on WhatsApp (amigos.py): invite them, remove them,
+                                     list them, or take their encrypted token from stdin (the plugin vinci-whatsapp)
+    espol-bot whatsapp-grupo activar|desactivar <ID>
+                                     a WhatsApp group where Vinci answers whoever mentions it (the plugin)
+    espol-bot whatsapp-comando start|estado|token|token-cifrado <número>
+                                     /start, /estado and /token on WhatsApp, for the captain or a friend over
+                                     their own aula (the plugin vinci-whatsapp)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -46,9 +57,11 @@ Hermes forwards the error to the captain's Telegram.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import getpass
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -56,6 +69,15 @@ from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import file_lock
 from espol_bot.config import load_bot_config, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError, prefer_ipv4
+
+
+def _sender(cfg):
+    """Where this Vinci's own messages go: the captain's Telegram chat, or a friend's WhatsApp chat (amigos.py)."""
+    if cfg.friend:
+        from aula_core.config import load_secret_values
+        from espol_bot.whatsapp import WhatsApp
+        return WhatsApp(load_secret_values().get("WHATSAPP_OWNER", ""), cfg.whatsapp_bridge)
+    return Telegram(load_telegram_secrets(), api=cfg.telegram_api)
 
 
 def _logging(cfg) -> None:
@@ -93,7 +115,11 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
     from espol_bot import herramientas
     from espol_bot.mcp_server import Server
     ctx = herramientas.Ctx(cfg, Path(hermes_home) if hermes_home else None, code.upper() if code else None)
-    if which == "vinci":
+    if which == "amigo":
+        server = Server("vinci", "1.0", herramientas.friend_tools(ctx),
+                        "Herramientas del Vinci de un amigo: su aula virtual (solo lectura), material, exámenes "
+                        "anteriores y presentaciones.")
+    elif which == "vinci":
         server = Server("vinci", "1.0", herramientas.vinci_tools(ctx),
                         "Herramientas de Vinci: aula virtual (solo lectura) de todas las materias, cuadernos "
                         "(solo lectura), horario y traspasos a los bots de materia.")
@@ -104,6 +130,47 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
                         f"Herramientas del bot de {code.upper()}: solo esa materia y su cuaderno.")
     logging.info("mcp %s%s: iniciado", which, f" {code}" if code else "")
     return server.serve()
+
+
+def _friends(cfg, args) -> int:
+    if args.json:  # provisioning prints its steps; the plugin reads only the JSON on stdout
+        with contextlib.redirect_stdout(sys.stderr):
+            outcome = _friend_outcome(cfg, args)
+        print(outcome.json())
+    else:
+        print(_friend_outcome(cfg, args).respuesta)
+    return 0
+
+
+def _friend_outcome(cfg, args):
+    from espol_bot import amigos
+    from espol_bot.whatsapp import normalize_number as whatsapp_number
+    now = now_utc()
+    if args.cmd == "whatsapp-comando":
+        data = sys.stdin.read() if args.accion == "token-cifrado" else ""
+        return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
+    if args.cmd == "whatsapp-grupo":
+        on = args.accion == "activar"
+        changed = amigos.set_group(cfg, args.grupo, on)
+        text = (("✅ Listo: en este grupo le contesto a quien me mencione con @vinci, a cada uno con lo suyo. Quien "
+                 "todavía no tiene su Vinci, que te pida que lo agregues." if changed else "Ya estaba activo aquí.")
+                if on else ("Listo: ya no contesto en este grupo." if changed else "No estaba activo aquí."))
+        outcome = amigos.Outcome(text)
+    elif args.accion == "agregar":
+        # «099 123 4567 Angel»: people type the number with spaces
+        match = re.fullmatch(r"(\+?\d[\d\s-]*\d)\s+(\S.*)", " ".join(args.args).strip())
+        if not match:
+            raise ConfigError("Uso: amigo agregar <número> <nombre>")
+        outcome = amigos.add(cfg, match[1], match[2], now)
+    elif args.accion == "quitar":
+        outcome = amigos.remove(cfg, " ".join(args.args), now)
+    elif args.accion == "lista":
+        outcome = amigos.listing(cfg)
+    else:
+        if len(args.args) != 1:
+            raise ConfigError("Uso: amigo token <número> (el texto cifrado por stdin)")
+        outcome = amigos.submit_token(cfg, args.args[0], sys.stdin.read(), now)
+    return outcome
 
 
 def _health(cfg, *, telegram: bool) -> int:
@@ -174,8 +241,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
     p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia")
     p.add_argument("--curso", required=True, help="código de la materia, ej. ESTG1034")
-    p = sub.add_parser("mcp", help="servidor MCP con las herramientas de Vinci o de un bot de materia")
-    p.add_argument("bot", choices=["vinci", "materia"])
+    p = sub.add_parser("mcp", help="servidor MCP con las herramientas de Vinci, de un bot de materia o del Vinci "
+                                   "de un amigo")
+    p.add_argument("bot", choices=["vinci", "materia", "amigo"])
     p.add_argument("--curso", default=None, help="código de la materia (para «materia»)")
     p.add_argument("--hermes-home", default=None, help="carpeta del perfil de Hermes del bot")
     p = sub.add_parser("boton", help="procesar un botón de Vinci (lo usa el plugin vinci-botones)")
@@ -204,6 +272,24 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("citas", help="comprobar las citas de una respuesta leída por stdin (la usa el plugin "
                                      "vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
+    p = sub.add_parser("whatsapp-vincular", help="vincular el número de WhatsApp de Vinci con un código y ver sus "
+                                                 "grupos (con el gateway detenido)")
+    p.add_argument("numero", nargs="?", default=None, help="el número de Vinci (593…), solo si no está vinculado")
+    p = sub.add_parser("amigo", help="el Vinci de un amigo por WhatsApp: agregar, quitar, listar, o su token cifrado "
+                                     "leído por stdin (lo usa el plugin vinci-whatsapp)")
+    p.add_argument("accion", choices=["agregar", "quitar", "lista", "token"])
+    p.add_argument("args", nargs="*", help="agregar: número y nombre; quitar: nombre o número; token: número")
+    p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
+    p = sub.add_parser("whatsapp-grupo", help="activar o desactivar un grupo de WhatsApp donde Vinci contesta (lo "
+                                              "usa el plugin vinci-whatsapp)")
+    p.add_argument("accion", choices=["activar", "desactivar"])
+    p.add_argument("grupo", help="el ID del grupo (…@g.us)")
+    p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
+    p = sub.add_parser("whatsapp-comando", help="/start, /estado y /token por WhatsApp, del capitán o de un amigo "
+                                                "(lo usa el plugin vinci-whatsapp)")
+    p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado"])
+    p.add_argument("numero", help="quién lo escribió (593…)")
+    p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -214,6 +300,12 @@ def main(argv: list[str] | None = None) -> int:
             return hermes_setup.provision(cfg, hermes_bin=args.hermes)
         if args.cmd in ("doctor", "estado"):
             return _health(cfg, telegram=args.cmd == "estado")
+        if args.cmd == "whatsapp-vincular":
+            from espol_bot import whatsapp
+            return whatsapp.link(args.numero, cfg.whatsapp_bridge)
+        if args.cmd in ("amigo", "whatsapp-grupo", "whatsapp-comando"):
+            _logging(cfg)
+            return _friends(cfg, args)
         _logging(cfg)
         if args.cmd == "resembrar":
             return _reseed(cfg, from_stdin=args.stdin)
@@ -281,7 +373,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, ensure_ascii=False))
             return 0
         from espol_bot.poller import Bot
-        telegram = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
+        telegram = _sender(cfg)
+        if args.cmd == "probar" and cfg.friend:
+            telegram.send("✅ <b>Prueba</b>: Vinci puede escribirte por WhatsApp.")
+            print("Mensaje de prueba enviado.")
+            return 0
         if args.cmd == "probar":
             telegram.send("✅ <b>Prueba</b>: Vinci puede escribirte por Telegram.")
             print("Mensaje de prueba enviado.")

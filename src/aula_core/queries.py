@@ -107,6 +107,27 @@ def pending(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = Non
     return [t for t in tasks if not (t["sin_entrega_en_linea"] and t["vence"] and timefmt.parse(t["vence"]) < now)]
 
 
+def assignment(conn: sqlite3.Connection, now: datetime, assignment_id: int, ids: list[int] | None = None) -> dict:
+    """One assignment with what the professor wrote in it, and the files and outside links that text points to."""
+    extra, params = _course_filter(ids, "a.course_id")
+    row = conn.execute(
+        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done, {QUIZ_SQL} FROM assignments a
+            JOIN courses c ON c.id = a.course_id {QUIZ_JOIN} WHERE a.id = ?{extra}""",
+        [assignment_id, *params],
+    ).fetchone()
+    if row is None:
+        raise NotFound(f"No conozco la tarea {assignment_id}: usa el «id» que da tareas o semana.")
+    source = f"Tarea «{row['name']}»"  # how sync records where a linked file or link came from
+    files = conn.execute("SELECT id, display_name, html_url FROM files WHERE source = ? AND course_id = ? AND active = 1",
+                         (source, row["course_id"])).fetchall()
+    links = conn.execute("SELECT id, title, url FROM links WHERE source = ? AND course_id = ? AND active = 1",
+                         (source, row["course_id"])).fetchall()
+    return {**_assignment(row, now), "tipos_de_entrega": row["submission_types"],
+            "consigna": row["description"] or None,
+            "archivos": [{"archivo_id": f["id"], "archivo": f["display_name"], "url": f["html_url"]} for f in files],
+            "enlaces": [{"enlace_id": li["id"], "titulo": li["title"], "url": li["url"]} for li in links]}
+
+
 def quiz_openings(conn: sqlite3.Connection, now: datetime, lead: timedelta) -> list[dict]:
     """Unanswered quizzes that open, or opened, within `lead` of now."""
     rows = conn.execute(

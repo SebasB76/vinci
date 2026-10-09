@@ -133,8 +133,13 @@ GUEST_TOOLS: dict[str, frozenset[str]] = {
 } | {"libro_principal": frozenset({"titulo"})}
 # A friend's own Vinci (amigos.py): Vinci's reading tools over the friend's aula. No subject bots, notebooks,
 # schedule, lists or cards: those need the captain's team and Telegram's buttons.
+TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
+        "entrega, puntos, fecha y los archivos y enlaces que trae (léelos con leer_archivo). Úsala siempre que "
+        "pregunten de qué trata o qué pide una tarea, antes de decir que no lo sabes.")
+TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
+
 FRIEND_TOOLS = frozenset({
-    "semana", "tareas", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
+    "semana", "tareas", "ver_tarea", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
     "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas"})
 
 
@@ -287,7 +292,7 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
     if unread and len(hits) < n:
         fetch = ("si uno de archivos parece tener el tema, bájalo con bajar_archivo y busca otra vez."
                  + ("" if hits else " Si ninguno lo trae, empieza tu respuesta con «No está en el material», sin cita.")
-                 if can_fetch else "el bot de la materia los baja cuando le hacen falta.")
+                 if can_fetch else "si uno de archivos parece tener el tema, léelo con leer_archivo (lo baja del aula).")
         notes.append(f"Solo busco en lo ya leído; {unread} documento(s) del catálogo siguen sin bajar: {fetch}")
     if notes:
         result["nota"] = " ".join(notes)
@@ -300,6 +305,17 @@ def _read_now(ctx: Ctx, file_id: int) -> None:
         ctx.aula.read_scans(seconds=INLINE_OCR_SECONDS, file_id=file_id)
     except Exception:  # OCR is extra: the file is there and ver_pagina still shows it
         log.exception("OCR del archivo %s", file_id)
+
+
+def _fetch(ctx: Ctx, file_id: int) -> None:
+    """Downloads and indexes a document still «sin bajar» (reading the aula, never writing to it)."""
+    try:
+        ctx.aula.download(file_id)
+    except CanvasError as exc:
+        url = queries.file_by_id(ctx.conn, file_id)["url"]
+        raise ToolError(f"No pude bajar el archivo: {exc}." + (f" Puede abrirlo en el aula: {url}" if url else "")) \
+            from None
+    _read_now(ctx, file_id)
 
 
 def _scan_notice(ctx: Ctx, state: dict | None, *, can_fetch: bool) -> str:
@@ -341,8 +357,7 @@ def _read(ctx: Ctx, file_id: int, pages, *, can_fetch: bool) -> dict:
     if data["indexado"] == "escaneado":
         result["aviso"] = _scan_notice(ctx, data["ocr"], can_fetch=can_fetch)
     elif not data["descargado"]:
-        result["aviso"] = ("Todavía no lo bajé del aula: " + ("usa bajar_archivo y vuelve a leerlo." if can_fetch else
-                                                               "el bot de la materia lo baja cuando lo necesita."))
+        result["aviso"] = "Todavía no lo bajé del aula: usa bajar_archivo y vuelve a leerlo."
     elif not kept:
         result["aviso"] = "El archivo no tiene texto indexado."
     return result
@@ -923,6 +938,13 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         return queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
                                days=_int(args.get("dias"), "dias"))
 
+    def ver_tarea(args):
+        ctx.refresh()
+        try:
+            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12))
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+
     def anuncios(args):
         ctx.refresh()
         return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30))
@@ -940,8 +962,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         subject = _vinci_subject(ctx, args.get("materia"))
         books = _books(ctx, [subject] if subject else ctx.subjects())
         prefer = set().union(*(libros.file_ids(b) for b in books.values()))
-        # A friend's Vinci has no subject bots to fetch a document for it: it fetches its own.
-        return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=bool(ctx.cfg.friend))
+        return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=False)
 
     def leer(args):
         if args.get("enlace_id") not in (None, ""):
@@ -951,7 +972,9 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         else:
             raise ToolError(READ_WHAT)
         try:
-            return _read(ctx, fid, args.get("paginas"), can_fetch=bool(ctx.cfg.friend))
+            if not queries.file_by_id(ctx.conn, fid)["descargado"]:
+                _fetch(ctx, fid)
+            return _read(ctx, fid, args.get("paginas"), can_fetch=False)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -1125,6 +1148,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
         Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,
              {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
              "un SharePoint): léelos con leer_archivo.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
@@ -1274,6 +1298,14 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         ctx.refresh()
         return queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
 
+    def ver_tarea(args):
+        ctx.refresh()
+        try:
+            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12),
+                                      course_ids())
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+
     def anuncios(args):
         ctx.refresh()
         return _announcements(ctx.conn, course_ids(), _int(args.get("n"), "n", 5, 1, 30))
@@ -1303,13 +1335,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         if args.get("archivo_id") in (None, ""):
             raise ToolError("Dime «archivo_id» (un documento de archivos) o «enlace_id» (uno de sus enlaces).")
         fid = own_file(args["archivo_id"])
-        try:
-            ctx.aula.download(fid)
-        except CanvasError as exc:
-            url = queries.file_by_id(ctx.conn, fid)["url"]
-            raise ToolError(f"No pude bajar el archivo: {exc}." + (f" Puede abrirlo en el aula: {url}" if url else "")) \
-                from None
-        _read_now(ctx, fid)
+        _fetch(ctx, fid)
         return file_result(fid)
 
     def libro(args):
@@ -1488,6 +1514,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
         Tool("tareas", "Entregas pendientes de tu materia.", tareas,
              {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
              "SharePoint): léelos con leer_archivo.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia.", notas),

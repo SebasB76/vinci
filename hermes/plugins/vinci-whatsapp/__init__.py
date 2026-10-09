@@ -17,6 +17,8 @@ friend's and in the default one; it acts only on WhatsApp.
 - A friend's private chat: the ciphertext the token page gave them goes to `espol-bot amigo token` on stdin, so
   the token reaches no model and no session log; a raw token pasted by mistake is not passed on either.
 - Anyone else, in private: nothing.
+- A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
+  instead, from the names of everyone who has written to Vinci (kept in NAMES).
 
 When adding or removing a friend changed the routes, the gateway restarts itself once the turns in flight end.
 Any failure here drops the message: nothing reaches a Vinci that this plugin could not place.
@@ -37,12 +39,15 @@ CAPTAIN = "{{CAPTAIN}}"
 REGISTRY = "{{REGISTRY}}"
 GROUPS = "{{GROUPS}}"
 BRIDGE = "{{BRIDGE}}"
+SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are Vinci's own
+NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
 ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}"}
 SEALED_RE = re.compile(r"v1\.[A-Za-z0-9_-]{200,}")
 # ESPOL's aula tokens: 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~".
 CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*\d)"
                              r"[A-Za-z0-9]{64}\b")
+MENTION_RE = re.compile(r"@(\d{6,})\b")
 FRIEND_RE = re.compile(r"^/amigos?\b\s*(\S*)\s*(.*)$", re.S)
 COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz)\b\s*(.*)$", re.S | re.I)
 QUIZ = ("Hazme aquí un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material, una a la vez. "
@@ -73,7 +78,14 @@ async def _dispatch(event=None, gateway=None, **_):
     if source is None or platform != "whatsapp":
         return None
     try:
-        return await _sort(event, source, gateway)
+        names = _remember(source)  # anyone who mentions Vinci, even without their own Vinci yet
+        result = await _sort(event, source, gateway)
+        if result is None:
+            text = str(getattr(event, "text", "") or "")
+            named = _named(text, names)
+            if named != text:
+                return {"action": "rewrite", "text": named}
+        return result
     except Exception:
         logger.exception("no pude ordenar un mensaje de WhatsApp")
         return {"action": "skip", "reason": "vinci-whatsapp: error"}
@@ -171,6 +183,43 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
 def _strip_mention(text):
     # «@vinci /estado» in a group, as people also type it
     return re.sub(r"^@\S+\s+", "", text.strip())
+
+
+def _remember(source):
+    """Records who this sender is called, under each of their ids; returns every name known so far."""
+    names = _read_dict(NAMES)
+    name = str(getattr(source, "user_name", "") or "").strip()
+    ids = {_bare(i) for i in _aliases(getattr(source, "user_id", None)) | _aliases(getattr(source, "user_id_alt", None))}
+    if name and any(names.get(i) != name for i in ids):
+        names.update(dict.fromkeys(ids, name))
+        tmp = f"{NAMES}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(names, fh, ensure_ascii=False)
+        os.replace(tmp, NAMES)
+    return names
+
+
+def _named(text, names):
+    own = _own_ids()
+    return MENTION_RE.sub(lambda m: "@vinci" if m[1] in own else f"@{names[m[1]]}" if m[1] in names else m[0], text)
+
+
+def _own_ids():
+    me = _read_dict(os.path.join(SESSION, "creds.json")).get("me") or {}
+    return {_bare(me.get("id")), _bare(me.get("lid"))} - {""}
+
+
+def _bare(user_id):
+    return re.sub(r"[:@].*$", "", str(user_id or ""))
+
+
+def _read_dict(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, ValueError):
+        return {}
 
 
 def _aliases(user_id):

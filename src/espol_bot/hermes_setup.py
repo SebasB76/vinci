@@ -522,6 +522,7 @@ class Setup:
 
         values = {**self.values, "CAPTAIN": wa.captain, "REGISTRY": str(amigos.registry_path(self.cfg)),
                   "GROUPS": str(amigos.groups_path(self.cfg)), "BRIDGE": self.cfg.whatsapp_bridge,
+                  "SESSION": str(self.whatsapp_session()),
                   "RESTART": "" if test.get("whatsapp_sin_reinicio") else "1"}
         # The gateway runs pre_gateway_dispatch with the plugins of the profile the sender is routed to, so the
         # plugin goes in every profile a WhatsApp route reaches, plus the default for anything unrouted.

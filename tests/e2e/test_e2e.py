@@ -444,7 +444,15 @@ class Script:
         return self.subject(subject_of(req) or bot, text, called, results)
 
     def friend(self, text: str, called: list[str], results: list[str]) -> dict:
-        """A friend's Vinci on WhatsApp: their week, and slides whose file goes back to the chat."""
+        """A friend's Vinci on WhatsApp: their week, what an assignment asks for, and slides whose file goes back to
+        the chat."""
+        if "qué pide el taller 2" in text:
+            if not called:
+                return _call("mcp__vinci__tareas")
+            if called == ["mcp__vinci__tareas"]:
+                taller = next(t for t in _json(results[-1]) if t["tarea"].startswith("Taller 2"))
+                return _call("mcp__vinci__ver_tarea", tarea_id=taller["id"])
+            return {"content": f"El Taller 2 pide esto: {_json(results[-1])['consigna']}"}
         if results:
             last = _json(results[-1])
             if isinstance(last, dict) and last.get("ruta"):
@@ -1760,7 +1768,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
     (stand_in / "node_modules" / ".hermes-pkg-hash").write_text(hashlib.sha256(b"{}\n").hexdigest()[:16])
     session = home / ".hermes" / "platforms" / "whatsapp" / "session"
     session.mkdir(parents=True, exist_ok=True)
-    (session / "creds.json").write_text("{}")  # paired (the real pairing is `espol-bot whatsapp-vincular`)
+    # paired (the real pairing is `espol-bot whatsapp-vincular`); its «me» says which ids are Vinci's own
+    (session / "creds.json").write_text(json.dumps({"me": {"id": f"{FakeWhatsApp.BOT.split('@')[0]}:7@s.whatsapp.net",
+                                                           "lid": "880000000000001:7@lid"}}))
     md = ["# Vinci en WhatsApp\n",
           "Lo que llega al puente de WhatsApp de Hermes (aquí FakeWhatsApp): cada mensaje con quién lo escribe, y lo "
           "que Vinci contesta.\n"]
@@ -1824,9 +1834,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert wa.wait_for(lambda b: b.polled_since(mark), 120), fail("Hermes no tomó el puente de WhatsApp")
 
         def say(chat: str, sender: str, text: str, name: str, *, group: bool = False, expect: int = 1,
-                timeout: float = 120) -> list[dict]:
+                timeout: float = 120, mentions: list[str] | None = None) -> list[dict]:
             mark = len(wa.sent)
-            wa.say(chat, sender, text, name=name, group=group)
+            wa.say(chat, sender, text, name=name, group=group, mentions=mentions)
             shown = ("[el texto cifrado que dio la página]" if text.startswith("v1.")
                      else text.replace(ANGEL_TOKEN, "<el token de Angel>"))
             md.append(f"**{name}** ({'grupo' if group else 'privado'}): {shown}\n")
@@ -1935,6 +1945,20 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                                                                  "Cómo se calcula"]
             report.append("«hazme unas diapositivas»: crear_diapositivas arma el .pptx (portada y una diapositiva por "
                           "tema, con notas) y Hermes lo adjunta en el chat de WhatsApp")
+
+            # 10f2. WhatsApp mentions arrive as «@<number>»: Vinci gets «@vinci» and the person's name instead, and
+            # reads what an assignment asks for (its instructions, as the professor wrote them)
+            bot_number = FakeWhatsApp.BOT.split("@")[0]
+            calls = len(llm.requests)
+            taller = text_of(say(GROUP_WA, angel_jid, f"@{bot_number} qué pide el taller 2? y avísale a @{CAPTAIN_WA}",
+                                 "Angel", group=True, mentions=[FakeWhatsApp.BOT]))
+            assert "ejercicios 3, 5 y 8 de la sección 15.2" in taller and "un solo PDF" in taller, taller
+            seen = json.dumps(llm.requests[calls:], ensure_ascii=False)
+            assert "@vinci qué pide el taller 2? y avísale a @Capitán" in seen, seen[-2000:]
+            assert f"@{bot_number}" not in seen and f"@{CAPTAIN_WA}" not in seen
+            report.append("En un grupo, una mención llega a WhatsApp como «@número»: el plugin se la pasa al modelo como "
+                          "«@vinci» o con el nombre de la persona (Angel ve «@Capitán»). «¿Qué pide el taller 2?»: "
+                          "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas)")
 
             # 10g. Vinci's commands on WhatsApp, each over the sender's own aula; Hermes' own pass through
             calls = len(llm.requests)

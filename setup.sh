@@ -100,6 +100,18 @@ else
   hermes_has_telegram || { echo "No pude instalar el conector de Telegram de Hermes" >&2; exit 1; }
 fi
 
+say "Revisando la transcripción de notas de voz de Hermes"
+# Sin faster-whisper, una nota de voz (Telegram o WhatsApp) le llega al bot como «no se pudo transcribir».
+if "$HERMES_BIN" --run-module faster_whisper.version >/dev/null 2>&1; then
+  echo "Hermes ya transcribe notas de voz (faster-whisper, local)"
+elif [ "${ESPOL_NO_PM_INSTALL:-0}" = 1 ] || [ "$SKIP_DEPS" = 1 ]; then
+  echo "⚠ Hermes no puede transcribir notas de voz. Instálalo con: hermes pm install --extra stt-whisper" >&2
+else
+  echo "A Hermes le falta la transcripción de notas de voz; la instalo (hermes pm install --extra stt-whisper)…"
+  "$HERMES_BIN" pm install --extra stt-whisper \
+    || echo "⚠ No pude instalar faster-whisper: las notas de voz no se van a transcribir" >&2
+fi
+
 say "Revisando secretos ($SECRETS)"
 if [ ! -f "$SECRETS" ]; then
   cp "$REPO/secrets.env.example" "$SECRETS"

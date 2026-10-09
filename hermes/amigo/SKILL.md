@@ -20,6 +20,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 |---|---|
 | Vista general: entregas pendientes y atrasadas, en orden de prioridad | `semana` (`dias`) |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
+| Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | Cómo va en notas y cuánto necesita (la calculadora) | `grade_status` (`subject`, `what_if`, `target`) |
 | Material: catálogo, buscar, leer (también un enlace de fuera) | `archivos`, `buscar_material`, `leer_archivo` |
 | El libro principal de una materia | `libro_principal` (`materia`) |

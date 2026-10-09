@@ -230,14 +230,15 @@ class FakeWhatsApp(_Server):
     def script_hash(self) -> str:
         return hashlib.sha256(self.script.read_bytes()).hexdigest()[:16]
 
-    def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False) -> str:
+    def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False,
+            mentions: list[str] | None = None) -> str:
         """A message someone writes: in a private chat (`chat` is the sender's JID) or a group (…@g.us)."""
         message_id = f"E2E{next(self._ids):06d}"
         with self.lock:
             self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
                                "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
                                "isGroup": group, "body": text, "hasMedia": False, "mediaType": "", "mediaUrls": [],
-                               "mentionedIds": [], "botIds": [self.BOT], "timestamp": int(time.time()),
+                               "mentionedIds": mentions or [], "botIds": [self.BOT], "timestamp": int(time.time()),
                                "fromMe": False})
         return message_id
 

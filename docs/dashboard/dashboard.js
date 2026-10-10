@@ -1,7 +1,9 @@
 // The dashboard behind the menu button of Vinci's chat. Vinci puts the snapshot in the URL's fragment
 // (#d=<base64url of raw DEFLATE JSON>, espol_bot/dashboard.py) and the page asks no server for anything: its CSP
 // forbids connections. A tick opens Vinci's deep link (/start s_<id>_ok), which the plugin vinci-botones runs as
-// the «✅ Ya lo entregué» / «✅ Hecho» button would; the tick is kept on the phone until a newer snapshot comes.
+// the «✅ Ya lo entregué» / «✅ Hecho» button would; from WhatsApp's /entregas (a «wa» number in the snapshot) it
+// opens Vinci's WhatsApp chat with «/marca s<id> ok» typed instead. The tick is kept on the phone until a newer
+// snapshot comes.
 
 const DAY = 864e5;
 const WEEKDAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -197,7 +199,7 @@ async function init() {
     data = null;
   }
   if (!data || data.v !== 1) {
-    app.innerHTML = `<div class="empty"><b>📋</b>Abre este panel con el botón «📋 Entregas» del chat de Vinci.</div>`;
+    app.innerHTML = `<div class="empty"><b>📋</b>Abre este panel con el botón «📋 Entregas» del chat de Vinci, o con /entregas en WhatsApp.</div>`;
     return;
   }
   const state = load();
@@ -213,6 +215,12 @@ async function init() {
       state.marks = { ...state.marks, [id]: { done, at: Date.now() } };
       save(state);
       render();
+      if (data.wa) {  // opened from /entregas on WhatsApp: back to Vinci's chat with the command typed
+        const item = (data.items || []).find((i) => i.id === id);
+        const text = `/marca ${id} ${done ? "ok" : "no"}${item ? ` · ${item.title}` : ""}`;
+        window.location.href = `https://wa.me/${data.wa}?text=${encodeURIComponent(text)}`;
+        return;
+      }
       const link = `/${data.bot}?start=${id[0]}_${id.slice(1)}_${done ? "ok" : "no"}`;
       if (!postEvent("web_app_open_tg_link", { path_full: link })) window.open(`https://t.me${link}`, "_blank");
     } else if (pin) {

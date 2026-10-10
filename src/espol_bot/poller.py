@@ -72,6 +72,9 @@ class Bot:
         self.aula = aula or Aula(cfg.core, background=True)
         store.ensure(self.conn)
         try:
+            if cfg.friend:  # no subject bots: a friend's subjects are the courses of their aula, kept in step
+                from espol_bot import equipo
+                equipo.sync_team(cfg, self.conn)
             self.team = materias.load(cfg.core)  # archived subjects too: their grading schemes still count
             self.subjects = [s for s in self.team if s.active]
             self.team_error = None

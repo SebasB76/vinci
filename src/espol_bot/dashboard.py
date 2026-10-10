@@ -7,6 +7,10 @@ changed what it shows, Vinci compresses the snapshot into the fragment of the me
 never sends the fragment, so GitHub never sees it. Ticking a deliverable on the page opens
 `t.me/<vinci>?start=s_<id>_ok` (a to-do: `t_…`): the plugin `vinci-botones` runs it as the
 «✅ Ya lo entregué» / «✅ Hecho» button would, and the menu button gets a fresh snapshot.
+
+On WhatsApp, /entregas answers with a link to the same page (`whatsapp_url`), whose snapshot carries Vinci's number
+(«wa») instead of the bot's username: a tick opens Vinci's chat with «/marca s<id> ok» typed, which the plugin
+vinci-whatsapp runs as the button too.
 """
 
 from __future__ import annotations
@@ -122,11 +126,11 @@ def decode(payload: str) -> dict:
     return json.loads(zlib.decompress(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)), -15))
 
 
-def page_url(cfg: BotConfig, data: dict) -> str:
+def page_url(cfg: BotConfig, data: dict, base: str | None = None) -> str:
     """The page with the snapshot in its fragment, trimmed (oldest news first, then the last deliverables) to fit."""
     data = {**data, "news": list(data["news"]), "items": list(data["items"])}
     while True:
-        url = f"{cfg.dashboard_url}#d={encode(data)}"
+        url = f"{base or cfg.dashboard_url}#d={encode(data)}"
         if len(url) <= MAX_URL or not (data["news"] or data["items"]):
             return url
         if data["news"]:
@@ -157,6 +161,15 @@ def publish(conn: sqlite3.Connection, cfg: BotConfig, telegram: Telegram, team: 
     conn.commit()
     log.info("dashboard: botón de menú actualizado (%d caracteres)", len(url))
     return url
+
+
+def whatsapp_url(conn: sqlite3.Connection, cfg: BotConfig, team: list[materias.Subject], now: datetime,
+                 vinci_number: str) -> str | None:
+    """The page for /entregas on WhatsApp, its ticks pointed back at Vinci's WhatsApp chat; None with no page."""
+    if not cfg.dashboard_page:
+        return None
+    data = {**snapshot(conn, cfg, team, now), "wa": vinci_number, "at": timefmt.iso(now)}
+    return page_url(cfg, data, base=cfg.dashboard_page)
 
 
 def bot_username(conn: sqlite3.Connection, telegram: Telegram) -> str:

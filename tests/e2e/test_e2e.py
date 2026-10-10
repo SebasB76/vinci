@@ -414,6 +414,14 @@ EXAMS_TO_SOLVE = {
 }
 
 
+def read_if_there(path: Path) -> bytes:
+    """A file's bytes; nothing when the gateway removed it (a temporary state file) after it was listed."""
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return b""
+
+
 def _call(name: str, **args) -> dict:
     return {"tool_calls": [(name, args)]}
 
@@ -446,6 +454,10 @@ class Script:
     def friend(self, text: str, called: list[str], results: list[str]) -> dict:
         """A friend's Vinci on WhatsApp: their week, what an assignment asks for, and slides whose file goes back to
         the chat."""
+        if "anota: repasar integrales dobles" in text:
+            if not called:
+                return _call("mcp__vinci__add_todo", text="repasar integrales dobles")
+            return {"content": "Anotado: repasar integrales dobles."}
         if "qué pide el taller 2" in text:
             if not called:
                 return _call("mcp__vinci__tareas")
@@ -1007,7 +1019,7 @@ def test_e2e(tmp_path):
         config = config.replace('url = "https://aulavirtual.espol.edu.ec"', f'url = "{canvas.base}"')
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
-        config = config.replace('modelo = "claude-sonnet-5-5"', 'modelo = "fake"')
+        config = re.sub(r'^modelo = ".*"$', 'modelo = "fake"', config, count=1, flags=re.M)
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
@@ -1948,17 +1960,54 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
 
             # 10f2. WhatsApp mentions arrive as «@<number>»: Vinci gets «@vinci» and the person's name instead, and
             # reads what an assignment asks for (its instructions, as the professor wrote them)
-            bot_number = FakeWhatsApp.BOT.split("@")[0]
+            # In a group WhatsApp writes the mention with Vinci's LID, which Hermes does not strip (only the number).
+            bot_lid = "880000000000001"
             calls = len(llm.requests)
-            taller = text_of(say(GROUP_WA, angel_jid, f"@{bot_number} qué pide el taller 2? y avísale a @{CAPTAIN_WA}",
+            taller = text_of(say(GROUP_WA, angel_jid, f"@{bot_lid} qué pide el taller 2? y avísale a @{CAPTAIN_WA}",
                                  "Angel", group=True, mentions=[FakeWhatsApp.BOT]))
             assert "ejercicios 3, 5 y 8 de la sección 15.2" in taller and "un solo PDF" in taller, taller
             seen = json.dumps(llm.requests[calls:], ensure_ascii=False)
             assert "@vinci qué pide el taller 2? y avísale a @Capitán" in seen, seen[-2000:]
-            assert f"@{bot_number}" not in seen and f"@{CAPTAIN_WA}" not in seen
+            assert f"@{bot_lid}" not in seen and f"@{CAPTAIN_WA}" not in seen
             report.append("En un grupo, una mención llega a WhatsApp como «@número»: el plugin se la pasa al modelo como "
                           "«@vinci» o con el nombre de la persona (Angel ve «@Capitán»). «¿Qué pide el taller 2?»: "
                           "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas)")
+
+            # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
+            mark = len(wa.sent)
+            say(angel_jid, angel_jid, "anota: repasar integrales dobles", "Angel")
+            polls = wa.wait_for(lambda b: b.polls_to(angel_jid, mark), 30)
+            assert polls and polls[0]["options"] == ["✅ Hecho", "⏳ Todavía no"], fail(f"sin encuesta: {wa.sent[mark:]}")
+            card = text_of(wa.messages_to(angel_jid, mark))
+            assert "repasar integrales dobles" in card, card
+            calls, mark = len(llm.requests), len(wa.sent)
+            wa.vote(angel_jid, angel_jid, polls[0]["messageId"], "✅ Hecho")
+            done = wa.wait_for(lambda b: b.messages_to(angel_jid, mark), 60)
+            assert done and "Hecho: «repasar integrales dobles»" in text_of(done), done
+            assert len(llm.requests) == calls, "un voto se resuelve sin el modelo"
+            md.append(f"→ a Angel: [encuesta «{polls[0]['question']}»: {' / '.join(polls[0]['options'])}]\n"
+                      f"**Angel** vota «✅ Hecho» → Vinci: {normalize(text_of(done))}\n")
+            report.append("WhatsApp no tiene botones: «anota: repasar integrales dobles» le llega a Angel como mensaje y "
+                          "una encuesta «✅ Hecho / ⏳ Todavía no» en su chat privado; su voto cierra el pendiente como "
+                          "el botón de Telegram, sin el modelo")
+
+            # 10f4. /entregas: the dashboard on WhatsApp, its ticks typed back into the chat as /marca
+            calls = len(llm.requests)
+            panel = text_of(say(angel_jid, angel_jid, "/entregas", "Angel"))
+            link = re.search(r"https://\S+#d=([\w-]+)", panel)
+            assert link, panel
+            from espol_bot import dashboard as dashboard_module
+            snap = dashboard_module.decode(link[1])
+            assert snap["wa"] == FakeWhatsApp.BOT.split("@")[0] and "bot" not in snap, snap
+            taller = next(i for i in snap["items"] if i["title"].startswith("Taller 2"))
+            marked = text_of(say(angel_jid, angel_jid, f"/marca {taller['id']} ok · {taller['title']}", "Angel"))
+            assert "cuenta como entregada" in marked, marked
+            assert len(llm.requests) == calls, "/entregas y /marca no pasan por el modelo"
+            private = text_of(say(GROUP_WA, angel_jid, "@vinci /entregas", "Angel", group=True))
+            assert "por privado" in private, private
+            report.append("/entregas le da a Angel el enlace a su panel de entregas (el mismo de Telegram), con el número "
+                          "de Vinci en vez del bot: marcar una abre su chat con «/marca s… ok» escrito, que el plugin "
+                          "cuenta como entregada sin el modelo; en un grupo, /entregas pide ir por privado")
 
             # 10g. Vinci's commands on WhatsApp, each over the sender's own aula; Hermes' own pass through
             calls = len(llm.requests)
@@ -1981,12 +2030,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert len(llm.requests) == calls, "/start, /estado, /token y el texto cifrado no pasan por el modelo"
             say(angel_jid, angel_jid, "/quiz integrales dobles", "Angel")
             assert "quiz corto de integrales dobles" in json.dumps(llm.requests[-1], ensure_ascii=False), \
-                "«/quiz tema» le llega al modelo como pedido de un quiz en el chat"
+                "«/quiz tema» le llega al modelo como pedido de un quiz"
             report.append("Los comandos de Vinci también van por WhatsApp, cada uno sobre el aula de quien escribe y sin "
                           "el modelo: /start (con los comandos; los de /amigo, solo al capitán), /estado y /token (en un "
                           "grupo, piden ir por privado). Tras /token, el capitán pegó el texto cifrado de la página y su "
                           "cadena del token volvió a arrancar. «/quiz integrales dobles» llega al modelo como pedido de "
-                          "un quiz en el chat, porque WhatsApp no tiene encuestas")
+                          "un quiz, que Vinci manda como encuestas (send_quiz)")
 
             # 10h. Should someone reach a Vinci that is not theirs, its owner's data stays shut
             gateway.stop()
@@ -2270,7 +2319,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspac
     assert FORM_TOKEN not in carried and REFUSED_FORM_TOKEN not in carried, "Telegram solo llevó el texto cifrado"
     for token in (FORM_TOKEN, REFUSED_FORM_TOKEN, PASTED_TOKEN):
         files = [f for root in (home, data_dir) for f in root.rglob("*") if f.is_file()] + [gateway.log_path]
-        holders = sorted({str(f) for f in files if token.encode() in f.read_bytes()})
+        holders = sorted({str(f) for f in files if token.encode() in read_if_there(f)})
         assert not holders, f"un token del aula apareció en {holders}"
     report.append("/token en el chat de Vinci, sin el modelo: un botón abrió el formulario, cuya página "
                   + ("(docs/token/form.js, en Node) " if NODE else "(sin Node: el mismo cifrado en Python) ")
@@ -2379,7 +2428,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspac
             ("vinci-agenda", "* * * * * */30", False, "vinci-agenda.sh", True)], jobs
     for token in (MATG, FIS, UNKNOWN_TOKEN):  # where a token may live: secrets.env and its own profile's .env
         holders = sorted(str(f.relative_to(home)) for f in home.rglob("*") if f.is_file()
-                         and token.encode() in f.read_bytes())
+                         and token.encode() in read_if_there(f))
         allowed = {f".hermes/profiles/vinci-{c.lower()}/.env" for c, t in SUBJECT_TOKENS.items() if t == token}
         assert set(holders) <= allowed, f"el token apareció en {holders}"
     assert "Congratulations on your new bot" not in json.dumps(llm.requests, ensure_ascii=False)
@@ -4136,7 +4185,7 @@ def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspac
             assert scfg["compression"]["protect_last_n"] == 30, "setup.sh no toca lo demás de un perfil que ya existía"
         assert parse_env_file(profile / ".env")["TELEGRAM_ALLOWED_USERS"] == CAPTAIN_ID
     for token in PARTY_TOKENS.values():  # a token lives only in secrets.env and its own profile's .env
-        holders = {str(f.relative_to(home)) for f in home.rglob("*") if f.is_file() and token.encode() in f.read_bytes()}
+        holders = {str(f.relative_to(home)) for f in home.rglob("*") if f.is_file() and token.encode() in read_if_there(f)}
         assert len(holders) == 1 and holders <= {f".hermes/profiles/vinci-{c.lower()}/.env" for c in PARTY}, holders
     report.append("Memoria de conversación corta: Vinci y cada bot de materia resumen su chat a los 80 000 tokens "
                   "(compression.threshold_tokens; Hermes por defecto espera a 256 000); en los perfiles que ya "

@@ -242,6 +242,21 @@ class FakeWhatsApp(_Server):
                                "fromMe": False})
         return message_id
 
+    def vote(self, chat: str, sender: str, poll_id: str, option: str) -> None:
+        """A vote on one of Vinci's polls, as bridge.js reports it: the chosen option's text, quoting the poll."""
+        with self.lock:
+            self.inbox.append({"messageId": f"{poll_id}:update:{next(self._ids)}", "chatId": chat, "senderId": sender,
+                               "senderName": sender.split("@")[0], "chatName": chat.split("@")[0], "isGroup": False,
+                               "body": option, "hasMedia": False, "mediaType": "poll_update",
+                               "nativeType": "pollUpdateMessage", "mediaUrls": [], "mentionedIds": [],
+                               "quotedMessageId": poll_id, "quotedParticipant": "", "quotedRemoteJid": chat,
+                               "quotedText": "", "hasQuotedMessage": True, "botIds": [],
+                               "timestamp": int(time.time()), "fromMe": False})
+
+    def polls_to(self, chat: str, since: int = 0) -> list[dict]:
+        with self.lock:
+            return [m for m in self.sent[since:] if m.get("chatId") == chat and m["path"] == "send-poll"]
+
     def polled_since(self, mark: float) -> bool:
         with self.lock:
             return any(t >= mark for t in self.served)
@@ -286,8 +301,8 @@ class _WhatsAppHandler(_Quiet):
             payload = {}
         path = urlsplit(self.path).path.strip("/")
         with bridge.lock:
-            bridge.sent.append({"path": path, **payload})
-            message_id = f"OUT{len(bridge.sent):06d}"
+            message_id = f"OUT{len(bridge.sent) + 1:06d}"
+            bridge.sent.append({"path": path, **payload, "messageId": message_id})
         return self._json(200, {"success": True, "messageId": message_id})
 
 

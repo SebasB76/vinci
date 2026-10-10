@@ -76,7 +76,7 @@ def _sender(cfg):
     if cfg.friend:
         from aula_core.config import load_secret_values
         from espol_bot.whatsapp import WhatsApp
-        return WhatsApp(load_secret_values().get("WHATSAPP_OWNER", ""), cfg.whatsapp_bridge)
+        return WhatsApp(load_secret_values().get("WHATSAPP_OWNER", ""), cfg.whatsapp_bridge, polls=cfg.core.data_dir)
     return Telegram(load_telegram_secrets(), api=cfg.telegram_api)
 
 
@@ -147,7 +147,7 @@ def _friend_outcome(cfg, args):
     from espol_bot.whatsapp import normalize_number as whatsapp_number
     now = now_utc()
     if args.cmd == "whatsapp-comando":
-        data = sys.stdin.read() if args.accion == "token-cifrado" else ""
+        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
     if args.cmd == "whatsapp-grupo":
         on = args.accion == "activar"
@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-comando", help="/start, /estado y /token por WhatsApp, del capitán o de un amigo "
                                                 "(lo usa el plugin vinci-whatsapp)")
-    p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado"])
+    p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado", "voto", "marca", "entregas"])
     p.add_argument("numero", help="quién lo escribió (593…)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     args = parser.parse_args(argv)

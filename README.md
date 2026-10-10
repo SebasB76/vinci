@@ -624,8 +624,18 @@ número personal.
    teléfono, y escribe el código.
 5. Corre `./setup.sh` y arranca el gateway: `hermes gateway start`.
 
-**Tu chat.** Escríbele a Vinci por privado: es el mismo Vinci de Telegram, con tu aula y tu memoria. Las tarjetas
-con botones (crear un bot, guardar el horario, entregar) siguen solo en Telegram.
+**Tu chat.** Escríbele a Vinci por privado: es el mismo Vinci de Telegram, con tu aula y tu memoria. WhatsApp no
+tiene botones, así que cada tarjeta te llega a tu chat privado como mensaje con una **encuesta**: votar «✅ Hecho»,
+«✅ Ya lo entregué», «✅ Guardar horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram,
+sin pasar por el modelo. Cambiar el voto lo deshace. Solo crear o archivar bots de materia sigue en Telegram.
+
+- **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
+  archivos que trae.
+- **Entregar a mano.** Mándale las fotos (o el PDF) y dile de qué tarea es: arma el PDF y te lo manda con la
+  encuesta «📤 Entregar / Cancelar». Se sube al aula solo con tu voto.
+- **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
+  te dice si acertaste y por qué, y al final tu puntaje.
+- **Notas de voz.** Se transcriben en tu PC con faster-whisper (`setup.sh` lo instala en Hermes).
 
 **Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
 contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. «@vinci desactiva
@@ -651,10 +661,15 @@ y Vinci los contesta sin gastar tokens:
 | `/start` | Saluda y muestra los comandos |
 | `/estado` | La salud del sistema, como en Telegram |
 | `/token` | Un enlace a la página del token: pegas ahí el token nuevo, tocas «Cifrar» y pegas en el chat el texto que te da |
-| `/quiz <tema>` | Un quiz corto en el mismo chat, una pregunta a la vez (WhatsApp no tiene encuestas) |
+| `/entregas` | El enlace a tu panel de entregas (el mismo dashboard de Telegram). Marcar una abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
+| `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
-En un grupo, `/estado` y `/token` te piden escribirlos por privado.
+En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas siempre van a tu
+chat privado (WhatsApp no deja votar a Vinci en un grupo).
+
+El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con sus recordatorios), su calculadora de
+notas con el esquema que guarda con su voto, y los recordatorios del aula con la encuesta «✅ Ya lo entregué».
 
 A quien todavía no tiene su Vinci, Vinci le contesta que te pida que lo agregues, sin usar el modelo y sin
 mostrarle nada tuyo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio

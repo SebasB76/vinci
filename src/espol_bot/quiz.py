@@ -1,4 +1,5 @@
-"""Short quizzes a subject bot sends as Telegram quiz polls (its `/quiz` skill, or a quiz Vinci handed over).
+"""Short quizzes a subject bot sends as Telegram quiz polls (its `/quiz` skill, or a quiz Vinci handed over), and
+Vinci sends as WhatsApp polls.
 
 The model writes the questions from what it read and calls `send_quiz`; this module checks that each
 question's source is real (a page of this subject's material, or an entry of its notebook), writes the
@@ -7,6 +8,10 @@ and its explanation only once the captain votes. The votes come back as poll_ans
 vinci-botones plugin hands to `espol-bot quiz-respuesta` with no model: when the last question is answered
 the captain gets the score with the source of every question, and what was missed goes to the notebook as a
 weak topic (so the briefs and Vinci see it).
+
+On WhatsApp a poll has no right answer: each option's callback is «q:<CÓDIGO>:<n>» (whatsapp.py), the vinci-whatsapp
+plugin hands the vote to `espol-bot whatsapp-comando voto`, and `answer` says right away whether it was right and why,
+then the score after the last question.
 
 Quizzes live in the subject's notebook (cuaderno.db), next to the entries they may cite.
 """
@@ -23,6 +28,7 @@ from aula_core.config import CoreConfig
 from espol_bot.cuaderno import Notebook, NotebookError
 from espol_bot.messages import e, link
 from espol_bot.telegram import Telegram, TelegramError
+from espol_bot.whatsapp import WhatsApp
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS quizzes (
@@ -44,6 +50,7 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
     answered_at TEXT
 );
 """
+LETTERS = "ABCD"
 MAX_QUESTIONS = 5
 MIN_OPTIONS, MAX_OPTIONS = 2, 4
 # Telegram's limits for a quiz poll; the question also carries its «2/4.» prefix.
@@ -136,11 +143,20 @@ def question(item: dict, position: int, source: tuple[str, str | None]) -> Quest
 def _db(notebook: Notebook):
     conn = notebook.connection()
     conn.executescript(SCHEMA)
+    if "explanation" not in {r["name"] for r in conn.execute("PRAGMA table_info(quiz_questions)")}:
+        conn.execute("ALTER TABLE quiz_questions ADD COLUMN explanation TEXT")  # WhatsApp shows it after a vote
     return conn
 
 
-def send(telegram: Telegram, notebook: Notebook, topic: str, questions: list[Question], now: datetime) -> dict:
-    """One quiz poll per question in the captain's chat, recorded so the plugin can score the answers."""
+def _post(channel: Telegram | WhatsApp, code: str, text: str, q: Question) -> str:
+    if isinstance(channel, WhatsApp):
+        return channel.poll([(f"{LETTERS[i]}) {option}", f"q:{code}:{i}") for i, option in enumerate(q.options)], text)
+    return str(channel.send_poll(text, q.options, q.correct, q.explanation)["poll"]["id"])
+
+
+def send(channel: Telegram | WhatsApp, notebook: Notebook, topic: str, questions: list[Question], now: datetime) -> dict:
+    """One quiz poll per question in the owner's chat (Telegram's quiz polls, or WhatsApp polls), recorded so the
+    plugin can score the answers."""
     topic = _clean(topic, "el tema del quiz («topic»)", 100)
     if not 1 <= len(questions) <= MAX_QUESTIONS:
         raise QuizError(f"Un quiz corto lleva de 1 a {MAX_QUESTIONS} preguntas.")
@@ -151,25 +167,46 @@ def send(telegram: Telegram, notebook: Notebook, topic: str, questions: list[Que
     total = len(questions)
     for position, q in enumerate(questions, 1):
         try:
-            message = telegram.send_poll(f"{position}/{total}. {q.text}", q.options, q.correct, q.explanation)
-            poll_id = str(message["poll"]["id"])
+            poll_id = _post(channel, notebook.code, f"{position}/{total}. {q.text}", q)
         except (TelegramError, KeyError, TypeError) as exc:
             if position == 1:
                 conn.execute("DELETE FROM quizzes WHERE id = ?", (quiz_id,))
                 conn.commit()
-                raise QuizError(f"Telegram no aceptó el quiz: {exc}. Hazle las preguntas por escrito, con las "
+                raise QuizError(f"No se pudo mandar el quiz: {exc}. Hazle las preguntas por escrito, con las "
                                 "respuestas al final.") from None
-            raise QuizError(f"Telegram no aceptó la pregunta {position}: {exc}. Le llegaron las {position - 1} "
+            raise QuizError(f"No se pudo mandar la pregunta {position}: {exc}. Le llegaron las {position - 1} "
                             "primeras; dile que las responda.") from None
         conn.execute("INSERT INTO quiz_questions(poll_id, quiz_id, position, question, options, correct, source, "
-                     "source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     "source_url, explanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                      (poll_id, quiz_id, position, q.text, json.dumps(q.options, ensure_ascii=False), q.correct,
-                      q.source, q.source_url))
+                      q.source, q.source_url, q.explanation))
         conn.commit()
+    how = ("como encuestas en su chat privado de WhatsApp: al votar cada una le digo si acertó y por qué"
+           if isinstance(channel, WhatsApp) else
+           "como quiz de Telegram: ve la respuesta correcta y la explicación recién al responder cada una")
     return {"quiz": quiz_id, "topic": topic, "questions": total, "sources": sorted({q.source for q in questions}),
-            "message": f"Le mandé {total} pregunta(s) como quiz de Telegram: ve la respuesta correcta y la explicación "
-                       "recién al responder cada una, y al terminar le llega su puntaje con la fuente de cada "
+            "message": f"Le mandé {total} pregunta(s) {how}, y al terminar le llega su puntaje con la fuente de cada "
                        "pregunta. Contéstale en una línea, sin repetir las preguntas ni revelar las respuestas."}
+
+
+def answer(core: CoreConfig, code: str, poll_id: str, chosen: int, now: datetime) -> str:
+    """A vote in a WhatsApp quiz poll, which shows no right answer: whether it was right and why (HTML), and after
+    the last question the score. Empty for a poll that is not a quiz question."""
+    notebook = Notebook(core, code)
+    try:
+        if not notebook.db_path.exists():
+            return ""
+        row = _db(notebook).execute("SELECT * FROM quiz_questions WHERE poll_id = ?", (poll_id,)).fetchone()
+    finally:
+        notebook.close()
+    if row is None:
+        return ""
+    if row["chosen"] is not None:
+        return "Esa ya la respondiste: cuenta la primera respuesta."
+    options = json.loads(row["options"])
+    verdict = "✅ ¡Correcto!" if chosen == row["correct"] else f"❌ Era «{e(options[row['correct']])}»."
+    score = record_answer(core, code, poll_id, [chosen], now)
+    return "\n".join(part for part in (f"{verdict} {e(row['explanation'] or '')}".strip(), score) if part)
 
 
 def record_answer(core: CoreConfig, code: str, poll_id: str, option_ids: list[int], now: datetime) -> str | None:

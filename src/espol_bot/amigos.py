@@ -39,6 +39,7 @@ from aula_core.canvas import CanvasError
 from aula_core.config import ConfigError, config_path, load_config, update_secret_values
 from aula_core.store import connect, file_lock, set_meta
 from espol_bot import token_form, whatsapp
+from espol_bot.store import ensure as store_ensure
 from espol_bot.config import BotConfig, load_bot_config, whatsapp_settings
 from espol_bot.token_renewal import RenewalError, TokenRenewal
 
@@ -305,19 +306,71 @@ def listing(cfg: BotConfig) -> Outcome:
 
 def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) -> Outcome:
     """Vinci's own slash commands on WhatsApp, for the captain or an active friend, each over their own aula:
-    /start, /estado and /token, plus the ciphertext the captain pastes after his /token."""
+    /start, /estado and /token, plus the ciphertext the captain pastes after his /token, and a vote on one of
+    the polls that stand in for a card's buttons (`data`: {"encuesta", "opcion"})."""
     captain = number == _captain(cfg)
     friend = None if captain else next((f for f in active(cfg) if f.numero == number), None)
     if not captain and friend is None:
         raise ConfigError("ese número no tiene su Vinci")
     if name == "start":
         return Outcome(_greeting(friend))
+    if name in ("voto", "marca", "entregas"):
+        act = {"voto": _vote, "marca": _mark, "entregas": _deliverables}[name]
+        if friend is None:
+            return act(cfg, data, now)
+        with scope(cfg, friend) as fcfg:
+            return act(fcfg, data, now)
     if friend is None:
         return Outcome(whatsapp.from_html(_command_html(cfg, name, data, now)))
     if name == "token-cifrado":
         return submit_token(cfg, number, data, now)
     with scope(cfg, friend) as fcfg:
         return Outcome(whatsapp.from_html(_command_html(fcfg, name, data, now)))
+
+
+MARK_RE = re.compile(r"\s*([st])(\d{1,12})\s+(ok|no)\b", re.I)
+
+
+def _mark(cfg: BotConfig, data: str, now: datetime) -> Outcome:
+    """«/marca s123 ok», what a tick on the dashboard types in the chat: the «✅ Ya lo entregué» / «✅ Hecho» button."""
+    from espol_bot import botones
+    match = MARK_RE.match(data or "")
+    if not match:
+        return Outcome("Así: /marca s123 ok (una tarea) o /marca t7 ok (de tu lista); «no» lo deshace.")
+    answer = botones.handle(cfg, f"v1:{match[1].lower()}:{match[2]}:{match[3].lower()}", now)
+    return Outcome(whatsapp.from_html(answer.get("respuesta") or answer.get("aviso") or ""))
+
+
+def _deliverables(cfg: BotConfig, data: str, now: datetime) -> Outcome:
+    """/entregas: a link to the dashboard with this aula's deliverables, ticks pointed back at this chat."""
+    from espol_bot import dashboard, materias
+    aula = Aula(cfg.core)
+    try:
+        conn = store_ensure(aula.conn)
+        url = dashboard.whatsapp_url(conn, cfg, materias.load(cfg.core), now, whatsapp.own_number())
+    finally:
+        aula.close()
+    if url is None:
+        return Outcome("El panel de entregas está apagado en esta instalación.")
+    return Outcome(f"📋 Tus entregas, el semestre y lo nuevo del aula: {url}\n\nAl marcar una en el panel, vuelves a "
+                   "este chat con el mensaje listo: envíalo y la cuento.")
+
+
+def _vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
+    """What the button behind a poll option does; nothing for a poll that is not ours or an option that does nothing."""
+    from espol_bot import botones
+    vote = json.loads(data or "{}")
+    options = whatsapp.read_polls(cfg.core.data_dir).get(str(vote.get("encuesta") or ""))
+    callback = (options or {}).get(str(vote.get("opcion") or "").strip())
+    if not callback:
+        return Outcome("")
+    quiz_vote = re.fullmatch(r"q:([A-Z0-9]{2,12}):(\d)", callback)
+    if quiz_vote:
+        from espol_bot import quiz
+        return Outcome(whatsapp.from_html(quiz.answer(cfg.core, quiz_vote[1], str(vote["encuesta"]),
+                                                      int(quiz_vote[2]), now)))
+    answer = botones.handle(cfg, callback, now)
+    return Outcome(whatsapp.from_html(answer.get("respuesta") or answer.get("aviso") or ""))
 
 
 def _command_html(cfg: BotConfig, name: str, data: str, now: datetime) -> str:
@@ -336,20 +389,25 @@ def _command_html(cfg: BotConfig, name: str, data: str, now: datetime) -> str:
 
 def _greeting(friend: Friend | None) -> str:
     lines = [f"👋 ¡Hola{', ' + friend.nombre if friend else ''}! Soy Vinci, "
-             f"{'tu asistente' if friend else 'tu guía académico'} del aula virtual de ESPOL.",
-             "• Pregúntame lo que quieras de tus materias: qué tienes esta semana, anuncios, notas o el material.",
-             "• Pídeme diapositivas de un tema y te mando el .pptx.",
-             "• En un grupo, mencióname con @vinci y te contesto con lo tuyo.",
+             f"{'tu pana' if friend else 'tu guía'} para el aula virtual de ESPOL.",
              "",
-             "Comandos:",
-             "/estado: cómo va la lectura de tu aula y tu token",
-             "/token: un enlace para poner un token nuevo del aula",
-             "/quiz <tema>: un quiz corto aquí en el chat",
-             "/new: empezar una conversación de cero"]
+             "*Pregúntame lo que sea*",
+             "• «¿Qué tengo esta semana?», «¿qué pide el taller 2?», «¿cómo voy en Cálculo?»",
+             "• Te explico el material citando la página, y busco exámenes anteriores",
+             "• «Anota: estudiar el cap. 3 para el viernes» y te lo recuerdo",
+             "• «Hazme diapositivas de …» y te mando el .pptx",
+             "",
+             "*Comandos*",
+             "/entregas · tu panel de entregas y lo nuevo del aula",
+             "/quiz <tema> · un quiz con encuestas",
+             "/estado · cómo va la lectura de tu aula",
+             "/token · poner un token nuevo del aula",
+             "/new · empezar la conversación de cero",
+             "",
+             "En un grupo, mencióname con @vinci y te contesto con lo tuyo."]
     if friend is None:
-        lines += ["/amigo agregar <número> <nombre> · /amigo quitar <nombre> · /amigos",
-                  "",
-                  "Los botones (crear bots, guardar el horario, entregar) siguen en Telegram."]
+        lines += ["", "*Tus amigos*", "/amigo agregar <número> <nombre> · /amigo quitar <nombre> · /amigos",
+                  "", "Crear o archivar bots de materia y entregar una actividad a mano siguen en Telegram."]
     return "\n".join(lines)
 
 

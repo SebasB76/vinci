@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import logging
 import re
 import shutil
@@ -55,20 +56,24 @@ from pathlib import Path
 from aula_core import Aula, dspace, extract, materials, ocr, queries, search, timefmt
 from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
-from aula_core.config import ConfigError
+from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
 from espol_bot import (agenda, citations, diapositivas, grades, health, horario, libros, materias, messages, priority,
                        quiz, store, submission)
-from espol_bot.config import BotConfig, load_telegram_secrets
+from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
 from espol_bot.mcp_server import Tool, ToolError
 from espol_bot.telegram import Telegram, TelegramError
+from espol_bot.whatsapp import WhatsApp
+from espol_bot.whatsapp import from_html as whatsapp_text
 
 log = logging.getLogger(__name__)
 
 MEDIA_DIRS = ("cache", "image_cache", "audio_cache", "document_cache")
+# WhatsApp's attachments land in Hermes' own cache (~/.hermes/cache/…), not the profile's.
+WHATSAPP_MEDIA_DIRS = ("images", "audio", "documents")
 MEDIA_EXT = {
     "foto": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"},
     "audio": {".ogg", ".oga", ".opus", ".mp3", ".m4a", ".wav", ".aac"},
@@ -131,10 +136,21 @@ GUEST_TOOLS: dict[str, frozenset[str]] = {
     name: frozenset() for name in (
         "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas")
 } | {"libro_principal": frozenset({"titulo"})}
-# A friend's own Vinci (amigos.py): Vinci's reading tools over the friend's aula. No subject bots, notebooks,
-# schedule, lists or cards: those need the captain's team and Telegram's buttons.
+TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
+        "entrega, puntos, fecha y los archivos y enlaces que trae (léelos con leer_archivo). Úsala siempre que "
+        "pregunten de qué trata o qué pide una tarea, antes de decir que no lo sabes.")
+MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
+                  "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
+                  "pendientes. Con «entregada»: false vuelve a sus pendientes. No cambia nada en el aula.")
+MARK_DONE = ("Cierra un pendiente de su lista personal (el «id» de un «tu_lista» en semana, o de «todos») cuando dice "
+             "que ya lo hizo; con «hecho»: false lo reabre.")
+TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
+
+# A friend's own Vinci (amigos.py): Vinci's tools over the friend's aula, its list and its grading schemes (their cards
+# are WhatsApp polls). No subject bots, notebooks or schedule: those are the captain's team.
 FRIEND_TOOLS = frozenset({
-    "semana", "tareas", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
+    "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
+    "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
     "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas"})
 
 
@@ -167,6 +183,9 @@ class Ctx:
 
     def subjects(self) -> list[materias.Subject]:
         try:
+            if self.cfg.friend:  # no subject bots: a friend's subjects are the courses of their aula (poller.py)
+                from espol_bot import equipo
+                return equipo.propose(self.cfg, self.conn)[0]
             return materias.load(self.cfg.core)
         except ConfigError as exc:
             raise ToolError(str(exc)) from None
@@ -287,7 +306,7 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
     if unread and len(hits) < n:
         fetch = ("si uno de archivos parece tener el tema, bájalo con bajar_archivo y busca otra vez."
                  + ("" if hits else " Si ninguno lo trae, empieza tu respuesta con «No está en el material», sin cita.")
-                 if can_fetch else "el bot de la materia los baja cuando le hacen falta.")
+                 if can_fetch else "si uno de archivos parece tener el tema, léelo con leer_archivo (lo baja del aula).")
         notes.append(f"Solo busco en lo ya leído; {unread} documento(s) del catálogo siguen sin bajar: {fetch}")
     if notes:
         result["nota"] = " ".join(notes)
@@ -300,6 +319,17 @@ def _read_now(ctx: Ctx, file_id: int) -> None:
         ctx.aula.read_scans(seconds=INLINE_OCR_SECONDS, file_id=file_id)
     except Exception:  # OCR is extra: the file is there and ver_pagina still shows it
         log.exception("OCR del archivo %s", file_id)
+
+
+def _fetch(ctx: Ctx, file_id: int) -> None:
+    """Downloads and indexes a document still «sin bajar» (reading the aula, never writing to it)."""
+    try:
+        ctx.aula.download(file_id)
+    except CanvasError as exc:
+        url = queries.file_by_id(ctx.conn, file_id)["url"]
+        raise ToolError(f"No pude bajar el archivo: {exc}." + (f" Puede abrirlo en el aula: {url}" if url else "")) \
+            from None
+    _read_now(ctx, file_id)
 
 
 def _scan_notice(ctx: Ctx, state: dict | None, *, can_fetch: bool) -> str:
@@ -341,8 +371,7 @@ def _read(ctx: Ctx, file_id: int, pages, *, can_fetch: bool) -> dict:
     if data["indexado"] == "escaneado":
         result["aviso"] = _scan_notice(ctx, data["ocr"], can_fetch=can_fetch)
     elif not data["descargado"]:
-        result["aviso"] = ("Todavía no lo bajé del aula: " + ("usa bajar_archivo y vuelve a leerlo." if can_fetch else
-                                                               "el bot de la materia lo baja cuando lo necesita."))
+        result["aviso"] = "Todavía no lo bajé del aula: usa bajar_archivo y vuelve a leerlo."
     elif not kept:
         result["aviso"] = "El archivo no tiene texto indexado."
     return result
@@ -748,6 +777,100 @@ def _grade_status(ctx: Ctx, subject: materias.Subject, args: dict) -> dict:
             "message": message}
 
 
+QUIZ_QUESTIONS = {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
+    "type": "object",
+    "properties": {
+        "question": {"type": "string", "description": f"hasta {quiz.QUESTION_CHARS} caracteres"},
+        "options": {"type": "array", "items": {"type": "string"},
+                    "description": f"de {quiz.MIN_OPTIONS} a {quiz.MAX_OPTIONS} opciones, hasta {quiz.OPTION_CHARS} "
+                                   "caracteres cada una (yo las mezclo)"},
+        "answer": {"type": "string", "description": "la opción correcta, escrita igual que en options"},
+        "explanation": {"type": "string", "description": "por qué es la correcta, en una frase de hasta ~120 "
+                                                         "caracteres (se ve al responder)"},
+        "file_id": {"type": "integer", "description": "el archivo del material de donde sale"},
+        "page": {"type": "integer", "description": "su página o diapositiva"},
+        "entry_id": {"type": "integer", "description": "o la entrada del cuaderno de la materia de donde sale "
+                                                       "(una foto, un apunte, un texto que te pasó)"}},
+    "required": ["question", "options", "answer", "explanation"]}}
+CHANNEL_FRESH = 600  # seconds: canal.json older than this is from another conversation
+
+
+def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
+    """Checks that the aula takes files for the assignment `row` and builds its PDF from the photos (or the PDF) the
+    student sent; (name, proposal id, pdf, pages, thumbnail, card) for the bot to show with «Entregar»."""
+    assignment_id, name, now = row["id"], row["name"], ctx.now()
+    if not row["active"]:
+        raise ToolError(f"«{name}» ya no está en el aula.")
+    types = set((row["submission_types"] or "").split(",")) - {""}
+    if "online_upload" not in types:
+        raise ToolError(f"«{name}» no recibe archivos en el aula (se entrega: {', '.join(sorted(types)) or 'nada'}). "
+                        "Díselo; no armes el PDF.")
+    lock = timefmt.parse(row["lock_at"])
+    if lock and lock < now:
+        raise ToolError(f"El aula cerró «{name}» el {timefmt.human(lock, ctx.cfg.core.tz)}. Díselo.")
+    if not isinstance(paths, list) or not paths or not all(isinstance(f, str) and f.strip() for f in paths):
+        raise ToolError("«files» es la lista de rutas de las fotos, en el orden de las páginas (o la de un PDF).")
+    if len(paths) > submission.MAX_PAGES:
+        raise ToolError(f"Son muchas fotos: armo PDF de hasta {submission.MAX_PAGES} páginas.")
+    sources = [_document(ctx, str(f)) for f in paths]
+    pdfs = [f for f in sources if f.suffix.lower() == ".pdf"]
+    if pdfs and len(sources) > 1:
+        raise ToolError("Un PDF va solo, sin fotos: o me pasas sus fotos, o su PDF.")
+    if not pdfs and any(f.suffix.lower() not in submission.IMAGE_TYPES for f in sources):
+        raise ToolError("Armo el PDF solo con fotos (JPG, PNG o WEBP), o tomo un PDF que te mandó.")
+    dest = submission.new_pdf_path(ctx.cfg.core, code, assignment_id, now)
+    try:
+        pages, thumb = submission.take_pdf(pdfs[0], dest) if pdfs else submission.build_pdf(sources, dest)
+    except submission.SubmitError as exc:
+        raise ToolError(str(exc)) from None
+    proposal_id = store.new_submission_proposal(ctx.conn, code, row["course_id"], assignment_id, name,
+                                                str(dest), pages, now)
+    card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
+                                    has_submission=bool(row["done"]), from_photos=not pdfs)
+    return name, proposal_id, dest, pages, thumb, card
+
+
+def _press(ctx: Ctx, data: str) -> dict:
+    """What the button with this callback data does (botones.py), as a tool: «ya lo entregué» typed instead of pressed."""
+    from espol_bot import botones
+    answer = botones.handle(ctx.cfg, data, ctx.now())
+    return {"hecho": whatsapp_text(answer.get("respuesta") or answer.get("aviso") or ""),
+            "mensaje": "Confírmaselo en una línea, con tus palabras."}
+
+
+def _whatsapp_chat(ctx: Ctx) -> WhatsApp | None:
+    """The owner's private WhatsApp chat when this conversation happens on WhatsApp (canal.json, which the
+    vinci-botones plugin writes before every tool call); a friend's Vinci lives there. None: Telegram."""
+    owner = None
+    if ctx.cfg.friend:
+        owner = load_secret_values().get("WHATSAPP_OWNER")
+    elif ctx.hermes_home is not None:
+        try:
+            note = json.loads((ctx.hermes_home / "canal.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            note = {}
+        if note.get("canal") == "whatsapp" and time.time() - float(note.get("en") or 0) < CHANNEL_FRESH:
+            settings = whatsapp_settings()
+            owner = settings.captain if settings else None
+    return WhatsApp(owner, ctx.cfg.whatsapp_bridge, polls=ctx.cfg.core.data_dir) if owner else None
+
+
+def _show_card(ctx: Ctx, text: str, buttons: list[tuple[str, str]], sender: str | None = None) -> tuple[str, str]:
+    """Shows a card with buttons where the conversation is: Telegram's buttons (in `sender`'s chat, a subject code;
+    None: Vinci's), or on WhatsApp a message and a poll in the owner's private chat. Returns (where it went, the verb
+    for choosing), how the model must refer to it, so it never tells a WhatsApp user to press a button."""
+    chat = _whatsapp_chat(ctx) if sender is None else None
+    try:
+        if chat is not None:
+            chat.send(text, buttons)
+            return ("le llegó a su chat privado de WhatsApp como mensaje con una encuesta (votar una opción es lo "
+                    "mismo que pulsar el botón; si estás en un grupo, dile que se lo mandaste por privado)", "vote")
+        Telegram(load_telegram_secrets(sender), api=ctx.cfg.telegram_api).send(text, buttons)
+        return "se lo mostré en una tarjeta con botones en Telegram", "pulse"
+    except (TelegramError, ConfigError) as exc:
+        raise ToolError(f"No pude mostrarle la tarjeta: {exc}") from None
+
+
 def _propose_scheme(ctx: Ctx, subject: materias.Subject, args: dict, sender: str | None) -> dict:
     """Validates the scheme and shows it to the captain from `sender`'s chat (a subject code; None: Vinci's)."""
     try:
@@ -763,13 +886,10 @@ def _propose_scheme(ctx: Ctx, subject: materias.Subject, args: dict, sender: str
         lines.append("❓ Notas del aula que no van en ninguna parte: " + ", ".join(a["name"] for a in loose))
     proposal_id = store.new_scheme_proposal(ctx.conn, subject.code, scheme, ctx.now())
     card = messages.grading_card(subject.name, lines, scheme["open_questions"], scheme["sources"])
-    try:
-        Telegram(load_telegram_secrets(sender), api=ctx.cfg.telegram_api).send(
-            card, [(messages.SCHEME_SAVE_BUTTON, f"v1:g:{proposal_id}:ok"), (messages.SCHEME_FIX_BUTTON, f"v1:g:{proposal_id}:no")])
-    except (TelegramError, ConfigError) as exc:
-        raise ToolError(f"No pude mostrarle el esquema por Telegram: {exc}") from None
-    message = (f"Le mostré el esquema en una tarjeta con «{messages.SCHEME_SAVE_BUTTON}» y «{messages.SCHEME_FIX_BUTTON}». Se "
-               "guarda solo cuando pulse Guardar; tú no puedes guardarlo. Dile en una línea de dónde lo sacaste.")
+    shown, verb = _show_card(ctx, card, [(messages.SCHEME_SAVE_BUTTON, f"v1:g:{proposal_id}:ok"),
+                                         (messages.SCHEME_FIX_BUTTON, f"v1:g:{proposal_id}:no")], sender)
+    message = (f"El esquema, con «{messages.SCHEME_SAVE_BUTTON}» y «{messages.SCHEME_FIX_BUTTON}», {shown}. Se guarda "
+               f"solo cuando {verb} Guardar; tú no puedes guardarlo. Dile en una línea de dónde lo sacaste.")
     if scheme["open_questions"]:
         message += " Pregúntale ahora lo que no pudiste confirmar («open_questions»), una línea por pregunta."
     return {"proposal": proposal_id, "open_questions": scheme["open_questions"],
@@ -831,7 +951,8 @@ def _books(ctx: Ctx, subjects: list[materias.Subject]) -> dict[str, dict]:
 
 
 def _media_file(ctx: Ctx, path: str) -> Path:
-    """A file the captain sent this bot over Telegram (Hermes keeps it in the profile's media cache)."""
+    """A file the student sent this bot (Hermes keeps it in the profile's media cache, or in its own cache for
+    WhatsApp: <hermes>/profiles/<bot> → <hermes>/cache)."""
     if ctx.hermes_home is None:
         raise ToolError("Este servidor no conoce la carpeta de Hermes del bot; no puedo tomar adjuntos.")
     try:
@@ -839,9 +960,11 @@ def _media_file(ctx: Ctx, path: str) -> Path:
     except (FileNotFoundError, RuntimeError, OSError):
         raise ToolError(f"No encuentro el archivo {path}.") from None
     roots = [(ctx.hermes_home / d).resolve() for d in MEDIA_DIRS if (ctx.hermes_home / d).exists()]
+    shared = ctx.hermes_home.parent.parent / "cache" if ctx.hermes_home.parent.name == "profiles" else None
+    roots += [(shared / d).resolve() for d in WHATSAPP_MEDIA_DIRS if shared and (shared / d).exists()]
     if not real.is_file() or not any(real.is_relative_to(root) for root in roots):
-        raise ToolError("Solo puedo tomar archivos que el estudiante te mandó por Telegram "
-                        "(los que Hermes guarda en tu caché), no otros archivos del computador.")
+        raise ToolError("Solo puedo tomar archivos que el estudiante te mandó por Telegram o WhatsApp "
+                        "(los que Hermes guarda en su caché), no otros archivos del computador.")
     if real.stat().st_size > MAX_ATTACHMENT:
         raise ToolError("El archivo es demasiado grande (máximo 50 MB).")
     return real
@@ -923,6 +1046,78 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         return queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
                                days=_int(args.get("dias"), "dias"))
 
+    def ver_tarea(args):
+        ctx.refresh()
+        try:
+            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12))
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+
+    def send_quiz(args):
+        chat = _whatsapp_chat(ctx)
+        if chat is None:
+            raise ToolError("En Telegram el quiz lo hace el bot de la materia: pásale el pedido con entregar_a_materia.")
+        subject = one_subject(args.get("materia") or "")
+        course_ids = set(agenda.course_ids_for(ctx.conn, subject))
+        items = args.get("questions")
+        if not isinstance(items, list) or not items or not all(isinstance(q, dict) for q in items):
+            raise ToolError("«questions» debe ser una lista de preguntas (question, options, answer, explanation y "
+                            "su fuente: file_id y page, o entry_id).")
+        nb = Notebook(ctx.cfg.core, subject.code)
+        try:
+            questions = []
+            for position, item in enumerate(items, 1):
+                if item.get("file_id") not in (None, ""):
+                    fid = _int(item["file_id"], "file_id", lo=-10**12, hi=10**12)
+                    if queries.file_by_id(ctx.conn, fid)["curso_id"] not in course_ids:
+                        raise ToolError(f"El archivo de la pregunta {position} no es de {subject.name}.")
+                    source = quiz.file_source(ctx.conn, fid, item.get("page"))
+                elif item.get("entry_id") not in (None, ""):
+                    source = quiz.entry_source(nb, item["entry_id"])
+                else:
+                    raise ToolError(f"La pregunta {position} no dice de dónde sale: «file_id» y «page» del material "
+                                    "que leíste, o «entry_id» del cuaderno de la materia.")
+                questions.append(quiz.question(item, position, source))
+            return quiz.send(chat, nb, str(args["topic"]), questions, ctx.now())
+        except (quiz.QuizError, queries.NotFound) as exc:
+            raise ToolError(str(exc)) from None
+        finally:
+            nb.close()
+
+    def prepare_submission(args):
+        chat = _whatsapp_chat(ctx)
+        if chat is None:
+            raise ToolError("En Telegram la entrega la arma el bot de la materia: pásale las fotos con "
+                            "entregar_a_materia.")
+        assignment_id = _int(args.get("assignment_id"), "assignment_id", hi=10**12)
+        row = ctx.conn.execute(f"SELECT a.*, c.name AS course_name, c.course_code, {queries.DONE_SQL} AS done "
+                               "FROM assignments a JOIN courses c ON c.id = a.course_id WHERE a.id = ?",
+                               (assignment_id,)).fetchone()
+        if row is None:
+            raise ToolError("No conozco esa tarea: busca su «id» con tareas.")
+        subject = materias.for_course(ctx.subjects(), row["course_id"], row["course_code"])
+        code = subject.code if subject else materias.base_code(row["course_code"]) or f"C{row['course_id']}"
+        name, proposal_id, dest, pages, _, card = _submission(ctx, row, code, args.get("files"))
+        try:
+            chat.send_document(dest, submission.upload_name(name), card,
+                               [(messages.submit_button(name), f"v1:u:{proposal_id}:ok"),
+                                (messages.SUBMIT_CANCEL_BUTTON, f"v1:u:{proposal_id}:no")])
+        except TelegramError as exc:
+            store.set_submission_state(ctx.conn, proposal_id, "cancelled", ctx.now())
+            raise ToolError(f"No pude mandarle el PDF por WhatsApp: {exc}") from None
+        return {"proposal": proposal_id, "assignment": name, "pages": pages,
+                "message": "Le mandé el PDF a su chat privado de WhatsApp con una encuesta «Entregar / Cancelar». Se "
+                           "entrega solo cuando vote Entregar; tú no puedes entregarlo. Dile en una línea que lo revise "
+                           "y vote (si estás en un grupo, que se lo mandaste por privado)."}
+
+    def marcar_entregada(args):
+        tid = _int(args.get("tarea_id"), "tarea_id", hi=10**12)
+        return _press(ctx, f"v1:s:{tid}:{'no' if args.get('entregada') is False else 'ok'}")
+
+    def marcar_hecho(args):
+        todo_id = _int(args.get("id"), "id", hi=10**12)
+        return _press(ctx, f"v1:t:{todo_id}:{'no' if args.get('hecho') is False else 'ok'}")
+
     def anuncios(args):
         ctx.refresh()
         return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30))
@@ -940,8 +1135,7 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         subject = _vinci_subject(ctx, args.get("materia"))
         books = _books(ctx, [subject] if subject else ctx.subjects())
         prefer = set().union(*(libros.file_ids(b) for b in books.values()))
-        # A friend's Vinci has no subject bots to fetch a document for it: it fetches its own.
-        return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=bool(ctx.cfg.friend))
+        return _search(ctx, args, _vinci_course_ids(ctx, args.get("materia")), prefer, can_fetch=False)
 
     def leer(args):
         if args.get("enlace_id") not in (None, ""):
@@ -951,7 +1145,9 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         else:
             raise ToolError(READ_WHAT)
         try:
-            return _read(ctx, fid, args.get("paginas"), can_fetch=bool(ctx.cfg.friend))
+            if not queries.file_by_id(ctx.conn, fid)["descargado"]:
+                _fetch(ctx, fid)
+            return _read(ctx, fid, args.get("paginas"), can_fetch=False)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -992,15 +1188,12 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         now = ctx.now()
         proposal_id = store.new_proposal(ctx.conn, horario.to_json(classes), now)
         card = messages.schedule_card(horario.render(classes, ctx.subjects()), len(classes), warnings)
-        try:
-            Telegram(load_telegram_secrets(), api=ctx.cfg.telegram_api).send(
-                card, [("✅ Guardar horario", f"v1:h:{proposal_id}:ok"), ("✏️ Corregir", f"v1:h:{proposal_id}:no")])
-        except (TelegramError, ConfigError) as exc:
-            raise ToolError(f"No pude mostrarle la propuesta por Telegram: {exc}") from None
+        shown, verb = _show_card(ctx, card, [("✅ Guardar horario", f"v1:h:{proposal_id}:ok"),
+                                             ("✏️ Corregir", f"v1:h:{proposal_id}:no")])
         return {"propuesta": proposal_id, "clases": len(classes), "advertencias": warnings,
-                "mensaje": "Le mostré el horario extraído en una tarjeta con los botones «Guardar horario» y "
-                           "«Corregir». Se guarda solo cuando pulse Guardar; tú no puedes guardarlo. Dile que "
-                           "lo revise (sobre todo días y horas) y, si algo está mal, que te diga qué corregir."}
+                "mensaje": f"El horario extraído, con «Guardar horario» y «Corregir», {shown}. Se guarda solo "
+                           f"cuando {verb} Guardar; tú no puedes guardarlo. Dile que lo revise (sobre todo días y "
+                           "horas) y, si algo está mal, que te diga qué corregir."}
 
     def add_todo(args):
         text = " ".join(str(args["text"]).split())
@@ -1016,14 +1209,14 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
                 pass  # no bot for it (yet): keep the student's own words
         todo = store.add_todo(ctx.conn, text, subject, due, all_day, now)
         try:
-            card(messages.todo_card(todo, ctx.cfg.core.tz, ctx.cfg.reminder_hours),
-                 [(messages.TODO_DONE_BUTTON, f"v1:t:{todo['id']}:ok")])
+            shown, _ = _show_card(ctx, messages.todo_card(todo, ctx.cfg.core.tz, ctx.cfg.reminder_hours),
+                                  [(messages.TODO_DONE_BUTTON, f"v1:t:{todo['id']}:ok")])
         except ToolError:
             store.delete_todo(ctx.conn, todo["id"])
             raise
         return {"todo": _todo_json(ctx, todo, now),
-                "message": "Le mostré el pendiente anotado en una tarjeta con el botón «✅ Hecho». Confírmaselo en "
-                           "una línea (qué y para cuándo), sin repetir la tarjeta."}
+                "message": f"El pendiente anotado, con «✅ Hecho», {shown}. Confírmaselo en una línea (qué y para "
+                           "cuándo), sin repetirlo."}
 
     def one_subject(text) -> materias.Subject:
         try:
@@ -1125,6 +1318,28 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
         Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,
              {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
+        Tool("send_quiz", "En WhatsApp: manda un quiz corto (/quiz) a su chat privado, una encuesta por pregunta; al "
+             "votar cada una le digo si acertó y por qué, y al terminar su puntaje con la fuente de cada pregunta (lo "
+             "que falló queda como tema débil en el cuaderno de la materia). Cada pregunta sale del material que "
+             "leíste (file_id y page) o de una entrada del cuaderno (entry_id); la cita la pongo yo. En Telegram, "
+             "el quiz lo hace el bot de la materia.", send_quiz,
+             {"materia": {"type": "string"}, "topic": {"type": "string", "description": "el tema, corto"},
+              "questions": QUIZ_QUESTIONS}, ["materia", "topic", "questions"], read_only=False),
+        Tool("prepare_submission", "En WhatsApp: arma el PDF de una actividad hecha a mano con las fotos que te mandó "
+             "(una página por foto, en su orden; o toma su PDF) y se lo manda a su chat privado con una encuesta "
+             "«Entregar / Cancelar». Se sube al aula solo si vota Entregar. En Telegram, pásale las fotos al bot de "
+             "la materia.", prepare_submission,
+             {"assignment_id": {"type": "integer", "description": "el «id» de la tarea en tareas"},
+              "files": {"type": "array", "items": {"type": "string"},
+                        "description": "las rutas de las fotos (o de un PDF), en el orden de las páginas"}},
+             ["assignment_id", "files"], read_only=False),
+        Tool("marcar_entregada", MARK_SUBMITTED, marcar_entregada,
+             {**TASK_PROPERTIES, "entregada": {"type": "boolean", "description": "false: vuelve a sus pendientes"}},
+             ["tarea_id"], read_only=False),
+        Tool("marcar_hecho", MARK_DONE, marcar_hecho,
+             {"id": {"type": "integer"}, "hecho": {"type": "boolean", "description": "false: lo reabre"}}, ["id"],
+             read_only=False),
         Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
              "un SharePoint): léelos con leer_archivo.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
@@ -1274,6 +1489,14 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         ctx.refresh()
         return queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
 
+    def ver_tarea(args):
+        ctx.refresh()
+        try:
+            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12),
+                                      course_ids())
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+
     def anuncios(args):
         ctx.refresh()
         return _announcements(ctx.conn, course_ids(), _int(args.get("n"), "n", 5, 1, 30))
@@ -1303,13 +1526,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         if args.get("archivo_id") in (None, ""):
             raise ToolError("Dime «archivo_id» (un documento de archivos) o «enlace_id» (uno de sus enlaces).")
         fid = own_file(args["archivo_id"])
-        try:
-            ctx.aula.download(fid)
-        except CanvasError as exc:
-            url = queries.file_by_id(ctx.conn, fid)["url"]
-            raise ToolError(f"No pude bajar el archivo: {exc}." + (f" Puede abrirlo en el aula: {url}" if url else "")) \
-                from None
-        _read_now(ctx, fid)
+        _fetch(ctx, fid)
         return file_result(fid)
 
     def libro(args):
@@ -1440,44 +1657,15 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
                                "JOIN courses c ON c.id = a.course_id WHERE a.id = ?", (assignment_id,)).fetchone()
         if row is None or row["course_id"] not in course_ids():
             raise ToolError("Esa tarea no es de tu materia: busca su «id» con tareas.")
-        name, now = row["name"], ctx.now()
-        if not row["active"]:
-            raise ToolError(f"«{name}» ya no está en el aula.")
-        types = set((row["submission_types"] or "").split(",")) - {""}
-        if "online_upload" not in types:
-            raise ToolError(f"«{name}» no recibe archivos en el aula (se entrega: {', '.join(sorted(types)) or 'nada'}). "
-                            "Díselo; no armes el PDF.")
-        lock = timefmt.parse(row["lock_at"])
-        if lock and lock < now:
-            raise ToolError(f"El aula cerró «{name}» el {timefmt.human(lock, ctx.cfg.core.tz)}. Díselo.")
-        paths = args.get("files")
-        if not isinstance(paths, list) or not paths or not all(isinstance(f, str) and f.strip() for f in paths):
-            raise ToolError("«files» es la lista de rutas de las fotos, en el orden de las páginas (o la de un PDF).")
-        if len(paths) > submission.MAX_PAGES:
-            raise ToolError(f"Son muchas fotos: armo PDF de hasta {submission.MAX_PAGES} páginas.")
-        sources = [_document(ctx, str(f)) for f in paths]
-        pdfs = [f for f in sources if f.suffix.lower() == ".pdf"]
-        if pdfs and len(sources) > 1:
-            raise ToolError("Un PDF va solo, sin fotos: o me pasas sus fotos, o su PDF.")
-        if not pdfs and any(f.suffix.lower() not in submission.IMAGE_TYPES for f in sources):
-            raise ToolError("Armo el PDF solo con fotos (JPG, PNG o WEBP), o tomo un PDF que te mandó.")
         subject = ctx.subject()
-        dest = submission.new_pdf_path(ctx.cfg.core, subject.code, assignment_id, now)
-        try:
-            pages, thumb = submission.take_pdf(pdfs[0], dest) if pdfs else submission.build_pdf(sources, dest)
-        except submission.SubmitError as exc:
-            raise ToolError(str(exc)) from None
-        proposal_id = store.new_submission_proposal(ctx.conn, subject.code, row["course_id"], assignment_id, name,
-                                                    str(dest), pages, now)
-        card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
-                                        has_submission=bool(row["done"]), from_photos=not pdfs)
+        name, proposal_id, dest, pages, thumb, card = _submission(ctx, row, subject.code, args.get("files"))
         try:
             Telegram(load_telegram_secrets(subject.code), api=ctx.cfg.telegram_api).send_document(
                 dest, submission.upload_name(name), card,
                 [(messages.submit_button(name), f"v1:u:{proposal_id}:ok"),
                  (messages.SUBMIT_CANCEL_BUTTON, f"v1:u:{proposal_id}:no")], thumbnail=thumb)
         except (TelegramError, ConfigError) as exc:
-            store.set_submission_state(ctx.conn, proposal_id, "cancelled", now)
+            store.set_submission_state(ctx.conn, proposal_id, "cancelled", ctx.now())
             raise ToolError(f"No pude mandarle el PDF por Telegram: {exc}") from None
         return {"proposal": proposal_id, "assignment": name, "pages": pages,
                 "message": f"Le mandé el PDF con «{messages.submit_button(name)}» y «{messages.SUBMIT_CANCEL_BUTTON}». "
@@ -1488,6 +1676,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
         Tool("tareas", "Entregas pendientes de tu materia.", tareas,
              {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
              "SharePoint): léelos con leer_archivo.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia.", notas),
@@ -1568,21 +1757,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              "su puntaje con la fuente de cada pregunta. Cada pregunta sale del material que leíste (file_id y page) o "
              "de lo que te mandó (entry_id de tu cuaderno); la cita la pongo yo.", send_quiz,
              {"topic": {"type": "string", "description": "el tema, corto (ej. «regla de la cadena»)"},
-              "questions": {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
-                  "type": "object",
-                  "properties": {
-                      "question": {"type": "string", "description": f"hasta {quiz.QUESTION_CHARS} caracteres"},
-                      "options": {"type": "array", "items": {"type": "string"},
-                                  "description": f"de {quiz.MIN_OPTIONS} a {quiz.MAX_OPTIONS} opciones, hasta "
-                                                 f"{quiz.OPTION_CHARS} caracteres cada una (yo las mezclo)"},
-                      "answer": {"type": "string", "description": "la opción correcta, escrita igual que en options"},
-                      "explanation": {"type": "string", "description": "por qué es la correcta, en una frase de "
-                                                                       "hasta ~120 caracteres (se ve al responder)"},
-                      "file_id": {"type": "integer", "description": "el archivo de tu material de donde sale"},
-                      "page": {"type": "integer", "description": "su página o diapositiva"},
-                      "entry_id": {"type": "integer", "description": "o la entrada de tu cuaderno de donde sale "
-                                                                     "(una foto, un apunte, un texto que te pasó)"}},
-                  "required": ["question", "options", "answer", "explanation"]}}},
+              "questions": QUIZ_QUESTIONS},
              ["topic", "questions"], read_only=False),
         _slides_tool(ctx),
     ])

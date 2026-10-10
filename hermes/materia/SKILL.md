@@ -21,6 +21,7 @@ misma materia.
 |---|---|
 | La materia de un vistazo (clases, pendientes, anuncios, cuaderno) | `resumen` |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` |
+| Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | Cómo va en notas y cuánto necesita (la calculadora) | `grade_status` (`what_if`, `target`) |
 | Mostrarle cómo se evalúa la materia para que lo guarde | `propose_grading_scheme` |
 | Anotar una nota que no está en el aula | `record_grade` |

@@ -50,6 +50,8 @@ import logging
 import os
 import re
 import subprocess
+import time
+from pathlib import Path
 
 logger = logging.getLogger("vinci-botones")
 
@@ -62,6 +64,8 @@ SUBJECT = "{{CODIGO}}"  # this bot's subject code; empty for Vinci
 WHATSAPP_OWNER = "{{WHATSAPP_OWNER}}"  # whose Vinci this is, on WhatsApp: the captain's number, or a friend's
 # Tool name → the arguments a guest may not pass (herramientas.GUEST_TOOLS plus a few Hermes tools).
 GUEST_TOOLS = json.loads('''{{GUEST_TOOLS}}''')
+# Next to this profile's config (<profile>/plugins/vinci-botones/__init__.py): its tools read it there.
+CHANNEL = Path(__file__).resolve().parents[2] / "canal.json"
 GUEST_BLOCKED = ("Eso es del dueño de este Vinci (su aula, sus notas, sus listas o la memoria de Vinci): solo él "
                  "puede pedirlo. Explícale a quien lo pidió que para tener lo suyo tiene que pedirle al dueño que lo "
                  "agregue, y ofrécele lo que sí puedes: el material de los cursos, exámenes anteriores o diapositivas.")
@@ -329,6 +333,7 @@ def _whatsapp_number(user_id):
 
 
 def _guard_guests(tool_name="", args=None, **_):
+    _note_channel()
     try:
         from gateway.session_context import get_session_env
         if get_session_env("HERMES_SESSION_PLATFORM", "") != "whatsapp":
@@ -345,6 +350,21 @@ def _guard_guests(tool_name="", args=None, **_):
         if tool_name in GUEST_TOOLS and not GUEST_TOOLS[tool_name]:
             return None
     return {"action": "block", "message": GUEST_BLOCKED}
+
+
+def _note_channel():
+    """Where the conversation behind this tool call happens, for the tools to send a card there (herramientas.py:
+    a poll in the owner's WhatsApp chat instead of Telegram buttons). The tools run in another process."""
+    try:
+        from gateway.session_context import get_session_env
+        note = {"canal": get_session_env("HERMES_SESSION_PLATFORM", ""),
+                "tipo": get_session_env("HERMES_SESSION_CHAT_TYPE", ""), "en": time.time()}
+        if note["canal"]:
+            tmp = CHANNEL.with_suffix(".tmp")
+            tmp.write_text(json.dumps(note), encoding="utf-8")
+            os.replace(tmp, CHANNEL)
+    except Exception as exc:  # the card goes to Telegram, as before
+        logger.warning("no pude anotar el canal: %s", exc)
 
 
 def _check_citations(response_text="", **_):

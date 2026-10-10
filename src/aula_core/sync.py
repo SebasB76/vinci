@@ -182,6 +182,7 @@ class _Syncer:
                 "submission_types": ",".join(a.get("submission_types") or []),
                 "allowed_extensions": ",".join(x.lower().lstrip(".") for x in a.get("allowed_extensions") or []),
                 "asks_scan": int(bool(ASKS_SCAN.search(f"{a.get('name') or ''} {a.get('description') or ''}"))),
+                "description": html_to_text(a.get("description")) or None,
                 "sub_state": sub.get("workflow_state"),
                 "submitted_at": timefmt.normalize(sub.get("submitted_at")),
                 "score": sub.get("score"),
@@ -214,15 +215,15 @@ class _Syncer:
                               {**grade_info, "nota_anterior": prev["score"], "calificacion_anterior": prev["grade"]})
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
-                     allowed_extensions, asks_scan, sub_state, submitted_at, score, grade, graded_at, excused, missing,
+                     allowed_extensions, asks_scan, description, sub_state, submitted_at, score, grade, graded_at, excused, missing,
                      late, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
-                     :allowed_extensions, :asks_scan, :sub_state, :submitted_at, :score, :grade, :graded_at, :excused,
+                     :allowed_extensions, :asks_scan, :description, :sub_state, :submitted_at, :score, :grade, :graded_at, :excused,
                      :missing, :late, 1, :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
                      submission_types=excluded.submission_types, allowed_extensions=excluded.allowed_extensions,
-                     asks_scan=excluded.asks_scan, sub_state=excluded.sub_state,
+                     asks_scan=excluded.asks_scan, description=excluded.description, sub_state=excluded.sub_state,
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
                      late=excluded.late, active=1""",

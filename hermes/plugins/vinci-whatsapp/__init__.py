@@ -7,8 +7,8 @@ friend's and in the default one; it acts only on WhatsApp.
 - The captain's private chat: «/amigo agregar 0991234567 Angel», «/amigo quitar Angel» and «/amigos» run
   `espol-bot amigo` (amigos.py); anything else goes on to his Vinci.
 - Vinci's own commands, for the captain and every friend with their Vinci, each over their own aula: /start,
-  /estado and /token run `espol-bot whatsapp-comando` (in a group, /estado and /token only say to ask in
-  private); «/quiz derivadas» becomes a request for a quiz in the chat, since WhatsApp has no polls. Hermes' own
+  /estado, /token, /entregas (a link to the dashboard) and /marca (what a tick on it types) run
+  `espol-bot whatsapp-comando` (in a group, all but /start only say to ask in private); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
   (/new, /usage, /stop, /help) go on to Hermes.
 - A group: only a mention of Vinci gets here (Hermes' require_mention). The captain's «@vinci activa este grupo» /
   «desactiva este grupo» turns it on or off (`espol-bot whatsapp-grupo`). In a group that is on, the captain and
@@ -16,7 +16,12 @@ friend's and in the default one; it acts only on WhatsApp.
   without one, or anyone else, gets a fixed answer. A group that is off gets nothing.
 - A friend's private chat: the ciphertext the token page gave them goes to `espol-bot amigo token` on stdin, so
   the token reaches no model and no session log; a raw token pasted by mistake is not passed on either.
+- A vote on one of Vinci's polls (WhatsApp's stand-in for a card's buttons, whatsapp.py) runs that button for
+  whoever voted, over their own aula (`espol-bot whatsapp-comando voto`), without the model. Hermes only lets a
+  vote through in private, which is where Vinci sends its polls.
 - Anyone else, in private: nothing.
+- A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
+  instead, from the names of everyone who has written to Vinci (kept in NAMES).
 
 When adding or removing a friend changed the routes, the gateway restarts itself once the turns in flight end.
 Any failure here drops the message: nothing reaches a Vinci that this plugin could not place.
@@ -37,16 +42,19 @@ CAPTAIN = "{{CAPTAIN}}"
 REGISTRY = "{{REGISTRY}}"
 GROUPS = "{{GROUPS}}"
 BRIDGE = "{{BRIDGE}}"
+SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are Vinci's own
+NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
 ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}"}
 SEALED_RE = re.compile(r"v1\.[A-Za-z0-9_-]{200,}")
 # ESPOL's aula tokens: 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~".
 CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*\d)"
                              r"[A-Za-z0-9]{64}\b")
+MENTION_RE = re.compile(r"@(\d{6,})\b")
 FRIEND_RE = re.compile(r"^/amigos?\b\s*(\S*)\s*(.*)$", re.S)
-COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz)\b\s*(.*)$", re.S | re.I)
-QUIZ = ("Hazme aquí un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material, una a la vez. "
-        "Espera mi respuesta antes de la siguiente, dime si acerté y por qué, y al final mi puntaje.")
+COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca)\b\s*(.*)$", re.S | re.I)
+PRIVATE_ONLY = ("estado", "token", "entregas", "marca")  # they show or change the sender's own aula
+QUIZ = "Hazme un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material."
 PRIVATE = "Eso te lo contesto por privado: escríbeme /{0} en nuestro chat."
 ON_RE = re.compile(r"\bactiva(?:r|te)? (?:este|el) grupo\b")
 OFF_RE = re.compile(r"\bdesactiva(?:r|te)? (?:este|el) grupo\b")
@@ -73,7 +81,14 @@ async def _dispatch(event=None, gateway=None, **_):
     if source is None or platform != "whatsapp":
         return None
     try:
-        return await _sort(event, source, gateway)
+        names = _remember(source)  # anyone who mentions Vinci, even without their own Vinci yet
+        result = await _sort(event, source, gateway)
+        if result is None:
+            text = str(getattr(event, "text", "") or "")
+            named = _named(text, names)
+            if named != text:
+                return {"action": "rewrite", "text": named}
+        return result
     except Exception:
         logger.exception("no pude ordenar un mensaje de WhatsApp")
         return {"action": "skip", "reason": "vinci-whatsapp: error"}
@@ -90,6 +105,14 @@ async def _sort(event, source, gateway):
     friend = next((f for f in _read(REGISTRY, "amigos") if f.get("numero") in senders), None)
     captain = CAPTAIN in senders
     reply_to = getattr(event, "message_id", None)
+
+    if (getattr(event, "raw_message", None) or {}).get("mediaType") == "poll_update":
+        who = CAPTAIN if captain else (friend or {}).get("numero") if (friend or {}).get("estado") == "activo" else None
+        poll = getattr(event, "reply_to_message_id", None)
+        if who and poll:
+            vote = json.dumps({"encuesta": poll, "opcion": text})
+            await _answer(chat, await _run("whatsapp-comando", "voto", who, stdin=vote), None, gateway)
+        return _skip("voto en una encuesta")
 
     if chat.endswith("@g.us"):
         plain = _plain(text)
@@ -159,18 +182,60 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     name, rest = match[1].lower(), match[2].strip()
     if name == "quiz":
         return {"action": "rewrite", "text": QUIZ.format(tema=f" de {rest}" if rest else "")}
-    if group and name in ("estado", "token"):
+    if group and name in PRIVATE_ONLY:
         await _answer(chat, {"respuesta": PRIVATE.format(name)}, reply_to, gateway)
         return _skip(f"/{name} en un grupo")
     who = CAPTAIN if CAPTAIN in senders else next(f["numero"] for f in _read(REGISTRY, "amigos")
                                                      if f.get("numero") in senders)
-    await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who), reply_to, gateway)
+    await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
+                                   stdin=rest if name == "marca" else None), reply_to, gateway)
     return _skip(f"/{name}")
 
 
 def _strip_mention(text):
     # «@vinci /estado» in a group, as people also type it
     return re.sub(r"^@\S+\s+", "", text.strip())
+
+
+def _remember(source):
+    """Records who this sender is called, under each of their ids; returns every name known so far."""
+    names = _read_dict(NAMES)
+    name = str(getattr(source, "user_name", "") or "").strip()
+    ids = {_bare(i) for i in _aliases(getattr(source, "user_id", None)) | _aliases(getattr(source, "user_id_alt", None))}
+    if name and any(names.get(i) != name for i in ids):
+        names.update(dict.fromkeys(ids, name))
+        try:
+            os.makedirs(os.path.dirname(NAMES), exist_ok=True)
+            tmp = f"{NAMES}.tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(names, fh, ensure_ascii=False)
+            os.replace(tmp, NAMES)
+        except OSError as exc:  # a name not kept only leaves a mention as a number
+            logger.warning("no pude guardar el nombre de quien escribe: %s", exc)
+    return names
+
+
+def _named(text, names):
+    own = _own_ids()
+    return MENTION_RE.sub(lambda m: "@vinci" if m[1] in own else f"@{names[m[1]]}" if m[1] in names else m[0], text)
+
+
+def _own_ids():
+    me = _read_dict(os.path.join(SESSION, "creds.json")).get("me") or {}
+    return {_bare(me.get("id")), _bare(me.get("lid"))} - {""}
+
+
+def _bare(user_id):
+    return re.sub(r"[:@].*$", "", str(user_id or ""))
+
+
+def _read_dict(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, ValueError):
+        return {}
 
 
 def _aliases(user_id):

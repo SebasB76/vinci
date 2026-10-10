@@ -43,6 +43,7 @@ class BotConfig:
     telegram_api: str
     token_form_url: str = DEFAULT_TOKEN_FORM_URL
     dashboard_url: str = DEFAULT_DASHBOARD_URL  # empty: no dashboard, the chat keeps its usual menu button
+    dashboard_page: str = DEFAULT_DASHBOARD_URL  # the same page, which /entregas links to on WhatsApp (a friend's too)
     semester_end: date | None = None             # the last day of classes; None: the aula term's end
     notes_folder: Path | None = None  # the captain's class notes (notes.py); None: not read
     notes_idle_minutes: int = 15
@@ -145,6 +146,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         token_form_url=form_url,
         # A friend's Vinci answers on WhatsApp: no Telegram dashboard, and the class notes are the captain's.
         dashboard_url="" if friend else dashboard_url,
+        dashboard_page=dashboard_url,
         semester_end=semester_end,
         notes_folder=Path(folder).expanduser() if folder and not friend else None,
         notes_idle_minutes=idle,

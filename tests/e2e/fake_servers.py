@@ -230,16 +230,32 @@ class FakeWhatsApp(_Server):
     def script_hash(self) -> str:
         return hashlib.sha256(self.script.read_bytes()).hexdigest()[:16]
 
-    def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False) -> str:
+    def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False,
+            mentions: list[str] | None = None) -> str:
         """A message someone writes: in a private chat (`chat` is the sender's JID) or a group (…@g.us)."""
         message_id = f"E2E{next(self._ids):06d}"
         with self.lock:
             self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
                                "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
                                "isGroup": group, "body": text, "hasMedia": False, "mediaType": "", "mediaUrls": [],
-                               "mentionedIds": [], "botIds": [self.BOT], "timestamp": int(time.time()),
+                               "mentionedIds": mentions or [], "botIds": [self.BOT], "timestamp": int(time.time()),
                                "fromMe": False})
         return message_id
+
+    def vote(self, chat: str, sender: str, poll_id: str, option: str) -> None:
+        """A vote on one of Vinci's polls, as bridge.js reports it: the chosen option's text, quoting the poll."""
+        with self.lock:
+            self.inbox.append({"messageId": f"{poll_id}:update:{next(self._ids)}", "chatId": chat, "senderId": sender,
+                               "senderName": sender.split("@")[0], "chatName": chat.split("@")[0], "isGroup": False,
+                               "body": option, "hasMedia": False, "mediaType": "poll_update",
+                               "nativeType": "pollUpdateMessage", "mediaUrls": [], "mentionedIds": [],
+                               "quotedMessageId": poll_id, "quotedParticipant": "", "quotedRemoteJid": chat,
+                               "quotedText": "", "hasQuotedMessage": True, "botIds": [],
+                               "timestamp": int(time.time()), "fromMe": False})
+
+    def polls_to(self, chat: str, since: int = 0) -> list[dict]:
+        with self.lock:
+            return [m for m in self.sent[since:] if m.get("chatId") == chat and m["path"] == "send-poll"]
 
     def polled_since(self, mark: float) -> bool:
         with self.lock:
@@ -285,8 +301,8 @@ class _WhatsAppHandler(_Quiet):
             payload = {}
         path = urlsplit(self.path).path.strip("/")
         with bridge.lock:
-            bridge.sent.append({"path": path, **payload})
-            message_id = f"OUT{len(bridge.sent):06d}"
+            message_id = f"OUT{len(bridge.sent) + 1:06d}"
+            bridge.sent.append({"path": path, **payload, "messageId": message_id})
         return self._json(200, {"success": True, "messageId": message_id})
 
 

@@ -629,6 +629,8 @@ tiene botones, así que cada tarjeta te llega a tu chat privado como mensaje con
 «✅ Ya lo entregué», «✅ Guardar horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram,
 sin pasar por el modelo. Cambiar el voto lo deshace. Solo crear o archivar bots de materia sigue en Telegram.
 
+**Tus avisos, también aquí.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a Telegram y a tu chat de WhatsApp, con su encuesta en vez de botones. «🎓 Consultar con …» queda solo en Telegram, porque los bots de materia viven ahí. Si el puente de WhatsApp falla, Telegram recibe el aviso igual.
+
 - **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
   archivos que trae.
 - **Entregar a mano.** Mándale las fotos (o el PDF) y dile de qué tarea es: arma el PDF y te lo manda con la

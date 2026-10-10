@@ -72,12 +72,18 @@ from espol_bot.telegram import Telegram, TelegramError, prefer_ipv4
 
 
 def _sender(cfg):
-    """Where this Vinci's own messages go: the captain's Telegram chat, or a friend's WhatsApp chat (amigos.py)."""
+    """Where this Vinci's own messages go: the captain's Telegram chat (and his WhatsApp chat, when Vinci is on
+    WhatsApp), or a friend's WhatsApp chat (amigos.py)."""
+    from espol_bot.config import whatsapp_settings
+    from espol_bot.whatsapp import Mirror, WhatsApp
     if cfg.friend:
         from aula_core.config import load_secret_values
-        from espol_bot.whatsapp import WhatsApp
         return WhatsApp(load_secret_values().get("WHATSAPP_OWNER", ""), cfg.whatsapp_bridge, polls=cfg.core.data_dir)
-    return Telegram(load_telegram_secrets(), api=cfg.telegram_api)
+    telegram = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
+    wa = whatsapp_settings()
+    if wa is None:
+        return telegram
+    return Mirror(telegram, WhatsApp(wa.captain, cfg.whatsapp_bridge, polls=cfg.core.data_dir))
 
 
 def _logging(cfg) -> None:

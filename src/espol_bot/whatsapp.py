@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import os
 import re
 import shutil
@@ -42,6 +43,8 @@ QUESTIONS = {"s": "¿Ya lo entregaste?", "t": "¿Ya lo hiciste?", "h": "¿Guardo
 QUESTION = "Elige una opción"
 NOT_YET = "⏳ Todavía no"
 CANCEL = "Cancelar"
+
+log = logging.getLogger(__name__)
 
 
 class WhatsAppError(TelegramError):
@@ -170,6 +173,30 @@ class WhatsApp:
             raise WhatsAppError(f"el puente de WhatsApp respondió {response.status_code}: {response.text[:200]}")
         self.sent += 1
         return response.json() if response.content else {}
+
+
+class Mirror:
+    """The captain's Telegram, with each message also sent to his WhatsApp chat. Telegram stays the source of truth:
+    a WhatsApp failure is only logged, so the poller never resends what Telegram already took."""
+
+    def __init__(self, telegram, whatsapp: WhatsApp):
+        self._telegram = telegram
+        self._whatsapp = whatsapp
+
+    def send(self, html_text: str, buttons: list[tuple[str, str]] | None = None, *,
+             reply_markup: dict | None = None) -> None:
+        self._telegram.send(html_text, buttons, reply_markup=reply_markup)
+        if reply_markup is not None:  # a Telegram keyboard (the /token form): WhatsApp has /token for that
+            return
+        # «🎓 Consultar con …» hands off to a subject bot, which lives on Telegram: no poll for it here
+        buttons = [b for b in buttons or [] if not b[1].startswith("v1:a:")]
+        try:
+            self._whatsapp.send(html_text, buttons)
+        except WhatsAppError as exc:
+            log.warning("WhatsApp no recibió la copia de un aviso: %s", exc)
+
+    def __getattr__(self, name):
+        return getattr(self._telegram, name)
 
 
 def send_text(bridge: str, chat_id: str, text: str) -> None:

@@ -2028,6 +2028,15 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "Token verificado y guardado" in reseeded, reseeded
             assert parse_env_file(secrets)["CANVAS_TOKEN"] in canvas.valid_tokens
             assert len(llm.requests) == calls, "/start, /estado, /token y el texto cifrado no pasan por el modelo"
+            # the captain's own alerts and 7:00 summary reach his WhatsApp too, with polls instead of buttons
+            mark, tg_mark = len(wa.sent), len(telegram.messages)
+            run([bot, "resumen"], T_VINCI)
+            copies = wa.messages_to(captain_jid, mark)
+            assert copies and len(telegram.messages) > tg_mark, (copies, telegram.messages[tg_mark:])
+            assert "<b>" not in text_of(copies), text_of(copies)
+            assert not any("Consultar con" in o for p in wa.polls_to(captain_jid, mark) for o in p["options"]), \
+                "«Consultar con …» lleva a un bot de materia de Telegram: no va en una encuesta"
+            md.append(f"**(resumen de las 7:00 del capitán)** → Vinci: {normalize(text_of(copies))[:300]}…\n")
             say(angel_jid, angel_jid, "/quiz integrales dobles", "Angel")
             assert "quiz corto de integrales dobles" in json.dumps(llm.requests[-1], ensure_ascii=False), \
                 "«/quiz tema» le llega al modelo como pedido de un quiz"

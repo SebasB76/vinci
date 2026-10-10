@@ -407,7 +407,8 @@ def _greeting(friend: Friend | None) -> str:
              "En un grupo, mencióname con @vinci y te contesto con lo tuyo."]
     if friend is None:
         lines += ["", "*Tus amigos*", "/amigo agregar <número> <nombre> · /amigo quitar <nombre> · /amigos",
-                  "", "Crear o archivar bots de materia y entregar una actividad a mano siguen en Telegram."]
+                  "", "Los avisos del aula y el resumen de las 7:00 te llegan aquí y en Telegram. Crear o archivar bots "
+                  "de materia sigue en Telegram."]
     return "\n".join(lines)
 
 

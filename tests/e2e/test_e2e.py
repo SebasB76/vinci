@@ -2138,7 +2138,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                 data.setdefault("stt", {}).update(enabled=True, provider="local")
                 cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
             start()
-            hermes_log = home / ".hermes" / "logs" / "gateway.log"
+            def skips(reason: str) -> int:  # the gateway logs each message under the profile it is routed to
+                return sum(f.read_text(errors="replace").count(reason)
+                           for f in (home / ".hermes").glob("**/logs/gateway.log"))
 
             def speak(chat: str, sender: str, fixture: str, name: str, *, group: bool = False,
                       skipped: str = "") -> str:
@@ -2147,12 +2149,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                 audio = home / ".hermes" / "cache" / "audio" / f"aud_{next(audio_ids)}{Path(fixture).suffix}"
                 audio.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(FILES / fixture, audio)
-                mark, calls, seen = len(wa.sent), len(llm.requests), hermes_log.read_text().count(skipped)
+                mark, calls, seen = len(wa.sent), len(llm.requests), skips(skipped) if skipped else 0
                 wa.audio(chat, sender, audio, name=name, group=group)
                 md.append(f"**{name}** ({'grupo' if group else 'privado'}): [{'nota de voz' if audio.suffix == '.ogg'
                                                                                else 'audio'} {fixture}]\n")
                 if skipped:
-                    dropped = wa.wait_for(lambda _: hermes_log.read_text().count(skipped) > seen, 120)
+                    dropped = wa.wait_for(lambda _: skips(skipped) > seen, 120)
                     assert dropped, fail(f"el plugin no descartó {fixture} ({skipped})")
                     time.sleep(3)
                     assert not wa.messages_to(chat, mark) and len(llm.requests) == calls, wa.messages_to(chat, mark)

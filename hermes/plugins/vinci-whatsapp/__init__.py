@@ -23,17 +23,27 @@ friend's and in the default one; it acts only on WhatsApp.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
   instead, from the names of everyone who has written to Vinci (kept in NAMES).
 
+- The /token page and the dashboard, opened from a button: what they post to Vinci's relay (src/espol_bot/relay.py)
+  is fetched here every few seconds while a link is open (`espol-bot whatsapp-rele`), only by the default profile's
+  copy and one process at a time, and answered in the chat of whom the link was for.
+
 When adding or removing a friend changed the routes, the gateway restarts itself once the turns in flight end.
 Any failure here drops the message: nothing reaches a Vinci that this plugin could not place.
 """
 
 import asyncio
+import fcntl
 import json
 import logging
 import os
 import re
+import subprocess
+import threading
+import time
 import unicodedata
+import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 logger = logging.getLogger("vinci-whatsapp")
 
@@ -45,6 +55,8 @@ BRIDGE = "{{BRIDGE}}"
 SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are Vinci's own
 NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
+RELAY = "{{RELAY}}"  # relay.py's mailboxes; set only in the default profile's copy, the one that polls
+RELAY_EVERY = 3
 ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}"}
 SEALED_RE = re.compile(r"v1\.[A-Za-z0-9_-]{200,}")
 # ESPOL's aula tokens: 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~".
@@ -69,13 +81,18 @@ RAW_TOKEN_ACTIVE = ("⚠️ Eso parece tu token del aula tal cual: bórralo de e
                     "escríbeme /token: te mando un enlace que lo cifra en tu celular.")
 FAILED = "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."
 _TASKS = set()  # asyncio keeps only a weak reference to a task
+_GATEWAY = []  # the gateway, as the hook last saw it: a relay answer may need it to restart
 
 
 def register(ctx):
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
+    if RELAY:
+        threading.Thread(target=_relay_loop, name="vinci-relay", daemon=True).start()
 
 
 async def _dispatch(event=None, gateway=None, **_):
+    if gateway is not None:
+        _GATEWAY[:] = [gateway]
     source = getattr(event, "source", None)
     platform = getattr(getattr(source, "platform", None), "value", None)
     if source is None or platform != "whatsapp":
@@ -281,19 +298,83 @@ async def _run(*args, stdin=None):
 
 
 async def _answer(chat, result, reply_to, gateway):
-    text = (result or {}).get("respuesta")
-    if text:
-        payload = {"chatId": chat, "message": text, **({"replyTo": reply_to} if reply_to else {})}
-        await asyncio.to_thread(_post, payload)
+    await asyncio.to_thread(_deliver, chat, result, reply_to)
     if (result or {}).get("reiniciar") and RESTART and gateway is not None:
         _restart(gateway)
 
 
-def _post(payload):
-    request = urllib.request.Request(f"{BRIDGE}/send", data=json.dumps(payload).encode(),
+def _deliver(chat, result, reply_to):
+    text, button = (result or {}).get("respuesta"), (result or {}).get("button")
+    if not text:
+        return
+    reply = {"replyTo": reply_to} if reply_to else {}
+    if button:  # a page: a button that opens it inside WhatsApp (iPhone); the bare link on a bridge without the route
+        try:
+            _post("send-url-button", {"chatId": chat, "text": text, "buttonText": button["text"], "url": button["url"],
+                                      **reply})
+            return
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+        text = f"{text}\n\n{button['url']}"
+    _post("send", {"chatId": chat, "message": text, **reply})
+
+
+def _post(path, payload):
+    request = urllib.request.Request(f"{BRIDGE}/{path}", data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=30) as response:
         response.read()
+
+
+def _relay_loop():
+    try:  # one poller for the machine, whichever process loaded this copy first (the gateway, normally)
+        lock = open(f"{RELAY}.lock", "w")
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return
+    while True:
+        time.sleep(RELAY_EVERY)
+        try:
+            if not _relay_waiting():
+                continue
+            proc = subprocess.run([BOT, "whatsapp-rele", "--json"], capture_output=True, timeout=600, env=_env())
+            if proc.returncode != 0:
+                message = proc.stderr.decode(errors="replace").strip().splitlines()
+                logger.warning("whatsapp-rele: %s", message[-1] if message else proc.returncode)
+                continue
+            for answer in json.loads(proc.stdout.decode() or "{}").get("respuestas") or []:
+                _deliver(answer["chat"], answer, None)
+                if answer.get("reiniciar") and RESTART:
+                    _relay_restart()
+        except Exception:
+            logger.exception("no pude atender el relé")
+
+
+def _relay_waiting():
+    """Whether some link sent on WhatsApp may still post to the relay (relay.py's registry)."""
+    data = _read_dict(RELAY)
+    # AULA_NOW: the clock espol-bot keeps (aula_core.config.now_utc), which wrote these expiries
+    now = datetime.fromisoformat(os.environ["AULA_NOW"]) if os.environ.get("AULA_NOW") else datetime.now(timezone.utc)
+    if not data.get("url"):
+        return False
+    for box in (data.get("mailboxes") or {}).values():
+        try:
+            if datetime.fromisoformat(str(box.get("expires"))) > now:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _relay_restart():
+    if _GATEWAY:
+        _restart(_GATEWAY[0])
+        return
+    try:  # no message yet since the gateway started: ask Hermes, as `hermes gateway restart` would
+        subprocess.Popen([ENV["HERMES_BIN"], "gateway", "restart"], env=_env(), start_new_session=True)
+    except OSError:
+        logger.exception("no pude reiniciar el gateway; hazlo a mano: hermes gateway restart")
 
 
 def _restart(gateway):

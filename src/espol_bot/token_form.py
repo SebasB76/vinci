@@ -9,9 +9,11 @@ in the chat history opens nothing later, and each new form replaces the pending 
 When Canvas refuses the token, the poller sends this same form on its own, valid for AUTO_FORM_TTL: the
 captain may only read it hours later, and does not have to type /token.
 
-A friend's Vinci (amigos.py) talks on WhatsApp, which has no Mini Apps: its form is a plain link (?w=1) whose page
-shows the ciphertext to copy, and the friend pastes it in the chat; the plugin of the default profile takes it out
-of the chat before Hermes sees it (`espol-bot amigo token`).
+On WhatsApp (the captain's /token there, and every friend's Vinci, amigos.py), which has no Mini Apps, the form is a
+URL button (?w=1). With Vinci's relay set up (relay.py), the link also carries the relay (?r=) and a one-use mailbox
+(#m=): the page posts the ciphertext there and Vinci confirms in the chat, as on Telegram. Without it, the page shows
+the ciphertext to copy and the person pastes it in the chat; the plugin of the default profile takes it out of the
+chat before Hermes sees it (`espol-bot amigo token`).
 
 The plugin `vinci-botones` runs `espol-bot canvas-form` for /token and `espol-bot canvas-submit` (the
 ciphertext on stdin) for the button's data, before Hermes sees either; the token never reaches the
@@ -32,6 +34,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from aula_core import timefmt
 from aula_core.config import load_secret_values, update_secret_values
 from aula_core.store import connect, delete_meta, file_lock, get_meta, set_meta
+from espol_bot import relay
 from espol_bot.config import BotConfig
 from espol_bot.messages import e
 from espol_bot.token_renewal import RenewalError, reseed
@@ -44,6 +47,7 @@ FORM_TTL = timedelta(minutes=15)
 AUTO_FORM_TTL = timedelta(hours=24)
 PREFIX = "v1."  # what the page puts before the base64url ciphertext
 BUTTON = "🔑 Pegar token"
+WHATSAPP_BUTTON = "🔑 Abrir formulario"
 # WebCrypto's RSA-OAEP with hash SHA-256 also uses SHA-256 for MGF1.
 OAEP = padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
 
@@ -77,17 +81,20 @@ def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelt
     conn.commit()
     log.info("canvas-form: formulario abierto")
     separator = "&" if "?" in cfg.token_form_url else "?"
-    query = {"k": base64.urlsafe_b64encode(public).decode().rstrip("="), **({"w": "1"} if whatsapp else {})}
-    url = cfg.token_form_url + separator + urlencode(query)
+    box = relay.issue(cfg, "token", relay.owner(cfg), ttl, now) if whatsapp else None
+    query = {"k": base64.urlsafe_b64encode(public).decode().rstrip("="), **({"w": "1"} if whatsapp else {}),
+             **({"r": box["relay"]} if box else {})}
+    url = cfg.token_form_url + separator + urlencode(query) + (f"#m={box['mailbox']}" if box else "")
     if whatsapp:
+        last = ("3. Pega el token ahí y toca «Enviar». Me llega cifrado y te confirmo aquí." if box else
+                "3. Pega el token ahí, toca «Cifrar» y pega aquí el texto que te da (empieza con v1.).")
         text = (f"{intro}🔑 <b>Tu token del aula</b>\n"
                 f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
                 "«+ Nuevo token de acceso» (en «Propósito» pon Vinci).\n"
-                f"2. Copia el token y abre esta página: {e(url)}\n"
-                "3. Pega el token ahí, toca «Cifrar» y pega aquí el texto que te da (empieza con v1.).\n"
-                "🔒 Se cifra en tu celular: por este chat solo pasa un texto ilegible que únicamente la PC de Vinci "
-                f"puede abrir. El enlace sirve una vez y vence en {_duration(ttl)}.")
-        return {"respuesta": text, "url": url}
+                f"2. Copia el token y abre el formulario de abajo.\n{last}\n"
+                "🔒 Se cifra en tu celular: solo pasa un texto ilegible que únicamente la PC de Vinci "
+                f"puede abrir. El formulario sirve una vez y vence en {_duration(ttl)}.")
+        return {"respuesta": text, "url": url, "button": {"text": WHATSAPP_BUTTON, "url": url}}
     text = (f"{intro}🔑 <b>Token nuevo de Canvas</b>\n"
             f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
             "«+ Nuevo token de acceso».\n"

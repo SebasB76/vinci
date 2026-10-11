@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">
+        content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://*.workers.dev; img-src 'none'; form-action 'none'; base-uri 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
   <title>Token del aula</title>
-  <link rel="stylesheet" href="form.css?v=3">
-  <script type="module" src="form.js?v=3"></script>
+  <link rel="stylesheet" href="form.css?v=4">
+  <script type="module" src="form.js?v=4"></script>
 </head>
 <body>
   <main>
@@ -31,6 +31,7 @@
     </form>
 
     <section id="copy" hidden>
+      <p id="copy-why" class="lead"></p>
       <label for="sealed">Tu token, cifrado</label>
       <textarea id="sealed" rows="6" readonly spellcheck="false"></textarea>
       <button id="copy-button" type="button" class="send">Copiar</button>
@@ -38,10 +39,10 @@
     </section>
 
     <ol class="steps">
-      <li><span aria-hidden="true">📱</span><div><b>Se cifra aquí, en tu celular.</b> Esta página no se conecta a
-        ningún servidor.</div></li>
-      <li><span aria-hidden="true">✉️</span><div><b>El chat solo lleva un texto ilegible.</b> Ni Telegram, ni WhatsApp,
-        ni el modelo ven tu token.</div></li>
+      <li><span aria-hidden="true">📱</span><div><b>Se cifra aquí, en tu celular.</b> Tu token sale de esta página
+        ya convertido en un texto ilegible.</div></li>
+      <li><span aria-hidden="true">✉️</span><div><b>Solo viaja ese texto ilegible.</b> Ni Telegram, ni WhatsApp, ni el
+        relé de Vinci, ni el modelo ven tu token.</div></li>
       <li><span aria-hidden="true">💻</span><div><b>Solo la PC de Vinci lo puede abrir.</b> La llave sirve una vez y
         vence pronto.</div></li>
     </ol>

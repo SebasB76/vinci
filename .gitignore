@@ -14,3 +14,6 @@ artifacts/
 
 # Datos locales (por si alguien apunta carpeta_datos dentro del repo)
 data/
+
+# wrangler (relay/) build cache
+relay/.wrangler/

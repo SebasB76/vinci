@@ -8,9 +8,10 @@ never sends the fragment, so GitHub never sees it. Ticking a deliverable on the 
 `t.me/<vinci>?start=s_<id>_ok` (a to-do: `t_…`): the plugin `vinci-botones` runs it as the
 «✅ Ya lo entregué» / «✅ Hecho» button would, and the menu button gets a fresh snapshot.
 
-On WhatsApp, /entregas answers with a link to the same page (`whatsapp_url`), whose snapshot carries Vinci's number
-(«wa») instead of the bot's username: a tick opens Vinci's chat with «/marca s<id> ok» typed, which the plugin
-vinci-whatsapp runs as the button too.
+On WhatsApp, /entregas answers with a button to the same page (`whatsapp_url`), whose snapshot carries Vinci's
+number («wa») instead of the bot's username. With Vinci's relay (relay.py) it also carries a mailbox: a tick posts
+there and Vinci confirms in the chat. Without one, a tick opens Vinci's chat with «/marca s<id> ok» typed, which the
+plugin vinci-whatsapp runs as the button too.
 """
 
 from __future__ import annotations
@@ -164,11 +165,13 @@ def publish(conn: sqlite3.Connection, cfg: BotConfig, telegram: Telegram, team: 
 
 
 def whatsapp_url(conn: sqlite3.Connection, cfg: BotConfig, team: list[materias.Subject], now: datetime,
-                 vinci_number: str) -> str | None:
-    """The page for /entregas on WhatsApp, its ticks pointed back at Vinci's WhatsApp chat; None with no page."""
+                 vinci_number: str, box: dict | None = None) -> str | None:
+    """The page for /entregas on WhatsApp, its ticks pointed back at Vinci's WhatsApp chat, or posted to the relay's
+    mailbox `box` (relay.issue); None with no page."""
     if not cfg.dashboard_page:
         return None
-    data = {**snapshot(conn, cfg, team, now), "wa": vinci_number, "at": timefmt.iso(now)}
+    data = {**snapshot(conn, cfg, team, now), "wa": vinci_number, "at": timefmt.iso(now),
+            **({"relay": box["relay"], "mailbox": box["mailbox"]} if box else {})}
     return page_url(cfg, data, base=cfg.dashboard_page)
 
 

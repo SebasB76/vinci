@@ -462,6 +462,18 @@ class Setup:
                            "vinci-resumen.sh", no_agent=True)
         self.reconcile_job(name, "vinci-apuntes", "* * * * *", "vinci-apuntes.sh", no_agent=True)
 
+    def _whatsapp_bridge(self) -> Path | None:
+        """Vinci's launcher next to Hermes' bridge.js (hermes/whatsapp/vinci-bridge.js: bridge.js plus the route for
+        URL buttons), which the gateway then starts instead; None when Hermes' bridge is not installed yet."""
+        from espol_bot import whatsapp
+        try:
+            bridge_dir = whatsapp.bridge_dir()
+        except ConfigError:
+            return None
+        for name in ("vinci-bridge.js", "url_button.js"):
+            _write_if_changed(bridge_dir / name, (TEMPLATES / "whatsapp" / name).read_text(encoding="utf-8"))
+        return bridge_dir / "vinci-bridge.js"
+
     def whatsapp_session(self) -> Path:
         return self.root / "platforms" / "whatsapp" / "session"
 
@@ -513,6 +525,12 @@ class Setup:
         if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port
             section["bridge_port"] = int(str(test["whatsapp_puente"]).rsplit(":", 1)[1])
             section["bridge_script"] = str(test["whatsapp_script"])
+        else:
+            launcher = self._whatsapp_bridge()
+            if launcher is not None:
+                section["bridge_script"] = str(launcher)
+            else:
+                section.pop("bridge_script", None)
         _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}}})
         plugins = merged.setdefault("plugins", {})
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
@@ -520,6 +538,9 @@ class Setup:
         if merged != current:
             changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 
+        from espol_bot import relay
+        mailboxes = relay.registry_path(self.cfg)
+        changed |= relay.set_url(mailboxes, self.secrets.get("WHATSAPP_RELAY_URL", "").rstrip("/"))
         values = {**self.values, "CAPTAIN": wa.captain, "REGISTRY": str(amigos.registry_path(self.cfg)),
                   "GROUPS": str(amigos.groups_path(self.cfg)), "BRIDGE": self.cfg.whatsapp_bridge,
                   "SESSION": str(self.whatsapp_session()),
@@ -529,9 +550,11 @@ class Setup:
         routed = [self.profile_dir(self.cfg.hermes_profile), *(self.profile_dir(amigos.profile_name(f)) for f in friends)]
         for home in [self.root, *routed]:
             plugin_changed = home != self.root and self.managed_config(home, {}, plugins=[WHATSAPP_PLUGIN])
+            # only the default profile's copy polls the relay: one poller, in the process that owns the bridge
+            own = {**values, "RELAY": str(mailboxes) if home == self.root else ""}
             for plugin_file in sorted((TEMPLATES / "plugins" / WHATSAPP_PLUGIN).glob("*.*")):
                 plugin_changed |= _write_if_changed(home / "plugins" / WHATSAPP_PLUGIN / plugin_file.name,
-                                                    _render(plugin_file, values))
+                                                    _render(plugin_file, own))
             if plugin_changed:
                 self._reload_gateway_plugins(home)
             changed |= plugin_changed

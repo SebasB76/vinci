@@ -130,6 +130,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import requests
 import yaml
 
 from aula_core.config import parse_env_file
@@ -142,7 +143,7 @@ sys.path.insert(0, str(HERE))
 
 from fake_servers import (  # noqa: E402
     DRIVE_FILE, ESPOL_ONLY_SHARE, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas, FakeDSpace, FakeTelegram, FakeWeb,
-    FakeWhatsApp, ScriptedLLM)
+    FakeRelay, FakeWhatsApp, ScriptedLLM)
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -338,6 +339,34 @@ def page_seal(url: str, token: str) -> str:
                           timeout=60)
     assert proc.returncode == 0, proc.stderr
     return proc.stdout
+
+
+def _node_module(path: Path, call: str, *args: str) -> None:
+    script = f"const page = await import({json.dumps(path.as_uri())}); {call}"
+    proc = subprocess.run([NODE, "--input-type=module", "-e", script, *args], capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+
+
+def page_send(url: str, token: str) -> None:
+    """The page opened from WhatsApp with Vinci's relay (?r=, #m=): it seals the token and posts it there
+    (docs/token/form.js's own deliver)."""
+    sealed, relay, mailbox = page_seal(url, token), parse_qs(urlsplit(url).query)["r"][0], urlsplit(url).fragment[2:]
+    if NODE is None:
+        requests.post(f"{relay}/m/{mailbox}", json={"kind": "token", "sealed": sealed}, timeout=10).raise_for_status()
+        return
+    _node_module(REPO / "docs" / "token" / "form.js",
+                 "await page.deliver(process.argv[1], process.argv[2], process.argv[3]);", relay, mailbox, sealed)
+
+
+def page_tick(snapshot: dict, item: str, done: bool = True) -> None:
+    """A tick on the dashboard opened from WhatsApp with the relay: docs/dashboard/dashboard.js's postMark."""
+    if NODE is None:
+        requests.post(f"{snapshot['relay']}/m/{snapshot['mailbox']}", json={"kind": "mark", "id": item, "done": done},
+                      timeout=10).raise_for_status()
+        return
+    _node_module(REPO / "docs" / "dashboard" / "dashboard.js",
+                 "if (!(await page.postMark(JSON.parse(process.argv[1]), process.argv[2], process.argv[3] === '1')))"
+                 " process.exit(4);", json.dumps(snapshot), item, "1" if done else "0")
 
 
 def flatten(content) -> str:
@@ -1769,8 +1798,9 @@ END:VCALENDAR
 def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, report, gateway, artifact,
                   normalize, secrets, config_file, tmp_path, **_) -> None:
     """Section 10: Vinci on WhatsApp, through Hermes' bridge (a stand-in here): the captain's chat, a group he turns
-    on, a friend with a Vinci of his own (invited, his token through the page, his week, slides, his alerts), the
-    block for whoever is not a Vinci's owner, and the friend removed with his tokens."""
+    on, a friend with a Vinci of his own (invited, his token through the page and Vinci's relay, his week, slides, his
+    alerts), the block for whoever is not a Vinci's owner, and the friend removed with his tokens. Pages go as URL
+    buttons (the bridge's /send-url-button), and what they send back comes through the relay (a stand-in here)."""
     bot = str(VENV_BIN / "espol-bot")
     captain_jid, angel_jid, stranger_jid = (f"{n}@s.whatsapp.net" for n in (CAPTAIN_WA, ANGEL_WA, STRANGER_WA))
     stand_in = tmp_path / "whatsapp-bridge"
@@ -1787,12 +1817,13 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
           "Lo que llega al puente de WhatsApp de Hermes (aquí FakeWhatsApp): cada mensaje con quién lo escribe, y lo "
           "que Vinci contesta.\n"]
 
-    with FakeWhatsApp(stand_in / "bridge.js") as wa:
+    with FakeWhatsApp(stand_in / "bridge.js") as wa, FakeRelay() as relay:
         with config_file.open("a", encoding="utf-8") as fh:  # [test] is the file's last table
             fh.write(f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
                      "whatsapp_sin_reinicio = true  # the test restarts its own gateway\n")
         with secrets.open("a", encoding="utf-8") as fh:
-            fh.write(f"WHATSAPP_CAPTAIN={CAPTAIN_WA}\n")
+            fh.write(f"WHATSAPP_CAPTAIN={CAPTAIN_WA}\nWHATSAPP_RELAY_URL={relay.base}\n"
+                     f"WHATSAPP_RELAY_TOKEN={FakeRelay.KEY}\n")
         setup = run(["bash", str(REPO / "setup.sh"), "--skip-deps"], T_VINCI)
         assert "• WhatsApp: tu chat" in setup.stdout, setup.stdout
         default_env = parse_env_file(home / ".hermes" / ".env")
@@ -1806,8 +1837,11 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
         assert "vinci-whatsapp" in default_cfg["plugins"]["enabled"]
         plugin_src = (home / ".hermes" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text()
         assert "{{" not in plugin_src and CAPTAIN_WA in plugin_src
-        assert (profiles / "vinci" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text() == plugin_src, \
-            "the gateway runs the dispatch hook with the routed profile's plugins: Vinci's needs it too"
+        relay_line = f'RELAY = "{data_dir / "amigos" / "rele.json"}"'
+        assert relay_line in plugin_src, "the default profile's copy polls the relay"
+        assert (profiles / "vinci" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text() == \
+            plugin_src.replace(relay_line, 'RELAY = ""'), \
+            "the gateway runs the dispatch hook with the routed profile's plugins: Vinci's needs it too (it does not poll)"
         vcfg = yaml.safe_load((profiles / "vinci" / "config.yaml").read_text())
         assert vcfg["platform_toolsets"]["whatsapp"] == vcfg["platform_toolsets"]["telegram"], \
             "en WhatsApp, Vinci tiene las mismas herramientas que en Telegram"
@@ -1893,9 +1927,13 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "Le escribí a Angel" in text_of(invited)
             letter = wa.wait_for(lambda b: b.messages_to(angel_jid), 30)
             assert letter and "Hola, Angel" in letter[0]["message"], letter
-            url = re.search(r"https://\S+[?&]k=[\w-]+\S*", letter[0]["message"])[0]
-            assert parse_qs(urlsplit(url).query).get("w") == ["1"], url
-            md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])}\n")
+            assert letter[0]["path"] == "send-url-button" and letter[0]["buttonText"] == "🔑 Abrir formulario", letter
+            url = letter[0]["url"]
+            query = parse_qs(urlsplit(url).query)
+            assert query.get("w") == ["1"] and query.get("r") == [relay.base], url
+            assert re.fullmatch(r"m=[\w-]{22,64}", urlsplit(url).fragment), "the mailbox rides in the fragment"
+            assert "toca «Enviar»" in letter[0]["message"] and "v1." not in letter[0]["message"], letter
+            md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])} [botón «{letter[0]['buttonText']}»]\n")
             friends = json.loads((data_dir / "amigos" / "amigos.json").read_text())["amigos"]
             assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Angel", ANGEL_WA, "pendiente")]
             waiting = say(GROUP_WA, angel_jid, "@vinci hola", "Angel", group=True)
@@ -1903,12 +1941,24 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             raw = say(angel_jid, angel_jid, f"este es mi token {ANGEL_TOKEN}", "Angel")
             assert "bórralo de este chat" in text_of(raw)
 
-            # 10d. Angel pastes what the page gives him: his token is checked, his aula read, his Vinci set up
+            # 10d. Angel sends his token from the page: it reaches Vinci through the relay, sealed; his token is checked,
+            # his aula read, his Vinci set up, and he is told in his chat. Nothing to paste.
             canvas.add_account(ANGEL_TOKEN, "canvas-amigo")
-            calls = len(llm.requests)
-            done = say(angel_jid, angel_jid, page_seal(url, ANGEL_TOKEN), "Angel", expect=2, timeout=240)
-            assert "Recibido" in done[0]["message"] and "ya veo tus 2 materias" in done[1]["message"], done
+            calls, mark = len(llm.requests), len(wa.sent)
+            relay.messages.append({"id": "R-stray", "mailbox": "M" * 32, "data": {"kind": "token", "sealed": "v1.x"},
+                                   "at": 0})  # someone posting to a mailbox Vinci never issued
+            page_send(url, ANGEL_TOKEN)
+            done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                          if "ya veo tus 2 materias" in m.get("message", "")], 240)
+            assert done, fail(f"el token de Angel no llegó por el relé: {wa.sent[mark:]}")
+            md.append(f"**Angel** pulsa «Enviar» en la página (por el relé) → Vinci: {normalize(done[0]['message'])}\n")
             assert len(llm.requests) == calls, "el texto cifrado no pasa por el modelo"
+            assert relay.messages == [], "Vinci borra del relé lo que atendió, y lo que nadie pidió"
+            assert all(m["data"].get("sealed", "").startswith("v1.") for m in relay.posted), "el relé solo ve cifrado"
+            page_send(url, ANGEL_TOKEN)  # the same link again: its mailbox served once
+            time.sleep(8)
+            assert not [m for m in wa.messages_to(angel_jid, mark) if "materias" in m.get("message", "")][1:], \
+                "un enlace, un token"
             told = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid) if "Angel ya tiene su Vinci" in
                                           m.get("message", "")], 30)
             assert told, "el capitán se entera de que Angel ya tiene su Vinci"
@@ -1926,10 +1976,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             jobs = {j["name"]: j for j in json.loads((angel_profile / "cron" / "jobs.json").read_text())["jobs"]}
             assert set(jobs) == {"amigo-sondeo", "amigo-mantenimiento", "amigo-resumen"}
             assert all(j["deliver"] == "local" for j in jobs.values())
-            report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con el enlace a "
-                          "la página (modo WhatsApp); Angel pega lo que la página cifró y, sin pasar por el modelo, su "
-                          "token se verifica, arranca su propia cadena de renovación, se lee su aula y queda su Vinci "
-                          "(perfil amigo-angel, sus crons, su ruta)")
+            report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con un botón a la "
+                          "página (modo WhatsApp, con el relé y un buzón de un uso en el enlace); Angel pulsa «Enviar» y "
+                          "el token llega cifrado por el relé, sin pegar nada ni pasar por el modelo: se verifica, "
+                          "arranca su propia cadena de renovación, se lee su aula y queda su Vinci (perfil amigo-angel, "
+                          "sus crons, su ruta). El mismo enlace no sirve dos veces, y Vinci descarta lo que llega a un "
+                          "buzón que no abrió")
 
             # 10e. After the restart that loads his route: Angel's own week, in the same group as the captain
             gateway.stop()
@@ -1991,23 +2043,36 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                           "una encuesta «✅ Hecho / ⏳ Todavía no» en su chat privado; su voto cierra el pendiente como "
                           "el botón de Telegram, sin el modelo")
 
-            # 10f4. /entregas: the dashboard on WhatsApp, its ticks typed back into the chat as /marca
+            # 10f4. /entregas: a button to the dashboard on WhatsApp; a tick on it comes back through the relay, and
+            # typed as /marca still works (what the page does when the relay fails)
             calls = len(llm.requests)
-            panel = text_of(say(angel_jid, angel_jid, "/entregas", "Angel"))
-            link = re.search(r"https://\S+#d=([\w-]+)", panel)
-            assert link, panel
+            [panel] = say(angel_jid, angel_jid, "/entregas", "Angel")
+            assert panel["path"] == "send-url-button" and panel["buttonText"] == "📋 Ver mis entregas", panel
+            link = re.search(r"#d=([\w-]+)", panel["url"])
+            assert link and "#d=" not in panel["message"], panel
             from espol_bot import dashboard as dashboard_module
             snap = dashboard_module.decode(link[1])
             assert snap["wa"] == FakeWhatsApp.BOT.split("@")[0] and "bot" not in snap, snap
+            assert snap["relay"] == relay.base and re.fullmatch(r"[\w-]{22,64}", snap["mailbox"]), snap
             taller = next(i for i in snap["items"] if i["title"].startswith("Taller 2"))
+            mark = len(wa.sent)
+            page_tick(snap, taller["id"])
+            ticked = wa.wait_for(lambda b: b.messages_to(angel_jid, mark), 60)
+            assert ticked and "cuenta como entregada" in text_of(ticked), fail(f"la marca no llegó: {wa.sent[mark:]}")
+            md.append(f"**Angel** marca «{taller['title']}» en el panel (por el relé) → Vinci: "
+                      f"{normalize(text_of(ticked))}\n")
+            page_tick(snap, taller["id"], done=False)
+            both = wa.wait_for(lambda b: (lambda m: m if len(m) >= 2 else None)(b.messages_to(angel_jid, mark)), 60)
+            assert both, "desmarcar también llega por el relé"
             marked = text_of(say(angel_jid, angel_jid, f"/marca {taller['id']} ok · {taller['title']}", "Angel"))
             assert "cuenta como entregada" in marked, marked
             assert len(llm.requests) == calls, "/entregas y /marca no pasan por el modelo"
             private = text_of(say(GROUP_WA, angel_jid, "@vinci /entregas", "Angel", group=True))
             assert "por privado" in private, private
-            report.append("/entregas le da a Angel el enlace a su panel de entregas (el mismo de Telegram), con el número "
-                          "de Vinci en vez del bot: marcar una abre su chat con «/marca s… ok» escrito, que el plugin "
-                          "cuenta como entregada sin el modelo; en un grupo, /entregas pide ir por privado")
+            report.append("/entregas le da a Angel un botón a su panel de entregas (el mismo de Telegram), que en el iPhone "
+                          "abre dentro de WhatsApp: marcar una llega a Vinci por el relé y Vinci la cuenta como entregada "
+                          "sin el modelo, igual que «/marca s… ok» escrito en el chat; en un grupo, /entregas pide ir "
+                          "por privado")
 
             # 10g. Vinci's commands on WhatsApp, each over the sender's own aula; Hermes' own pass through
             calls = len(llm.requests)
@@ -2019,9 +2084,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "por privado" in private, private
             captain_hello = text_of(say(captain_jid, captain_jid, "/start", "Capitán"))
             assert "/amigo agregar" in captain_hello and "Telegram" in captain_hello, captain_hello
+            wa.missing.add("send-url-button")  # Hermes' own bridge.js: the page goes as a plain link
             form = text_of(say(captain_jid, captain_jid, "/token", "Capitán"))
+            wa.missing.discard("send-url-button")
             form_url = re.search(r"https://\S+[?&]k=[\w-]+\S*", form)[0]
             assert parse_qs(urlsplit(form_url).query).get("w") == ["1"], form_url
+            # pasting what the page shows still works: what it does when it cannot reach the relay
             canvas.valid_tokens.add(CAPTAIN_WA_TOKEN)
             canvas.mint(CAPTAIN_WA_TOKEN, "Token personal")
             reseeded = text_of(say(captain_jid, captain_jid, page_seal(form_url, CAPTAIN_WA_TOKEN), "Capitán"))
@@ -2042,7 +2110,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                 "«/quiz tema» le llega al modelo como pedido de un quiz"
             report.append("Los comandos de Vinci también van por WhatsApp, cada uno sobre el aula de quien escribe y sin "
                           "el modelo: /start (con los comandos; los de /amigo, solo al capitán), /estado y /token (en un "
-                          "grupo, piden ir por privado). Tras /token, el capitán pegó el texto cifrado de la página y su "
+                          "grupo, piden ir por privado). Con un puente sin la ruta de botones, /token llega como enlace; "
+                          "el capitán pegó el texto cifrado que muestra la página cuando no alcanza el relé, y su "
                           "cadena del token volvió a arrancar. «/quiz integrales dobles» llega al modelo como pedido de "
                           "un quiz, que Vinci manda como encuestas (send_quiz)")
 
@@ -2096,7 +2165,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
         finally:
             gateway.stop()
 
-        dumps = json.dumps(wa.sent, ensure_ascii=False) + json.dumps(llm.requests, ensure_ascii=False)
+        dumps = (json.dumps(wa.sent, ensure_ascii=False) + json.dumps(llm.requests, ensure_ascii=False)
+                 + json.dumps(relay.posted))
         for secret in canvas.accounts:  # his seed and every token his chain minted
             assert secret not in dumps, "un token de Angel apareció en WhatsApp o llegó al modelo"
     (artifact / "whatsapp.md").write_text("\n".join(md), encoding="utf-8")

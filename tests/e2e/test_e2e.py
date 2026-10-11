@@ -193,6 +193,7 @@ USERNAMES = {BOT_TOKEN: "vinci_bot", MATG: "vinci_calculo_bot", FIS: "vinci_fisi
 CAPTAIN_ID = "987654321"
 # WhatsApp (Vinci's number, through Hermes' bridge): the captain, his friend Angel, someone else in the group.
 CAPTAIN_WA, ANGEL_WA, STRANGER_WA = "593980000001", "593990000002", "593990000003"
+CAPTAIN_LID = "770000000000001"  # how WhatsApp names the captain when it hides his number
 GROUP_WA = "120363000000000001@g.us"
 ANGEL_TOKEN = ("AngelTokenDelAula8" * 4)[:64]  # Angel's own aula token, pasted in the page Vinci sends him
 CAPTAIN_WA_TOKEN = ("CapitanTokenWhatsApp9" * 4)[:64]  # a new one for the captain, after his /token on WhatsApp
@@ -1875,6 +1876,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
     # paired (the real pairing is `espol-bot whatsapp-vincular`); its «me» says which ids are Vinci's own
     (session / "creds.json").write_text(json.dumps({"me": {"id": f"{FakeWhatsApp.BOT.split('@')[0]}:7@s.whatsapp.net",
                                                            "lid": "880000000000001:7@lid"}}))
+    # the bridge's record of the captain's LID, which Hermes reads to give his chat one key in either form
+    (session / f"lid-mapping-{CAPTAIN_WA}.json").write_text(json.dumps(CAPTAIN_LID))
+    (session / f"lid-mapping-{CAPTAIN_LID}_reverse.json").write_text(json.dumps(CAPTAIN_WA))
     md = ["# Vinci en WhatsApp\n",
           "Lo que llega al puente de WhatsApp de Hermes (aquí FakeWhatsApp): cada mensaje con quién lo escribe, y lo "
           "que Vinci contesta.\n"]
@@ -1893,9 +1897,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
         default_cfg = yaml.safe_load((home / ".hermes" / "config.yaml").read_text())
         routes = default_cfg["gateway"]["profile_routes"]
         assert [(r.get("user_id") or r.get("chat_id"), r["profile"]) for r in routes] == [
-            (f"{CAPTAIN_WA}@s.whatsapp.net", "vinci"), (CAPTAIN_WA, "vinci"), (None, "vinci")], \
+            (f"{CAPTAIN_WA}@s.whatsapp.net", "vinci"), (f"{CAPTAIN_LID}@lid", "vinci"), (CAPTAIN_WA, "vinci"),
+            (None, "vinci")], \
             "el capitán va a Vinci; cualquier otro remitente, a las herramientas de invitado de Vinci y nunca al " \
             f"perfil por defecto: {routes}"
+        shared = home / ".hermes" / "profiles" / "vinci" / "platforms" / "whatsapp" / "session"
+        assert shared.is_symlink() and shared.readlink() == session, "Vinci ve las equivalencias de LID del puente"
         assert "vinci-whatsapp" in default_cfg["plugins"]["enabled"]
         assert default_cfg["plugins"]["entries"]["vinci-whatsapp"]["allow_gateway_injection"] is True, \
             "only this plugin may put a question back in its chat (the Académico's sign-in)"
@@ -2040,6 +2047,7 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert default_env["WHATSAPP_ALLOWED_USERS"] == f"{CAPTAIN_WA},{ANGEL_WA}"
             routes = yaml.safe_load((home / ".hermes" / "config.yaml").read_text())["gateway"]["profile_routes"]
             assert (f"{ANGEL_WA}@s.whatsapp.net", "amigo-angel") in [(r.get("user_id"), r["profile"]) for r in routes]
+            assert (angel_profile / "platforms" / "whatsapp" / "session").readlink() == session
             jobs = {j["name"]: j for j in json.loads((angel_profile / "cron" / "jobs.json").read_text())["jobs"]}
             assert set(jobs) == {"amigo-sondeo", "amigo-mantenimiento", "amigo-resumen"}
             assert all(j["deliver"] == "local" for j in jobs.values())
@@ -2335,9 +2343,12 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
     bot = USERNAMES[BOT_TOKEN]
     copy_file = data_dir / "academico.json"
     try:
-        # 1. No copy yet: the tool asks for the sign-in, the button arrives, nothing secret is asked in the chat
+        # 1. No copy yet: the tool asks for the sign-in, the button arrives, nothing secret is asked in the chat. His
+        # chat arrives as WhatsApp often names it, by his LID (bridge.js still gives his number as the sender): the
+        # question must still come back to this session.
         mark, calls = len(wa.sent), len(llm.requests)
-        asked = say(captain_jid, captain_jid, "cuál es mi promedio y cuántas materias aprobé", "Capitán")
+        lid_jid = f"{CAPTAIN_LID}@lid"
+        asked = say(lid_jid, captain_jid, "cuál es mi promedio y cuántas materias aprobé", "Capitán")
         assert "Conectar Académico" in text_of(asked), text_of(asked)
         button = wa.wait_for(lambda b: [m for m in b.sent[mark:] if m["path"] == "send-url-button"
                                         and m["buttonText"] == "🎓 Conectar Académico"], 60)
@@ -2366,10 +2377,13 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
         assert "Vinci te responde en el chat" in finished, finished
 
         # 3. The chat: the copy saved, then the question answered by itself in the same session
-        answer = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "8,15" in m.get("message", "")],
-                             120)
-        assert answer, fail(f"la pregunta no volvió a su chat: {wa.messages_to(captain_jid, mark)}")
-        told = text_of(wa.messages_to(captain_jid, mark))
+        # one chat on his phone: the worker writes to his number, Vinci answers where the question came from
+        def to_him(b):
+            return [m for m in b.sent[mark:] if m.get("chatId") in (captain_jid, lid_jid)
+                    and m["path"] in ("send", "send-media", "send-url-button")]
+        answer = wa.wait_for(lambda b: [m for m in to_him(b) if "8,15" in m.get("message", "")], 120)
+        assert answer, fail(f"la pregunta no volvió a su chat: {to_him(wa)}")
+        told = text_of(to_him(wa))
         assert "✅ Listo: guardé tu Académico del 2026 · 2do Término" in told, told
         assert "Aprobaste 4 materias" in told and "Convalidada: Inglés I" in told and "2026 · 2do Término" in told, told
         back = [r for r in llm.requests[calls:] if PORTAL_BACK in json.dumps(r, ensure_ascii=False)]

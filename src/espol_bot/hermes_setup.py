@@ -553,6 +553,8 @@ class Setup:
         # plugin goes in every profile a WhatsApp route reaches, plus the default for anything unrouted.
         routed = [self.profile_dir(self.cfg.hermes_profile), *(self.profile_dir(amigos.profile_name(f)) for f in friends)]
         for home in [self.root, *routed]:
+            if home != self.root:
+                changed |= self._share_whatsapp_ids(home)
             plugin_changed = home != self.root and self.managed_config(home, {}, plugins=[WHATSAPP_PLUGIN])
             # only the default profile's copy polls the relay: one poller, in the process that owns the bridge
             own = {**values, "RELAY": str(mailboxes) if home == self.root else ""}
@@ -569,6 +571,25 @@ class Setup:
                   "<número>` y vuelve a correr ./setup.sh.")
         elif changed:
             print("  Reinicia el gateway para que lo tome: hermes gateway restart")
+
+    def _share_whatsapp_ids(self, profile: Path) -> bool:
+        """The bridge's lid-mapping files, seen from a routed profile. Hermes keys a chat that arrives by its LID
+        under the profile's home during the turn and under the default home in the adapter; without the files there
+        the two keys differ and the adapter drops every message a plugin injects (the Académico's held question)."""
+        link = profile / "platforms" / "whatsapp" / "session"
+        target = self.whatsapp_session()
+        if link.is_symlink():
+            if link.readlink() == target:
+                return False
+            link.unlink()
+        elif link.is_dir():
+            if any(link.iterdir()):  # not ours to remove
+                print(f"⚠ WhatsApp: {link} ya tiene archivos; no lo enlazo a la sesión del puente")
+                return False
+            link.rmdir()
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target, target_is_directory=True)
+        return True
 
     def _whatsapp_routes(self, name: str, number: str, profile: str) -> list[dict]:
         """One person's routes. Hermes compares a route's user_id with the sender as the bridge gives it: the

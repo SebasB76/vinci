@@ -1090,6 +1090,8 @@ def test_e2e(tmp_path):
             # Hermes refuses to open ~/.hermes/state.db from a process launched by pytest (it also
             # checks the process ancestry). Here ~ is the temporary HOME (asserted below).
             "HERMES_STATE_DB_GUARD_BYPASS": "1",
+            # Whisper's model, from the real cache: the temporary HOME would download it on every run
+            "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE") or str(Path.home() / ".cache" / "huggingface" / "hub"),
         })
         # OCR: the real tesseract behind a wrapper that logs each call; while `ocr_off` exists it looks missing
         real_tesseract = shutil.which("tesseract")
@@ -1799,8 +1801,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                   normalize, secrets, config_file, tmp_path, **_) -> None:
     """Section 10: Vinci on WhatsApp, through Hermes' bridge (a stand-in here): the captain's chat, a group he turns
     on, a friend with a Vinci of his own (invited, his token through the page and Vinci's relay, his week, slides, his
-    alerts), the block for whoever is not a Vinci's owner, and the friend removed with his tokens. Pages go as URL
-    buttons (the bridge's /send-url-button), and what they send back comes through the relay (a stand-in here)."""
+    alerts), voice notes and audio files heard by the real local Whisper (in a group, only one that says «Vinci»), the
+    block for whoever is not a Vinci's owner, and the friend removed with his tokens. Pages go as URL buttons (the
+    bridge's /send-url-button), and what they send back comes through the relay (a stand-in here)."""
     bot = str(VENV_BIN / "espol-bot")
     captain_jid, angel_jid, stranger_jid = (f"{n}@s.whatsapp.net" for n in (CAPTAIN_WA, ANGEL_WA, STRANGER_WA))
     stand_in = tmp_path / "whatsapp-bridge"
@@ -2101,6 +2104,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert len(llm.requests) == calls, "/start, /estado, /token y el texto cifrado no pasan por el modelo"
             # the captain's own alerts and 7:00 summary reach his WhatsApp too, with polls instead of buttons
             mark, tg_mark = len(wa.sent), len(telegram.messages)
+            conn = sqlite3.connect(data_dir / "espol.db")
+            try:  # vinci_flow already sent this test day's summary, and it goes once a day
+                conn.execute("DELETE FROM meta WHERE key = 'bot_last_summary'")
+                conn.commit()
+            finally:
+                conn.close()
             run([bot, "resumen"], T_VINCI)
             copies = wa.messages_to(captain_jid, mark)
             assert copies and len(telegram.messages) > tg_mark, (copies, telegram.messages[tg_mark:])
@@ -2117,6 +2126,62 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                           "el capitán pegó el texto cifrado que muestra la página cuando no alcanza el relé, y su "
                           "cadena del token volvió a arrancar. «/quiz integrales dobles» llega al modelo como pedido de "
                           "un quiz, que Vinci manda como encuestas (send_quiz)")
+
+            # 10g2. Voice: Hermes' local Whisper (on for this step only) hears voice notes and audio files
+            gateway.stop()
+            for cfg_file in (profiles / "vinci" / "config.yaml", angel_profile / "config.yaml",
+                             home / ".hermes" / "config.yaml"):
+                data = yaml.safe_load(cfg_file.read_text())
+                data.setdefault("stt", {}).update(enabled=True, provider="local")
+                cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            start()
+            hermes_log = home / ".hermes" / "logs" / "gateway.log"
+
+            def speak(chat: str, sender: str, fixture: str, name: str, *, group: bool = False,
+                      skipped: str = "") -> str:
+                """An audio from the fixtures, saved where the bridge saves it; with `skipped`, the plugin's reason
+                for dropping it, and nothing reaches the chat or the model."""
+                audio = home / ".hermes" / "cache" / "audio" / f"aud_{next(audio_ids)}{Path(fixture).suffix}"
+                audio.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(FILES / fixture, audio)
+                mark, calls, seen = len(wa.sent), len(llm.requests), hermes_log.read_text().count(skipped)
+                wa.audio(chat, sender, audio, name=name, group=group)
+                md.append(f"**{name}** ({'grupo' if group else 'privado'}): [{'nota de voz' if audio.suffix == '.ogg'
+                                                                               else 'audio'} {fixture}]\n")
+                if skipped:
+                    dropped = wa.wait_for(lambda _: hermes_log.read_text().count(skipped) > seen, 120)
+                    assert dropped, fail(f"el plugin no descartó {fixture} ({skipped})")
+                    time.sleep(3)
+                    assert not wa.messages_to(chat, mark) and len(llm.requests) == calls, wa.messages_to(chat, mark)
+                    md.append("→ (sin respuesta)\n")
+                    return ""
+                got = wa.wait_for(lambda b: (lambda m: m if any(not x.get("message", "").startswith("🎙️") for x in m)
+                                             else None)(b.messages_to(chat, mark)), 180)
+                assert got, fail(f"nadie contestó a {fixture}")
+                for m in got:
+                    md.append(f"→ Vinci: {normalize(m.get('message', ''))}\n")
+                return text_of(got)
+
+            audio_ids = itertools.count(1)
+            heard = speak(captain_jid, captain_jid, "whatsapp-voz-vinci.ogg", "Capitán")
+            assert "Esta semana:" in heard and "qué tengo esta semana" in heard, \
+                f"Hermes muestra lo que entendió y Vinci contesta: {heard}"
+            his = speak(GROUP_WA, angel_jid, "whatsapp-voz-vinci.ogg", "Angel", group=True)
+            assert "EDO de primer orden" in his, his  # his week; /marca above closed the Taller 2
+            speak(GROUP_WA, captain_jid, "whatsapp-voz-charla.ogg", "Capitán", group=True,
+                  skipped="audio que no llama a Vinci")
+            speak(GROUP_WA, stranger_jid, "whatsapp-voz-vinci.ogg", "Alguien", group=True,
+                  skipped="audio de alguien sin Vinci")
+            calls = len(llm.requests)
+            file_week = speak(angel_jid, angel_jid, "whatsapp-audio-semana.m4a", "Angel")
+            assert "EDO de primer orden" in file_week, file_week
+            assert '"Oye, ¿qué tengo esta semana?' in json.dumps(llm.requests[calls:], ensure_ascii=False), \
+                "un archivo de audio le llega al modelo transcrito, como una nota de voz"
+            report.append("Voz en WhatsApp, con el Whisper local de Hermes: una nota de voz por privado («Vinci, ¿qué "
+                          "tengo esta semana?») recibe la semana del capitán. En un grupo encendido, la nota de voz de "
+                          "Angel que dice «Vinci» recibe su semana; una charla del capitán sin «Vinci» y la nota de "
+                          "alguien sin su Vinci no llegan al modelo (la de ese alguien ni se transcribe). Un archivo de "
+                          "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin")
 
             # 10h. Should someone reach a Vinci that is not theirs, its owner's data stays shut
             gateway.stop()

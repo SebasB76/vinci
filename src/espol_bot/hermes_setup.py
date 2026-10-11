@@ -518,8 +518,9 @@ class Setup:
         section.update({
             "reply_prefix": "",
             "unauthorized_dm_behavior": "ignore",
-            # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list.
-            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b"],
+            # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list. A voice
+            # note cannot mention anyone: the bridge's text for one lets it through, and the plugin hears it.
+            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b", r"^\[(?:ptt|audio) received\]$"],
         })
         test = self.cfg.core.raw.get("test") or {}
         if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port
@@ -531,7 +532,9 @@ class Setup:
                 section["bridge_script"] = str(launcher)
             else:
                 section.pop("bridge_script", None)
-        _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}}})
+        # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
+        _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
+                             "stt": {"language": "es"}})
         plugins = merged.setdefault("plugins", {})
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]

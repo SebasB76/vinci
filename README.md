@@ -68,7 +68,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 🗓️ **Horario desde una captura** | Le mandas a Vinci una captura de tu horario y te muestra cómo lo entendió; se guarda solo cuando pulsas «Guardar». |
 | 🩺 **Estado del sistema** | Mándale `/estado` a Vinci (o corre `espol-bot doctor` en la terminal) y ves cuándo corrió el último sondeo, cuándo se leyó el aula, la edad del token de Canvas y si su cadena de renovación está sana, y qué feeds sin token están activos. Lo que está atrasado o roto sale con ❌ o ⚠️ y qué hacer. No usa el modelo. |
 | 🔑 **Token del aula desde Telegram** | Si la cadena del token se cortó, Vinci te manda solo un formulario (no hace falta escribir `/token`) dentro de Telegram que cifra el token en tu celular antes de enviarlo. Telegram solo lleva un texto ilegible que únicamente tu PC puede abrir, y el modelo nunca lo ve. [Cómo funciona](#token-nuevo-desde-telegram-token). |
-| 💬 **Vinci en WhatsApp, también para tus amigos** | Con un número aparte, Vinci contesta por WhatsApp: tu chat con él y los grupos que enciendes con «@vinci activa este grupo». En un grupo contesta a quien lo menciona, y cada amigo que agregas (`/amigo agregar`) tiene su propio Vinci, con su token y su aula: «@vinci qué tengo esta semana» le contesta a cada uno con lo suyo. [Cómo funciona](#vinci-en-whatsapp). |
+| 💬 **Vinci en WhatsApp, también para tus amigos** | Con un número aparte, Vinci contesta por WhatsApp: tu chat con él y los grupos que enciendes con «@vinci activa este grupo». En un grupo contesta a quien lo menciona, y cada amigo que agregas (`/amigo agregar`) tiene su propio Vinci, con su token y su aula: «@vinci qué tengo esta semana» le contesta a cada uno con lo suyo. También entiende notas de voz: en un grupo, las que dicen «Vinci». [Cómo funciona](#vinci-en-whatsapp). |
 | 🖼️ **Diapositivas** | «Hazme unas diapositivas de integrales dobles»: Vinci y cada bot de materia arman un `.pptx` (portada y una diapositiva por tema, con notas del orador) y te lo mandan al chat. |
 | 💻 **Terminal y Claude Code** | El comando `aula` consulta todo desde la terminal, y una skill le enseña a Claude Code a usarlo. |
 
@@ -662,11 +662,15 @@ sin pasar por el modelo. Cambiar el voto lo deshace. Solo crear o archivar bots 
   encuesta «📤 Entregar / Cancelar». Se sube al aula solo con tu voto.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
   te dice si acertaste y por qué, y al final tu puntaje.
-- **Notas de voz.** Se transcriben en tu PC con faster-whisper (`setup.sh` lo instala en Hermes).
+- **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
+  respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
+  con faster-whisper (`setup.sh` lo instala en Hermes), y Vinci te muestra primero lo que entendió (🎙️).
 
 **Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
-contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. «@vinci desactiva
-este grupo» lo apaga. Solo tú puedes encender o apagar un grupo.
+contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz
+no puede mencionar a nadie: Vinci contesta la tuya o la de un amigo con su Vinci si dice «Vinci» o responde a un
+mensaje suyo. Las notas de voz de quien no tiene su Vinci ni se transcriben. «@vinci desactiva este grupo» lo
+apaga. Solo tú puedes encender o apagar un grupo.
 
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 

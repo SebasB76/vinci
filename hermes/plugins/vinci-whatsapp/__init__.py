@@ -19,6 +19,10 @@ friend's and in the default one; it acts only on WhatsApp.
 - A vote on one of Vinci's polls (WhatsApp's stand-in for a card's buttons, whatsapp.py) runs that button for
   whoever voted, over their own aula (`espol-bot whatsapp-comando voto`), without the model. Hermes only lets a
   vote through in private, which is where Vinci sends its polls.
+- A voice note or an audio file: Hermes transcribes a voice note on its own, not an audio file (a recording someone
+  forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
+  Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
+  says «Vinci» or answers one of its messages goes on; anyone else's is not even heard.
 - Anyone else, in private: nothing.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
   instead, from the names of everyone who has written to Vinci (kept in NAMES).
@@ -80,6 +84,9 @@ RAW_TOKEN = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este cha
 RAW_TOKEN_ACTIVE = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y "
                     "escríbeme /token: te mando un enlace que lo cifra en tu celular.")
 FAILED = "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."
+AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an audio file
+CALLS_VINCI_RE = re.compile(r"\b[bv]in(?:ch|c|s)h?i\b")  # «Vinci» as Whisper may spell it, over _plain text
+_HEARD = {}  # the last audio heard: a group's audio file is heard to place it, then again for the model
 _TASKS = set()  # asyncio keeps only a weak reference to a task
 _GATEWAY = []  # the gateway, as the hook last saw it: a relay answer may need it to restart
 
@@ -101,9 +108,13 @@ async def _dispatch(event=None, gateway=None, **_):
         names = _remember(source)  # anyone who mentions Vinci, even without their own Vinci yet
         result = await _sort(event, source, gateway)
         if result is None:
-            text = str(getattr(event, "text", "") or "")
+            original = str(getattr(event, "text", "") or "")
+            text = original
+            kind, audio = _audio(event)
+            if kind == "audio":
+                text = _with_transcript(text, await _hear(audio))
             named = _named(text, names)
-            if named != text:
+            if named != original:
                 return {"action": "rewrite", "text": named}
         return result
     except Exception:
@@ -139,6 +150,16 @@ async def _sort(event, source, gateway):
             return _skip(f"grupo {action}")
         if chat not in _read(GROUPS, "grupos"):
             return _skip("grupo apagado")
+        kind, audio = _audio(event)
+        if kind:
+            if not (captain or (friend and friend.get("estado") == "activo")):
+                return _skip("audio de alguien sin Vinci")
+            raw = getattr(event, "raw_message", None) or {}
+            to_vinci = _bare(raw.get("quotedParticipant")) in _own_ids()
+            heard = await _hear(audio) if kind == "audio" or not to_vinci else None
+            if not to_vinci and not CALLS_VINCI_RE.search(_plain(heard or "")):
+                return _skip("audio que no llama a Vinci")
+            return None
         if captain or (friend and friend.get("estado") == "activo"):
             if CANVAS_TOKEN_RE.search(text):
                 await _answer(chat, {"respuesta": RAW_TOKEN_ACTIVE}, reply_to, gateway)
@@ -207,6 +228,34 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
                                    stdin=rest if name == "marca" else None), reply_to, gateway)
     return _skip(f"/{name}")
+
+
+def _audio(event):
+    """(«ptt» or «audio», its file) for a voice note or an audio file; (None, None) for anything else."""
+    kind = (getattr(event, "raw_message", None) or {}).get("mediaType")
+    urls = getattr(event, "media_urls", None) or []
+    return (kind, str(urls[0])) if kind in AUDIO and urls else (None, None)
+
+
+async def _hear(path):
+    """Its transcript with Hermes' own STT (local Whisper, as configured), or None when it could not."""
+    if path not in _HEARD:
+        from tools.transcription_tools import transcribe_audio
+        result = await asyncio.to_thread(transcribe_audio, path, None, "gateway")
+        heard = str(result.get("transcript") or "").strip() if result.get("success") else ""
+        if not heard:
+            logger.info("no pude transcribir un audio de WhatsApp: %s", result.get("error") or "sin voz")
+        _HEARD.clear()
+        _HEARD[path] = heard or None
+    return _HEARD[path]
+
+
+def _with_transcript(text, heard):
+    """An audio file reaches the model as Hermes puts a voice note: the transcript in quotes, then any caption."""
+    if not heard:
+        return text  # Hermes still tells the model where the file is
+    caption = "" if text.strip() == "[audio received]" else text.strip()
+    return f'"{heard}"' + (f"\n\n{caption}" if caption else "")
 
 
 def _strip_mention(text):

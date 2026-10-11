@@ -144,7 +144,7 @@ def fetch(cfg: BotConfig, now: datetime) -> list[dict]:
                 continue
             outcome = amigos.command(cfg, "marca", box["number"], f"{item} {'ok' if body.get('done') else 'no'}", now)
         answers.append({"chat": whatsapp.jid(box["number"]), "respuesta": outcome.respuesta,
-                        "reiniciar": outcome.reiniciar, "button": outcome.button})
+                        "reiniciar": outcome.reiniciar, "button": outcome.button, "image": outcome.image})
     if handled:
         try:
             requests.post(f"{url}/ack", headers=headers, json={"ids": handled}, timeout=TIMEOUT).raise_for_status()

@@ -138,9 +138,11 @@ class WhatsApp:
         self.sent = 0
 
     def send(self, html_text: str, buttons: list[tuple[str, str]] | None = None, *,
-             reply_markup: dict | None = None, link: dict | None = None) -> None:
-        """`link` ({"text", "url"}): the message ends in a button that opens that page."""
+             reply_markup: dict | None = None, link: dict | None = None, image: str | None = None) -> None:
+        """`link` ({"text", "url"}): the message ends in a button that opens that page; `image`, a picture before it."""
         text = from_html(html_text)
+        if image:
+            self._post("send-media", {"chatId": self._chat, "filePath": image, "mediaType": "image"})
         if link:
             self.send_link(text, link)
             return

@@ -1925,14 +1925,17 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             # 10c. The captain invites Angel: his own private chat gets the link to the page
             invited = say(captain_jid, captain_jid, "/amigo agregar 099 000 0002 Angel", "Capitán")
             assert "Le escribí a Angel" in text_of(invited)
-            letter = wa.wait_for(lambda b: b.messages_to(angel_jid), 30)
-            assert letter and "Hola, Angel" in letter[0]["message"], letter
+            got = wa.wait_for(lambda b: (lambda m: m if len(m) >= 2 else None)(b.messages_to(angel_jid)), 30)
+            assert got and got[0]["path"] == "send-media" and got[0]["filePath"].endswith("token-guide.png"), \
+                f"the guide with the steps comes first: {got}"
+            letter = got[1:]
+            assert "Hola, Angel" in letter[0]["message"] and "Integraciones aprobadas" in letter[0]["message"], letter
             assert letter[0]["path"] == "send-url-button" and letter[0]["buttonText"] == "🔑 Abrir formulario", letter
             url = letter[0]["url"]
             query = parse_qs(urlsplit(url).query)
             assert query.get("w") == ["1"] and query.get("r") == [relay.base], url
             assert re.fullmatch(r"m=[\w-]{22,64}", urlsplit(url).fragment), "the mailbox rides in the fragment"
-            assert "toca «Enviar»" in letter[0]["message"] and "v1." not in letter[0]["message"], letter
+            assert "toca «Enviar cifrado a Vinci»" in letter[0]["message"] and "v1." not in letter[0]["message"], letter
             md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])} [botón «{letter[0]['buttonText']}»]\n")
             friends = json.loads((data_dir / "amigos" / "amigos.json").read_text())["amigos"]
             assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Angel", ANGEL_WA, "pendiente")]
@@ -2085,7 +2088,7 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             captain_hello = text_of(say(captain_jid, captain_jid, "/start", "Capitán"))
             assert "/amigo agregar" in captain_hello and "Telegram" in captain_hello, captain_hello
             wa.missing.add("send-url-button")  # Hermes' own bridge.js: the page goes as a plain link
-            form = text_of(say(captain_jid, captain_jid, "/token", "Capitán"))
+            form = text_of(say(captain_jid, captain_jid, "/token", "Capitán", expect=2))  # the guide, then the form
             wa.missing.discard("send-url-button")
             form_url = re.search(r"https://\S+[?&]k=[\w-]+\S*", form)[0]
             assert parse_qs(urlsplit(form_url).query).get("w") == ["1"], form_url

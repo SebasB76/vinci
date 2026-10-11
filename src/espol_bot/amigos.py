@@ -63,6 +63,7 @@ class Outcome:
     respuesta: str            # for the chat it came from, WhatsApp-formatted
     reiniciar: bool = False   # the routes changed: the gateway must restart to serve them
     button: dict | None = None  # {"text", "url"}: the answer ends in a button that opens that page
+    image: str | None = None  # a picture sent before the answer (the token guide)
 
     def json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -212,7 +213,8 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
                 form = token_form.new_form(fcfg, conn, now, _invitation(friend), ttl=token_form.AUTO_FORM_TTL)
         finally:
             conn.close()
-    whatsapp.WhatsApp(number, cfg.whatsapp_bridge).send(form["respuesta"], link=form.get("button"))
+    whatsapp.WhatsApp(number, cfg.whatsapp_bridge).send(form["respuesta"], link=form.get("button"),
+                                                             image=form.get("image"))
     save(cfg, friends)
     log.info("amigo agregar: %s (pendiente)", friend.slug)
     return Outcome(f"Le escribí a {friend.nombre} por privado con el enlace para su token. Cuando lo pegue, armo su "
@@ -234,7 +236,8 @@ def submit_token(cfg: BotConfig, number: str, data: str, now: datetime) -> Outco
     with scope(cfg, friend) as fcfg:
         result = token_form.submit(fcfg, data, now)
         if not result.get("ok"):
-            return Outcome(whatsapp.from_html(result["respuesta"]), button=result.get("button"))
+            return Outcome(whatsapp.from_html(result["respuesta"]), button=result.get("button"),
+                           image=result.get("image"))
         if friend.estado == ACTIVE:  # a new token after the chain broke
             return Outcome("✅ Listo, ya vuelvo a leer tu aula.")
         try:
@@ -389,7 +392,7 @@ def _command(cfg: BotConfig, name: str, data: str, now: datetime) -> Outcome:
                 conn.close()
     form = (token_form.open_form(cfg, now, whatsapp=True) if name == "token"
             else token_form.submit(cfg, data, now, whatsapp=True))
-    return Outcome(whatsapp.from_html(form["respuesta"]), button=form.get("button"))
+    return Outcome(whatsapp.from_html(form["respuesta"]), button=form.get("button"), image=form.get("image"))
 
 
 def _greeting(friend: Friend | None) -> str:

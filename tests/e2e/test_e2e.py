@@ -106,6 +106,16 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      as too long). Every suggested username fits Telegram's rules. setup.sh once more asks
      Telegram for nothing.
 
+  10k. ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA): the captain asks for
+     his GPA on WhatsApp with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his
+     chat. On its page (in a real headless Chromium when there is one) he gives his user, then a wrong CAPTCHA (the
+     portal's words and a new image come back) and the right one; one portal session signs in and reads every
+     section, the copy is saved with its date and term, and his question comes back to Vinci by itself in the same
+     Hermes session. Later questions are answered from the copy, without the portal, and progress toward the degree
+     never subtracts approved subjects from a total. «Actualiza mi Académico» on Telegram brings a Mini App button, a
+     second sign-in and the portal's new figures. No credential reaches the model, a chat, the relay in clear, a log
+     or the data folder, and the sign-in's process exits.
+
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
 temporary paths are normalized, so reruns produce comparable files.
 """
@@ -142,8 +152,8 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 from fake_servers import (  # noqa: E402
-    DRIVE_FILE, ESPOL_ONLY_SHARE, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas, FakeDSpace, FakeTelegram, FakeWeb,
-    FakeRelay, FakeWhatsApp, ScriptedLLM)
+    DRIVE_FILE, ESPOL_ONLY_SHARE, PORTAL_PASSWORD, PORTAL_USER, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas,
+    FakeDSpace, FakePages, FakePortal, FakeRelay, FakeTelegram, FakeWeb, FakeWhatsApp, ScriptedLLM)
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -292,6 +302,16 @@ FIS_SCHEME = {
                     {"name": "Laboratorio", "weight": 20, "match": ["informe"]},
                     {"name": "Deberes", "weight": 20, "match": ["tarea", "taller"]}]}],
     "sources": ["Me lo dijo el estudiante el 30 sep"]}
+
+# The Académico (academic_record): what the captain asks → (topic, whether he asks to update the copy).
+PORTAL_ASKS = {
+    "cuál es mi promedio y cuántas materias aprobé": ("historial", False),
+    "qué materias aprobé": ("historial", False),
+    "cuándo son mis exámenes finales": ("examenes", False),
+    "cuánto me falta para graduarme": ("avance", False),
+    "actualiza mi Académico y dime mi promedio": ("promedio", True),
+}
+PORTAL_BACK = "Ya conecté mi Académico"  # how the question comes back after the sign-in (portal_login.py)
 
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
@@ -531,7 +551,8 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
-        flow = self.exams("vinci", text, called, results) or self.vinci_material(text, called, results)
+        flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
+                or self.vinci_material(text, called, results))
         if flow is not None:
             return flow
         if results:
@@ -582,6 +603,47 @@ class Script:
         if "terminal" in text:
             return _call("terminal", command=f"touch {self.pwned}")
         return {"content": "Hola, soy Vinci. ¿En qué te ayudo?"}
+
+    def portal(self, text: str, called: list[str], results: list[str]) -> dict | None:
+        """The Académico: asked with no copy, the tool sends the sign-in button; the question comes back on its own
+        once the copy is saved («Ya conecté mi Académico…»), and later ones are answered from the copy."""
+        for ask, (topic, refresh) in PORTAL_ASKS.items():
+            if ask not in text:
+                continue
+            if not called:
+                again = refresh and PORTAL_BACK not in text
+                return _call("mcp__vinci__academic_record", topic=topic, question=ask, **({"refresh": True} if again else {}))
+            return {"content": self.portal_answer(topic, _json(results[-1]))}
+        return None
+
+    @staticmethod
+    def portal_answer(topic: str, data) -> str:
+        if not isinstance(data, dict) or data.get("error"):
+            return _problem(json.dumps(data, ensure_ascii=False))
+        if data.get("connect"):
+            return ("🎓 Te mando el botón «Conectar Académico»: ábrelo y entra con tu usuario, tu contraseña y el código "
+                    "de la imagen. Tu contraseña no pasa por este chat.")
+        when = f"Según tu Académico ({data['period']}, leído el {data['saved_at']})"
+        gpa = next(iter((data.get("gpa") or {}).values()), None)
+        if topic == "historial":
+            approved = data["subjects"].get("approved", [])
+            credited = data["subjects"].get("credited", [])
+            return (f"{when}: tu promedio general es {gpa}. Aprobaste {len(approved)} materias: "
+                    + ", ".join(s["name"].title() for s in approved)
+                    + (f". Convalidada: {', '.join(s['name'].title() for s in credited)}." if credited else "."))
+        if topic == "promedio":
+            return f"{when}: tu promedio general es {gpa}." if gpa else f"{when}: el Académico no muestra tu promedio."
+        if topic == "examenes":
+            finals = data["by_kind"].get("Final") or []
+            return f"{when}, tus exámenes finales:\n" + "\n".join(
+                f"- {r['MATERIA'].title()}: {r['FECHA']} a las {r['HORA']} ({r['AULA']})" for t in finals for r in t["filas"])
+        if topic == "avance":
+            facts = data["credits"]["facts"]
+            return (f"{when}: llevas {facts.get('Créditos aprobados')} créditos aprobados y {facts.get('Créditos en curso')} "
+                    "en curso. Por tipo: " + "; ".join(f"{r['TIPO']} {r['APROBADOS']} de {r['REQUERIDOS']}"
+                                                    for t in data["credits"]["tables"] for r in t["filas"])
+                    + ". Cuántas materias te faltan depende de tu malla, que todavía no leo.")
+        return json.dumps(data, ensure_ascii=False)[:500]
 
     def vinci_material(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """Vinci reading an outside link: one an assignment carries (found in the catalog) or an announcement's;
@@ -1038,7 +1100,7 @@ def test_e2e(tmp_path):
     pwned = tmp_path / "pwned"
 
     with FakeCanvas(CANVAS_TOKEN) as canvas, FakeTelegram({BOT_TOKEN: USERNAMES[BOT_TOKEN]}) as telegram, \
-            FakeWeb() as web, FakeDSpace() as dspace:
+            FakeWeb() as web, FakeDSpace() as dspace, FakePortal() as portal:
         calendar_feed_url = f"{canvas.base}/feeds/calendars/user-e2e.ics"
         announcement_feed_url = f"{canvas.base}/feeds/announcements/course-101.atom"
         canvas.web = web.base
@@ -1052,7 +1114,7 @@ def test_e2e(tmp_path):
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
-        hosts += f', "dspace.espol.edu.ec" = "{dspace.base}"'
+        hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
         config += f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
@@ -1701,7 +1763,7 @@ END:VCALENDAR
         secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
                        calendar_feed_url, announcement_feed_url, BOT_TOKEN,
                        *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
-                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN, PORTAL_PASSWORD,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
@@ -1760,7 +1822,7 @@ END:VCALENDAR
                        calendar_feed_url, announcement_feed_url, "/feeds/calendars/user-e2e.ics",
                        "/feeds/announcements/course-101.atom", BOT_TOKEN,
                        *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
-                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN, PORTAL_PASSWORD,
                        *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
@@ -1796,7 +1858,7 @@ END:VCALENDAR
 
 
 def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, report, gateway, artifact,
-                  normalize, secrets, config_file, tmp_path, **_) -> None:
+                  normalize, secrets, config_file, tmp_path, portal, **_) -> None:
     """Section 10: Vinci on WhatsApp, through Hermes' bridge (a stand-in here): the captain's chat, a group he turns
     on, a friend with a Vinci of his own (invited, his token through the page and Vinci's relay, his week, slides, his
     alerts), the block for whoever is not a Vinci's owner, and the friend removed with his tokens. Pages go as URL
@@ -1835,6 +1897,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             "el capitán va a Vinci; cualquier otro remitente, a las herramientas de invitado de Vinci y nunca al " \
             f"perfil por defecto: {routes}"
         assert "vinci-whatsapp" in default_cfg["plugins"]["enabled"]
+        assert default_cfg["plugins"]["entries"]["vinci-whatsapp"]["allow_gateway_injection"] is True, \
+            "only this plugin may put a question back in its chat (the Académico's sign-in)"
         plugin_src = (home / ".hermes" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text()
         assert "{{" not in plugin_src and CAPTAIN_WA in plugin_src
         relay_line = f'RELAY = "{data_dir / "amigos" / "rele.json"}"'
@@ -2037,8 +2101,10 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "repasar integrales dobles" in card, card
             calls, mark = len(llm.requests), len(wa.sent)
             wa.vote(angel_jid, angel_jid, polls[0]["messageId"], "✅ Hecho")
-            done = wa.wait_for(lambda b: b.messages_to(angel_jid, mark), 60)
-            assert done and "Hecho: «repasar integrales dobles»" in text_of(done), done
+            # the vote's answer, not the model's «Anotado» if it lands after the poll
+            done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                          if "Hecho: «repasar integrales dobles»" in m.get("message", "")], 60)
+            assert done, wa.messages_to(angel_jid, mark)
             assert len(llm.requests) == calls, "un voto se resuelve sin el modelo"
             md.append(f"→ a Angel: [encuesta «{polls[0]['question']}»: {' / '.join(polls[0]['options'])}]\n"
                       f"**Angel** vota «✅ Hecho» → Vinci: {normalize(text_of(done))}\n")
@@ -2100,6 +2166,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert parse_env_file(secrets)["CANVAS_TOKEN"] in canvas.valid_tokens
             assert len(llm.requests) == calls, "/start, /estado, /token y el texto cifrado no pasan por el modelo"
             # the captain's own alerts and 7:00 summary reach his WhatsApp too, with polls instead of buttons
+            with sqlite3.connect(data_dir / "espol.db") as conn:  # vinci_flow already sent this test day's summary
+                conn.execute("DELETE FROM meta WHERE key = 'bot_last_summary'")
             mark, tg_mark = len(wa.sent), len(telegram.messages)
             run([bot, "resumen"], T_VINCI)
             copies = wa.messages_to(captain_jid, mark)
@@ -2151,6 +2219,11 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             report.append("El sondeo del Vinci de Angel le avisa por su chat de WhatsApp (formato de WhatsApp, sin "
                           "HTML) y nunca por el Telegram del capitán; su mantenimiento renueva su propia cadena de token")
 
+            # 10k. ESPOL's Académico: connected from its button, the question answered by itself, then from the copy
+            academico_flow(wa=wa, relay=relay, portal=portal, llm=llm, telegram=telegram, data_dir=data_dir,
+                           say=say, text_of=text_of, fail=fail, report=report, artifact=artifact, normalize=normalize,
+                           captain_jid=captain_jid, gateway=gateway, tmp_path=tmp_path)
+
             # 10j. The captain lists and removes Angel; then turns the group off
             listed = say(captain_jid, captain_jid, "/amigos", "Capitán")
             assert "Angel: tiene su Vinci" in text_of(listed)
@@ -2173,6 +2246,234 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
         for secret in canvas.accounts:  # his seed and every token his chain minted
             assert secret not in dumps, "un token de Angel apareció en WhatsApp o llegó al modelo"
     (artifact / "whatsapp.md").write_text("\n".join(md), encoding="utf-8")
+
+class PortalPage:
+    """The page behind «🎓 Conectar Académico» (docs/academico/), as the student uses it: in a real headless Chromium
+    when there is one (served as GitHub Pages would, by FakePages), else its own module's `answer` on Node. Either
+    way it reads what to ask from the relay and posts each answer sealed."""
+
+    def __init__(self, url: str, relay: FakeRelay, pages: FakePages | None, browser):
+        parts = urlsplit(url)
+        query = parse_qs(parts.query)
+        self.key, self.relay_url, self.mailbox = query["k"][0], query["r"][0], parts.fragment.removeprefix("m=")
+        self.relay, self.browser, self.sent = relay, browser, 0
+        self.page = browser.open(f"{pages.base}/academico/?{parts.query}#{parts.fragment}") if browser else None
+
+    def status(self, state: str, timeout: float = 60, error: str = "") -> dict:
+        end = time.time() + timeout
+        while time.time() < end:
+            found = self.relay.statuses.get(self.mailbox) or {}
+            if found.get("state") == state and error in (found.get("error") or "") and found.get("handled", 0) >= self.sent:
+                return found
+            time.sleep(0.3)
+        raise AssertionError(f"la página nunca llegó a «{state}»: {self.relay.statuses.get(self.mailbox)}")
+
+    def _until(self, expr: str, timeout: float = 30):
+        end = time.time() + timeout
+        while time.time() < end:
+            value = self.browser.eval(self.page, expr)
+            if value:
+                return value
+            time.sleep(0.2)
+        raise AssertionError(f"la página nunca cumplió {expr}: {self.browser.eval(self.page, 'document.body.innerText')}")
+
+    def _answer(self, step: str, data: dict) -> None:
+        self.sent += 1
+        if self.browser is None:
+            _node_module(REPO / "docs" / "academico" / "portal.js",
+                         "await page.answer(process.argv[1], process.argv[2], process.argv[3], process.argv[4], "
+                         "Number(process.argv[5]), JSON.parse(process.argv[6]));",
+                         self.key, self.relay_url, self.mailbox, step, str(self.sent), json.dumps(data))
+            return
+        if step == "user":
+            self._until("!document.getElementById('user-form').hidden && !document.getElementById('user').disabled")
+            self.browser.eval(self.page, f"document.getElementById('user').value = {json.dumps(data['user'])};"
+                                         "document.getElementById('user-form').requestSubmit(); true")
+        else:
+            self._until("!document.getElementById('login-form').hidden && !document.getElementById('code').disabled"
+                        " && document.getElementById('captcha').src.startsWith('data:image/jpeg')")
+            self.browser.eval(self.page, f"document.getElementById('password').value = {json.dumps(data['password'])};"
+                                         f"document.getElementById('code').value = {json.dumps(data['captcha'])};"
+                                         "document.getElementById('login-form').requestSubmit(); true")
+
+    def sign_in(self, user: str) -> None:
+        self.status("user")
+        self._answer("user", {"user": user})
+        self.status("login")
+
+    def log_in(self, password: str, code: str) -> None:
+        self._answer("login", {"password": password, "captcha": code})
+
+    def shown(self) -> str:
+        return self.browser.eval(self.page, "document.body.innerText") if self.browser else ""
+
+    def done(self, timeout: float = 120) -> str:
+        message = self.status("done", timeout)["message"]
+        if self.browser:
+            self._until("document.body.dataset.done === '1'")
+            self.browser.close(self.page)
+        return message
+
+
+def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, fail, report, artifact, normalize,
+                   captain_jid, gateway, tmp_path) -> None:
+    """Section 10k: ESPOL's Académico. The captain asks for his GPA; with no copy, Vinci's tool asks for the sign-in
+    and a «🎓 Conectar Académico» button reaches his chat. On its page he gives his user, then his password with a
+    wrong CAPTCHA (the portal's words and a new one come back), then the right one: the worker signs in with one
+    session, reads every section, saves the copy and tells the chat, and his question comes back to Vinci by itself
+    in the same session, answered from the copy. Later questions use the copy without the portal; asked to update it
+    on Telegram, a new sign-in brings the portal's new figures. No credential reaches the model, the chat, the relay
+    in clear, a log or the copy."""
+    from test_webview_experiment import CHROMIUM, Browser
+    browser = Browser() if NODE and CHROMIUM else None
+    pages_ctx = FakePages(REPO / "docs", relay.base) if browser else None
+    pages = pages_ctx.__enter__() if pages_ctx else None
+    md = ["# El Académico de ESPOL\n",
+          "Lo que pregunta el capitán, el botón que le llega, lo que hace en la página (" +
+          ("un Chromium real" if browser else "el módulo de la página en Node") + ") y lo que contesta Vinci. El "
+          "Académico es FakePortal: ASP.NET con VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos y CAPTCHA.\n"]
+    bot = USERNAMES[BOT_TOKEN]
+    copy_file = data_dir / "academico.json"
+    try:
+        # 1. No copy yet: the tool asks for the sign-in, the button arrives, nothing secret is asked in the chat
+        mark, calls = len(wa.sent), len(llm.requests)
+        asked = say(captain_jid, captain_jid, "cuál es mi promedio y cuántas materias aprobé", "Capitán")
+        assert "Conectar Académico" in text_of(asked), text_of(asked)
+        button = wa.wait_for(lambda b: [m for m in b.sent[mark:] if m["path"] == "send-url-button"
+                                        and m["buttonText"] == "🎓 Conectar Académico"], 60)
+        assert button, fail(f"no llegó el botón del Académico: {wa.sent[mark:]}")
+        url = button[0]["url"]
+        assert url.startswith("https://sebasb76.github.io/vinci/academico/?k=") and "#m=" in url, url
+        assert "contraseña" in button[0]["message"] and "vence en 15 min" in button[0]["message"], button[0]
+        assert not copy_file.exists() and not portal.logins, "nada se guardó ni se intentó todavía"
+        md.append(f"**Capitán**: cuál es mi promedio y cuántas materias aprobé\n→ Vinci: {normalize(text_of(asked))}\n"
+                  f"→ Vinci: {normalize(button[0]['message'])} [botón «{button[0]['buttonText']}»]\n")
+
+        # 2. The page: user, a wrong CAPTCHA, the right one
+        page = PortalPage(url, relay, pages, browser)
+        page.sign_in(PORTAL_USER)
+        page.log_in(PORTAL_PASSWORD, "AAAAA")
+        refused = page.status("login", error="no es correcto")
+        assert refused["captcha"].startswith("data:image/jpeg;base64,"), refused
+        if browser:
+            page._until("document.getElementById('status').textContent.includes('no es correcto')")
+        md.append("**Capitán**, en la página: escribe su usuario → la PC entra al primer paso y le muestra el CAPTCHA; "
+                  f"pone su contraseña y un código equivocado → la página dice «{refused['error']}» con un CAPTCHA "
+                  "nuevo; pone el código correcto.\n")
+        mark = len(wa.sent)
+        page.log_in(PORTAL_PASSWORD, portal.last_code())
+        finished = page.done()
+        assert "Vinci te responde en el chat" in finished, finished
+
+        # 3. The chat: the copy saved, then the question answered by itself in the same session
+        answer = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "8,15" in m.get("message", "")],
+                             120)
+        assert answer, fail(f"la pregunta no volvió a su chat: {wa.messages_to(captain_jid, mark)}")
+        told = text_of(wa.messages_to(captain_jid, mark))
+        assert "✅ Listo: guardé tu Académico del 2026 · 2do Término" in told, told
+        assert "Aprobaste 4 materias" in told and "Convalidada: Inglés I" in told and "2026 · 2do Término" in told, told
+        back = [r for r in llm.requests[calls:] if PORTAL_BACK in json.dumps(r, ensure_ascii=False)]
+        assert back and "cuál es mi promedio y cuántas materias aprobé" in json.dumps(back[0], ensure_ascii=False), \
+            "la pregunta vuelve a la misma conversación de Hermes, sin que el capitán la repita"
+        md.append(f"→ Vinci: {normalize(told)}\n")
+        sessions = {r["session"] for r in portal.requests}
+        assert len(sessions) == 1 and None not in sessions, f"un solo ingreso, una sola sesión: {sessions}"
+        assert [outcome for _, outcome in portal.logins] == ["captcha", "ok"], portal.logins
+        copy = json.loads(copy_file.read_text())
+        assert stat.S_IMODE(copy_file.stat().st_mode) == 0o600
+        assert copy["period"] == "2026 · 2do Término" and copy["saved_at"] and not copy["errors"], copy["errors"]
+        assert set(copy["sections"]) == {"historial", "calificaciones", "creditos", "horario", "examenes"}
+        assert set(copy["sections"]["examenes"]["por_tipo"]) == {"Parcial", "Final", "Mejoramiento"}
+        mailboxes = json.loads((data_dir / "amigos" / "rele.json").read_text()).get("mailboxes", {})
+        assert not [b for b in mailboxes.values() if b["kind"] == "academico"], "el buzón del ingreso se cerró"
+        time.sleep(2)
+        alive = subprocess.run(["pgrep", "-f", "espol_bot portal-worker"], capture_output=True, text=True)
+        assert alive.returncode == 1, f"el proceso del ingreso terminó y soltó la sesión: {alive.stdout}"
+        report.append("El Académico: «¿cuál es mi promedio y cuántas materias aprobé?» sin copia → academic_record pide "
+                      "el ingreso y al chat le llega el botón «🎓 Conectar Académico». En su página (" +
+                      ("Chromium" if browser else "Node") + ") el capitán pone su usuario, después su contraseña y un "
+                      "CAPTCHA equivocado (vuelve la frase del portal con otro CAPTCHA) y luego el correcto. La PC entra "
+                      "con una sola sesión de ASP.NET (VIEWSTATE, EVENTVALIDATION, cookies), lee historial, "
+                      "calificaciones, créditos, horario y exámenes (parcial, final y mejoramiento), guarda la copia con "
+                      "su fecha y su período (2026 · 2do Término) y avisa en el chat; la pregunta vuelve sola a la misma "
+                      "conversación y Vinci contesta 8,15 y las 4 aprobadas, con Inglés I aparte como convalidada")
+
+        # 4. From the copy, without the portal
+        seen = len(portal.requests)
+        approved = text_of(say(captain_jid, captain_jid, "qué materias aprobé", "Capitán"))
+        assert "Aprobaste 4 materias" in approved and "Física I" in approved, approved
+        finals = text_of(say(captain_jid, captain_jid, "cuándo son mis exámenes finales", "Capitán"))
+        assert "02/02/2027" in finals and "04/02/2027" in finals, finals
+        progress = text_of(say(captain_jid, captain_jid, "cuánto me falta para graduarme", "Capitán"))
+        assert "48 créditos aprobados" in progress and "malla" in progress, progress
+        avance = next(r for r in reversed(llm.requests) if "cuánto me falta para graduarme" in json.dumps(r, ensure_ascii=False))
+        assert "Never work out the remaining subjects" in json.dumps(avance, ensure_ascii=False), \
+            "la herramienta le prohíbe al modelo restar las aprobadas de un total"
+        assert len(portal.requests) == seen, "con copia, Vinci no vuelve a entrar al Académico"
+        for asked_, said in (("qué materias aprobé", approved), ("cuándo son mis exámenes finales", finals),
+                             ("cuánto me falta para graduarme", progress)):
+            md.append(f"**Capitán**: {asked_}\n→ Vinci: {normalize(said)}\n")
+        report.append("Con la copia, «¿qué materias aprobé?», «¿cuándo son mis exámenes finales?» y «¿cuánto me falta "
+                      "para graduarme?» se contestan sin volver al Académico; para el avance la herramienta da los "
+                      "créditos que dice el portal y le prohíbe al modelo calcular lo que falta restando de un total, "
+                      "porque la malla todavía no se lee")
+
+        # 5. Updating it, from Telegram: a new sign-in, the portal's new figures
+        portal.version = 2
+        mark = len(telegram.messages)
+        telegram.send_text(BOT_TOKEN, CAPTAIN, "actualiza mi Académico y dime mi promedio")
+
+        def web_app_button(t):
+            for m in t.messages[mark:]:
+                markup = m.get("reply_markup")
+                markup = json.loads(markup) if isinstance(markup, str) else markup or {}
+                for row in markup.get("inline_keyboard") or []:
+                    for key in row:
+                        if m["bot"] == bot and key.get("text") == "🎓 Conectar Académico" and key.get("web_app"):
+                            return key["web_app"]["url"]
+            return None
+        tg_url = telegram.wait_for(web_app_button, 120)
+        assert tg_url, fail(f"no llegó el botón por Telegram: {[readable(m)[:100] for m in telegram.messages[mark:]]}")
+        page = PortalPage(tg_url, relay, pages, browser)
+        page.sign_in(PORTAL_USER)
+        page.log_in(PORTAL_PASSWORD, portal.last_code())
+        page.done()
+        updated = telegram.wait_for(lambda t: next((m for m in t.messages[mark:] if m["bot"] == bot
+                                                    and "8,22" in readable(m)), None), 120)
+        assert updated, fail(f"la pregunta no volvió por Telegram: {[readable(m)[:120] for m in telegram.messages[mark:]]}")
+        copy = json.loads(copy_file.read_text())
+        assert next(s for s in copy["sections"]["historial"]["materias"] if s["code"] == "ADSG1026")["status_kind"] == \
+            "approved", "la copia nueva trae la nota que el portal publicó después"
+        md.append("**Capitán** (Telegram): actualiza mi Académico y dime mi promedio\n→ Vinci: un botón «🎓 Conectar "
+                  "Académico» que abre la página como Mini App; entra otra vez\n"
+                  f"→ Vinci: {normalize(readable(updated))}\n")
+        report.append("«Actualiza mi Académico» desde Telegram: otro botón (Mini App), otro ingreso, y la respuesta "
+                      "vuelve sola a la conversación de Telegram con el promedio nuevo (8,22) y Sostenibilidad aprobada")
+
+        # 6. Nothing secret anywhere
+        files = b"".join(read_if_there(f) for f in data_dir.rglob("*") if f.is_file())
+        dumps = (json.dumps(llm.requests, ensure_ascii=False) + json.dumps(wa.sent, ensure_ascii=False)
+                 + json.dumps(telegram.messages, ensure_ascii=False) + json.dumps(relay.posted)
+                 + json.dumps(relay.status_log, ensure_ascii=False) + gateway.tail(100000))
+        for secret in (PORTAL_PASSWORD, f'"user": "{PORTAL_USER}"'):
+            assert secret not in dumps, f"«{secret}» llegó al modelo, al chat, al relé o al registro del gateway"
+        assert PORTAL_PASSWORD.encode() not in files and PORTAL_USER.encode() not in files, \
+            "ni la contraseña ni el usuario quedan en la carpeta de datos (copia, bot.log, registro del relé)"
+        assert all(re.fullmatch(r"v2\.[\w-]+\.[\w-]{16}\.[\w-]+", m["data"]["sealed"]) for m in relay.posted
+                   if m["data"].get("kind") == "academico"), "el relé solo ve texto cifrado"
+        assert not any(c in copy_file.read_text() for c in ("ASP.NET_SessionId", ".ASPXAUTH", "__VIEWSTATE",
+                                                            *{r["session"] for r in portal.requests})), \
+            "la copia no guarda la sesión"
+        report.append("Ni la contraseña ni el usuario aparecen en lo que vio el modelo, en los chats, en el relé (solo "
+                      "texto cifrado v2), en el registro del gateway ni en la carpeta de datos; la copia no guarda "
+                      "cookies ni campos de sesión, y el proceso del ingreso termina al acabar")
+    finally:
+        if browser:
+            browser.quit()
+        if pages_ctx:
+            pages_ctx.__exit__(None, None, None)
+        (artifact / "academico.md").write_text("\n".join(md), encoding="utf-8")
+
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspace, llm, run, take, report, gateway,
                artifact, equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,

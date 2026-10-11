@@ -53,6 +53,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | 📋 **Dashboard de entregas** | El botón «📋 Entregas», al lado del campo de texto del chat de Vinci, abre una página dentro de Telegram con cuánto llevas del semestre, tus entregas pendientes (atrasadas, de hoy, de esta semana y más adelante) y las novedades del aula. Marcas una entrega con un toque y Vinci la cuenta como entregada. La página no lee tus datos de ningún servidor. [Cómo funciona](#el-dashboard-de-entregas). |
 | 📌 **Tu lista de pendientes** | «Anota: estudiar cap. 3 de Física para el viernes»: Vinci guarda lo que el aula no trae (lecturas, trámites, lo que el profe dijo en clase y no subió), con su materia y su fecha. Sale en el resumen de las 7:00 y en «¿qué tengo esta semana?», te lo recuerda 24 h y 3 h antes, y lo cierras con «✅ Hecho». |
 | 📊 **Calculadora de notas** | «¿Cómo voy?», «¿cuánto necesito en la lección para pasar?», «¿y si saco 70 en el examen?»: aplica los pesos de cada materia a tus notas del aula (y a las que le cuentas) y te dice cuánto llevas y qué promedio necesitas en lo que falta. Los pesos los saca del sílabo, de las políticas del curso y de los anuncios, incluido cómo maneja cada materia el primer parcial sin examen por El Niño; lo que no encuentra te lo pregunta, y se guarda solo cuando pulsas «✅ Guardar esquema». Las cuentas las hace un script, no el modelo. [Más sobre la calculadora](#la-calculadora-de-notas). |
+| 🎓 **Tu Académico de ESPOL** | «¿Cuál es mi promedio?», «¿qué materias aprobé?», «¿cuándo es mi final de Software?»: Vinci lee tu historial, tus calificaciones, tus créditos y tus horarios de clases y de exámenes del [Académico](https://www.academico.espol.edu.ec). La primera vez te manda el botón «🎓 Conectar Académico»: entras en esa página con tu usuario, tu contraseña y el CAPTCHA, y Vinci te contesta solo en el chat. No guarda tu contraseña. [Cómo funciona](#tu-académico-de-espol). |
 | 🤖 **Un bot por materia** | Le dices «arma mi equipo» y Vinci te propone un bot por cada materia de tu aula, que se crea con un toque tuyo. El teórico y el práctico de una materia comparten un solo bot. |
 | 📚 **Brief antes de cada clase** | 30 minutos antes de cada clase de tu horario, el bot de esa materia te manda un repaso de la clase anterior, lo que vence, el material nuevo, 2 o 3 conceptos clave y una pregunta para hacerle al profe. |
 | 📓 **Cuaderno de cada materia** | Cuéntale al bot lo que vieron o mándale una foto de la pizarra, una nota de voz o un PDF: lo guarda con un resumen. Lleva tus dudas y los temas que te cuestan, y los usa en los briefs. |
@@ -541,6 +542,42 @@ Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puede
 - **Ordena tus entregas.** Con el esquema guardado, el resumen de las 7:00 y «¿qué tengo esta semana?» te dicen
   cuánto vale cada entrega en tu nota y ponen primero lo que más pesa ([El resumen de las 7:00](#el-resumen-de-las-700)).
 
+### Tu Académico de ESPOL
+
+El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu historial con la nota y el estado de
+cada materia, tu promedio general, los créditos de tu carrera y tus horarios de clases y de exámenes. No tiene API,
+así que Vinci lo lee como lo harías tú en el navegador, una vez, y guarda una copia en tu PC.
+
+1. Pregúntale a Vinci algo de ahí: «¿cuál es mi promedio?», «¿qué materias aprobé?», «¿cuándo son mis finales?».
+2. Si no tiene copia, te manda el botón «🎓 Conectar Académico» (en Telegram abre como Mini App; en WhatsApp, dentro
+   de WhatsApp en el iPhone).
+3. En la página, escribe tu usuario de ESPOL y toca «Siguiente».
+4. Escribe tu contraseña y el código de la imagen, y toca «Ingresar». Si el código no era, la página te muestra lo
+   que dijo el Académico y otra imagen.
+5. Espera el «✅ Listo». Vinci te avisa en el chat qué guardó y te responde la pregunta del paso 1, sin que la
+   repitas.
+
+<p align="center">
+  <img src="docs/images/academico-usuario.png" alt="La página «Conectar tu Académico»: el campo del usuario de ESPOL y el botón «Siguiente»" width="260">
+  <img src="docs/images/academico-captcha.png" alt="El segundo paso: la contraseña, la imagen del CAPTCHA que mandó el Académico y el aviso de que el código no era correcto" width="260">
+</p>
+
+Desde ahí te contesta con la copia y te dice de cuándo es y de qué período. Para ponerla al día, dile «actualiza mi
+Académico»: te llega otro botón.
+
+- **Tu contraseña no se guarda.** La página la cifra en tu celular con una llave de un solo uso. Viaja por el relé
+  como texto ilegible hasta tu PC, que entra al Académico una vez y la olvida junto con la sesión. Nunca pasa por el
+  chat ni por el modelo, y no queda en ningún archivo ni registro.
+- **Qué lee:** el historial académico, las calificaciones del período, los créditos y requisitos, el horario de
+  clases y el de exámenes (parcial, final y mejoramiento). Si una sección falla, guarda las demás y te dice cuál
+  faltó.
+- **Qué no calcula:** el promedio es el que muestra el portal. Lo que te falta para graduarte necesita tu malla, con
+  sus optativas, convalidaciones y requisitos, y Vinci todavía no la lee: te da los créditos que dice el portal, sin
+  restar las aprobadas de un total.
+- **Necesita el relé** ([cómo publicarlo](#vinci-en-whatsapp)): por ahí la página recibe la imagen del CAPTCHA y
+  ve cómo va el ingreso.
+- **Cada amigo con lo suyo.** El Vinci de un amigo le manda su propio botón y guarda su copia en su carpeta.
+
 ### El resumen de las 7:00
 
 Cada mañana Vinci te manda tu semana: lo que tienes por entregar (tareas del aula que aún no enviaste ni marcaste con
@@ -609,6 +646,16 @@ aula ocr                               # leer ya con OCR las páginas escaneadas
 tienen menos de 10 minutos; si no, vuelve a leer el aula (y si no puede, te muestra lo guardado). Con
 `--actualizar` la lee siempre y falla si no puede; con `--sin-actualizar` usa solo lo guardado.
 
+Para el Académico:
+
+```bash
+.venv/bin/espol-bot academico              # qué tiene la copia: fecha, período, tablas de cada sección
+.venv/bin/espol-bot academico --conectar   # entra desde la terminal: usuario, contraseña oculta y el CAPTCHA en un archivo
+.venv/bin/espol-bot academico --conectar --html /tmp/academico-html   # además guarda el HTML de cada página
+```
+
+Con `--html`, el HTML trae tus datos: sirve para revisar cómo Vinci lee las tablas, y después se borra.
+
 **Con Claude Code:** en cualquier sesión de Claude Code en tu PC puedes pedir «bájate el PDF de la semana 3 de
 Cálculo y explícame el ejercicio 4»; la skill `aula` le enseña a usar el comando.
 
@@ -636,7 +683,8 @@ una página. El relé es un Worker de Cloudflare, gratis y sin tarjeta, que hace
 cifrado o la entrega que marcaste. Tu PC lo recoge cada 3 segundos mientras un enlace está abierto, sin abrir
 ningún puerto. Vinci te confirma en el chat. El relé solo ve el texto cifrado, que únicamente tu PC puede abrir.
 Sin relé, la página te da el texto cifrado para pegar en el chat, y marcar una entrega abre el chat con `/marca …`
-escrito.
+escrito. La página del Académico también usa el relé en los dos sentidos: deja ahí tus datos cifrados y lee de ahí la
+imagen del CAPTCHA y cómo va el ingreso; sin relé no funciona.
 
 Para publicar tu relé:
 
@@ -840,6 +888,10 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 - **Las acciones importantes pasan por tu botón.** Crear, archivar o reactivar un bot, guardar el horario o cómo se
   evalúa una materia y entregar una actividad en el aula ocurren solo cuando pulsas el botón; el modelo solo puede
   mostrártelo.
+- **Tu contraseña del Académico tampoco.** La página del botón «🎓 Conectar Académico» cifra tu usuario, tu
+  contraseña y el CAPTCHA en tu celular con una llave de un solo uso que solo tiene el proceso de tu PC que hace ese
+  ingreso. Ese proceso entra, guarda la copia (`academico.json`, permisos 600, sin cookies ni contraseña) y termina:
+  la llave, la contraseña y la sesión del portal solo vivieron en su memoria.
 - **Los tokens de los bots nunca llegan al modelo.** El plugin atrapa cualquier mensaje con un token antes que
   Hermes, lo guarda y borra el mensaje del chat. Con «gestionar otros bots», el token ni siquiera pasa por el chat.
 - **El token del aula tampoco.** `/token` lo cifra en tu celular y Telegram solo lleva el texto cifrado. Un token del
@@ -855,7 +907,7 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 | `~/.hermes/platforms/whatsapp/session/` | La sesión de WhatsApp del número de Vinci: quien la tenga escribe como Vinci |
 | Hermes | Tu acceso al modelo, según cómo lo configuraste con `hermes model` |
 
-**Qué sale de tu PC:** las consultas al aula virtual (con tu token) y el PDF de una entrega que confirmaste; los mensajes y archivos que van y
+**Qué sale de tu PC:** las consultas al aula virtual (con tu token), el ingreso al Académico que haces desde su botón y el PDF de una entrega que confirmaste; los mensajes y archivos que van y
 vienen por Telegram; y, cuando un bot usa el modelo, tu mensaje, lo que le mandaste y lo que sus herramientas
 leyeron para responderte (tareas, notas, anuncios, partes del material, entradas del cuaderno) van al proveedor
 del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, un bot abre un
@@ -930,6 +982,13 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
   sigue a lo más 60 enlaces por revisión hacia el material que solo un enlace muestra; lo demás, en las siguientes.
   La primera vez, el catálogo completo puede tomar varias revisiones. Si el aula pide bajar el ritmo, el sondeo no
   la vuelve a leer durante una hora.
+
+- **El Académico, probado contra una imitación:** la prueba E2E entra a un Académico falso que se comporta como
+  ASP.NET (VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos, CAPTCHA). Contra el portal real comprobamos la página de
+  ingreso y su segundo paso, pero todavía no un ingreso con extracción completa: el lector de tablas es genérico y
+  puede necesitar ajustes. Corre `espol-bot academico --conectar --html …` para probarlo con tu cuenta.
+- **La malla, todavía no:** Vinci no lee la malla de tu carrera, así que no te dice qué materias te faltan.
+- **El Académico sin relé, tampoco:** sin el relé la página no puede mostrarte el CAPTCHA.
 
 ## Solución de problemas
 

@@ -50,6 +50,10 @@
                                      their own aula (the plugin vinci-whatsapp)
     espol-bot whatsapp-rele          what the /token page and the dashboard sent through Vinci's relay (relay.py),
                                      run for whom each link was issued (the plugin vinci-whatsapp)
+    espol-bot portal-worker <buzón>  one sign-in to ESPOL's Académico from its page (portal_login.py; started by
+                                     whatsapp-rele)
+    espol-bot academico [--conectar] what the Académico's copy holds; with --conectar, sign in from this terminal
+                                     (user and password hidden, the CAPTCHA in a file) and save a new copy
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -220,6 +224,61 @@ def _reseed(cfg, *, from_stdin: bool = False) -> int:
     return 0
 
 
+def _portal(cfg, args) -> int:
+    from espol_bot import academic_portal
+    if not args.conectar:
+        copy = academic_portal.load(cfg)
+        if copy is None:
+            print("Todavía no hay copia del Académico. Corre `espol-bot academico --conectar`, o pregúntale a Vinci "
+                  "algo de tu historial y toca «🎓 Conectar Académico».")
+            return 0
+        from aula_core import timefmt
+        print(f"Copia del Académico del {timefmt.human(copy['saved_at'], cfg.core.tz)}, período "
+              f"{copy.get('period') or 'desconocido'}: {academic_portal.summary(copy)}.")
+        for key, section in copy["sections"].items():
+            tables = section.get("tablas") or [t for kind in (section.get("por_tipo") or {}).values() for t in kind]
+            print(f"- {key}: {len(tables)} tabla(s), {sum(len(t['filas']) for t in tables)} fila(s), "
+                  f"{len(section.get('datos') or {})} dato(s)")
+        for key, why in (copy.get("errors") or {}).items():
+            print(f"- {key}: no se pudo leer ({why})")
+        return 0
+    import shutil
+    import tempfile
+    portal = academic_portal.Portal(cfg)
+    folder = Path(tempfile.mkdtemp(prefix="academico-"))
+    if args.html:
+        portal.dump = Path(args.html).expanduser()
+        portal.dump.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        portal.begin()
+        portal.submit_user(input("Usuario de ESPOL (sin @espol.edu.ec): ").strip())
+        while True:
+            image = folder / "captcha.jpg"
+            image.write_bytes(portal.captcha[0])
+            print(f"El CAPTCHA está en {image}")
+            password = getpass.getpass("Contraseña (no se mostrará): ")
+            try:
+                portal.submit_login(password, input("Código de la imagen: ").strip())
+                break
+            except academic_portal.LoginRefused as exc:
+                print(f"El Académico dijo: {exc.message}")
+                if portal.captcha is None:
+                    return 1
+            finally:
+                password = ""
+        copy = academic_portal.save(cfg, portal.extract(print), now_utc(), just_saved=False)
+    except academic_portal.PortalError as exc:
+        print(f"Vinci: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        portal.close()
+        shutil.rmtree(folder, ignore_errors=True)
+    print(f"Guardé la copia: {academic_portal.summary(copy)} (período {copy.get('period') or 'desconocido'}).")
+    for key, why in copy["errors"].items():
+        print(f"- {key}: no se pudo leer ({why})")
+    return 0
+
+
 def _configure_feeds(cfg) -> int:
     from aula_core import feeds
     calendar = getpass.getpass("URL de Fuente del calendario (iCal; no se mostrará): ").strip()
@@ -301,6 +360,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("whatsapp-rele", help="lo que el formulario del token y el dashboard mandaron por el relé de "
                                              "Vinci (lo usa el plugin vinci-whatsapp)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
+    p = sub.add_parser("portal-worker", help="un ingreso al Académico desde su página (lo inicia whatsapp-rele)")
+    p.add_argument("mailbox")
+    p = sub.add_parser("academico", help="qué guarda la copia del Académico; con --conectar, entra desde la terminal")
+    p.add_argument("--conectar", action="store_true", help="entrar al Académico y guardar una copia nueva")
+    p.add_argument("--html", default=None, metavar="CARPETA",
+                   help="con --conectar: guarda ahí el HTML de cada página leída, para revisar el lector (trae tus "
+                        "datos: bórralo después)")
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -321,6 +387,12 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"respuestas": answers}, ensure_ascii=False) if args.json else
                   "\n\n".join(a["respuesta"] for a in answers) or "Nada nuevo en el relé.")
             return 0
+        if args.cmd == "portal-worker":
+            from espol_bot import portal_login
+            _logging(cfg)
+            return portal_login.run_worker(cfg, args.mailbox, now_utc())
+        if args.cmd == "academico":
+            return _portal(cfg, args)
         if args.cmd in ("amigo", "whatsapp-grupo", "whatsapp-comando"):
             _logging(cfg)
             return _friends(cfg, args)

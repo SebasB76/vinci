@@ -1,0 +1,32 @@
+.card {
+  background: var(--tg-section-bg-color);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.card + .card { margin-top: 12px; }
+.card label:not(:first-child) { margin-top: 16px; }
+.card .send { margin-top: 16px; }
+#wait .lead { text-align: center; }
+
+.suffix {
+  flex: none;
+  align-self: center;
+  padding: 0 12px;
+  color: var(--tg-hint-color);
+  font-size: 14px;
+}
+
+#captcha {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  min-height: 48px;
+  margin: 0 0 10px;
+  border-radius: 10px;
+  background: #fff;
+  image-rendering: auto;
+}
+
+#code { text-transform: uppercase; letter-spacing: 0.12em; }
+#code::placeholder { text-transform: none; letter-spacing: normal; }

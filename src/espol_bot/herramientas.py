@@ -33,6 +33,11 @@ Past exams come from ESPOL's public DSpace, only when asked (aula_core/dspace.py
 live, after a line in the captain's chat that says so, and `open_past_exam` downloads one into the material (a
 subject bot's own course; for Vinci an inactive course of its own), so it is read and cited like any document.
 
+ESPOL's Académico (history, GPA, credits, timetables) is a second source with no API: `academic_record` answers from
+the copy a sign-in saved (academic_portal.py); with none, or asked to refresh it, it has the student sent a button
+to sign in themselves (portal_login.py), and the question comes back once the copy is there. No tool sees their
+password, and the copy holds none.
+
 The Canvas token stays inside this process: no tool ever returns it.
 """
 
@@ -59,8 +64,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
-from espol_bot import (agenda, citations, diapositivas, grades, health, horario, libros, materias, messages, priority,
-                       quiz, store, submission)
+from espol_bot import (academic_portal, agenda, citations, diapositivas, grades, health, horario, libros, materias,
+                       messages, portal_login, priority, quiz, store, submission)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -151,7 +156,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas"})
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record"})
 
 
 @dataclass
@@ -793,6 +798,23 @@ QUIZ_QUESTIONS = {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
                                                        "(una foto, un apunte, un texto que te pasó)"}},
     "required": ["question", "options", "answer", "explanation"]}}
 CHANNEL_FRESH = 600  # seconds: canal.json older than this is from another conversation
+PORTAL_TOPICS = ("historial", "promedio", "avance", "calificaciones", "horario", "examenes", "todo")
+PORTAL_OLD = timedelta(days=30)
+PORTAL = ("ESPOL's Académico (academico.espol.edu.ec), not the aula virtual: the student's academic history (every "
+          "subject with its grade and status: approved, failed, credited, in progress), the GPA as the portal shows "
+          "it, credits and requirements of the degree, this term's grades, and the class and exam timetables (parcial, "
+          "final, mejoramiento). Use it for those questions, never `notas` or `semana`. With a saved copy it answers "
+          "from it, with when it was read and its term. With none (or with refresh) it sends the student a «🎓 "
+          "Conectar Académico» button to sign in on a page of their own; their question comes back to you by itself "
+          "once the copy is saved. Never ask for their user, password or CAPTCHA in the chat.")
+PORTAL_PROPERTIES = {
+    "topic": {"type": "string", "enum": list(PORTAL_TOPICS),
+              "description": "historial: approved/failed subjects; promedio: GPA; avance: credits and progress; "
+                             "calificaciones: this term's grades; horario: class timetable; examenes: exam timetable"},
+    "question": {"type": "string", "description": "the student's question, in their words (it comes back to you "
+                                                  "after they connect)"},
+    "refresh": {"type": "boolean", "description": "true only when they ask to update or reconnect the Académico"},
+}
 
 
 def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
@@ -1014,6 +1036,91 @@ def _slides_tool(ctx: Ctx) -> Tool:
         return {"ruta": str(path), "diapositivas": len(args["diapositivas"]) + 1}
 
     return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
+
+
+def _channel(ctx: Ctx) -> dict:
+    """Where this tool call's conversation happens (canal.json, which the vinci-botones plugin writes before it)."""
+    if ctx.hermes_home is None:
+        return {}
+    try:
+        note = json.loads((ctx.hermes_home / "canal.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return note if time.time() - float(note.get("en") or 0) < CHANNEL_FRESH else {}
+
+
+def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
+    sections, now = copy["sections"], ctx.now()
+    saved = timefmt.parse(copy.get("saved_at"))
+    answer = {"saved_at": timefmt.human(saved, ctx.cfg.core.tz), "period": copy.get("period") or "unknown",
+              "source": "Académico ESPOL"}
+    if saved is not None and now - saved > PORTAL_OLD:
+        answer["old"] = (f"This copy is from {answer['saved_at']}: say so, and offer to update it (refresh: true).")
+    if copy.get("errors"):
+        answer["not_read"] = copy["errors"]
+    history = sections.get("historial") or {}
+    subjects = history.get("materias") or []
+    by_kind = {kind: [{k: v for k, v in s.items() if k != "status_kind" and v} for s in subjects
+                      if s["status_kind"] == kind]
+               for kind in ("approved", "credited", "failed", "in_progress", "withdrawn", "other")}
+    portal_facts = {f"{key}: {label}": value for key, section in sections.items()
+                    for label, value in (section.get("datos") or {}).items()}
+    gpa = {label: value for label, value in portal_facts.items() if re.search(r"promedio", label, re.I)}
+    if topic == "historial":
+        answer["subjects"] = {kind: items for kind, items in by_kind.items() if items}
+        answer["counts"] = {kind: len(items) for kind, items in by_kind.items() if items}
+        answer["gpa"] = gpa
+        if not subjects:
+            answer["tables"] = history.get("tablas") or []
+        answer["note"] = ("Credited (convalidada, homologada) subjects are not approved ones taken here: name them "
+                          "apart.")
+    elif topic == "promedio":
+        answer["gpa"] = gpa or None
+        answer["counts"] = {kind: len(items) for kind, items in by_kind.items() if items}
+        answer["note"] = ("Give the GPA exactly as the portal shows it. If `gpa` is empty the portal shows none: say "
+                          "so, and never compute one from the grades.")
+    elif topic == "avance":
+        credits = sections.get("creditos") or {}
+        answer.update({"credits": {"facts": credits.get("datos") or {}, "tables": credits.get("tablas") or []},
+                       "counts": {kind: len(items) for kind, items in by_kind.items() if items},
+                       "in_progress": by_kind["in_progress"]})
+        answer["note"] = ("The curriculum (malla) is not read yet. Report only what the portal states about credits "
+                          "and requirements. Never work out the remaining subjects or credits by subtracting the "
+                          "approved ones from a total: electives, credited subjects and each degree's requirements "
+                          "change that count.")
+    elif topic in ("calificaciones", "horario"):
+        section = sections.get(topic) or {}
+        answer.update({"selected": section.get("seleccion") or {}, "tables": section.get("tablas") or [],
+                       "facts": section.get("datos") or {}})
+    elif topic == "examenes":
+        section = sections.get("examenes") or {}
+        answer.update({"selected": section.get("seleccion") or {}, "by_kind": section.get("por_tipo") or {}})
+    else:
+        answer.update({"counts": {kind: len(items) for kind, items in by_kind.items() if items}, "gpa": gpa,
+                       "sections": {key: {k: v for k, v in s.items() if k != "materias"} for key, s in sections.items()},
+                       "subjects": {kind: items for kind, items in by_kind.items() if items}})
+    return answer
+
+
+def _academic_record(ctx: Ctx, args: dict) -> dict:
+    topic = args.get("topic") if args.get("topic") in PORTAL_TOPICS else "todo"
+    copy = academic_portal.load(ctx.cfg)
+    if copy is not None and copy.get("just_saved"):
+        academic_portal.mark_used(ctx.cfg, copy)
+        return _portal_answer(ctx, copy, topic)
+    if copy is not None and not args.get("refresh"):
+        return _portal_answer(ctx, copy, topic)
+    question = str(args.get("question") or "").strip()
+    try:
+        sent = portal_login.request(ctx.cfg, _channel(ctx), topic, question, ctx.now())
+    except portal_login.LoginError as exc:
+        raise ToolError(str(exc)) from None
+    return {"connect": "button on its way",
+            "mensaje": ("I am sending the student a «🎓 Conectar Académico» button in this chat (it may take a few "
+                        "seconds). Tell them in one or two lines to open it and sign in there with their ESPOL user, "
+                        f"password and the code in the picture; it expires in {sent['minutes']} min. Their password "
+                        "never goes through the chat. When they finish, their question comes back to you with the "
+                        "data saved: answer it then. Do not ask for anything else now.")}
 
 
 def vinci_tools(ctx: Ctx) -> list[Tool]:
@@ -1421,6 +1528,8 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("reactivar_materia", "Le muestra un botón para reactivar el bot archivado de una materia.", reactivar,
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
         _slides_tool(ctx),
+        Tool("academic_record", PORTAL, lambda args: _academic_record(ctx, args), PORTAL_PROPERTIES, ["topic", "question"],
+             read_only=False),
     ])
 
 

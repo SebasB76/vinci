@@ -26,6 +26,10 @@ friend's and in the default one; it acts only on WhatsApp.
 - The /token page and the dashboard, opened from a button: what they post to Vinci's relay (src/espol_bot/relay.py)
   is fetched here every few seconds while a link is open (`espol-bot whatsapp-rele`), only by the default profile's
   copy and one process at a time, and answered in the chat of whom the link was for.
+- The Académico, once connected from its button (src/espol_bot/portal_login.py): the question that needed it waits
+  in TURNS, and this loop puts it back in the Hermes session it came from (ctx.inject_message, which the gateway
+  allows this plugin only: plugins.entries.vinci-whatsapp.allow_gateway_injection), on WhatsApp or Telegram, so
+  Vinci answers it there. Only the default profile's copy can: the gateway hands its injector to that profile.
 
 When adding or removing a friend changed the routes, the gateway restarts itself once the turns in flight end.
 Any failure here drops the message: nothing reaches a Vinci that this plugin could not place.
@@ -57,6 +61,7 @@ NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
 RELAY = "{{RELAY}}"  # relay.py's mailboxes; set only in the default profile's copy, the one that polls
 RELAY_EVERY = 3
+TURNS = os.path.join(os.path.dirname(RELAY), "turns") if RELAY else ""
 ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}"}
 SEALED_RE = re.compile(r"v1\.[A-Za-z0-9_-]{200,}")
 # ESPOL's aula tokens: 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~".
@@ -87,7 +92,7 @@ _GATEWAY = []  # the gateway, as the hook last saw it: a relay answer may need i
 def register(ctx):
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
     if RELAY:
-        threading.Thread(target=_relay_loop, name="vinci-relay", daemon=True).start()
+        threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
 
 
 async def _dispatch(event=None, gateway=None, **_):
@@ -329,7 +334,7 @@ def _post(path, payload):
         response.read()
 
 
-def _relay_loop():
+def _relay_loop(ctx):
     try:  # one poller for the machine, whichever process loaded this copy first (the gateway, normally)
         lock = open(f"{RELAY}.lock", "w")
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -337,6 +342,10 @@ def _relay_loop():
         return
     while True:
         time.sleep(RELAY_EVERY)
+        try:
+            _inject_turns(ctx)
+        except Exception:
+            logger.exception("no pude retomar una pregunta del Académico")
         try:
             if not _relay_waiting():
                 continue
@@ -351,6 +360,25 @@ def _relay_loop():
                     _relay_restart()
         except Exception:
             logger.exception("no pude atender el relé")
+
+
+def _inject_turns(ctx):
+    """Each question the Académico's sign-in left (portal_login.py), back in its session; kept for a retry while the
+    gateway cannot take it yet, dropped when it expires."""
+    try:
+        names = sorted(n for n in os.listdir(TURNS) if n.endswith(".json"))
+    except FileNotFoundError:
+        return
+    for name in names:
+        path = os.path.join(TURNS, name)
+        turn = _read_dict(path)
+        if not turn.get("session") or float(turn.get("expires") or 0) < time.time():
+            logger.warning("una pregunta del Académico venció sin volver a su chat")
+            os.remove(path)
+            continue
+        if ctx.inject_message(str(turn.get("text") or ""), session_key=str(turn["session"])):
+            os.remove(path)
+            logger.info("pregunta del Académico devuelta a su chat")
 
 
 def _relay_waiting():

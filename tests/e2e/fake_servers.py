@@ -40,7 +40,17 @@ FakeWhatsApp also takes POST /send-url-button, the route Vinci adds to the bridg
 with "send-url-button" in `missing` it answers 404, as Hermes' own bridge.js does.
 
 FakeRelay stands in for Vinci's relay on Cloudflare Workers (relay/worker.js), with its API: a page posts to
-/m/<mailbox>, Vinci's PC reads /inbox and deletes with /ack, both with the relay's key.
+/m/<mailbox>, Vinci's PC reads /inbox (all of it, or one mailbox's) and deletes with /ack, both with the relay's key;
+the PC puts a page's status at /s/<mailbox> with the key and the page reads it back without one. It answers CORS as
+the Worker does, for a page opened in a real browser.
+
+FakePortal stands in for ESPOL's Académico (www.academico.espol.edu.ec, through `[test] link_hosts`), as ASP.NET Web
+Forms behaves: a session cookie, a fresh __VIEWSTATE and __EVENTVALIDATION in every form that the next post must send
+back (a stale or foreign one is a 500, as a broken viewstate MAC is), login.aspx in two steps (user name; then
+password and a BotDetect CAPTCHA whose image must be fetched with the same cookie), a forms-auth cookie, and the pages
+under /UI/InformacionAcademica/ as GridView tables inside a layout table, behind a 302 to login.aspx without it. The
+grades page shows its table only after «Consultar», the timetables change with their year/term drop-downs, and the
+exam timetable with its parcial/final/mejoramiento drop-down (AutoPostBack). It records every request with its session.
 
 FakeDSpace stands in for ESPOL's DSpace (www.dspace.espol.edu.ec, through `[test] link_hosts`): the REST
 `filtered-items` search, which runs a `matches` title regex the way DSpace does, an item by its handle with its
@@ -50,6 +60,9 @@ multipart/form-data envelope it was uploaded with, as many real ones are. It rec
 BrokenIPv6 makes a server reachable as `localhost` where IPv6 is broken and IPv4 works, like
 the captain's network towards api.telegram.org: `localhost` resolves to ::1 first, and a listener
 there with a full accept queue drops every new SYN, so an IPv6 connect hangs until it times out.
+
+FakePages stands in for GitHub Pages: it serves docs/ as published, except that a page's Content-Security-Policy also
+lets it reach the given relay (a local address here, a workers.dev one for real).
 
 ScriptedLLM is an OpenAI-compatible chat-completions endpoint whose answers come from a
 Python function (the test's script): it sees the whole request, so it can pick a tool
@@ -330,24 +343,55 @@ class FakeRelay(_Server):
         super().__init__(_RelayHandler)
         self.messages: list[dict] = []  # waiting: {"id", "mailbox", "data", "at"}
         self.posted: list[dict] = []    # everything a page ever posted
+        self.statuses: dict[str, dict] = {}  # mailbox → what its page reads at /s/<mailbox>
+        self.status_log: list[tuple[str, dict]] = []
         self.fetches = 0
         self.lock = threading.Lock()
         self._ids = itertools.count(1)
 
 
 class _RelayHandler(_Quiet):
+    CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"}
+
     def _authorized(self) -> bool:
         return self.headers.get("Authorization") == f"Bearer {FakeRelay.KEY}"
 
+    def _json(self, status: int, data, headers=None):
+        super()._json(status, data, headers={**self.CORS, **(headers or {})})
+
+    def do_OPTIONS(self):
+        self._send(204, b"", headers=self.CORS)
+
     def do_GET(self):
         relay: FakeRelay = self.server.owner
-        if urlsplit(self.path).path != "/inbox":
+        parts = urlsplit(self.path)
+        status = re.fullmatch(r"/s/([A-Za-z0-9_-]{22,64})", parts.path)
+        if status:
+            with relay.lock:
+                found = relay.statuses.get(status[1])
+            return self._json(200, found) if found is not None else self._json(404, {"error": "none"})
+        if parts.path != "/inbox":
+            return self._json(404, {"error": "not found"})
+        if not self._authorized():
+            return self._json(401, {"error": "token"})
+        only = dict(parse_qsl(parts.query)).get("mailbox")
+        with relay.lock:
+            relay.fetches += 1
+            return self._json(200, {"messages": [m for m in relay.messages if not only or m["mailbox"] == only]})
+
+    def do_PUT(self):
+        relay: FakeRelay = self.server.owner
+        status = re.fullmatch(r"/s/([A-Za-z0-9_-]{22,64})", urlsplit(self.path).path)
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        if not status:
             return self._json(404, {"error": "not found"})
         if not self._authorized():
             return self._json(401, {"error": "token"})
         with relay.lock:
-            relay.fetches += 1
-            return self._json(200, {"messages": list(relay.messages)})
+            relay.statuses[status[1]] = json.loads(body)
+            relay.status_log.append((status[1], json.loads(body)))
+        return self._json(200, {"ok": True})
 
     def do_POST(self):
         relay: FakeRelay = self.server.owner
@@ -1037,3 +1081,293 @@ class _LLMHandler(_Quiet):
         chunk({}, finish, usage=usage)
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
+
+
+# -- ESPOL's Académico -------------------------------------------------------------------------------
+
+PORTAL_USER, PORTAL_PASSWORD = "estudiante.prueba", "Clave-Secreta-E2E-9"
+# (año, término, código, materia, nota, estado, vez): invented, in the shapes the portal uses.
+PORTAL_HISTORY = [
+    ("2024", "1S", "MATG1049", "CÁLCULO DE UNA VARIABLE", "8.20", "APROBADA", "1"),
+    ("2024", "1S", "FISG1002", "FÍSICA I", "5.10", "REPROBADA", "1"),
+    ("2024", "1S", "IDIG1001", "INGLÉS I", "", "CONVALIDADA", "1"),
+    ("2024", "2S", "FISG1002", "FÍSICA I", "7.40", "APROBADA", "2"),
+    ("2024", "2S", "CCPG1043", "FUNDAMENTOS DE PROGRAMACIÓN", "9.10", "APROBADA", "1"),
+    ("2025", "1S", "MATG1050", "CÁLCULO DE VARIAS VARIABLES", "7.90", "APROBADA", "1"),
+    ("2026", "1S", "ADSG1026", "CIENCIAS DE LA SOSTENIBILIDAD", "", "EN CURSO", "1"),
+    ("2026", "2S", "CCPG1055", "SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "", "EN CURSO", "1"),
+    ("2026", "2S", "SOFG1007", "INGENIERÍA DE SOFTWARE I", "", "EN CURSO", "1"),
+]
+PORTAL_GRADES = [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "1", "7.50", "", "", "", "EN CURSO"),
+                 ("INGENIERÍA DE SOFTWARE I", "2", "8.80", "", "", "", "EN CURSO")]
+PORTAL_CREDITS = [("Formación básica", "40", "36"), ("Formación profesional", "70", "12"), ("Optativas", "15", "0"),
+                  ("Inglés (requisito)", "Requisito", "Convalidado")]
+PORTAL_CLASSES = {("2026", "2do Término"): [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "1", "LUNES", "09:30-11:30", "15A-201"),
+                                             ("INGENIERÍA DE SOFTWARE I", "2", "MARTES", "14:30-16:30", "11C-104")],
+                  ("2026", "1er Término"): [("CIENCIAS DE LA SOSTENIBILIDAD", "3", "JUEVES", "07:30-09:30", "8-105")]}
+PORTAL_EXAMS = {"Parcial": [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "24/11/2026", "08:00", "15A-AUD")],
+                "Final": [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "02/02/2027", "10:00", "15A-AUD"),
+                          ("INGENIERÍA DE SOFTWARE I", "04/02/2027", "08:00", "11C-AUD")],
+                "Mejoramiento": [("INGENIERÍA DE SOFTWARE I", "11/02/2027", "08:00", "11C-AUD")]}
+
+
+class FakePortal(_Server):
+    """ESPOL's Académico for one student, PORTAL_USER. `version` 2 is the portal a week later: Sostenibilidad has its
+    grade, and the GPA moved."""
+
+    def __init__(self):
+        super().__init__(_PortalHandler)
+        self.lock = threading.Lock()
+        self.sessions: dict[str, dict] = {}
+        self.requests: list[dict] = []   # {"method", "path", "session", "body"}
+        self.logins: list[tuple[str, str]] = []  # (session, outcome)
+        self.version = 1
+        self.codes: list[str] = []       # every CAPTCHA code shown, in order
+        self._ids = itertools.count(1)
+
+    def last_code(self) -> str:
+        with self.lock:
+            return self.codes[-1]
+
+    def history(self) -> list[tuple]:
+        if self.version == 1:
+            return PORTAL_HISTORY
+        return [r if r[2] != "ADSG1026" else (*r[:4], "8.80", "APROBADA", "1") for r in PORTAL_HISTORY]
+
+    def gpa(self) -> str:
+        return "8,15" if self.version == 1 else "8,22"
+
+
+def _captcha_jpeg(code: str) -> bytes:
+    import io
+    from PIL import Image, ImageDraw
+    image = Image.new("RGB", (250, 40), "white")
+    draw = ImageDraw.Draw(image)
+    for x in range(0, 250, 9):
+        draw.line([(x, 0), (x + 20, 40)], fill=(205, 215, 230))
+    draw.text((70, 12), " ".join(code), fill=(30, 40, 90))
+    out = io.BytesIO()
+    image.save(out, "JPEG")
+    return out.getvalue()
+
+
+def _cells(row, tag="td") -> str:
+    from html import escape
+    return "".join(f"<{tag}>{escape(str(c))}</{tag}>" for c in row)
+
+
+def _grid(grid_id: str, header: list[str], rows: list[tuple]) -> str:
+    body = "".join(f"<tr>{_cells(r)}</tr>" for r in rows) or '<tr><td colspan="9">No existen registros</td></tr>'
+    return (f'<table cellspacing="0" rules="all" border="1" id="ctl00_contenido_{grid_id}" style="border-collapse:collapse;">'
+            f'<tr class="GridHeader" style="font-weight:bold;">{_cells(header, "th")}</tr>{body}</table>')
+
+
+class _PortalHandler(_Quiet):
+    def _session(self, create: bool = False) -> tuple[str | None, dict | None]:
+        portal: FakePortal = self.server.owner
+        cookies = dict(c.strip().split("=", 1) for c in (self.headers.get("Cookie") or "").split(";") if "=" in c)
+        sid = cookies.get("ASP.NET_SessionId")
+        with portal.lock:
+            if sid in portal.sessions:
+                session = portal.sessions[sid]
+                session["auth_ok"] = bool(session.get("auth")) and cookies.get(".ASPXAUTH") == session["auth"]
+                return sid, session
+            if not create:
+                return sid, None
+            sid = f"fake{next(portal._ids):04d}{hashlib.sha1(str(time.time()).encode()).hexdigest()[:16]}"
+            portal.sessions[sid] = {"new": True}
+            return sid, portal.sessions[sid]
+
+    def _record(self, sid, body: str = "") -> None:
+        portal: FakePortal = self.server.owner
+        with portal.lock:
+            portal.requests.append({"method": self.command, "path": self.path, "session": sid, "body": body})
+
+    def _page(self, sid: str, session: dict, title: str, content: str, *, allowed: dict | None = None,
+              extra_cookies: list[str] = ()) -> None:
+        """A Web Forms page: its hidden fields are new on every render and remembered for the next post."""
+        state = hashlib.sha256(f"{sid}{time.time()}{len(content)}".encode()).hexdigest()
+        validation = hashlib.sha256(state.encode()).hexdigest()
+        session.update(viewstate=state, validation=validation, allowed=allowed or {})
+        hidden = (f'<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" />'
+                  f'<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" />'
+                  f'<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEP{state}" />'
+                  f'<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="C2EE9ABB" />'
+                  f'<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="/wEd{validation}" />')
+        html = (f'<!DOCTYPE html><html><head><title>{title}</title><script>function __doPostBack(t,a){{}}</script>'
+                f'</head><body><form name="aspnetForm" method="post" action="./{urlsplit(self.path).path.rsplit("/", 1)[-1]}'
+                f'{"?" + urlsplit(self.path).query if urlsplit(self.path).query else ""}" id="aspnetForm"><div>{hidden}</div>'
+                f'<table class="layout" width="100%"><tr><td class="menu">Menú</td><td>{content}</td></tr></table>'
+                f'</form></body></html>')
+        cookies = [f"ASP.NET_SessionId={sid}; path=/; HttpOnly"] if session.pop("new", False) else []
+        self._send(200, html.encode(), "text/html; charset=utf-8",
+                   headers={"Set-Cookie": "; ".join(cookies + list(extra_cookies))} if cookies or extra_cookies else None)
+
+    def _redirect(self, location: str, cookie: str = "") -> None:
+        headers = {"Location": location}
+        if cookie:
+            headers["Set-Cookie"] = cookie
+        self._send(302, b"", "text/html", headers=headers)
+
+    def _valid(self, session: dict, form: dict) -> bool:
+        if form.get("__VIEWSTATE") != f"/wEP{session.get('viewstate')}" or \
+                form.get("__EVENTVALIDATION") != f"/wEd{session.get('validation')}":
+            return False
+        return all(form.get(name, values[0]) in values for name, values in session.get("allowed", {}).items())
+
+    def _step1(self, sid, session):
+        self._page(sid, session, "Académico ESPOL", '<div id="ctl00_contenido_paso1"><label>Usuario:</label>'
+                   '<input name="ctl00$contenido$txtuser" type="text" size="15" id="ctl00_contenido_txtuser" />'
+                   '<input type="submit" name="ctl00$contenido$btnSigte" value="Siguiente" id="ctl00_contenido_btnSigte" />'
+                   '</div>')
+
+    def _step2(self, sid, session, error: str = ""):
+        portal: FakePortal = self.server.owner
+        vcid = hashlib.md5(f"{sid}{time.time()}{len(portal.codes)}".encode()).hexdigest()
+        code = "".join("ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[int(c, 16) % 32] for c in vcid[:5])
+        with portal.lock:
+            portal.codes.append(code)
+        session.update(vcid=vcid, code=code, captcha_seen=False)
+        self._page(sid, session, "Académico ESPOL", (
+            '<div id="ctl00_contenido_paso2"><table id="ctl00_contenido_tbl1"><tr><td><label><b>Usuario:</b></label></td>'
+            f'<td><label id="ctl00_contenido_lbluserN">{session["user"]}</label>@espol.edu.ec</td></tr>'
+            '<tr><td><label><b>Contraseña:</b></label></td><td><input name="ctl00$contenido$txtpsw" type="password" '
+            'id="ctl00_contenido_txtpsw" /></td></tr></table>'
+            f'<input type="hidden" name="LBD_VCID_c_login_ctl00_contenido_samplecaptcha" value="{vcid}" />'
+            '<img class="LBD_CaptchaImage" id="c_login_ctl00_contenido_samplecaptcha_CaptchaImage" '
+            f'src="/BotDetectCaptcha.ashx?get=image&amp;c=c_login_ctl00_contenido_samplecaptcha&amp;t={vcid}" alt="CAPTCHA" />'
+            '<input name="ctl00$contenido$CaptchaCodeTextBox" type="text" id="ctl00_contenido_CaptchaCodeTextBox" />'
+            '<input type="submit" name="ctl00$contenido$btnIniciarSesion" value="Iniciar sesión" '
+            'id="ctl00_contenido_btnIniciarSesion" /></div><div id="ctl00_contenido_diverror"><span '
+            f'id="ctl00_contenido_LabelError" style="color:Red;">{error}</span></div>'))
+
+    def do_GET(self):
+        parts = urlsplit(self.path)
+        path = parts.path.lower()
+        sid, session = self._session(create=path == "/login.aspx")
+        self._record(sid)
+        if path == "/login.aspx":
+            session.clear() if "viewstate" in session else None
+            return self._step1(sid, session)
+        if path == "/botdetectcaptcha.ashx":
+            query = dict(parse_qsl(parts.query))
+            if session is None or query.get("t") != session.get("vcid"):
+                return self._send(400, b"bad captcha id", "text/plain")
+            session["captcha_seen"] = True
+            return self._send(200, _captcha_jpeg(session["code"]), "image/jpeg")
+        if session is None or not session.get("auth_ok"):
+            return self._redirect(f"/login.aspx?ReturnUrl={quote(parts.path)}")
+        if path == "/default.aspx":
+            return self._page(sid, session, "Inicio", f"<h2>Bienvenido, {session['user']}</h2>")
+        page = path.removeprefix("/ui/informacionacademica/")
+        return self._data(sid, session, page, {})
+
+    def do_POST(self):
+        portal: FakePortal = self.server.owner
+        parts = urlsplit(self.path)
+        path = parts.path.lower()
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)).decode()
+        form = dict(parse_qsl(body, keep_blank_values=True))
+        sid, session = self._session()
+        self._record(sid, body)
+        if session is None or not self._valid(session, form):
+            return self._send(500, b"Validation of viewstate MAC failed.", "text/html")
+        if path == "/login.aspx":
+            if "ctl00$contenido$btnSigte" in form:
+                session["user"] = form.get("ctl00$contenido$txtuser", "").strip()
+                return self._step2(sid, session)
+            if "ctl00$contenido$btnIniciarSesion" in form:
+                if form.get("LBD_VCID_c_login_ctl00_contenido_samplecaptcha") != session.get("vcid") or \
+                        not session.get("captcha_seen") or \
+                        form.get("ctl00$contenido$CaptchaCodeTextBox", "").upper() != session.get("code"):
+                    portal.logins.append((sid, "captcha"))
+                    return self._step2(sid, session, "El código de la imagen no es correcto.")
+                if session.get("user") != PORTAL_USER or form.get("ctl00$contenido$txtpsw") != PORTAL_PASSWORD:
+                    portal.logins.append((sid, "password"))
+                    return self._step2(sid, session, "Usuario o contraseña incorrectos.")
+                portal.logins.append((sid, "ok"))
+                session["auth"] = hashlib.sha256(f"auth{sid}".encode()).hexdigest()
+                return self._redirect("/default.aspx", f".ASPXAUTH={session['auth']}; path=/; HttpOnly")
+            return self._step1(sid, session)
+        if not session.get("auth_ok"):
+            return self._redirect(f"/login.aspx?ReturnUrl={quote(parts.path)}")
+        return self._data(sid, session, path.removeprefix("/ui/informacionacademica/"), form)
+
+    def _selects(self, form: dict, *specs) -> tuple[str, dict, dict]:
+        """Drop-downs as the page renders them, each with what the post chose (or its default)."""
+        html, chosen, allowed = "", {}, {}
+        for name, options, default, postback in specs:
+            value = form.get(f"ctl00$contenido${name}", default)
+            chosen[name], allowed[f"ctl00$contenido${name}"] = value, options
+            opts = "".join(f'<option{" selected=\"selected\"" if o == value else ""} value="{o}">{o}</option>'
+                           for o in options)
+            change = f' onchange="javascript:setTimeout(&#39;__doPostBack(\\&#39;ctl00$contenido${name}\\&#39;,\\&#39;\\&#39;)&#39;, 0)"' \
+                if postback else ""
+            html += f'<select name="ctl00$contenido${name}" id="ctl00_contenido_{name}"{change}>{opts}</select>'
+        return html, chosen, allowed
+
+    def _data(self, sid, session, page: str, form: dict):
+        portal: FakePortal = self.server.owner
+        if page == "historiaacademica_.aspx":
+            approved = sum(1 for r in portal.history() if r[5] == "APROBADA")
+            return self._page(sid, session, "Historia Académica", (
+                '<h3>Historia académica</h3><div><span id="ctl00_contenido_lblCarrera">Carrera: INGENIERÍA EN COMPUTACIÓN</span>'
+                f'</div><div><span>Promedio general:</span> <span id="ctl00_contenido_lblPromedio">{portal.gpa()}</span></div>'
+                f'<div>Materias aprobadas: {approved}</div>'
+                + _grid("gvHistoria", ["AÑO", "TÉRMINO", "CÓDIGO", "MATERIA", "NOTA", "ESTADO", "VEZ"], portal.history())))
+        if page == "calificacionesbusqueda_.aspx":
+            selects, chosen, allowed = self._selects(form, ("ddlAnio", ["2025", "2026"], "2026", False),
+                                                     ("ddlTermino", ["1er Término", "2do Término"], "2do Término", False))
+            table = ""
+            if "ctl00$contenido$btnConsultar" in form:
+                rows = PORTAL_GRADES if (chosen["ddlAnio"], chosen["ddlTermino"]) == ("2026", "2do Término") else []
+                table = _grid("gvCalificaciones", ["MATERIA", "PARALELO", "1ER PARCIAL", "2DO PARCIAL", "3RA EVALUACIÓN",
+                                                   "PROMEDIO", "ESTADO"], rows)
+            return self._page(sid, session, "Calificaciones", (
+                f'<h3>Calificaciones por período</h3>Año: {selects}<input type="submit" name="ctl00$contenido$btnConsultar"'
+                f' value="Consultar" id="ctl00_contenido_btnConsultar" />{table}'), allowed=allowed)
+        if page == "creditoscarrera.aspx":
+            return self._page(sid, session, "Créditos", (
+                '<h3>Créditos de la carrera</h3><div>Créditos aprobados: 48</div><div>Créditos en curso: 9</div>'
+                + _grid("gvCreditos", ["TIPO", "REQUERIDOS", "APROBADOS"], PORTAL_CREDITS)))
+        if page == "horarioview.aspx":
+            selects, chosen, allowed = self._selects(form, ("ddlAnio", ["2025", "2026"], "2026", True),
+                                                     ("ddlTermino", ["1er Término", "2do Término"], "2do Término", True))
+            rows = PORTAL_CLASSES.get((chosen["ddlAnio"], chosen["ddlTermino"]), [])
+            return self._page(sid, session, "Horario", f'<h3>Horario de clases</h3>{selects}'
+                              + _grid("gvHorario", ["MATERIA", "PARALELO", "DÍA", "HORA", "AULA"], rows), allowed=allowed)
+        if page == "horarioexview.aspx":
+            selects, chosen, allowed = self._selects(form, ("ddlAnio", ["2025", "2026"], "2026", True),
+                                                     ("ddlTermino", ["1er Término", "2do Término"], "2do Término", True),
+                                                     ("ddlTipo", ["Parcial", "Final", "Mejoramiento"], "Parcial", True))
+            if form and form.get("__EVENTTARGET") not in allowed:
+                return self._send(500, b"Invalid postback or callback argument.", "text/html")
+            rows = PORTAL_EXAMS[chosen["ddlTipo"]] if (chosen["ddlAnio"], chosen["ddlTermino"]) == ("2026", "2do Término") else []
+            return self._page(sid, session, "Horario de exámenes", f'<h3>Horario de exámenes</h3>{selects}'
+                              + _grid("gvExamenes", ["MATERIA", "FECHA", "HORA", "AULA"], rows), allowed=allowed)
+        return self._send(404, b"not found", "text/html")
+
+
+class FakePages(_Server):
+    """docs/ as GitHub Pages serves it, to a real browser; `relay` joins each page's connect-src."""
+
+    TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
+
+    def __init__(self, root: Path, relay: str):
+        super().__init__(_PagesHandler)
+        self.root, self.relay = root, relay
+
+
+class _PagesHandler(_Quiet):
+    def do_GET(self):
+        pages: FakePages = self.server.owner
+        path = unquote(urlsplit(self.path).path)
+        target = (pages.root / path.lstrip("/")).resolve()
+        if target.is_dir():
+            target = target / "index.html"
+        if pages.root.resolve() not in target.parents or not target.is_file():
+            return self._send(404, b"not found", "text/plain")
+        body = target.read_bytes()
+        if target.suffix == ".html":
+            body = body.replace(b"connect-src https://*.workers.dev", f"connect-src https://*.workers.dev {pages.relay}".encode())
+        self._send(200, body, pages.TYPES.get(target.suffix, "application/octet-stream"))

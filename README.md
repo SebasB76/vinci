@@ -1005,9 +1005,15 @@ Integraciones aprobadas**.
 Los issues y pull requests son bienvenidos. Para trabajar en el código:
 
 ```bash
-uv sync           # dependencias, con las de desarrollo
-uv run pytest     # la prueba de punta a punta
+uv sync                          # dependencias, con las de desarrollo
+uv run pytest                    # la prueba de punta a punta
+.venv/bin/vinci-check smoke      # prueba tus bots en vivo, como lo harías desde el celular (unos 45 s)
+python3 scripts/docs_check.py    # te avisa si cambiaste código sin su documentación
 ```
+
+`vinci-check` es la herramienta con la que un agente (o tú) comprueba un cambio en los bots reales: les escribe
+desde tu cuenta de Telegram con `tg`, lee lo que Vinci contestó por WhatsApp, abre el formulario del token y el
+dashboard en un Chrome sin ventana. Solo escribe a tus bots de Vinci. `vinci-check --help` lista sus comandos.
 
 **La prueba** es una sola, de punta a punta ([`tests/e2e/test_e2e.py`](tests/e2e/test_e2e.py); su encabezado
 describe cada paso). Levanta un Canvas falso con datos grabados (`tests/e2e/fixtures/`), un Telegram falso y un
@@ -1025,6 +1031,8 @@ Al contribuir:
   (`feat: …`, `fix: …`, `docs: …`).
 - **Prueba de punta a punta**: si cambias un comportamiento, extiende la prueba E2E para que lo verifique y
   corre `uv run pytest` antes de abrir el PR.
+- **Documentación al día**: si tu cambio vuelve falso algo de este README o de
+  [`AGENTS.md`](AGENTS.md), corrígelo en el mismo PR.
 - **Nada de datos reales** en fixtures, capturas ni issues: ni tokens, ni notas, ni horarios, ni nombres de
   estudiantes o profesores. Los datos de prueba son inventados.
 

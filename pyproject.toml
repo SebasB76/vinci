@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 aula = "aula.cli:main"
 espol-bot = "espol_bot.cli:main"
+vinci-check = "espol_bot.check:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

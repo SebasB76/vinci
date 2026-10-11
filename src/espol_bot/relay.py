@@ -6,6 +6,10 @@ relay's address. The page posts there: the Canvas token sealed to the PC's one-t
 The PC opens no port: the plugin vinci-whatsapp polls the relay (`espol-bot whatsapp-rele`) while a mailbox is open,
 and this module runs what came in for the person the mailbox was issued to, never for whom a message claims.
 
+The Académico's sign-in (portal_login.py) talks both ways: its mailbox is read by the process that holds that sign-in
+(`inbox`), never by `fetch`, and the page reads back the CAPTCHA and how far it got (`set_status`, GET /s/<mailbox>).
+`fetch` starts that process for each mailbox a tool asked for.
+
 The mailboxes live in <captain's data>/amigos/rele.json, shared by every friend's Vinci (their data folders sit
 inside it), with the relay's address setup.sh writes there. Only the captain's secrets.env holds the relay's key.
 """
@@ -24,10 +28,12 @@ import requests
 
 from aula_core import timefmt
 from aula_core.config import ConfigError, load_secret_values
+from aula_core.store import file_lock
 from espol_bot.config import BotConfig
 
 REGISTRY = "rele.json"
-KINDS = ("token", "mark")
+KINDS = ("token", "mark", "academico")
+PORTAL = "academico"
 DASHBOARD_TTL = timedelta(hours=12)
 TIMEOUT = (5, 20)
 SEALED_RE = re.compile(r"v1\.[A-Za-z0-9_-]{200,}")
@@ -51,6 +57,11 @@ def read(path: Path) -> dict:
     except (FileNotFoundError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _locked(path: Path):
+    """The registry is written by tools, by `fetch` and by the Académico's sign-in: one at a time."""
+    return file_lock(path.parent, "rele.lock")
 
 
 def _write(path: Path, data: dict) -> None:
@@ -85,18 +96,79 @@ def owner(cfg: BotConfig) -> str:
     return wa.captain if wa else ""
 
 
-def issue(cfg: BotConfig, kind: str, number: str, ttl: timedelta, now: datetime) -> dict | None:
-    """A new mailbox for `number`'s `kind` of message: {"relay", "mailbox"}, or None with no relay set up."""
+def issue(cfg: BotConfig, kind: str, number: str, ttl: timedelta, now: datetime,
+          extra: dict | None = None) -> dict | None:
+    """A new mailbox for `number`'s `kind` of message: {"relay", "mailbox"}, or None with no relay set up. `extra`
+    rides along in the registry (what the Académico's sign-in needs to know)."""
     path = registry_path(cfg)
-    data = read(path)
-    url = str(data.get("url") or "")
-    if not url or not number:
-        return None
-    mailbox = secrets.token_urlsafe(24)
-    data["mailboxes"] = {**_open(data, now),
-                         mailbox: {"kind": kind, "number": number, "expires": timefmt.iso(now + ttl)}}
-    _write(path, data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _locked(path):
+        data = read(path)
+        url = str(data.get("url") or "")
+        if not url or not number:
+            return None
+        mailbox = secrets.token_urlsafe(24)
+        data["mailboxes"] = {**_open(data, now), mailbox: {
+            **(extra or {}), "kind": kind, "number": number, "expires": timefmt.iso(now + ttl)}}
+        _write(path, data)
     return {"relay": url, "mailbox": mailbox}
+
+
+def update(path: Path, mailbox: str, now: datetime, **changes) -> dict | None:
+    """Changes an open mailbox's entry (None for a key removes it); None when it is gone."""
+    with _locked(path):
+        data = read(path)
+        box = _open(data, now).get(mailbox)
+        if box is None:
+            return None
+        box.update(changes)
+        data["mailboxes"] = {**_open(data, now), mailbox: {k: v for k, v in box.items() if v is not None}}
+        _write(path, data)
+    return box
+
+
+def close(path: Path, mailbox: str) -> None:
+    with _locked(path):
+        data = read(path)
+        if (data.get("mailboxes") or {}).pop(mailbox, None) is not None:
+            _write(path, data)
+
+
+def opened(path: Path, now: datetime) -> dict:
+    return _open(read(path), now)
+
+
+def key() -> str:
+    """The relay's key, in the captain's secrets.env only."""
+    return load_secret_values().get("WHATSAPP_RELAY_TOKEN", "")
+
+
+def inbox(url: str, relay_key: str, mailbox: str) -> list[dict]:
+    """What the page posted to one mailbox (the Académico's sign-in reads its own; `fetch` leaves them)."""
+    try:
+        response = requests.get(f"{url}/inbox", params={"mailbox": mailbox},
+                                headers={"Authorization": f"Bearer {relay_key}"}, timeout=TIMEOUT)
+        response.raise_for_status()
+        return [m for m in response.json().get("messages") or [] if m.get("mailbox") == mailbox]
+    except (requests.RequestException, ValueError) as exc:
+        raise RelayError(f"el relé no responde ({exc.__class__.__name__})") from None
+
+
+def ack(url: str, relay_key: str, ids: list[str]) -> None:
+    try:
+        requests.post(f"{url}/ack", headers={"Authorization": f"Bearer {relay_key}"}, json={"ids": ids},
+                      timeout=TIMEOUT).raise_for_status()
+    except requests.RequestException as exc:
+        raise RelayError(f"el relé no confirmó lo recibido ({exc.__class__.__name__})") from None
+
+
+def set_status(url: str, relay_key: str, mailbox: str, status: dict) -> None:
+    """What the page opened with this mailbox reads back: the CAPTCHA, an error, how far the sign-in got."""
+    try:
+        requests.put(f"{url}/s/{mailbox}", headers={"Authorization": f"Bearer {relay_key}"}, json=status,
+                     timeout=TIMEOUT).raise_for_status()
+    except requests.RequestException as exc:
+        raise RelayError(f"el relé no tomó el estado ({exc.__class__.__name__})") from None
 
 
 def waiting(path: Path, now: datetime) -> bool:
@@ -110,10 +182,13 @@ def fetch(cfg: BotConfig, now: datetime) -> list[dict]:
     from espol_bot import amigos, whatsapp
     path = registry_path(cfg)
     data = read(path)
-    url, key = str(data.get("url") or ""), load_secret_values().get("WHATSAPP_RELAY_TOKEN", "")
-    if not url or not key:
+    url = str(data.get("url") or "")
+    relay_key = key()
+    if not url or not relay_key:
         return []
-    headers = {"Authorization": f"Bearer {key}"}
+    from espol_bot import portal_login
+    portal_login.launch(cfg, path, now)
+    headers = {"Authorization": f"Bearer {relay_key}"}
     try:
         response = requests.get(f"{url}/inbox", headers=headers, timeout=TIMEOUT)
         response.raise_for_status()
@@ -122,9 +197,11 @@ def fetch(cfg: BotConfig, now: datetime) -> list[dict]:
         raise RelayError(f"el relé no responde ({exc.__class__.__name__})") from None
     answers, handled = [], []
     for message in messages:
-        handled.append(str(message.get("id")))
         boxes = _open(read(path), now)
         box = boxes.get(str(message.get("mailbox")))
+        if box is not None and box["kind"] == PORTAL:
+            continue  # the sign-in's own process reads it
+        handled.append(str(message.get("id")))
         body = message.get("data") if isinstance(message.get("data"), dict) else {}
         if box is None or body.get("kind") != box["kind"]:
             continue
@@ -132,9 +209,7 @@ def fetch(cfg: BotConfig, now: datetime) -> list[dict]:
             sealed = SEALED_RE.fullmatch(str(body.get("sealed") or ""))
             if not sealed:
                 continue
-            current = read(path)  # one token per mailbox, even if the page posted twice
-            current.get("mailboxes", {}).pop(message["mailbox"], None)
-            _write(path, current)
+            close(path, message["mailbox"])  # one token per mailbox, even if the page posted twice
             outcome = (amigos.command(cfg, "token-cifrado", box["number"], sealed[0], now)
                        if box["number"] == amigos.captain_number(cfg)
                        else amigos.submit_token(cfg, box["number"], sealed[0], now))

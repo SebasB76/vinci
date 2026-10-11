@@ -354,11 +354,14 @@ def _guard_guests(tool_name="", args=None, **_):
 
 def _note_channel():
     """Where the conversation behind this tool call happens, for the tools to send a card there (herramientas.py:
-    a poll in the owner's WhatsApp chat instead of Telegram buttons). The tools run in another process."""
+    a poll in the owner's WhatsApp chat instead of Telegram buttons) and to answer in it later. The tools run in
+    another process."""
     try:
         from gateway.session_context import get_session_env
         note = {"canal": get_session_env("HERMES_SESSION_PLATFORM", ""),
-                "tipo": get_session_env("HERMES_SESSION_CHAT_TYPE", ""), "en": time.time()}
+                "tipo": get_session_env("HERMES_SESSION_CHAT_TYPE", ""),
+                # the session an answer can be put back in (the Académico's sign-in: portal_login.py)
+                "sesion": get_session_env("HERMES_SESSION_KEY", ""), "en": time.time()}
         if note["canal"]:
             tmp = CHANNEL.with_suffix(".tmp")
             tmp.write_text(json.dumps(note), encoding="utf-8")

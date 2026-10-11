@@ -535,6 +535,10 @@ class Setup:
         plugins = merged.setdefault("plugins", {})
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
+        # Only the default profile's plugins get the gateway's injector: this one puts a question the Académico's
+        # sign-in held back in its Vinci session (portal_login.py).
+        entries = plugins.setdefault("entries", {})
+        entries.setdefault(WHATSAPP_PLUGIN, {})["allow_gateway_injection"] = True
         if merged != current:
             changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 

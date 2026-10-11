@@ -1982,7 +1982,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "repasar integrales dobles" in card, card
             calls, mark = len(llm.requests), len(wa.sent)
             wa.vote(angel_jid, angel_jid, polls[0]["messageId"], "✅ Hecho")
-            done = wa.wait_for(lambda b: b.messages_to(angel_jid, mark), 60)
+            # The model's own «Anotado: …» can land after the poll: wait for the vote's answer, not the next message.
+            done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark) if "Hecho:" in text_of([m])], 60)
             assert done and "Hecho: «repasar integrales dobles»" in text_of(done), done
             assert len(llm.requests) == calls, "un voto se resuelve sin el modelo"
             md.append(f"→ a Angel: [encuesta «{polls[0]['question']}»: {' / '.join(polls[0]['options'])}]\n"

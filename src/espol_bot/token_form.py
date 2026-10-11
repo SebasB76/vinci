@@ -32,7 +32,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from aula_core import timefmt
-from aula_core.config import load_secret_values, update_secret_values
+from aula_core.config import REPO_ROOT, load_secret_values, update_secret_values
 from aula_core.store import connect, delete_meta, file_lock, get_meta, set_meta
 from espol_bot import relay
 from espol_bot.config import BotConfig
@@ -48,6 +48,8 @@ AUTO_FORM_TTL = timedelta(hours=24)
 PREFIX = "v1."  # what the page puts before the base64url ciphertext
 BUTTON = "🔑 Pegar token"
 WHATSAPP_BUTTON = "🔑 Abrir formulario"
+# How to create the token, drawn step by step: WhatsApp gets it before the form's message (hermes/whatsapp/token-guide.html)
+GUIDE = REPO_ROOT / "hermes" / "whatsapp" / "token-guide.png"
 # WebCrypto's RSA-OAEP with hash SHA-256 also uses SHA-256 for MGF1.
 OAEP = padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
 
@@ -86,15 +88,18 @@ def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelt
              **({"r": box["relay"]} if box else {})}
     url = cfg.token_form_url + separator + urlencode(query) + (f"#m={box['mailbox']}" if box else "")
     if whatsapp:
-        last = ("3. Pega el token ahí y toca «Enviar». Me llega cifrado y te confirmo aquí." if box else
-                "3. Pega el token ahí, toca «Cifrar» y pega aquí el texto que te da (empieza con v1.).")
-        text = (f"{intro}🔑 <b>Tu token del aula</b>\n"
-                f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
-                "«+ Nuevo token de acceso» (en «Propósito» pon Vinci).\n"
-                f"2. Copia el token y abre el formulario de abajo.\n{last}\n"
+        last = ("toca «Enviar cifrado a Vinci». Te confirmo aquí." if box else
+                "toca «Cifrar» y pega aquí el texto que te da (empieza con v1.).")
+        text = (f"{intro}🔑 <b>Tu token del aula</b> (los pasos con dibujos, en la imagen de arriba)\n"
+                f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a>. Si te pide "
+                "entrar, usa tu cuenta de ESPOL.\n"
+                "2. Baja hasta «Integraciones aprobadas» y toca «+ Nuevo token de acceso».\n"
+                "3. En «Propósito» escribe Vinci, deja la fecha vacía y toca «Generar token».\n"
+                "4. Copia el token: las letras y números largos.\n"
+                f"5. Toca «{WHATSAPP_BUTTON}» aquí abajo, pega el token y {last}\n"
                 "🔒 Se cifra en tu celular: solo pasa un texto ilegible que únicamente la PC de Vinci "
                 f"puede abrir. El formulario sirve una vez y vence en {_duration(ttl)}.")
-        return {"respuesta": text, "url": url, "button": {"text": WHATSAPP_BUTTON, "url": url}}
+        return {"respuesta": text, "url": url, "button": {"text": WHATSAPP_BUTTON, "url": url}, "image": str(GUIDE)}
     text = (f"{intro}🔑 <b>Token nuevo de Canvas</b>\n"
             f"1. Abre <a href=\"{e(cfg.core.canvas_url)}/profile/settings\">tu perfil del aula</a> y toca "
             "«+ Nuevo token de acceso».\n"

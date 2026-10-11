@@ -308,6 +308,8 @@ def _deliver(chat, result, reply_to):
     if not text:
         return
     reply = {"replyTo": reply_to} if reply_to else {}
+    if (result or {}).get("image"):  # the token guide, right above the form's message
+        _post("send-media", {"chatId": chat, "filePath": result["image"], "mediaType": "image"})
     if button:  # a page: a button that opens it inside WhatsApp (iPhone); the bare link on a bridge without the route
         try:
             _post("send-url-button", {"chatId": chat, "text": text, "buttonText": button["text"], "url": button["url"],

@@ -161,7 +161,7 @@ class Bot:
             try:
                 button = form.get("web_app_button")
                 if form.get("button"):  # a friend's Vinci, on WhatsApp
-                    self.telegram.send(form["respuesta"], link=form["button"])
+                    self.telegram.send(form["respuesta"], link=form["button"], image=form.get("image"))
                 else:
                     self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(button) if button else None)
                 set_meta(self.conn, "bot_alert_token", refused)

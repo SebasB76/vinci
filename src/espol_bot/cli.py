@@ -48,6 +48,8 @@
     espol-bot whatsapp-comando start|estado|token|token-cifrado <número>
                                      /start, /estado and /token on WhatsApp, for the captain or a friend over
                                      their own aula (the plugin vinci-whatsapp)
+    espol-bot whatsapp-rele          what the /token page and the dashboard sent through Vinci's relay (relay.py),
+                                     run for whom each link was issued (the plugin vinci-whatsapp)
 
 On success `sondeo` and `resumen` print nothing, so Hermes' no-agent cron stays
 silent; the bot delivers its own messages. An unexpected crash exits non-zero and
@@ -296,6 +298,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado", "voto", "marca", "entregas"])
     p.add_argument("numero", help="quién lo escribió (593…)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
+    p = sub.add_parser("whatsapp-rele", help="lo que el formulario del token y el dashboard mandaron por el relé de "
+                                             "Vinci (lo usa el plugin vinci-whatsapp)")
+    p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     args = parser.parse_args(argv)
 
     prefer_ipv4()
@@ -309,6 +314,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "whatsapp-vincular":
             from espol_bot import whatsapp
             return whatsapp.link(args.numero, cfg.whatsapp_bridge)
+        if args.cmd == "whatsapp-rele":
+            from espol_bot import relay
+            answers = relay.fetch(cfg, now_utc())
+            print(json.dumps({"respuestas": answers}, ensure_ascii=False) if args.json else
+                  "\n\n".join(a["respuesta"] for a in answers) or "Nada nuevo en el relé.")
+            return 0
         if args.cmd in ("amigo", "whatsapp-grupo", "whatsapp-comando"):
             _logging(cfg)
             return _friends(cfg, args)

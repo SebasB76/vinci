@@ -50,7 +50,7 @@ de cada clase, lleva el cuaderno de lo que vieron y te ayuda a estudiar con el m
 | | |
 |---|---|
 | 🔔 **Avisos del aula virtual** | Revisa el aula cada 30 minutos y te avisa de tareas nuevas, cambios de fecha, anuncios, notas publicadas o cambiadas, material y enlaces nuevos y materias nuevas. Te recuerda cada entrega que aún no enviaste 24 h y 3 h antes. Si es un cuestionario (un control de lectura, un test), el aviso dice cuántas preguntas tiene, el tiempo para resolverlo, los intentos y cuándo abre y cierra; uno que abre a una hora fija por poco tiempo te avisa antes de abrir. Y a las 7:00 te manda el resumen de tu semana, con tus entregas en orden: lo que vence en 24 h y después lo que más vale en tu nota ([cómo las ordena](#el-resumen-de-las-700)). Si la entregaste en papel, por correo o en el laboratorio (el aula no se entera), pulsa «✅ Ya lo entregué» y no insiste más. |
-| 📋 **Dashboard de entregas** | El botón «📋 Entregas», al lado del campo de texto del chat de Vinci, abre una página dentro de Telegram con cuánto llevas del semestre, tus entregas pendientes (atrasadas, de hoy, de esta semana y más adelante) y las novedades del aula. Marcas una entrega con un toque y Vinci la cuenta como entregada. La página no se conecta a ningún servidor. [Cómo funciona](#el-dashboard-de-entregas). |
+| 📋 **Dashboard de entregas** | El botón «📋 Entregas», al lado del campo de texto del chat de Vinci, abre una página dentro de Telegram con cuánto llevas del semestre, tus entregas pendientes (atrasadas, de hoy, de esta semana y más adelante) y las novedades del aula. Marcas una entrega con un toque y Vinci la cuenta como entregada. La página no lee tus datos de ningún servidor. [Cómo funciona](#el-dashboard-de-entregas). |
 | 📌 **Tu lista de pendientes** | «Anota: estudiar cap. 3 de Física para el viernes»: Vinci guarda lo que el aula no trae (lecturas, trámites, lo que el profe dijo en clase y no subió), con su materia y su fecha. Sale en el resumen de las 7:00 y en «¿qué tengo esta semana?», te lo recuerda 24 h y 3 h antes, y lo cierras con «✅ Hecho». |
 | 📊 **Calculadora de notas** | «¿Cómo voy?», «¿cuánto necesito en la lección para pasar?», «¿y si saco 70 en el examen?»: aplica los pesos de cada materia a tus notas del aula (y a las que le cuentas) y te dice cuánto llevas y qué promedio necesitas en lo que falta. Los pesos los saca del sílabo, de las políticas del curso y de los anuncios, incluido cómo maneja cada materia el primer parcial sin examen por El Niño; lo que no encuentra te lo pregunta, y se guarda solo cuando pulsas «✅ Guardar esquema». Las cuentas las hace un script, no el modelo. [Más sobre la calculadora](#la-calculadora-de-notas). |
 | 🤖 **Un bot por materia** | Le dices «arma mi equipo» y Vinci te propone un bot por cada materia de tu aula, que se crea con un toque tuyo. El teórico y el práctico de una materia comparten un solo bot. |
@@ -353,7 +353,7 @@ Cómo funciona:
 1. Después de cada sondeo en que algo cambió, Vinci arma un resumen con esos datos, lo comprime y lo pone en el
    enlace del botón, después del `#`. Solo cambia el botón de tu chat.
 2. La página ([`docs/dashboard/`](docs/dashboard/), publicada en GitHub Pages) lee el resumen de su propio enlace.
-   No se conecta a ningún servidor, ni para leer ni para guardar.
+   No lee nada de ningún servidor. Desde WhatsApp, lo único que envía es la entrega que marcas, al relé de Vinci.
 3. Al marcar una entrega, la página abre el chat de Vinci con un `/start` especial. El plugin lo atiende sin el
    modelo, borra ese mensaje, te confirma en el chat y pone al día el botón.
 
@@ -414,8 +414,9 @@ Cómo se protege el token:
 - **Se cifra en tu celular.** Cada formulario genera un par de llaves de un solo uso. La pública va en el enlace del
   botón y la página (`docs/token/`, publicada en GitHub Pages) cifra el token con ella (RSA-OAEP). Telegram solo
   lleva el texto cifrado y la llave privada nunca sale de tu PC (`secrets.env`, permisos 600).
-- **La página no se conecta a nada.** No carga scripts de terceros (ni el de Telegram) y su política de seguridad
-  le prohíbe hacer conexiones: lo único que hace es entregarle a Telegram el texto cifrado.
+- **La página solo entrega el texto cifrado.** No carga scripts de terceros (ni el de Telegram). En Telegram se lo
+  entrega a Telegram. Desde WhatsApp lo envía al relé de Vinci: su política de seguridad solo le deja conectarse a
+  direcciones `workers.dev`.
 - **Sirve una vez y vence pronto.** El de `/token` vence en 15 minutos. El que Vinci manda solo vence en 24 horas,
   porque quizá lo ves horas después; si vence sin usarse, Vinci te manda otro al día siguiente. La llave se borra al abrir el primer envío, así que el texto cifrado
   que queda en el historial del chat ya no abre nada. Un envío repetido, el botón de un `/token` anterior o uno
@@ -624,6 +625,30 @@ número personal.
    teléfono, y escribe el código.
 5. Corre `./setup.sh` y arranca el gateway: `hermes gateway start`.
 
+**Páginas dentro de WhatsApp.** El formulario del token y el panel de entregas llegan como un botón. En el iPhone,
+el botón abre la página dentro de WhatsApp, como un Mini App de Telegram. En WhatsApp Web abre otra pestaña: Web no
+tiene otra forma de abrir una página. En Android no lo probamos. `setup.sh` agrega la ruta del botón al puente de
+Hermes sin editar su `bridge.js` (`hermes/whatsapp/vinci-bridge.js`). Si el puente no la tiene, la página llega
+como enlace. Las pruebas están en `experiments/whatsapp-webview/`.
+
+**El relé: lo que la página manda de vuelta.** WhatsApp no tiene la forma de Telegram de pasarle al bot lo que hace
+una página. El relé es un Worker de Cloudflare, gratis y sin tarjeta, que hace de buzón. La página deja ahí tu token
+cifrado o la entrega que marcaste. Tu PC lo recoge cada 3 segundos mientras un enlace está abierto, sin abrir
+ningún puerto. Vinci te confirma en el chat. El relé solo ve el texto cifrado, que únicamente tu PC puede abrir.
+Sin relé, la página te da el texto cifrado para pegar en el chat, y marcar una entrega abre el chat con `/marca …`
+escrito.
+
+Para publicar tu relé:
+
+1. Crea una cuenta en [Cloudflare](https://dash.cloudflare.com/sign-up) con tu correo. No pide tarjeta.
+2. Corre `npx wrangler login` y pulsa «Allow» en el navegador.
+3. Elige el subdominio de tu cuenta en Workers (el panel de Cloudflare lo pide la primera vez).
+4. En la carpeta `relay/`, corre `npx wrangler deploy`. Anota la dirección `https://vinci-relay.<subdominio>.workers.dev`.
+5. Crea una clave: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+6. Guárdala en el relé: `npx wrangler secret put RELAY_TOKEN` (pega la clave cuando la pida).
+7. En `secrets.env`, pon `WHATSAPP_RELAY_URL=<la dirección>` y `WHATSAPP_RELAY_TOKEN=<la clave>`.
+8. Corre `./setup.sh` y reinicia el gateway: `hermes gateway restart`.
+
 **Tu chat.** Escríbele a Vinci por privado: es el mismo Vinci de Telegram, con tu aula y tu memoria. WhatsApp no
 tiene botones, así que cada tarjeta te llega a tu chat privado como mensaje con una **encuesta**: votar «✅ Hecho»,
 «✅ Ya lo entregué», «✅ Guardar horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram,
@@ -646,10 +671,10 @@ este grupo» lo apaga. Solo tú puedes encender o apagar un grupo.
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.
-2. Vinci le escribe a Angel por privado con un enlace a la página del token (la misma de `/token`, en modo WhatsApp).
-3. Angel crea un token en el aula, lo pega en la página y pulsa «Cifrar». La página le da un texto cifrado para
-   copiar.
-4. Angel pega ese texto en su chat con Vinci. Vinci verifica el token, lee su aula y le confirma sus materias.
+2. Vinci le escribe a Angel por privado con un botón a la página del token (la misma de `/token`, en modo WhatsApp).
+3. Angel crea un token en el aula, lo pega en la página y pulsa «Enviar cifrado a Vinci».
+4. El token llega cifrado por el relé. Vinci lo verifica, lee el aula de Angel y le confirma sus materias en su chat.
+   Sin relé, la página le da un texto cifrado para pegar en el chat.
 
 Desde ahí, «@vinci qué tengo esta semana» le contesta a Angel con lo suyo y a ti con lo tuyo, en el mismo grupo o
 por privado. Su Vinci le avisa de sus tareas nuevas por su chat de WhatsApp y renueva su token como el tuyo.
@@ -662,8 +687,8 @@ y Vinci los contesta sin gastar tokens:
 |---|---|
 | `/start` | Saluda y muestra los comandos |
 | `/estado` | La salud del sistema, como en Telegram |
-| `/token` | Un enlace a la página del token: pegas ahí el token nuevo, tocas «Cifrar» y pegas en el chat el texto que te da |
-| `/entregas` | El enlace a tu panel de entregas (el mismo dashboard de Telegram). Marcar una abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
+| `/token` | Un botón a la página del token: pegas el token nuevo y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
+| `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
 | `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
@@ -796,10 +821,16 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 - **Las skills pueden escribir.** `skill_manage` deja que un bot cree o edite skills, pero solo dentro de la carpeta
   `skills/` de su propio perfil. El texto no confiable del aula (un anuncio, un documento) podría intentar dirigirlo
   a que escriba una skill; `setup.sh` reescribe la skill de cada bot en cada corrida.
-- **El dashboard no se conecta a nada.** Tus entregas y novedades viajan en el enlace del botón «📋 Entregas»,
+- **El dashboard no lee de ningún servidor.** Tus entregas y novedades viajan en el enlace del botón «📋 Entregas»,
   después del `#`, y solo ese botón de tu chat lo tiene. El navegador nunca le manda esa parte del enlace a GitHub
-  Pages, y la política de seguridad de la página le prohíbe hacer conexiones. Lo que marcas se queda en tu celular
-  y le llega a Vinci como un `/start` en su chat, que el plugin atiende sin el modelo.
+  Pages. La política de seguridad de la página solo le deja conectarse al relé de Vinci (`workers.dev`). Lo que
+  marcas se queda en tu celular y le llega a Vinci como un `/start` en su chat de Telegram, o por el relé desde
+  WhatsApp. El plugin lo atiende sin el modelo.
+- **El relé no puede leer tu token.** Cada enlace que Vinci manda por WhatsApp lleva un buzón al azar después del
+  `#`, y ese buzón es el permiso para escribirle a Vinci. El relé guarda lo que llega como máximo 48 horas. Tu PC lo
+  lee con una clave que solo está en tu `secrets.env`. Vinci atiende un buzón solo para la persona a la que se lo
+  mandó, un buzón de token sirve una vez, y lo que llega a un buzón que Vinci no abrió se borra sin usarse. Quien
+  consiga un enlace todavía abierto puede usarlo, igual que hoy con el enlace mismo.
 - **Un enlace se abre sin tu cuenta.** Un bot pide el documento de un enlace de forma anónima: sin tu token del
   aula, sin cookies (ni las que el sitio pone en el camino), sin credenciales de tu PC, revisando cada redirección y
   con tope de tamaño (`material.tamano_maximo_mb`) y de tiempo. Lo que trae es material para leer, nunca

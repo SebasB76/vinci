@@ -36,6 +36,12 @@ deleteWebhook with drop_pending_updates discards what the bot had queued; a (tok
 FakeWhatsApp stands in for Hermes' WhatsApp bridge (bridge.js, a Baileys client on localhost): Hermes adopts it as
 a bridge already running, takes what people write from GET /messages and records every message it sends.
 
+FakeWhatsApp also takes POST /send-url-button, the route Vinci adds to the bridge (hermes/whatsapp/url_button.js);
+with "send-url-button" in `missing` it answers 404, as Hermes' own bridge.js does.
+
+FakeRelay stands in for Vinci's relay on Cloudflare Workers (relay/worker.js), with its API: a page posts to
+/m/<mailbox>, Vinci's PC reads /inbox and deletes with /ack, both with the relay's key.
+
 FakeDSpace stands in for ESPOL's DSpace (www.dspace.espol.edu.ec, through `[test] link_hosts`): the REST
 `filtered-items` search, which runs a `matches` title regex the way DSpace does, an item by its handle with its
 bitstreams, and their download. Items come from fixtures/dspace/items.json; one is stored inside the
@@ -224,6 +230,8 @@ class FakeWhatsApp(_Server):
         self.inbox: list[dict] = []    # what Hermes picks up on its next GET /messages
         self.sent: list[dict] = []     # every POST: {"path", **payload}
         self.served: list[float] = []  # when Hermes polled /messages
+        self.failing: set[str] = set()  # POST paths that answer 503 (a bridge that lost WhatsApp) until removed
+        self.missing: set[str] = set()  # POST paths that answer 404 (a route this bridge does not have)
         self.lock = threading.Lock()
         self._ids = itertools.count(1)
 
@@ -263,7 +271,8 @@ class FakeWhatsApp(_Server):
 
     def messages_to(self, chat: str, since: int = 0) -> list[dict]:
         with self.lock:
-            return [m for m in self.sent[since:] if m.get("chatId") == chat and m["path"] in ("send", "send-media")]
+            return [m for m in self.sent[since:] if m.get("chatId") == chat
+                    and m["path"] in ("send", "send-media", "send-url-button")]
 
     def wait_for(self, predicate, timeout: float = 60):
         end = time.time() + timeout
@@ -300,10 +309,69 @@ class _WhatsAppHandler(_Quiet):
         except ValueError:
             payload = {}
         path = urlsplit(self.path).path.strip("/")
+        if path in bridge.failing:
+            return self._json(503, {"error": "Not connected to WhatsApp"})
+        if path in bridge.missing:
+            return self._json(404, {"error": f"Cannot POST /{path}"})
+        if path == "send-url-button":  # read like any message; the button is its buttonText and url
+            payload = {**payload, "message": payload.get("text", "")}
         with bridge.lock:
             message_id = f"OUT{len(bridge.sent) + 1:06d}"
             bridge.sent.append({"path": path, **payload, "messageId": message_id})
         return self._json(200, {"success": True, "messageId": message_id})
+
+
+class FakeRelay(_Server):
+    """Vinci's relay (relay/worker.js): what pages post waits until Vinci's PC fetches it with the key."""
+
+    KEY = "e2e-relay-key"
+
+    def __init__(self):
+        super().__init__(_RelayHandler)
+        self.messages: list[dict] = []  # waiting: {"id", "mailbox", "data", "at"}
+        self.posted: list[dict] = []    # everything a page ever posted
+        self.fetches = 0
+        self.lock = threading.Lock()
+        self._ids = itertools.count(1)
+
+
+class _RelayHandler(_Quiet):
+    def _authorized(self) -> bool:
+        return self.headers.get("Authorization") == f"Bearer {FakeRelay.KEY}"
+
+    def do_GET(self):
+        relay: FakeRelay = self.server.owner
+        if urlsplit(self.path).path != "/inbox":
+            return self._json(404, {"error": "not found"})
+        if not self._authorized():
+            return self._json(401, {"error": "token"})
+        with relay.lock:
+            relay.fetches += 1
+            return self._json(200, {"messages": list(relay.messages)})
+
+    def do_POST(self):
+        relay: FakeRelay = self.server.owner
+        path = urlsplit(self.path).path
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        mailbox = re.fullmatch(r"/m/([A-Za-z0-9_-]{22,64})", path)
+        if mailbox:
+            try:
+                data = json.loads(body)
+            except ValueError:
+                return self._json(400, {"error": "json"})
+            with relay.lock:
+                entry = {"id": f"R{next(relay._ids)}", "mailbox": mailbox[1], "data": data, "at": int(time.time())}
+                relay.messages.append(entry)
+                relay.posted.append(entry)
+            return self._json(202, {"ok": True})
+        if path == "/ack":
+            if not self._authorized():
+                return self._json(401, {"error": "token"})
+            ids = set(json.loads(body or b"{}").get("ids") or [])
+            with relay.lock:
+                relay.messages = [m for m in relay.messages if m["id"] not in ids]
+            return self._json(200, {"ok": True})
+        return self._json(404, {"error": "not found"})
 
 
 class _CanvasHandler(_Quiet):

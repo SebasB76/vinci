@@ -29,6 +29,12 @@ BLOCKED_TOOLSETS = [
 SWITCHABLE_TOOLSETS = [*BLOCKED_TOOLSETS, "web", "search"]
 
 
+def hermes_root() -> Path:
+    """Hermes' home: ~/.hermes on a PC; the Docker image sets VINCI_HERMES_ROOT to its data volume, since HOME
+    there is not where Hermes keeps its profiles."""
+    return Path(os.environ.get("VINCI_HERMES_ROOT") or Path.home() / ".hermes")
+
+
 @dataclass(frozen=True)
 class BotConfig:
     core: CoreConfig

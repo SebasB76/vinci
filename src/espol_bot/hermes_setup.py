@@ -74,6 +74,7 @@ from espol_bot.config import (
     BotConfig,
     TelegramSecrets,
     captain_id,
+    hermes_root,
     token_key,
     whatsapp_settings,
 )
@@ -98,6 +99,9 @@ COMPRESSION_THRESHOLD_TOKENS = 80_000
 GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "session_search", "clarify"]
 WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
+# The model's API key in the Docker image comes from the container's environment (Coolify), but a multiplexed
+# gateway reads each profile's secrets from that profile's .env only: setup copies it there.
+MODEL_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -158,7 +162,7 @@ class Setup:
     def __init__(self, cfg: BotConfig, *, hermes_bin: str | None = None):
         self.cfg = cfg
         self.hermes = find_hermes(hermes_bin)
-        self.root = Path.home() / ".hermes"
+        self.root = hermes_root()
         self.bin_dir = Path(sys.prefix) / "bin"
         self.bot_bin = self.bin_dir / "espol-bot"
         if not self.bot_bin.exists():
@@ -171,7 +175,7 @@ class Setup:
                   **{name: [] for name in GUEST_HERMES_TOOLS}}
         self.values = {"BOT": str(self.bot_bin), "CONFIG": str(config_path()), "SECRETS": str(secrets_path()),
                        "MARKER": MARKER, "USER_ID": self.captain, "MINUTOS": str(cfg.brief_minutes),
-                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes,
+                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes, "HERMES_ROOT": str(self.root),
                        # Whose Vinci a profile is, on WhatsApp: the captain's number here, a friend's in theirs.
                        "WHATSAPP_OWNER": self.whatsapp.captain if self.whatsapp else "",
                        "GUEST_TOOLS": json.dumps(guests, sort_keys=True),
@@ -185,6 +189,8 @@ class Setup:
 
     def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         env = {k: v for k, v in os.environ.items() if k != "HERMES_HOME"}
+        if os.environ.get("VINCI_HERMES_ROOT"):  # the Docker image: Hermes' root is the volume, not ~/.hermes
+            env["HERMES_HOME"] = str(self.root)
         proc = subprocess.run([self.hermes, *args], env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if check and proc.returncode != 0:
             raise ConfigError(f"`hermes {' '.join(args)}` falló:\n{proc.stdout}\n{proc.stderr}".strip())
@@ -204,7 +210,13 @@ class Setup:
         config_file = profile / "config.yaml"
         current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
         current = current if isinstance(current, dict) else {}
+        keys = {k: os.environ[k] for k in MODEL_KEYS if os.environ.get(k)}
+        if "model" in managed and keys and os.environ.get("VINCI_HERMES_ROOT"):
+            upsert_env(profile / ".env", keys)
         merged = _deep_merge(copy.deepcopy(current), managed)
+        if "model" in managed:
+            # `hermes profile create` seeds OpenRouter's base_url, which would send any other provider's calls there.
+            merged["model"].pop("base_url", None)
         if plugins:
             section = merged.setdefault("plugins", {})
             enabled = section.get("enabled") if isinstance(section.get("enabled"), list) else []
@@ -268,7 +280,8 @@ class Setup:
             "compression": {"threshold_tokens": COMPRESSION_THRESHOLD_TOKENS},
             "mcp_servers": {mcp_name: {
                 "command": str(self.bot_bin), "args": ["mcp", *mcp_args],
-                "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"]},
+                "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"],
+                        "VINCI_HERMES_ROOT": self.values["HERMES_ROOT"]},
                 "timeout": 180, "tools": {"resources": False, "prompts": False},
             }},
             "approvals": {"deny": APPROVALS_DENY},
@@ -513,7 +526,9 @@ class Setup:
         if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port
             section["bridge_port"] = int(str(test["whatsapp_puente"]).rsplit(":", 1)[1])
             section["bridge_script"] = str(test["whatsapp_script"])
-        _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}}})
+        # The default profile transcribes WhatsApp's voice notes: Spanish here too, not Whisper's English hint.
+        _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
+                             "stt": {"language": "es"}})
         plugins = merged.setdefault("plugins", {})
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]

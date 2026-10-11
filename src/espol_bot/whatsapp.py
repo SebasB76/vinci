@@ -7,7 +7,7 @@ WhatsApp's formatting. WhatsApp has no inline buttons: a message's buttons follo
 A card with one button gets its undo as a second option, since a poll needs two: changing the vote undoes it.
 
 `espol-bot whatsapp-vincular` (hermes/whatsapp/vincular.mjs) links the number with an 8-character code typed on
-its phone and lists its groups. It writes the session the bridge uses, ~/.hermes/platforms/whatsapp/session, so it
+its phone and lists its groups. It writes the session the bridge uses, <hermes>/platforms/whatsapp/session, so it
 must not run while the gateway has WhatsApp open: two connections with one session keep kicking each other out.
 """
 
@@ -26,7 +26,7 @@ from pathlib import Path
 import requests
 
 from aula_core.config import REPO_ROOT, ConfigError
-from espol_bot.config import DEFAULT_WHATSAPP_BRIDGE
+from espol_bot.config import DEFAULT_WHATSAPP_BRIDGE, hermes_root
 from espol_bot.telegram import TelegramError
 
 SCRIPT = REPO_ROOT / "hermes" / "whatsapp" / "vincular.mjs"
@@ -216,12 +216,12 @@ def own_number() -> str:
 # -- linking the number ---------------------------------------------------------------------------
 
 def session_dir() -> Path:
-    return Path.home() / ".hermes" / "platforms" / "whatsapp" / "session"
+    return hermes_root() / "platforms" / "whatsapp" / "session"
 
 
 def _modules() -> Path:
-    for bridge in (Path.home() / ".hermes" / "hermes-agent" / "scripts" / "whatsapp-bridge",
-                   Path.home() / ".hermes" / "scripts" / "whatsapp-bridge"):
+    for bridge in (hermes_root() / "hermes-agent" / "scripts" / "whatsapp-bridge",
+                   hermes_root() / "scripts" / "whatsapp-bridge"):
         if (bridge / "node_modules" / "@whiskeysockets" / "baileys").is_dir():
             return bridge / "node_modules"
     raise ConfigError("No encuentro el puente de WhatsApp de Hermes con sus dependencias. Corre `hermes whatsapp` "

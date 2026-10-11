@@ -6,4 +6,5 @@
 # modelo, cero tokens) salvo cuando toca un brief de clase o hay algo que Vinci le pasó.
 export AULA_CONFIG='{{CONFIG}}'
 export AULA_SECRETS='{{SECRETS}}'
+export VINCI_HERMES_ROOT='{{HERMES_ROOT}}'
 {{ENV_EXTRA}}exec '{{BOT}}' {{COMMAND}}

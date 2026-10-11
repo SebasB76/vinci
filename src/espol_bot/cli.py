@@ -316,7 +316,8 @@ def main(argv: list[str] | None = None) -> int:
             return whatsapp.link(args.numero, cfg.whatsapp_bridge)
         if args.cmd == "whatsapp-rele":
             from espol_bot import relay
-            answers = relay.fetch(cfg, now_utc())
+            with contextlib.redirect_stdout(sys.stderr):  # a token saved here reprovisions, which prints its steps
+                answers = relay.fetch(cfg, now_utc())
             print(json.dumps({"respuestas": answers}, ensure_ascii=False) if args.json else
                   "\n\n".join(a["respuesta"] for a in answers) or "Nada nuevo en el relé.")
             return 0

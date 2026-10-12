@@ -52,7 +52,7 @@
 | `Faltan valores en secrets.env: …` | Completa esas claves (pasos 1 a 4) y vuelve a correr `./setup.sh`. |
 | `⚠ Telegram no aceptó el mensaje` | Mándale `/start` a tu bot de Vinci y revisa `TELEGRAM_BOT_TOKEN`. |
 | `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El token inicial no funcionó durante el setup. Crea otro (paso 3) y mándaselo a Vinci con `/token` (o ejecuta `.venv/bin/espol-bot resembrar`). |
-| Vinci dice que la cadena del token se cortó | Crea un token nuevo en tu perfil del aula y pégalo con el botón «🔑 Pegar token» de ese mismo aviso: [el formulario](uso.md#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
+| Vinci dice que la cadena del token se cortó | Crea un token nuevo en tu perfil del aula y pégalo con el botón «🔑 Pegar token» de ese mismo aviso: [el formulario](uso.md#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. |
 | El formulario de `/token` dice que venció o que era de un `/token` anterior | Usa el botón del mensaje más reciente de Vinci, o mándale `/token`: cada formulario sirve una vez, por 15 minutos (o 24 horas si Vinci lo mandó solo). |
 | Vinci te dice «Llevo un rato sin poder leer … de …» | Una parte de una materia falló tres veces seguidas. Lo sigue intentando y el resto funciona normal; te avisa de nuevo si vuelve a fallar después de recuperarse. |
 | `⚠ Agrega ~/.local/bin a tu PATH` | Agrégalo en tu `~/.bashrc` (o el de tu shell) para usar `aula`. |
@@ -70,7 +70,7 @@
 Para ver qué pasa:
 
 ```bash
-.venv/bin/espol-bot doctor                             # sondeo, aula, token y feeds, de un vistazo
+.venv/bin/espol-bot doctor                             # sondeo, aula y token, de un vistazo
 hermes gateway status                                  # ¿está corriendo?
 vinci cron list                                        # sondeo, mantenimiento y resumen de Vinci
 tail -f ~/.hermes/logs/gateway.log                     # registro del gateway de Hermes

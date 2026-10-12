@@ -17,7 +17,7 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 - The captain's vote in a subject bot's quiz poll (`poll_answer`): run `espol-bot quiz-respuesta`,
   which records it and, after the quiz's last question, answers the score to send.
 - /estado, in Vinci's chat: the system health from `espol-bot estado` (last poll and sync, token
-  chain, feeds), without waking the model.
+  chain), without waking the model.
 - /token, in Vinci's chat: `espol-bot canvas-form` answers with a Mini App keyboard button whose page
   encrypts a new Canvas token on the phone; the button's web_app_data (only ciphertext) goes to
   `espol-bot canvas-submit` on stdin, which decrypts it and reseeds the token chain.
@@ -87,7 +87,7 @@ FAILED = {"respuesta": "⚠️ Algo falló de mi lado; inténtalo otra vez en un
 # Hermes's menu covers every private chat and lists only its own commands (and the default profile's skills).
 # A menu scoped to the captain's chat wins over it, so this one lists the project's commands before Hermes's.
 MENU = ([("quiz", "Quiz corto de un tema con el material: /quiz derivadas")] if SUBJECT else
-        [("estado", "Salud del sistema: sondeo, aula, token de Canvas y feeds"),
+        [("estado", "Salud del sistema: sondeo, aula y token de Canvas"),
          ("token", "Token nuevo de Canvas, cifrado en tu celular"),
          ("quiz", "Quiz corto de un tema, del bot de la materia: /quiz derivadas")])
 _TASKS = set()  # asyncio keeps only a weak reference to a task

@@ -29,13 +29,10 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from html import escape
-from pathlib import Path
 
-from aula_core import Aula, feeds, queries, timefmt
+from aula_core import Aula, queries, timefmt
 from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
@@ -142,14 +139,10 @@ class Bot:
     def _token_refused(self) -> str:
         """Sends the /token form on its own once per refused token, and again each ALERT_EVERY while none is
         pending (the polls leave Canvas alone until the token changes)."""
-        command = Path(sys.executable).with_name("espol-bot")
-        floor = (" Los feeds públicos siguen actualizando fechas, eventos y anuncios." if feeds.configured() else
-                 f" Para mantener fechas y anuncios aun sin token, configura sus feeds una vez con "
-                 f"<code>{escape(str(command))} feeds</code>.")
         text = ("⚠️ La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
                 "No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular antes de "
-                "enviarlo (no lo pegues en el chat)." + floor)
-        if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no feeds, no /token, the form is a link (token_form.py)
+                "enviarlo (no lo pegues en el chat).")
+        if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no /token, the form is a link (token_form.py)
             text = ("⚠️ Tu token del aula dejó de funcionar (la PC de Vinci pudo estar apagada más de una hora). "
                     "Para que vuelva a leer tu aula, crea uno nuevo; no lo pegues tal cual en el chat.")
         refused = self.aula.refused_token()
@@ -182,7 +175,7 @@ class Bot:
     # -- poll ------------------------------------------------------------------------
 
     def maintenance(self) -> PollResult:
-        """Fast no-agent background work: renew the token and refresh token-free feeds."""
+        """Fast no-agent background work: renew the token."""
         result = PollResult()
         now = self.aula.now()
         renewal_error = None
@@ -197,16 +190,7 @@ class Bot:
             renewal_error = str(exc)
             result.error = self._fail("renewal", f"No pude renovar el token de Canvas: {exc}. "
                                       "Si la cadena se corta, te mostraré cómo resembrarla.", threshold=1)
-        floor = feeds.sync(self.conn, self.cfg.core, now)
-        if floor.errors:
-            self._fail("feeds", "No pude actualizar el respaldo sin token (" + "; ".join(floor.errors) + ").",
-                       threshold=ALERT_AFTER)
-        else:
-            delete_meta(self.conn, "bot_fail_count_feeds")
-            self.conn.commit()
-        result.events = floor.events
-        health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error,
-                          feed_errors=floor.errors)
+        health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error)
         return result
 
     def poll(self) -> PollResult:
@@ -221,15 +205,11 @@ class Bot:
         except InvalidTokenError:
             result.error = self._token_refused()
             report = core_sync.SyncReport(first_sync=False)
-            floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
-            result.events += floor.events
         except CanvasError as exc:
             problems.append(f"no pude leer el aula virtual ({exc})")
             result.error = self._fail(
                 "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=ALERT_AFTER)
             report = core_sync.SyncReport(first_sync=False)
-            floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
-            result.events += floor.events
         else:
             self._ok()
         now = self.aula.now()

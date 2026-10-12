@@ -1,14 +1,13 @@
 """System health for `espol-bot doctor` and Vinci's /estado: read-only, no Canvas call, no model.
 
 Everything comes from what the no-agent jobs leave in espol.db (their last run, the last sync, the
-token chain, when each feed was last read) and from which feeds secrets.env holds, never their URLs.
+token chain).
 
 Thresholds (P = intervalo_minutos, 30 by default):
   poll            ❌ when its last run is older than 2·P (at least one run missed)
-  aula sync       ⚠️ when older than 2·P (the feeds may still carry dates and announcements)
+  aula sync       ⚠️ when older than 2·P
   maintenance     ❌ when older than 25 min (it runs every 10; the token dies at one hour)
   token           ⚠️ from 50 min old (a renewal missed), ❌ from 60 min or when Canvas refused it
-  each feed       ❌ when the last maintenance failed to read it, ⚠️ when not read for 25 min
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 
-from aula_core import PAUSED_KEY, REFUSED_KEY, Aula, feeds, timefmt, token_fingerprint
+from aula_core import PAUSED_KEY, REFUSED_KEY, Aula, timefmt, token_fingerprint
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.store import get_meta, set_meta
 from aula_core.sync import last_sync
@@ -31,7 +30,6 @@ from espol_bot.config import BotConfig
 POLL_RUN = "bot_run_poll"
 MAINTENANCE_RUN = "bot_run_maintenance"
 MAINTENANCE_LATE = timedelta(minutes=25)  # hermes_setup runs it every 10 minutes
-FEED_LATE = MAINTENANCE_LATE              # the maintenance reads every feed
 TOKEN_LATE = token_renewal.RENEW_AFTER + timedelta(minutes=10)
 TOKEN_DEAD = timedelta(hours=1)           # ESPOL silently invalidates a personal token after an hour
 
@@ -70,7 +68,7 @@ def checks(cfg: BotConfig, conn: sqlite3.Connection | None, now: datetime) -> li
         secrets = {}
     ago = _Ago(now, cfg.core.tz)
     return [_poll(cfg, meta, now, ago), _sync(cfg, meta, now, ago), _maintenance(meta, now, ago),
-            _token(meta, secrets, now, ago), *_feeds(meta, secrets, now, ago)]
+            _token(meta, secrets, now, ago)]
 
 
 class _Ago:
@@ -149,8 +147,8 @@ def _sync(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Che
     if last is None:
         return Check(name, FAIL, "nunca se leyó con el token de Canvas." + pause)
     if now - last > timedelta(minutes=2 * cfg.poll_minutes):
-        return Check(name, WARN, f"leída por última vez {ago(last)}: lo guardado puede estar desactualizado; los "
-                     "feeds sin token siguen trayendo fechas y anuncios si están activos." + pause)
+        return Check(name, WARN, f"leída por última vez {ago(last)}: lo guardado puede estar "
+                     "desactualizado." + pause)
     return Check(name, WARN if pause else OK, f"leída {ago(last)}." + pause)
 
 
@@ -201,45 +199,6 @@ def _token(meta: dict[str, str], secrets: dict[str, str], now: datetime, ago: _A
                      "que ESPOL lo invalida)." + failed)
     return Check(name, OK, f"renovado {ago(born)}; la cadena está sana (se renueva a los {renew} min, ESPOL lo "
                  "invalida a la hora).")
-
-
-def _feeds(meta: dict[str, str], secrets: dict[str, str], now: datetime, ago: _Ago) -> list[Check]:
-    calendar = secrets.get(feeds.CALENDAR_KEY, "").strip()
-    announcements = secrets.get(feeds.ANNOUNCEMENTS_KEY, "").split()
-    if not calendar and not announcements:
-        return [Check("Feeds sin token", WARN, "no están configurados: si la cadena del token se corta, dejan de "
-                      "llegar fechas y anuncios. Copia del aula la Fuente del calendario y el RSS de Anuncios de "
-                      "cada materia y guárdalos una vez.", _bot_command("feeds"))]
-    ran, maintenance = _run(meta, MAINTENANCE_RUN)
-    errors = maintenance.get("feed_errors") or []
-
-    def one(name: str, what: str, read: datetime | None, prefix: str) -> Check:
-        error = next((e.split(": ", 1)[-1] for e in errors if e.startswith(prefix)), None)
-        if error and (read is None or (ran is not None and read < ran)):
-            return Check(name, FAIL, f"{what}el último mantenimiento no pudo leerlo ({error}).",
-                         _bot_command("feeds"))
-        if read is None:
-            return Check(name, WARN, f"{what}configurado, pero todavía no se ha leído.")
-        if now - read > FEED_LATE:
-            return Check(name, WARN, f"{what}leído por última vez {ago(read)}.")
-        return Check(name, OK, f"{what}activo, leído {ago(read)}.")
-
-    found = []
-    if calendar:
-        found.append(one("Calendario (iCal)", "",
-                         timefmt.parse(meta.get("feeds_calendar_seeded")), "calendario:"))
-    else:
-        found.append(Check("Calendario (iCal)", WARN, "sin configurar: las fechas solo llegan con el token.",
-                           _bot_command("feeds")))
-    if announcements:
-        reads = [timefmt.parse(meta.get(feeds.announcements_key(url))) for url in announcements]
-        oldest = None if None in reads else min(reads)
-        what = "" if len(announcements) == 1 else f"{len(announcements)} feeds; el más atrasado: "
-        found.append(one("Anuncios (RSS/Atom)", what, oldest, "anuncios:"))
-    else:
-        found.append(Check("Anuncios (RSS/Atom)", WARN, "sin configurar: los anuncios solo llegan con el token.",
-                           _bot_command("feeds")))
-    return found
 
 
 def _headline(found: list[Check]) -> tuple[str, str]:

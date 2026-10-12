@@ -121,6 +121,13 @@ def _deep_merge(base: dict, extra: dict) -> dict:
     return base
 
 
+def _section(parent: dict, key: str) -> dict:
+    """parent[key] as a dict to write into; Hermes' own config.yaml has empty sections (`gateway:` is None)."""
+    if not isinstance(parent.get(key), dict):
+        parent[key] = {}
+    return parent[key]
+
+
 def _write_if_changed(path: Path, text: str, mode: int | None = None) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     changed = not path.exists() or path.read_text(encoding="utf-8") != text
@@ -218,7 +225,7 @@ class Setup:
             # `hermes profile create` seeds OpenRouter's base_url, which would send any other provider's calls there.
             merged["model"].pop("base_url", None)
         if plugins:
-            section = merged.setdefault("plugins", {})
+            section = _section(merged, "plugins")
             enabled = section.get("enabled") if isinstance(section.get("enabled"), list) else []
             section["enabled"] = enabled + [p for p in plugins if p not in enabled]
         if merged == current and config_file.exists():  # Hermes may re-serialize the file: compare values
@@ -516,7 +523,7 @@ class Setup:
         current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
         current = current if isinstance(current, dict) else {}
         merged = copy.deepcopy(current)
-        gateway = merged.setdefault("gateway", {})
+        gateway = _section(merged, "gateway")
         gateway["multiplex_profiles"] = True
         routes = [r for r in gateway.get("profile_routes") or []
                   if not str((r or {}).get("name", "")).startswith(WHATSAPP_ROUTE_PREFIX)]
@@ -526,7 +533,7 @@ class Setup:
         routes.append({"name": f"{WHATSAPP_ROUTE_PREFIX}others", "platform": "whatsapp",
                        "profile": self.cfg.hermes_profile})
         gateway["profile_routes"] = routes
-        section = merged.setdefault("whatsapp", {})
+        section = _section(merged, "whatsapp")
         section.pop("group_allowed_chats", None)  # groups are the plugin's now
         section.update({
             "reply_prefix": "",
@@ -548,13 +555,13 @@ class Setup:
         # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
         _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
                              "stt": {"language": "es"}})
-        plugins = merged.setdefault("plugins", {})
+        plugins = _section(merged, "plugins")
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
         # Only the default profile's plugins get the gateway's injector: this one puts a question the Académico's
         # sign-in held back in its Vinci session (portal_login.py).
-        entries = plugins.setdefault("entries", {})
-        entries.setdefault(WHATSAPP_PLUGIN, {})["allow_gateway_injection"] = True
+        entries = _section(plugins, "entries")
+        _section(entries, WHATSAPP_PLUGIN)["allow_gateway_injection"] = True
         if merged != current:
             changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 

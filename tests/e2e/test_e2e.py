@@ -2420,7 +2420,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "TELEGRAM_BOT_TOKEN" not in parse_env_file(profiles / "vinci" / ".env")
             assert BOT_TOKEN in secrets.read_text(), "el token de Vinci sigue en secrets.env, para volver a Telegram"
             parked = sorted(p.parent.name for p in profiles.glob("vinci-*/gateway.parked"))
-            assert parked == ["vinci-fisg1002", "vinci-matg1049"], parked
+            assert parked == sorted(p.name for p in profiles.glob("vinci-*") if p.is_dir()), parked
+            assert {"vinci-fisg1002", "vinci-matg1049"} <= set(parked), "los bots de materia activos quedan aparcados"
             soul = (profiles / "vinci" / "SOUL.md").read_text()
             skill = (profiles / "vinci" / "skills" / "vinci" / "vinci" / "SKILL.md").read_text()
             assert "entregar_a_materia" not in soul + skill and "<!-- solo" not in soul + skill

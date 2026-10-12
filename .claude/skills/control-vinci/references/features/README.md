@@ -29,7 +29,7 @@ User-facing detail lives in `docs/guia/`; the last column names the file and its
 | `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
 | `/token` new Canvas token | Mini App form | guide image + link button, back through the relay | no | `uso.md` «Token nuevo desde Telegram (`/token`)» |
 | `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
-| Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it | yes | `whatsapp.md` «Vinci en WhatsApp» |
+| Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it, by name, with no unasked reminders; ignores stickers; starts over after 4 h idle | yes | `whatsapp.md` «Vinci en WhatsApp» |
 | A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
 | Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | `whatsapp.md` «Vinci en WhatsApp» |
 

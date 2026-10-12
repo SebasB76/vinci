@@ -220,6 +220,11 @@ class Ctx:
 
 def _stale_note(ctx: Ctx) -> str:
     since = timefmt.human(ctx.stale.since, ctx.cfg.core.tz)
+    if _channel(ctx).get("tipo") == "group":  # /token does not work there, and the form already went to his chat
+        return (f"No pude leer el aula virtual desde el {since}: estos datos son de esa hora. Estás en un grupo: "
+                f"dilo en media línea («según mi lectura del {since}»), sin la causa y sin pedirle el token, que "
+                f"eso ya le llegó por privado. Nunca digas que algo sigue sin entregar o sin nota: di «al {since} no "
+                f"estaba entregada».")
     fix = (", y que renueve el token: " + ("con /token en este chat" if ctx.code is None else "mandándole /token a Vinci")
            if ctx.stale.token else "")
     return (f"No pude leer el aula virtual desde el {since} ({ctx.stale.why}): estos datos son de esa hora, y lo que "

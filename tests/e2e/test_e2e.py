@@ -1873,7 +1873,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
     """Section 10: Vinci on WhatsApp, through Hermes' bridge (a stand-in here): the captain's chat, a group he turns
     on, a friend with a Vinci of his own (invited, his token through the page and Vinci's relay, his week, slides, his
     alerts), voice notes and audio files heard by the real local Whisper (in a group, only one that says «Vinci»), the
-    block for whoever is not a Vinci's owner, and the friend removed with his tokens. Pages go as URL buttons (the
+    block for whoever is not a Vinci's owner, and the friend removed with his tokens. In a group each message reaches
+    its Vinci with who wrote it; a quote counts as that Vinci's own only when its text is in its conversation; a
+    sticker reaches no Vinci; and a group idle past GROUP_IDLE starts a new conversation, with no notice. Pages go as URL buttons (the
     bridge's /send-url-button), and what they send back comes through the relay (a stand-in here)."""
     bot = str(VENV_BIN / "espol-bot")
     captain_jid, angel_jid, stranger_jid = (f"{n}@s.whatsapp.net" for n in (CAPTAIN_WA, ANGEL_WA, STRANGER_WA))
@@ -1897,7 +1899,8 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
     with FakeWhatsApp(stand_in / "bridge.js") as wa, FakeRelay() as relay:
         with config_file.open("a", encoding="utf-8") as fh:  # [test] is the file's last table
             fh.write(f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
-                     "whatsapp_sin_reinicio = true  # the test restarts its own gateway\n")
+                     "whatsapp_sin_reinicio = true  # the test restarts its own gateway\n"
+                     "whatsapp_grupo_inactivo_segundos = 60\n")
         with secrets.open("a", encoding="utf-8") as fh:
             fh.write(f"WHATSAPP_CAPTAIN={CAPTAIN_WA}\nWHATSAPP_RELAY_URL={relay.base}\n"
                      f"WHATSAPP_RELAY_TOKEN={FakeRelay.KEY}\n")
@@ -1962,9 +1965,9 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert wa.wait_for(lambda b: b.polled_since(mark), 120), fail("Hermes no tomó el puente de WhatsApp")
 
         def say(chat: str, sender: str, text: str, name: str, *, group: bool = False, expect: int = 1,
-                timeout: float = 120, mentions: list[str] | None = None) -> list[dict]:
+                timeout: float = 120, mentions: list[str] | None = None, quote: str | None = None) -> list[dict]:
             mark = len(wa.sent)
-            wa.say(chat, sender, text, name=name, group=group, mentions=mentions)
+            wa.say(chat, sender, text, name=name, group=group, mentions=mentions, quote=quote)
             shown = ("[el texto cifrado que dio la página]" if text.startswith("v1.")
                      else text.replace(ANGEL_TOKEN, "<el token de Angel>"))
             md.append(f"**{name}** ({'grupo' if group else 'privado'}): {shown}\n")
@@ -2120,11 +2123,56 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             seen = json.dumps(llm.requests[calls:], ensure_ascii=False)
             assert "@vinci qué pide el taller 2? y avísale a @Capitán" in seen, seen[-2000:]
             assert f"@{bot_lid}" not in seen and f"@{CAPTAIN_WA}" not in seen
+            assert "[Angel te escribe en un grupo de WhatsApp]\\n@vinci qué pide el taller 2?" in seen, seen[-2000:]
             report.append("En un grupo, una mención llega a WhatsApp como «@número»: el plugin se la pasa al modelo como "
                           "«@vinci» o con el nombre de la persona (Angel ve «@Capitán»). «¿Qué pide el taller 2?»: "
                           "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas), la "
                           "rúbrica del aula, la fecha y el cierre en hora de Ecuador, y los anexos que enlaza aunque "
                           "estén en una carpeta de 2023; la plantilla .doc se lee con LibreOffice")
+
+            # 10f2b. Every Vinci in a group speaks from the same account: a quote is this Vinci's own only when its
+            # text is in this conversation. A sticker reaches no Vinci. A group idle for GROUP_IDLE (60 s here)
+            # starts a new conversation, with no notice to anyone.
+            def last_turn(since: int) -> str:  # what this message brought; the requests also carry the chat so far
+                req = next(r for r in llm.requests[since:] if bot_of(r))
+                return flatten([m for m in req["messages"] if m.get("role") == "user"][-1].get("content"))
+
+            calls = len(llm.requests)
+            say(GROUP_WA, angel_jid, "@vinci y eso?", "Angel", group=True, mentions=[FakeWhatsApp.BOT],
+                quote=taller.splitlines()[0])
+            mine = last_turn(calls)
+            assert "Replying to your previous message" in mine and "no está en tu conversación" not in mine, mine
+            calls = len(llm.requests)
+            say(GROUP_WA, angel_jid, "@vinci y eso?", "Angel", group=True, mentions=[FakeWhatsApp.BOT],
+                quote=text_of(on))
+            theirs = last_turn(calls)
+            assert "no está en tu conversación" in theirs and "your previous message" not in theirs, theirs
+
+            def plugin_skips(reason: str) -> int:
+                return sum(f.read_text(errors="replace").count(f"vinci-whatsapp: {reason}")
+                           for f in (home / ".hermes").glob("**/logs/gateway.log"))
+
+            webp = home / ".hermes" / "cache" / "images" / "sticker_e2e.webp"
+            webp.parent.mkdir(parents=True, exist_ok=True)
+            webp.write_bytes(b"RIFF\x1a\x00\x00\x00WEBPVP8L\r\x00\x00\x00/\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
+            mark, calls, before = len(wa.sent), len(llm.requests), plugin_skips("sticker")
+            wa.sticker(GROUP_WA, angel_jid, webp, name="Angel", group=True, quote=taller.splitlines()[0])
+            md.append("**Angel** (grupo): [un sticker, en respuesta a Vinci]\n→ (sin respuesta)\n")
+            assert wa.wait_for(lambda _: plugin_skips("sticker") > before, 60), fail("el sticker llegó a un Vinci")
+            time.sleep(3)
+            assert not wa.messages_to(GROUP_WA, mark) and len(llm.requests) == calls
+
+            time.sleep(62)
+            mark, calls = len(wa.sent), len(llm.requests)
+            fresh = say(GROUP_WA, angel_jid, "@vinci hola de nuevo", "Angel", group=True, mentions=[FakeWhatsApp.BOT])
+            first = next(r for r in llm.requests[calls:] if bot_of(r))
+            assert not [m for m in first["messages"] if m.get("role") == "assistant"], "la charla vieja del grupo siguió"
+            assert len(fresh) == 1 and "Hola, soy tu Vinci" in text_of(fresh), fresh
+            report.append("En un grupo, cada mensaje le llega a su Vinci con quién lo escribe, ya revisado por su número. "
+                          "Todos los Vincis escriben desde la misma cuenta: una cita es «tu mensaje anterior» solo si "
+                          "su texto está en esa conversación, y si no, el modelo sabe que es del Vinci de otra persona. "
+                          "Un sticker no llega a ningún Vinci. Tras un rato sin mensajes (4 h; 60 s aquí), el grupo "
+                          "empieza una conversación nueva, sin aviso")
 
             # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
             mark = len(wa.sent)

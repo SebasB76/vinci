@@ -15,7 +15,8 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
 - Live: Telegram has Vinci (`vinci_espol_bot`) plus one bot per subject. WhatsApp has only
   Vinci, on a separate number, through Hermes's unofficial bridge.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
-- Plan, not live: deploy to Coolify with an OpenAI key (branch `feat/coolify-deploy`).
+- Ready, not live yet: the Docker image (`Dockerfile`, `deploy/`) for the Taws club's Coolify, with an OpenAI
+  key; `deploy/move.py` moves the laptop's data there (`docs/guia/servidor.md`).
   WhatsApp will probably become the main channel, which questions the one-bot-per-subject
   design that only Telegram has.
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).

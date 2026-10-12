@@ -5,11 +5,16 @@
     vinci-check chat <bot> "<text>"          send as the captain, wait for the bot's reply
     vinci-check press <bot> "<button>"       press a button on the bot's latest message that has it
     vinci-check whatsapp [--profile vinci]   latest WhatsApp turns from Hermes's own record (read-only)
+    vinci-check say "<text>"                 a message to Vinci in the captain's WhatsApp chat; waits for the reply
+    vinci-check vote "<option>"              vote on Vinci's latest poll in the captain's WhatsApp chat
     vinci-check page token|dashboard         open the GitHub Pages page in headless Chrome
     vinci-check smoke                        all of the above that is safe, in about a minute
 
 Every command takes --json and exits 1 when the check fails. chat and press act as the captain's Telegram
-account through the `tg` CLI, and refuse any chat that is not one of his Vinci bots.
+account through the `tg` CLI, and refuse any chat that is not one of his Vinci bots. say and vote reach only the
+captain's own WhatsApp chat with Vinci: say goes into his Hermes session the way the Académico's held question
+does (the vinci-whatsapp plugin injects it), so Vinci answers on his real WhatsApp; vote runs what his vote
+would. Neither can write to a friend or a group.
 """
 from __future__ import annotations
 
@@ -23,13 +28,13 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import get_meta
-from espol_bot import dashboard, health, materias
-from espol_bot.config import BotConfig, load_bot_config
+from espol_bot import dashboard, health, materias, relay, whatsapp as wa
+from espol_bot.config import BotConfig, load_bot_config, whatsapp_settings
 
 TG = Path(os.environ.get("VINCI_TG", "~/.local/share/tg-user/tg")).expanduser()
 HERMES = Path(os.environ.get("HERMES_BIN", "~/.local/bin/hermes")).expanduser()
@@ -97,6 +102,8 @@ def allowed_bots(cfg: BotConfig) -> dict[str, str]:
 
 
 def _guard(cfg: BotConfig, bot: str) -> str:
+    if not cfg.telegram:
+        raise ConfigError("Telegram is off ([channels] telegram = false): talk to Vinci with `vinci-check say`.")
     bot = bot.lstrip("@").lower()
     bots = allowed_bots(cfg)
     if bot not in bots:
@@ -212,6 +219,76 @@ def whatsapp(profile: str, last: int, chat_type: str | None) -> Result:
                                     f"{len(turns)} turn(s)", turns)
 
 
+def _captain(cfg: BotConfig) -> str:
+    settings = whatsapp_settings()
+    if settings is None:
+        raise ConfigError("Vinci is not on WhatsApp: secrets.env has no WHATSAPP_CAPTAIN.")
+    return settings.captain
+
+
+def _assistant_since(cfg: BotConfig, session_key: str, since: float) -> list[dict]:
+    db = HERMES_HOME / "profiles" / cfg.hermes_profile / "state.db"
+    if not db.exists():
+        return []
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
+    try:
+        rows = conn.execute("SELECT m.content, m.tool_calls, m.timestamp FROM messages m JOIN sessions s ON "
+                            "s.id = m.session_id WHERE s.session_key = ? AND m.role = 'assistant' AND m.timestamp > ? "
+                            "ORDER BY m.id", (session_key, since)).fetchall()
+    finally:
+        conn.close()
+    found = []
+    for content, tool_calls, stamp in rows:
+        tools = [c.get("function", {}).get("name") for c in json.loads(tool_calls or "[]") if isinstance(c, dict)]
+        if (content or "").strip() or tools:
+            found.append({"time": datetime.fromtimestamp(stamp).strftime("%m-%d %H:%M:%S"), "who": "bot",
+                          "text": (content or "").strip(), "tools": [t for t in tools if t]})
+    return found
+
+
+def say(cfg: BotConfig, text: str, timeout: float, settle: float) -> Result:
+    session = relay.captain_session(cfg, _captain(cfg))
+    started = time.time()
+    relay.queue_turn(cfg, session, text, timedelta(seconds=timeout))
+    replies, end = [], started + timeout
+    while time.time() < end:
+        replies = _assistant_since(cfg, session, started)
+        if any(r["text"] for r in replies):
+            time.sleep(settle)  # a turn with tools writes its answer last
+            replies = _assistant_since(cfg, session, started)
+            break
+        time.sleep(1)
+    if not any(r["text"] for r in replies):
+        errors = _errors_since(started)
+        detail = f"No reply from Vinci on WhatsApp in {timeout:.0f} s."
+        if errors:
+            detail += f"\nThe gateway logged errors meanwhile:\n{errors}"
+        return Result("say", False, detail, replies, fix="vinci-check status; tail -30 ~/.hermes/logs/gateway.log")
+    return Result("say", True, f"Vinci answered on WhatsApp in {time.time() - started:.1f} s", replies)
+
+
+def vote(cfg: BotConfig, option: str) -> Result:
+    captain = _captain(cfg)
+    polls = wa.read_polls(cfg.core.data_dir)
+    if not polls:
+        return Result("vote", False, "Vinci has sent no poll yet.")
+    poll_id, options = list(polls.items())[-1]
+    label = next((o for o in options if option.lower() in o.lower()), None)
+    if label is None:
+        return Result("vote", False, f"The latest poll has no option with {option!r}: {', '.join(options)}.")
+    bot = Path(sys.executable).with_name("espol-bot")
+    done = subprocess.run([str(bot), "whatsapp-comando", "voto", captain, "--json"], capture_output=True, text=True,
+                          timeout=120, input=json.dumps({"encuesta": poll_id, "opcion": label}))
+    if done.returncode:
+        return Result("vote", False, done.stderr.strip()[-500:] or "espol-bot whatsapp-comando failed")
+    answer = json.loads(done.stdout or "{}")
+    reply = str(answer.get("respuesta") or "")
+    if reply:  # what the plugin would send after his vote, to his chat
+        wa.send_text(cfg.whatsapp_bridge, wa.jid(captain), reply)
+    return Result("vote", True, f"voted {label!r} on poll {poll_id}",
+                  [{"time": datetime.now().strftime("%m-%d %H:%M:%S"), "who": "bot", "text": reply, "tools": []}])
+
+
 def _chrome() -> str | None:
     return os.environ.get("CHROME") or next((p for p in map(shutil.which, CHROMES) if p), None)
 
@@ -219,10 +296,11 @@ def _chrome() -> str | None:
 def page(cfg: BotConfig, which: str) -> Result:
     if which == "dashboard":
         conn = _db(cfg)
-        if not cfg.dashboard_url or conn is None:
+        if not cfg.dashboard_page or conn is None:
             return Result("page", False, "No dashboard: dashboard.url is empty or espol.db does not exist yet.")
         # The data rides in the URL fragment, which the browser never sends to GitHub Pages.
-        url = dashboard.page_url(cfg, dashboard.snapshot(conn, cfg, materias.load(cfg.core), now_utc()))
+        url = dashboard.page_url(cfg, dashboard.snapshot(conn, cfg, materias.load(cfg.core), now_utc()),
+                                 base=cfg.dashboard_page)
         probe = "document.title + ' | ' + document.body.innerText.slice(0, 300)"
     else:
         url = cfg.token_form_url
@@ -251,7 +329,19 @@ def page(cfg: BotConfig, which: str) -> Result:
     return Result("page", ok, f"{which}: {url.split('#')[0]}\n{text}")
 
 
+def estado(cfg: BotConfig) -> Result:
+    """Vinci's /estado as the captain's WhatsApp would get it (no model; not sent)."""
+    bot = Path(sys.executable).with_name("espol-bot")
+    done = subprocess.run([str(bot), "whatsapp-comando", "estado", _captain(cfg), "--json"], capture_output=True,
+                          text=True, timeout=120)
+    if done.returncode:
+        return Result("estado", False, done.stderr.strip()[-500:])
+    return Result("estado", True, str(json.loads(done.stdout or "{}").get("respuesta") or "")[:1500])
+
+
 def smoke(cfg: BotConfig, timeout: float) -> list[Result]:
+    if not cfg.telegram:
+        return [status(cfg), estado(cfg), page(cfg, "token"), page(cfg, "dashboard")]
     results = [status(cfg), chat(cfg, next(iter(allowed_bots(cfg))), "/estado", timeout, 3)]
     for username in list(allowed_bots(cfg))[1:]:
         results.append(chat(cfg, username, "/start", timeout, 2))
@@ -300,9 +390,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--profile", default="vinci", help="vinci (default) or amigo-<name>")
     p.add_argument("--last", type=int, default=8, help="how many messages (default 8)")
     p.add_argument("--chat", choices=("dm", "group"), help="only direct chats or only groups")
+    p = sub.add_parser("say", help="a message to Vinci in the captain's WhatsApp chat; waits for the reply")
+    p.add_argument("text")
+    p.add_argument("--timeout", type=float, default=120, help="seconds to wait for the reply (default 120)")
+    p.add_argument("--settle", type=float, default=4, help="seconds to wait for the rest of the turn (default 4)")
+    p = sub.add_parser("vote", help="vote on Vinci's latest poll in the captain's WhatsApp chat")
+    p.add_argument("option", help="the option text, or a unique part of it")
     p = sub.add_parser("page", help="open a GitHub Pages page in headless Chrome")
     p.add_argument("which", choices=("token", "dashboard"))
-    p = sub.add_parser("smoke", help="status, /estado to Vinci, /start to each subject bot, both pages")
+    p = sub.add_parser("smoke", help="status, /estado to Vinci, /start to each subject bot (with Telegram on), both pages")
     p.add_argument("--timeout", type=float, default=90)
     args = parser.parse_args(argv)
 
@@ -318,6 +414,10 @@ def main(argv: list[str] | None = None) -> int:
             results = [press(cfg, args.bot, args.label, args.message, args.timeout)]
         elif args.cmd == "whatsapp":
             results = [whatsapp(args.profile, args.last, args.chat)]
+        elif args.cmd == "say":
+            results = [say(cfg, args.text, args.timeout, args.settle)]
+        elif args.cmd == "vote":
+            results = [vote(cfg, args.option)]
         elif args.cmd == "page":
             results = [page(cfg, args.which)]
         else:

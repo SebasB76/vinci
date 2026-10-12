@@ -190,7 +190,7 @@ class Ctx:
 
     def subjects(self) -> list[materias.Subject]:
         try:
-            if self.cfg.friend:  # no subject bots: a friend's subjects are the courses of their aula (poller.py)
+            if self.cfg.friend or not self.cfg.telegram:  # no subject bots: the subjects are the aula's courses
                 from espol_bot import equipo
                 return equipo.propose(self.cfg, self.conn)[0]
             return materias.load(self.cfg.core)
@@ -904,6 +904,9 @@ def _whatsapp_chat(ctx: Ctx) -> WhatsApp | None:
     owner = None
     if ctx.cfg.friend:
         owner = load_secret_values().get("WHATSAPP_OWNER")
+    elif not ctx.cfg.telegram:
+        settings = whatsapp_settings()
+        owner = settings.captain if settings else None
     elif ctx.hermes_home is not None:
         try:
             note = json.loads((ctx.hermes_home / "canal.json").read_text(encoding="utf-8"))
@@ -1173,8 +1176,19 @@ def _academic_record(ctx: Ctx, args: dict) -> dict:
 
 
 def vinci_tools(ctx: Ctx) -> list[Tool]:
+    tools = _vinci_tools(ctx)
+    if ctx.cfg.telegram or ctx.cfg.friend:
+        return tools
+    work = _noting_stale(ctx, _subject_work_tools(ctx))
+    names = {t.name for t in work}
+    return [t for t in tools if t.name not in TEAM_TOOLS and t.name not in names] + work
+
+
+def _vinci_tools(ctx: Ctx) -> list[Tool]:
     def materias_(args):
         subjects = ctx.subjects()
+        if not ctx.cfg.telegram:
+            return {"materias": [{"codigo": s.code, "nombre": s.name, "estado": s.state} for s in subjects]}
         if not subjects:
             return {"materias": [], "nota": "Todavía no hay bots de materia. Usa proponer_equipo para armarlo."}
         return {"materias": [{"codigo": s.code, "nombre": s.name, "bot": s.display, "usuario": s.handle(),
@@ -1584,6 +1598,68 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
     ])
 
 
+RECENT_CLASS = timedelta(hours=1)  # a photo or a voice note this long after a class still belongs to it
+TEAM_TOOLS = ("entregar_a_materia", "proponer_equipo", "archivar_materia", "reactivar_materia")
+SUBJECT_WORK = ("cuaderno", "anotar", "resolver", "guardar_adjunto", "class_notes", "bajar_archivo",
+                "agregar_material")
+MATERIA_ARG = {"type": "string", "description": "la materia (nombre o código); vacía: la de la clase en curso o "
+                                                "recién terminada, según su horario"}
+
+
+def _class_subject(ctx: Ctx) -> materias.Subject | None:
+    """The subject in class now, or whose class ended less than RECENT_CLASS ago (horario.toml)."""
+    now, tz = ctx.now(), ctx.cfg.core.tz
+    try:
+        classes = horario.load(ctx.cfg.core)
+    except ConfigError:
+        return None
+    found = None
+    for start, clase in horario.occurrences(classes, now - timedelta(hours=8), now + timedelta(seconds=1), tz):
+        if start <= now <= clase.ends_on(start.astimezone(tz).date(), tz) + RECENT_CLASS:
+            found = clase  # the latest class wins
+    return materias.by_code(ctx.subjects(), materias.base_code(found.materia) or found.materia) if found else None
+
+
+def _work_subject(ctx: Ctx, materia) -> materias.Subject:
+    if materia:
+        try:
+            return materias.resolve(ctx.subjects(), str(materia))
+        except materias.Ambiguous as exc:
+            raise ToolError(str(exc)) from None
+    subject = _class_subject(ctx)
+    if subject is None:
+        names = ", ".join(s.name for s in ctx.subjects())
+        raise ToolError(f"No sé de qué materia es: no está en clase ni salió de una hace poco. Pregúntale en una línea "
+                        f"cuál es ({names}) y vuelve a llamarme con «materia».")
+    return subject
+
+
+def _subject_work_tools(ctx: Ctx) -> list[Tool]:
+    """Without Telegram, Vinci does what a subject bot did: each tool runs the subject bot's own over the subject
+    that «materia» names, or the one in class."""
+    def run(name: str):
+        def handler(args):
+            subject = _work_subject(ctx, args.get("materia"))
+            sub = Ctx(ctx.cfg, ctx.hermes_home, subject.code)
+            try:
+                tool = next(t for t in subject_tools(sub) if t.name == name)
+                result = tool.handler({k: v for k, v in args.items() if k != "materia"})
+            finally:
+                if sub._aula is not None:
+                    sub._aula.close()
+            return {"materia": subject.name, **result} if isinstance(result, dict) else result
+        return handler
+
+    tools = []
+    for tool in subject_tools(ctx):
+        if tool.name not in SUBJECT_WORK:
+            continue
+        what = tool.description.replace("tu cuaderno", "el cuaderno de la materia").replace("tu materia", "la materia")
+        tools.append(Tool(tool.name, what, run(tool.name), {"materia": MATERIA_ARG, **tool.properties},
+                          list(tool.required), tool.read_only))
+    return tools
+
+
 def friend_tools(ctx: Ctx) -> list[Tool]:
     return [t for t in vinci_tools(ctx) if t.name in FRIEND_TOOLS]
 
@@ -1925,12 +2001,13 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
     ])
 
 
-def page_image(cfg: BotConfig, code: str, file_id: int, page: int) -> dict:
-    """A page of a downloaded PDF of the subject `code`, as a JPEG: what the plugin's ver_pagina shows the model."""
-    ctx = Ctx(cfg, code=code.upper())
+def page_image(cfg: BotConfig, code: str | None, file_id: int, page: int) -> dict:
+    """A page of a downloaded PDF of the subject `code` (None: Vinci's, any subject), as a JPEG: what the plugin's
+    ver_pagina shows the model."""
+    ctx = Ctx(cfg, code=code.upper() if code else None)
     try:
         info = queries.file_by_id(ctx.conn, file_id)
-        if info["curso_id"] not in agenda.course_ids_for(ctx.conn, ctx.subject()):
+        if code and info["curso_id"] not in agenda.course_ids_for(ctx.conn, ctx.subject()):
             raise ToolError("Ese archivo es de otra materia; solo puedes usar el material de la tuya.")
         if info["extension"] != "pdf":
             raise ToolError("Solo puedo mostrarte páginas de un PDF; lee este con leer_archivo.")
@@ -1948,6 +2025,11 @@ def page_image(cfg: BotConfig, code: str, file_id: int, page: int) -> dict:
         raise ToolError(str(exc)) from None
     finally:
         ctx.aula.close()
+
+
+def subject_code(cfg: BotConfig, materia: str) -> str:
+    """The code of the subject that `materia` names, among Vinci's (ver_foto from Vinci's chat)."""
+    return _work_subject(Ctx(cfg), materia).code
 
 
 def entry_image(cfg: BotConfig, code: str, entry_id: int) -> dict:

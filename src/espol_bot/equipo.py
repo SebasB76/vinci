@@ -86,6 +86,14 @@ def propose(cfg: BotConfig, conn) -> tuple[list[materias.Subject], list[str], li
     return team, notes, gone
 
 
+def serving(cfg: BotConfig, conn) -> list[materias.Subject]:
+    """The subjects Vinci looks after: the subject bots that are on, or, without Telegram, every subject of the
+    aula but an archived one (no bots: Vinci keeps their notebooks and briefs itself)."""
+    if cfg.telegram:
+        return [s for s in materias.load(cfg.core) if s.active]
+    return [s for s in propose(cfg, conn)[0] if s.state != "archivada"]
+
+
 def sync_team(cfg: BotConfig, conn) -> tuple[list[materias.Subject], list[str], list[materias.Subject]]:
     with file_lock(cfg.core.data_dir, "equipo.lock"):
         team, notes, gone = propose(cfg, conn)

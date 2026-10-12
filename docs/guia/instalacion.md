@@ -1,5 +1,10 @@
 # Instalación
 
+> **Solo WhatsApp (lo normal).** El `config.toml` trae `[channels] telegram = false`: Vinci te habla solo por
+> WhatsApp. En ese caso no necesitas Telegram: salta los pasos 1, 2 y 7, y en `secrets.env` pon `CANVAS_TOKEN` y
+> `WHATSAPP_CAPTAIN` en vez de los dos de Telegram. Después sigue [whatsapp.md](whatsapp.md) para vincular el
+> número de Vinci. Esta guía describe también la instalación con Telegram (`telegram = true`).
+
 ## Requisitos
 
 - **Una PC con Linux** que quede encendida mientras quieras que los bots funcionen (se usa en Arch / Omarchy).
@@ -73,8 +78,9 @@ nano secrets.env
 
 ```ini
 CANVAS_TOKEN=…            # paso 3
-TELEGRAM_BOT_TOKEN=…      # paso 1, el bot de Vinci
-TELEGRAM_USER_ID=…        # paso 2
+TELEGRAM_BOT_TOKEN=…      # paso 1, el bot de Vinci (solo con telegram = true)
+TELEGRAM_USER_ID=…        # paso 2 (solo con telegram = true)
+WHATSAPP_CAPTAIN=…        # tu número de WhatsApp (con telegram = false; ver whatsapp.md)
 ```
 
 `secrets.env` está en `.gitignore`: nunca se sube a GitHub. Los tokens de los bots de materia
@@ -166,6 +172,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `dashboard.url` | `https://sebasb76.github.io/vinci/dashboard/` | La página del botón «📋 Entregas». Vacío (`""`): sin dashboard, y el chat vuelve a su botón de menú de siempre |
 | `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la línea del semestre. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
+| `channels.telegram` | `false` | `false`: Vinci te habla solo por WhatsApp (necesita `WHATSAPP_CAPTAIN`) y lleva todas tus materias en un chat; los bots de materia quedan apagados, sin borrarse. `true`: también Telegram, con un bot por materia |
 | `notificaciones.intervalo_minutos` | `30` | Cada cuánto revisa el aula (mínimo 5) |
 | `notificaciones.recordatorios_horas` | `[24, 3]` | Recordatorios antes de cada entrega no enviada |
 | `notificaciones.resumen_diario` | `"07:00"` | Hora del resumen de la semana |
@@ -237,6 +244,9 @@ git pull
 ```
 
 Si venías del bot académico anterior (el perfil `espol`), el setup lo convierte en Vinci conservando su memoria.
+
+Con `channels.telegram = false`, el setup apaga cada perfil `vinci-<código>` con un archivo `gateway.parked` y saca
+el token de Telegram del perfil de Vinci; no borra nada. Con `true` y otro `./setup.sh`, vuelven los bots.
 
 Para desinstalar:
 

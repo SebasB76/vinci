@@ -116,6 +116,13 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      second sign-in and the portal's new figures. The GPA is the one on «Información General»; the student's ID, name
      and photo on that page are never kept. No credential reaches the model, a chat, the relay in clear, a log
      or the data folder, and the sign-in's process exits.
+  10m. `[channels] telegram = false` (the repo's own setting; every section before runs with Telegram on): setup.sh
+     takes the bot token out of Vinci's profile (secrets.env keeps it) and parks both subject bots, deleting nothing;
+     Vinci's SOUL.md and skill keep only their WhatsApp blocks. The 7:00 summary reaches WhatsApp and nothing goes to
+     Telegram. `espol-bot agenda` puts the brief of next Wednesday's Cálculo in the captain's WhatsApp chat as a system
+     task, which Vinci answers there. Vinci writes the notebook of the subject the captain names, has the subject
+     bots' tools (and none of the team's), asks which subject when no class says it, and `vinci-check say` talks to
+     it through the same chat.
 
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
 temporary paths are normalized, so reruns produce comparable files.
@@ -223,6 +230,7 @@ T_EARLY = "2026-09-30T08:29:00-05:00"   # un minuto antes: todavía no toca el b
 T_MONDAY = "2026-10-05T08:30:00-05:00"  # lunes: teórico 09:00–11:00 y práctico 11:00–12:00 seguidos
 T_MIDCLASS = "2026-10-05T10:30:00-05:00"  # en pleno teórico, 30 min antes del práctico
 T_EXAM = "2026-10-01T06:00:00-05:00"    # 2 h antes del examen parcial de Física (08:00)
+T_NO_TELEGRAM = "2026-10-07T08:30:00-05:00"  # Telegram off: the next Wednesday, 30 min before Cálculo
 T_RENEW_0 = "2026-09-29T21:00:00-05:00"
 T_RENEW_1 = "2026-09-29T21:41:00-05:00"
 T_RENEW_2 = "2026-09-29T22:22:00-05:00"
@@ -561,6 +569,14 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
+        task = re.match(r"\[Tarea del sistema para (.+?) \(", text)
+        if task and "TAREA: brief_de_clase" in text:  # Telegram off: the brief comes to Vinci's chat as a task
+            return {"content": f"📚 Brief de {task[1]}: repasa lo de la clase anterior y revisa lo que vence."}
+        if "en el cuaderno de Cálculo pon que hoy vimos integrales dobles" in text and not called:
+            return _call("mcp__vinci__anotar", materia="Cálculo", tipo="clase", texto="Integrales dobles",
+                         fecha_clase="2026-09-30")
+        if "pon en el cuaderno que no entendí la regla de L'Hôpital" in text and not called:
+            return _call("mcp__vinci__anotar", tipo="duda", texto="La regla de L'Hôpital")
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results))
         if flow is not None:
@@ -710,6 +726,8 @@ class Script:
             elif isinstance(data, dict) and "entradas" in data:
                 parts.append("Esto hay en el cuaderno:\n" + "\n".join(
                     f"- {e['tipo']}: {e['texto']}" for e in data["entradas"][:8]))
+            elif isinstance(data, dict) and data.get("materia") and data.get("tipo") and data.get("id"):
+                parts.append(f"📘 {data['materia']} · anotado en el cuaderno (#{data['id']}): {data['texto']}")
             elif isinstance(data, dict) and data.get("titulo") and data.get("materia"):
                 parts.append(f"📘 Anotado: el libro principal de {data['materia']} es «{data['titulo']}». "
                              f"{data.get('nota', '')}")
@@ -1120,6 +1138,8 @@ def test_e2e(tmp_path):
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
         config = re.sub(r'^modelo = ".*"$', 'modelo = "fake"', config, count=1, flags=re.M)
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
+        assert "\ntelegram = false\n" in config
+        config = config.replace("\ntelegram = false\n", "\ntelegram = true\n")  # the Telegram sections first; 10m turns it off
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
         hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
@@ -2387,6 +2407,61 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             say(GROUP_WA, captain_jid, "@vinci hola", "Capitán", group=True, expect=0)
             report.append("«/amigo quitar Angel» borra del aula todos los tokens que creó su cadena, su perfil y su carpeta; "
                           "«@vinci desactiva este grupo» lo apaga")
+
+            # 10m. [channels] telegram = false: Vinci lives on WhatsApp alone. setup.sh takes the bot's token out of
+            # Vinci's profile and parks the subject bots, deleting nothing; the 7:00 summary goes to WhatsApp only;
+            # the brief before a class reaches the captain's chat as a system task Vinci answers there; Vinci writes
+            # the notebooks itself («materia», or a question when no class tells which); vinci-check say talks to it.
+            gateway.stop()
+            config_file.write_text(config_file.read_text().replace("\ntelegram = true\n", "\ntelegram = false\n"))
+            off_setup = run(["bash", str(REPO / "setup.sh"), "--skip-deps", "--sin-pruebas"], T_VINCI)
+            assert off_setup.returncode == 0, off_setup.stdout + off_setup.stderr
+            assert "Telegram apagado" in off_setup.stdout, off_setup.stdout
+            assert "TELEGRAM_BOT_TOKEN" not in parse_env_file(profiles / "vinci" / ".env")
+            assert BOT_TOKEN in secrets.read_text(), "el token de Vinci sigue en secrets.env, para volver a Telegram"
+            parked = sorted(p.parent.name for p in profiles.glob("vinci-*/gateway.parked"))
+            assert parked == ["vinci-fisg1002", "vinci-matg1049"], parked
+            soul = (profiles / "vinci" / "SOUL.md").read_text()
+            skill = (profiles / "vinci" / "skills" / "vinci" / "vinci" / "SKILL.md").read_text()
+            assert "entregar_a_materia" not in soul + skill and "<!-- solo" not in soul + skill
+            assert "Tus materias, en un solo chat" in skill, skill[:1500]
+            gateway.start()
+
+            tg_mark, wa_mark = len(telegram.messages), len(wa.sent)
+            run([bot, "resumen"], "2026-10-07T07:00:00-05:00")
+            assert wa.messages_to(captain_jid, wa_mark), "el resumen de las 7:00 debió llegar por WhatsApp"
+            assert len(telegram.messages) == tg_mark, f"nada debía ir a Telegram: {telegram.messages[tg_mark:]}"
+
+            wa_mark, calls = len(wa.sent), len(llm.requests)
+            run([bot, "agenda"], T_NO_TELEGRAM)
+            brief = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, wa_mark)
+                                           if "📚 Brief de Cálculo" in m.get("message", "")], 120)
+            assert brief, fail("el brief de Cálculo no llegó al chat de WhatsApp")
+            seen = json.dumps(llm.requests[calls:], ensure_ascii=False)
+            assert "[Tarea del sistema para Cálculo" in seen and "TAREA: brief_de_clase" in seen, seen[-1500:]
+            md.append(f"→ Vinci (brief, tarea del sistema): {normalize(brief[0]['message'])}\n")
+
+            calls = len(llm.requests)
+            noted = text_of(say(captain_jid, captain_jid, "en el cuaderno de Cálculo pon que hoy vimos integrales dobles",
+                                "Capitán"))
+            assert "📘 Cálculo · anotado en el cuaderno" in noted, noted
+            offered = {t["function"]["name"] for r in llm.requests[calls:] if bot_of(r) == "Vinci"
+                       for t in r.get("tools") or []}
+            assert {"mcp__vinci__anotar", "mcp__vinci__guardar_adjunto", "ver_pagina", "ver_foto"} <= offered, offered
+            assert not offered & {"mcp__vinci__entregar_a_materia", "mcp__vinci__proponer_equipo"}, offered
+            which = text_of(say(captain_jid, captain_jid, "pon en el cuaderno que no entendí la regla de L'Hôpital",
+                                "Capitán"))
+            assert "No sé de qué materia es" in which, which
+
+            checked = run([str(VENV_BIN / "vinci-check"), "say", "qué tengo esta semana", "--timeout", "150"], T_VINCI,
+                          check=False)
+            assert checked.returncode == 0 and "Esta semana:" in checked.stdout, checked.stdout + checked.stderr
+            report.append("Con `[channels] telegram = false`, setup.sh saca el token de Telegram del perfil de Vinci (sigue "
+                          "en secrets.env) y apaga los bots de materia con gateway.parked, sin borrar nada. El resumen "
+                          "de las 7:00 llega solo por WhatsApp; `espol-bot agenda` pone el brief de Cálculo en el chat "
+                          "del capitán como tarea del sistema y Vinci lo contesta ahí; Vinci escribe el cuaderno de la "
+                          "materia que le nombran y, si nada dice cuál, pregunta; `vinci-check say` le escribe por "
+                          "WhatsApp y lee su respuesta")
         finally:
             gateway.stop()
 

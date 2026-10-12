@@ -24,7 +24,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import subprocess
 import sys
 import time
@@ -47,7 +46,6 @@ log = logging.getLogger(__name__)
 
 BUTTON = "🎓 Conectar Académico"
 SEALED_RE = re.compile(r"v2\.([A-Za-z0-9_-]{300,})\.([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{20,2000})")
-TURNS = "turns"
 POLL_SECONDS = 1.0
 MAX_TRIES = 5
 TURN_TTL = timedelta(minutes=10)
@@ -67,7 +65,7 @@ def request(cfg: BotConfig, channel: dict, topic: str, question: str, now: datet
     if not session or platform not in ("whatsapp", "telegram"):
         raise LoginError("No sé en qué chat estamos: el Académico se conecta desde una conversación de Telegram o "
                          "WhatsApp.")
-    if platform == "telegram" and cfg.friend:
+    if platform == "telegram" and not cfg.telegram:
         raise LoginError("Este Vinci solo conversa por WhatsApp.")
     number = relay.owner(cfg)
     to = number if platform == "whatsapp" else _telegram_chat()
@@ -309,16 +307,9 @@ class Worker:
     def _queue_turn(self) -> None:
         """The question, for the plugin to put back in the Hermes session it came from."""
         turn = self.box.get("turn") or {}
-        folder = self.path.parent / TURNS
-        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
         question = turn.get("question") or "lo que te pregunté del Académico"
-        text = f"Ya conecté mi Académico desde tu botón. Contéstame ahora lo que te pregunté: «{question}»"
-        tmp = folder / f".{secrets.token_hex(8)}.tmp"
-        tmp.write_text(json.dumps({"session": turn.get("session"), "text": text,
-                                   "expires": time.time() + TURN_TTL.total_seconds()}, ensure_ascii=False),
-                       encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, folder / f"{tmp.stem.lstrip('.')}.json")
+        relay.queue_turn(self.cfg, turn.get("session"), f"Ya conecté mi Académico desde tu botón. Contéstame ahora "
+                         f"lo que te pregunté: «{question}»", TURN_TTL)
 
     def finish(self) -> int:
         relay.close(self.path, self.mailbox)

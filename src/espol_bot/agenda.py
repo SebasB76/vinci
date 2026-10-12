@@ -10,7 +10,9 @@ Deterministic and model-free. Each run prints one of:
     folder (notes.py), when there is no other handoff waiting.
 
 Only the agent run that follows writes anything with the model, and its answer is
-delivered by Hermes to the subject bot's own chat. Each class start is claimed in
+delivered by Hermes to the subject bot's own chat. Without Telegram there are no subject bots: `run_vinci`
+(Vinci's no-agent cron) goes through every subject and puts a task in the captain's WhatsApp chat with Vinci
+(relay.queue_turn), where Vinci answers it with its own tools. Each class start is claimed in
 `briefs` before waking the agent, so a restart or a second tick never repeats a
 brief; a class that is not in horario.toml never gets one. Back-to-back blocks of the
 subject (horario.sessions) get one brief, before the first block, never one mid-class.
@@ -173,7 +175,7 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
             lines.append(f"  - {n['kind']}: {what}")
     lines += [
         "",
-        "Qué hacer: escribe el brief de esta clase para Telegram, en español, corto (máx. ~150 palabras): una o "
+        "Qué hacer: escribe el brief de esta clase para su chat, en español, corto (máx. ~150 palabras): una o "
         "dos líneas por parte, sin títulos ni secciones, sin repetir lo que no cambió:",
         "1) Repaso de la clase anterior (desde tu cuaderno; si no hay nada, dilo en una línea).",
         "2) Qué hay por entregar (con fecha) y si algo es para pronto.",
@@ -234,11 +236,42 @@ def handoff_task(cfg: BotConfig, subject: materias.Subject, items: list[dict], n
     return "\n".join(lines)
 
 
+TURN_TTL = timedelta(minutes=10)  # a brief the gateway could not take by then is stale
+VINCI_TASK = ("[Tarea del sistema para {name} ({code}): no la escribió el estudiante, y tu respuesta le llega a este "
+              "chat. Donde dice «tu cuaderno» o «tu materia», es {name}: pásale «materia»: «{name}» a cada "
+              "herramienta que la pida.]\n\n")
+
+
 def run(cfg: BotConfig, code: str, now: datetime) -> str:
     """The gate's stdout for one tick of the subject `code`."""
     subject = materias.by_code(materias.load(cfg.core), code)
     if subject is None or not subject.active:
         return SKIP
+    return _next_task(cfg, subject, now) or SKIP
+
+
+def run_vinci(cfg: BotConfig, now: datetime) -> None:
+    """One tick of Vinci's own agenda, without Telegram: the first subject with something to do gets its task in
+    the captain's WhatsApp chat; the rest wait for the next tick."""
+    from espol_bot import equipo, relay
+    from espol_bot.config import whatsapp_settings
+    wa = whatsapp_settings()
+    if wa is None:
+        return
+    aula = Aula(cfg.core)
+    try:
+        subjects = equipo.serving(cfg, store.ensure(aula.conn))
+    finally:
+        aula.close()
+    for subject in subjects:
+        task = _next_task(cfg, subject, now)
+        if task:
+            relay.queue_turn(cfg, relay.captain_session(cfg, wa.captain),
+                             VINCI_TASK.format(name=subject.name, code=subject.code) + task, TURN_TTL)
+            return
+
+
+def _next_task(cfg: BotConfig, subject: materias.Subject, now: datetime) -> str | None:
     found = sessions(cfg, subject)
     upcoming = [(start, c) for start, c in horario.occurrences(
         list(found), now, now + timedelta(minutes=cfg.brief_minutes, seconds=1), cfg.core.tz, subject.code)
@@ -249,7 +282,7 @@ def run(cfg: BotConfig, code: str, now: datetime) -> str:
         conn = store.ensure(aula.conn)
         for start, clase in upcoming:
             if store.claim_brief(conn, subject.code, start, now):
-                log.info("agenda %s: brief de la clase %s", code, start.isoformat())
+                log.info("agenda %s: brief de la clase %s", subject.code, start.isoformat())
                 return brief_task(cfg, subject, start, found[clase], list(found), now)
         # One kind of task per tick: the notes wait for the next minute.
         items = store.claim_handoffs(conn, subject.code, now, origins=notes.ORIGINS, exclude=True)
@@ -257,9 +290,9 @@ def run(cfg: BotConfig, code: str, now: datetime) -> str:
     finally:
         aula.close()
     if items:
-        log.info("agenda %s: entregas %s", code, ", ".join(f"#{i['id']}" for i in items))
+        log.info("agenda %s: entregas %s", subject.code, ", ".join(f"#{i['id']}" for i in items))
         return handoff_task(cfg, subject, items, now)
     if noted:
-        log.info("agenda %s: apuntes %s", code, ", ".join(f"#{i['id']}" for i in noted))
+        log.info("agenda %s: apuntes %s", subject.code, ", ".join(f"#{i['id']}" for i in noted))
         return notes.task(cfg, subject, noted, now)
-    return SKIP
+    return None

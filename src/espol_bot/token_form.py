@@ -72,7 +72,7 @@ def open_form(cfg: BotConfig, now: datetime, intro: str = "", *, whatsapp: bool 
 def new_form(cfg: BotConfig, conn, now: datetime, intro: str = "", ttl: timedelta = FORM_TTL, *,
              whatsapp: bool = False) -> dict:
     """open_form for a caller that already holds bot.lock (flock would block on a second open in this process)."""
-    whatsapp = whatsapp or bool(cfg.friend)  # a friend's Vinci talks only on WhatsApp
+    whatsapp = whatsapp or not cfg.telegram  # a friend's Vinci, or the captain's with Telegram off
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private = key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8,
                                 serialization.NoEncryption())

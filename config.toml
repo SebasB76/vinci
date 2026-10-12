@@ -42,6 +42,12 @@ login_minutes = 15
 # Zona horaria para fechas, recordatorios y el resumen.
 zona_horaria = "America/Guayaquil"
 
+[channels]
+# false: Vinci te habla solo por WhatsApp (necesita WHATSAPP_CAPTAIN en secrets.env). Los bots de materia de
+# Telegram quedan apagados, sin borrarse: Vinci lleva tus materias, sus cuadernos y los briefs antes de clase.
+# true: también Telegram, con un bot por materia.
+telegram = false
+
 [notificaciones]
 # Cada cuántos minutos el bot revisa el aula virtual.
 intervalo_minutos = 30

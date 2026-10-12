@@ -7,17 +7,16 @@ the university's Canvas (aulavirtual). It has one maintainer, called "the captai
 and docs, and a few friends who each get their own Vinci on WhatsApp. It is a side project:
 shipping speed beats ceremony, and a bug found later is fixed in a new session.
 
-## Status (2026-10-11)
+## Status (2026-10-12)
 
 - Live: one Hermes gateway on the captain's laptop, as the systemd user service
-  `hermes-gateway`. It serves `vinci`, one `vinci-<code>` profile per subject bot and one
-  `amigo-<name>` profile per friend.
-- Live: Telegram has Vinci (`vinci_espol_bot`) plus one bot per subject. WhatsApp has only
-  Vinci, on a separate number, through Hermes's unofficial bridge.
+  `hermes-gateway`. It serves `vinci` and one `amigo-<name>` profile per friend.
+- Live: WhatsApp is the only channel (`[channels] telegram = false`): Vinci, on a separate number through
+  Hermes's unofficial bridge, keeps every subject in one chat, with its notebook and the brief before each class.
+  Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
+  `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
 - Plan, not live: deploy to Coolify with an OpenAI key (branch `feat/coolify-deploy`).
-  WhatsApp will probably become the main channel, which questions the one-bot-per-subject
-  design that only Telegram has.
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).
 
 ## Where to start
@@ -49,7 +48,7 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 3. `gh pr merge <n> --merge --delete-branch` (the repo keeps merge commits).
 4. In `~/Projects/espol-academic-bot`: `git pull && ./setup.sh`.
 5. `hermes gateway restart`, then `.venv/bin/espol-bot doctor`.
-6. `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check chat` or `press` that
+6. `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check say` or `vote` that
    exercises the change itself.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
 
@@ -67,8 +66,8 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 - For a new feature idea, restate the goal and the user flow in 3 to 5 lines, then build it.
   When the captain already gave the flow, build it directly.
 - Test with the real bots through `vinci-check`. The captain allows test messages to his own
-  Vinci and subject bots; `vinci-check` refuses any other chat. When he sends a screenshot of
-  a bot chat, also read that chat (`vinci-check chat`/`whatsapp`) for the full thread.
+  chat with Vinci; `vinci-check` refuses any other chat. When he sends a screenshot of
+  a bot chat, also read that chat (`vinci-check whatsapp`) for the full thread.
 - Never print or copy `secrets.env`, `~/.local/share/tg-user/credentials.env` or
   `captain.session`. To get a new secret, use a hidden prompt (`read -s`), never the chat.
 - No real data in fixtures, screenshots or issues: no tokens, grades, schedules or names.
@@ -113,7 +112,8 @@ uv run pytest                             # the E2E (fake Canvas, fake Telegram,
 .venv/bin/espol-bot doctor                # poller, Canvas sync, token chain and feeds (read-only)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins
-.venv/bin/vinci-check smoke               # status, /estado, /start to each subject bot, both pages
+.venv/bin/vinci-check smoke               # status, /estado, both pages (and /start to each subject bot with Telegram)
+.venv/bin/vinci-check say "<text>"        # a message to Vinci in the captain's WhatsApp chat, and its reply
 .venv/bin/vinci-check --help              # chat, press, whatsapp, page… (see the control-vinci skill)
 python3 scripts/docs_check.py             # code changed without its docs, before a PR
 hermes gateway status                     # also: start, stop, restart

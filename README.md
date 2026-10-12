@@ -35,12 +35,12 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 - **Tu lista de pendientes.** «Anota: estudiar el capítulo 3 para el viernes» y te lo recuerda como una tarea más.
 
 **Estudia contigo**
-- **Un bot por materia.** «Arma mi equipo» y tienes un bot para cada materia, con un repaso 30 minutos antes de cada clase.
+- **Todas tus materias en un chat.** Vinci sabe de qué materia hablas y te manda un repaso 30 minutos antes de cada clase. Con Telegram encendido, hay además un bot por materia.
 - **Preguntas sobre el material.** Explica, resume y te hace preguntas tipo examen, citando archivo, página y el enlace del aula. Cada cita se comprueba antes de enviarse.
 - **`/quiz`.** Un quiz corto en encuestas, con tu puntaje al final. Lo que fallas queda como tema débil.
 - **Exámenes anteriores.** Busca en DSpace los parciales de tu materia y te resuelve uno pregunta por pregunta.
 - **Cuaderno de cada materia.** Le cuentas lo que vieron, o le mandas una foto de la pizarra o una nota de voz, y lo guarda con un resumen.
-- **Tus apuntes de clase.** Escribe `//vinci <pregunta>` en tus notas y el bot de la materia te contesta en el chat.
+- **Tus apuntes de clase.** Escribe `//vinci <pregunta>` en tus notas y Vinci te contesta en el chat.
 - **Diapositivas.** «Hazme unas diapositivas de integrales dobles» y te manda el `.pptx`.
 - **PDFs escaneados.** Lee con OCR las fotocopias, para que la búsqueda también las encuentre.
 
@@ -51,11 +51,10 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 
 **Hace por ti**
 - **Entrega a mano.** Fotos de tu deber, después un PDF, y lo entrega en el aula cuando pulsas «Entregar».
-- **Traspaso con un botón.** Debajo de cada aviso, «Consultar con…» se lo pasa al bot de la materia para que te lo explique.
 - **Planes de estudio.** Vinci ve todas tus materias, entregas y clases juntas, y arma un plan para el parcial.
 
 **Donde estés**
-- **Telegram y WhatsApp.** Tu chat, tus grupos y un Vinci propio para cada amigo, con su aula. Entiende notas de voz.
+- **WhatsApp.** Tu chat, tus grupos y un Vinci propio para cada amigo, con su aula. Entiende notas de voz. Telegram queda como opción (`channels.telegram`).
 - **Terminal y Claude Code.** El comando `aula` consulta todo, y una skill le enseña a Claude Code a usarlo.
 - **Estado y token desde el chat.** `/estado` te dice si todo está sano, y `/token` renueva el acceso al aula sin que el token pase por el chat.
 

@@ -185,16 +185,26 @@ def content_subject(scores: dict[str, float]) -> str | None:
 class Scan:
     def __init__(self, cfg: BotConfig, conn, now: datetime):
         self.cfg, self.conn, self.now = cfg, conn, now
-        self.subjects = [s for s in materias.load(cfg.core) if s.active]
+        from espol_bot import equipo
+        self.subjects = equipo.serving(cfg, conn)
         self.by_code = {s.code: s for s in self.subjects}
         self.classes = _sessions(cfg, set(self.by_code))
         self.idle = timedelta(minutes=cfg.notes_idle_minutes)
         self._vinci: Telegram | None = None
 
     @property
-    def vinci(self) -> Telegram:
+    def vinci(self):
+        """Vinci's chat with the captain: Telegram, or WhatsApp when Telegram is off."""
         if self._vinci is None:
-            self._vinci = Telegram(load_telegram_secrets(), api=self.cfg.telegram_api)
+            if self.cfg.telegram:
+                self._vinci = Telegram(load_telegram_secrets(), api=self.cfg.telegram_api)
+            else:
+                from espol_bot.config import whatsapp_settings
+                from espol_bot.whatsapp import WhatsApp
+                wa = whatsapp_settings()
+                if wa is None:
+                    raise ConfigError("[channels] telegram = false necesita WHATSAPP_CAPTAIN en secrets.env")
+                self._vinci = WhatsApp(wa.captain, self.cfg.whatsapp_bridge, polls=self.cfg.core.data_dir)
         return self._vinci
 
     def run(self, folder: Path) -> None:

@@ -275,7 +275,10 @@ class Setup:
             # Only the captain (TELEGRAM_ALLOWED_USERS): anyone else gets silence, not a pairing code.
             "unauthorized_dm_behavior": "ignore",
             # Hermes' WhatsApp default posts a line per tool call («⚙️ mcp__vinci__semana…»); Telegram's is off.
-            "display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
+            # Hermes' warnings («Context is over the compression threshold… Run /new») are English and for an operator,
+            # not a student: in a WhatsApp group the whole group reads them.
+            "display": {"suppress_warning_notifications": True,
+                        "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
             # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
@@ -533,7 +536,8 @@ class Setup:
             else:
                 section.pop("bridge_script", None)
         # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
-        _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
+        _deep_merge(merged, {"display": {"suppress_warning_notifications": True,
+                                         "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
                              "stt": {"language": "es"}})
         plugins = merged.setdefault("plugins", {})
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []

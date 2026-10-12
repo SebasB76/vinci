@@ -37,7 +37,7 @@ from aula_core.config import CoreConfig
 log = logging.getLogger(__name__)
 
 CHUNK_CHARS = 2000
-READABLE = ("pdf", "pptx", "docx", "doc", "html")
+READABLE = ("pdf", "pptx", "docx", "doc", "html", "xlsx")
 SCANNED_CHARS = 40  # a PDF page with less text than this is an image: a scan, a photo, a handwritten board
 
 

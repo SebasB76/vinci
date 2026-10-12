@@ -10,7 +10,7 @@
 - **Archivos de más de 20 MB:** un bot de Telegram no puede descargar lo que le mandas si pesa más de 20 MB, así
   que no le llega. Para el libro principal, pon el PDF en `libros/<CÓDIGO>/` de la carpeta de datos. El material
   del aula no tiene ese límite: se baja directo del aula (hasta `material.tamano_maximo_mb`).
-- **Qué se puede leer:** el texto de PDF, PPTX, DOCX y páginas web. Un PDF escaneado se busca por su texto de OCR
+- **Qué se puede leer:** el texto de PDF, PPTX, DOCX, XLSX (Excel) y páginas web. Un PDF escaneado se busca por su texto de OCR
   (con `tesseract` instalado), que falla en fórmulas, figuras y letra a mano: eso el bot de su materia lo mira
   como imagen, de una en una. Un libro escaneado de 300 páginas tarda unos 10 a 15 minutos de OCR, repartidos en
   los sondeos. Un Google Docs, Drive, SharePoint

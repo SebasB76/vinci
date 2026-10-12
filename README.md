@@ -27,29 +27,50 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 
 ## Qué hace
 
-|   |   |
-|---|---|
-| 🔔 **Te avisa** | Revisa el aula cada 30 minutos: tareas nuevas, cambios de fecha, anuncios y notas. Te recuerda cada entrega 24 h y 3 h antes. |
-| ☀️ **Te ordena el día** | A las 7:00 te manda tu semana: primero lo que vence, después lo que más pesa en tu nota. |
-| 🤖 **Un bot por materia** | «Arma mi equipo» y tienes un bot para cada materia, con un repaso 30 minutos antes de cada clase. |
-| 📚 **Estudia contigo** | Explica, resume y te hace `/quiz` con el material del curso, citando archivo y página. |
-| 📊 **Saca tus cuentas** | «¿Cuánto necesito para pasar?» con los pesos del sílabo. Las cuentas las hace un script, no la IA. |
-| 🎓 **Lee tu Académico** | Promedio, materias aprobadas y horarios de exámenes, sin guardar tu contraseña. |
-| 📤 **Entrega por ti** | Fotos de tu deber hecho a mano → un PDF → «📤 Entregar». Nada se entrega sin tu toque. |
-| 💬 **También en WhatsApp** | Tu chat, tus grupos y un Vinci propio para cada amigo. Entiende notas de voz. |
+**Te mantiene al día**
+- **Avisos del aula.** Revisa el aula cada 30 minutos: tareas nuevas, cambios de fecha, anuncios, notas y material. Si es un cuestionario, te dice cuántas preguntas tiene y cuánto tiempo dura.
+- **Recordatorios.** Cada entrega pendiente, 24 h y 3 h antes. Si la entregaste en papel, pulsas «Ya lo entregué» y no insiste más.
+- **Resumen de las 7:00.** Tu semana en orden: primero lo que vence, después lo que más pesa en tu nota.
+- **Dashboard de entregas.** Una página dentro del chat con lo atrasado, lo de hoy y lo de la semana. Marcas una entrega con un toque.
+- **Tu lista de pendientes.** «Anota: estudiar el capítulo 3 para el viernes» y te lo recuerda como una tarea más.
+
+**Estudia contigo**
+- **Un bot por materia.** «Arma mi equipo» y tienes un bot para cada materia, con un repaso 30 minutos antes de cada clase.
+- **Preguntas sobre el material.** Explica, resume y te hace preguntas tipo examen, citando archivo, página y el enlace del aula. Cada cita se comprueba antes de enviarse.
+- **`/quiz`.** Un quiz corto en encuestas, con tu puntaje al final. Lo que fallas queda como tema débil.
+- **Exámenes anteriores.** Busca en DSpace los parciales de tu materia y te resuelve uno pregunta por pregunta.
+- **Cuaderno de cada materia.** Le cuentas lo que vieron, o le mandas una foto de la pizarra o una nota de voz, y lo guarda con un resumen.
+- **Tus apuntes de clase.** Escribe `//vinci <pregunta>` en tus notas y el bot de la materia te contesta en el chat.
+- **Diapositivas.** «Hazme unas diapositivas de integrales dobles» y te manda el `.pptx`.
+- **PDFs escaneados.** Lee con OCR las fotocopias, para que la búsqueda también las encuentre.
+
+**Saca tus cuentas**
+- **Calculadora de notas.** «¿Cuánto necesito para pasar?», con los pesos del sílabo. Las cuentas las hace un script, no la IA.
+- **Tu Académico.** Promedio, avance de la carrera, materias aprobadas y horarios de exámenes, sin guardar tu contraseña.
+- **Horario desde una captura.** Le mandas una captura de tu horario y lo entiende solo.
+
+**Hace por ti**
+- **Entrega a mano.** Fotos de tu deber, después un PDF, y lo entrega en el aula cuando pulsas «Entregar».
+- **Traspaso con un botón.** Debajo de cada aviso, «Consultar con…» se lo pasa al bot de la materia para que te lo explique.
+- **Planes de estudio.** Vinci ve todas tus materias, entregas y clases juntas, y arma un plan para el parcial.
+
+**Donde estés**
+- **Telegram y WhatsApp.** Tu chat, tus grupos y un Vinci propio para cada amigo, con su aula. Entiende notas de voz.
+- **Terminal y Claude Code.** El comando `aula` consulta todo, y una skill le enseña a Claude Code a usarlo.
+- **Estado y token desde el chat.** `/estado` te dice si todo está sano, y `/token` renueva el acceso al aula sin que el token pase por el chat.
 
 Todo corre en tu PC y solo te contesta a ti. Lo automático (revisar el aula, avisar, recordar) no usa la IA ni
-gasta tokens. [Todas las funciones →](docs/guia/funciones.md#qué-hace-vinci)
+gasta tokens. [Cada función en detalle →](docs/guia/funciones.md#qué-hace-vinci)
 
 ## Conectado a ESPOL
 
 Vinci lee lo que ESPOL ya tiene sobre ti, desde un solo chat:
 
-| | | |
-|---|---|---|
-| 🏫 **[Aula virtual](https://aulavirtual.espol.edu.ec)** | Canvas | Tareas, fechas, anuncios, notas y el material de cada curso. Entrega tus deberes hechos a mano. |
-| 🎓 **[Académico](https://www.academico.espol.edu.ec)** | Portal académico | Promedio, avance de la carrera, historial, calificaciones y horarios de clases y exámenes. |
-| 📝 **[DSpace](https://www.dspace.espol.edu.ec)** | Repositorio | Unos 20 000 exámenes anteriores de todas las facultades, que Vinci busca y resuelve. |
+| Fuente | Qué lee |
+|---|---|
+| **[Aula virtual](https://aulavirtual.espol.edu.ec)** (Canvas) | Tareas, fechas, anuncios, notas y el material de cada curso. También entrega tus deberes hechos a mano. |
+| **[Académico](https://www.academico.espol.edu.ec)** | Promedio, avance de la carrera, historial, calificaciones y horarios de clases y exámenes. |
+| **[DSpace](https://www.dspace.espol.edu.ec)** | Unos 20 000 exámenes anteriores de todas las facultades, que Vinci busca y resuelve. |
 
 Y se vienen más.
 
@@ -72,7 +93,7 @@ La [instalación paso a paso](docs/guia/instalacion.md#paso-a-paso) explica de d
 
 ## Guías
 
-| | |
+| Guía | Qué tiene |
 |---|---|
 | [Instalación](docs/guia/instalacion.md) | Paso a paso, configuración, actualizar y desinstalar |
 | [Uso diario](docs/guia/uso.md) | Vinci, los bots de materia, botones, comandos, `/token`, el Académico |
@@ -86,9 +107,9 @@ La [instalación paso a paso](docs/guia/instalacion.md#paso-a-paso) explica de d
 
 ## Privacidad
 
-- 🔒 **Solo lee tu aula.** Lo único que escribe es una entrega que tú confirmaste.
-- 🏠 **Tus datos se quedan en tu PC.** No hay servidor de Vinci.
-- 🔑 **Los tokens y tu contraseña nunca pasan por el chat ni por la IA.** Viajan cifrados.
+- **Solo lee tu aula.** Lo único que escribe es una entrega que tú confirmaste.
+- **Tus datos se quedan en tu PC.** No hay servidor de Vinci.
+- **Los tokens y tu contraseña nunca pasan por el chat ni por la IA.** Viajan cifrados.
 
 [Qué sale de tu PC y por qué →](docs/guia/privacidad.md#seguridad-y-privacidad)
 

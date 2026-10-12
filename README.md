@@ -22,7 +22,6 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 <p align="center">
   <img src="docs/images/vinci-en-telegram.png" alt="Tres chats de Telegram: Vinci arma el equipo de bots, un aviso del aula con el botón para consultarlo con el bot de la materia, y el brief de una clase" width="100%">
 </p>
-<p align="center"><sub>Datos ficticios de la prueba E2E.</sub></p>
 
 ## Qué hace
 

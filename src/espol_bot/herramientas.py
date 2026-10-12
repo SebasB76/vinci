@@ -800,13 +800,17 @@ QUIZ_QUESTIONS = {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
 CHANNEL_FRESH = 600  # seconds: canal.json older than this is from another conversation
 PORTAL_TOPICS = ("historial", "promedio", "avance", "calificaciones", "horario", "examenes", "todo")
 PORTAL_OLD = timedelta(days=30)
+GPA_NOTE = ("Give the GPA exactly as the portal shows it (`gpa`, from Información General), never one you work out "
+            "from the grades. If `gpa` is empty this copy was saved before Vinci read that page: say so and offer to "
+            "update it (refresh: true).")
 PORTAL = ("ESPOL's Académico (academico.espol.edu.ec), not the aula virtual: the student's academic history (every "
-          "subject with its grade and status: approved, failed, credited, in progress), the GPA as the portal shows "
-          "it, credits and requirements of the degree, this term's grades, and the class and exam timetables (parcial, "
-          "final, mejoramiento). Use it for those questions, never `notas` or `semana`. With a saved copy it answers "
-          "from it, with when it was read and its term. With none (or with refresh) it sends the student a «🎓 "
-          "Conectar Académico» button to sign in on a page of their own; their question comes back to you by itself "
-          "once the copy is saved. Never ask for their user, password or CAPTCHA in the chat.")
+          "subject with its grade and status: approved, failed, credited, in progress), the GPA and the progress "
+          "through the degree as the portal shows them, credits and requirements of the degree, this term's grades, "
+          "and the class and exam timetables (parcial, final, mejoramiento). Use it for those questions, never "
+          "`notas` or `semana`. With a saved copy it answers from it, with when it was read and its term. With none "
+          "(or with refresh) it sends the student a «🎓 Conectar Académico» button to sign in on a page of their own; "
+          "their question comes back to you by itself once the copy is saved. Never ask for their user, password or "
+          "CAPTCHA in the chat.")
 PORTAL_PROPERTIES = {
     "topic": {"type": "string", "enum": list(PORTAL_TOPICS),
               "description": "historial: approved/failed subjects; promedio: GPA; avance: credits and progress; "
@@ -1063,9 +1067,8 @@ def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
     by_kind = {kind: [{k: v for k, v in s.items() if k != "status_kind" and v} for s in subjects
                       if s["status_kind"] == kind]
                for kind in ("approved", "credited", "failed", "in_progress", "withdrawn", "other")}
-    portal_facts = {f"{key}: {label}": value for key, section in sections.items()
-                    for label, value in (section.get("datos") or {}).items()}
-    gpa = {label: value for label, value in portal_facts.items() if re.search(r"promedio", label, re.I)}
+    career = (sections.get("general") or {}).get("datos") or {}
+    gpa = {label: value for label, value in career.items() if re.search(r"promedio", label, re.I)}
     if topic == "historial":
         answer["subjects"] = {kind: items for kind, items in by_kind.items() if items}
         answer["counts"] = {kind: len(items) for kind, items in by_kind.items() if items}
@@ -1073,33 +1076,45 @@ def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
         if not subjects:
             answer["tables"] = history.get("tablas") or []
         answer["note"] = ("Credited (convalidada, homologada) subjects are not approved ones taken here: name them "
-                          "apart.")
+                          "apart. " + GPA_NOTE)
     elif topic == "promedio":
-        answer["gpa"] = gpa or None
+        answer["gpa"] = gpa
         answer["counts"] = {kind: len(items) for kind, items in by_kind.items() if items}
-        answer["note"] = ("Give the GPA exactly as the portal shows it. If `gpa` is empty the portal shows none: say "
-                          "so, and never compute one from the grades.")
+        answer["note"] = GPA_NOTE
     elif topic == "avance":
         credits = sections.get("creditos") or {}
-        answer.update({"credits": {"facts": credits.get("datos") or {}, "tables": credits.get("tablas") or []},
+        answer.update({"career": career,
+                       "credits": {"facts": credits.get("datos") or {}, "tables": credits.get("tablas") or []},
                        "counts": {kind: len(items) for kind, items in by_kind.items() if items},
                        "in_progress": by_kind["in_progress"]})
-        answer["note"] = ("The curriculum (malla) is not read yet. Report only what the portal states about credits "
-                          "and requirements. Never work out the remaining subjects or credits by subtracting the "
-                          "approved ones from a total: electives, credited subjects and each degree's requirements "
-                          "change that count.")
-    elif topic in ("calificaciones", "horario"):
-        section = sections.get(topic) or {}
-        answer.update({"selected": section.get("seleccion") or {}, "tables": section.get("tablas") or [],
-                       "facts": section.get("datos") or {}})
-    elif topic == "examenes":
-        section = sections.get("examenes") or {}
-        answer.update({"selected": section.get("seleccion") or {}, "by_kind": section.get("por_tipo") or {}})
+        answer["note"] = ("The curriculum (malla) is not read yet. Report only what the portal states about credits, "
+                          "requirements and progress (`career`: Avance de la carrera, Créditos por tomar). The portal "
+                          "marks the progress with * as referential: the career's coordinator confirms it at the end. "
+                          "Never work out the remaining subjects or credits by subtracting the approved ones from a "
+                          "total: electives, credited subjects and each degree's requirements change that count.")
+    elif topic in ("calificaciones", "horario", "examenes"):
+        section = _portal_section(sections.get(topic) or {})
+        answer.update({"selected": section.pop("selected", {}), **section})
+        if not any(section.get(k) for k in ("breakdowns", "classes", "exams", "tables", "tables_by_kind")):
+            answer["note"] = "The portal showed nothing for this term: say so."
     else:
         answer.update({"counts": {kind: len(items) for kind, items in by_kind.items() if items}, "gpa": gpa,
-                       "sections": {key: {k: v for k, v in s.items() if k != "materias"} for key, s in sections.items()},
-                       "subjects": {kind: items for kind, items in by_kind.items() if items}})
+                       "sections": {key: _portal_section(s) for key, s in sections.items()},
+                       "subjects": {kind: items for kind, items in by_kind.items() if items},
+                       "note": GPA_NOTE})
     return answer
+
+
+def _portal_section(section: dict) -> dict:
+    """A section of the copy, named in English, without what a shorter form already holds (the history's table is
+    its subjects, a timetable's half-hour grid its classes, the exam grids their exams) and without empty parts."""
+    drop = {"materias"}
+    if section.get("classes"):
+        drop.add("tablas")
+    if any((section.get("exams") or {}).values()):
+        drop.add("por_tipo")
+    names = {"tablas": "tables", "datos": "facts", "seleccion": "selected", "por_tipo": "tables_by_kind"}
+    return {names.get(k, k): v for k, v in section.items() if k not in drop and v}
 
 
 def _academic_record(ctx: Ctx, args: dict) -> dict:

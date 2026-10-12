@@ -47,10 +47,14 @@ the Worker does, for a page opened in a real browser.
 FakePortal stands in for ESPOL's Académico (www.academico.espol.edu.ec, through `[test] link_hosts`), as ASP.NET Web
 Forms behaves: a session cookie, a fresh __VIEWSTATE and __EVENTVALIDATION in every form that the next post must send
 back (a stale or foreign one is a 500, as a broken viewstate MAC is), login.aspx in two steps (user name; then
-password and a BotDetect CAPTCHA whose image must be fetched with the same cookie), a forms-auth cookie, and the pages
-under /UI/InformacionAcademica/ as GridView tables inside a layout table, behind a 302 to login.aspx without it. The
-grades page shows its table only after «Consultar», the timetables change with their year/term drop-downs, and the
-exam timetable with its parcial/final/mejoramiento drop-down (AutoPostBack). It records every request with its session.
+password and a BotDetect CAPTCHA whose image must be fetched with the same cookie), a forms-auth cookie, and the
+pages under /UI/InformacionAcademica/ in the shapes the real ones have, behind a 302 to login.aspx without it:
+«Información General» with the student's card (ID, name, photo) and the career's GPA and progress in «Label:» rows;
+the history with «Año Termino» and «Prom.» columns; the credits under a card with the matrícula and name; the grades
+and the class timetable empty until «Consultar» is pressed with a year and a term typed in, the grades in a table
+with two header rows; the exam timetable with them filled in and a parcial/final/mejoramiento drop-down, empty until
+«Consultar» too; both timetables as a half-hour grid that leaves out empty hours and whose classes span rows; and a
+Presentar(...) call with each subject's weights. It records every request with its session.
 
 FakeDSpace stands in for ESPOL's DSpace (www.dspace.espol.edu.ec, through `[test] link_hosts`): the REST
 `filtered-items` search, which runs a `matches` title regex the way DSpace does, an item by its handle with its
@@ -1086,34 +1090,54 @@ class _LLMHandler(_Quiet):
 # -- ESPOL's Académico -------------------------------------------------------------------------------
 
 PORTAL_USER, PORTAL_PASSWORD = "estudiante.prueba", "Clave-Secreta-E2E-9"
-# (año, término, código, materia, nota, estado, vez): invented, in the shapes the portal uses.
+PORTAL_TERM = ("2026", "2S")  # what the exam timetable fills in; the grades and the timetable ask for it
+# (Año Termino, Código, Materia, Prom., No. Vez, Estado): invented, in the shapes the portal uses. The term in
+# progress is not in the history; the admission subjects (ADM…) are approved with 0,00.
 PORTAL_HISTORY = [
-    ("2024", "1S", "MATG1049", "CÁLCULO DE UNA VARIABLE", "8.20", "APROBADA", "1"),
-    ("2024", "1S", "FISG1002", "FÍSICA I", "5.10", "REPROBADA", "1"),
-    ("2024", "1S", "IDIG1001", "INGLÉS I", "", "CONVALIDADA", "1"),
-    ("2024", "2S", "FISG1002", "FÍSICA I", "7.40", "APROBADA", "2"),
-    ("2024", "2S", "CCPG1043", "FUNDAMENTOS DE PROGRAMACIÓN", "9.10", "APROBADA", "1"),
-    ("2025", "1S", "MATG1050", "CÁLCULO DE VARIAS VARIABLES", "7.90", "APROBADA", "1"),
-    ("2026", "1S", "ADSG1026", "CIENCIAS DE LA SOSTENIBILIDAD", "", "EN CURSO", "1"),
-    ("2026", "2S", "CCPG1055", "SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "", "EN CURSO", "1"),
-    ("2026", "2S", "SOFG1007", "INGENIERÍA DE SOFTWARE I", "", "EN CURSO", "1"),
+    ("2024-1", "MATG1045", "CÁLCULO DE UNA VARIABLE", "8,20", "1", "Aprobada"),
+    ("2024-1", "FISG1005", "FÍSICA: MECÁNICA", "5,10", "1", "Reprobada"),
+    ("2024-1", "ADM001099", "FÍSICA (2020)", "0,00", "1", "Aprobada"),
+    ("2024-1", "IDIG1006", "INGLÉS I", "8,97", "1", "Convalidada"),
+    ("2024-2", "FISG1005", "FÍSICA: MECÁNICA", "7,40", "2", "Aprobada"),
+    ("2024-2", "CCPG1043", "FUNDAMENTOS DE PROGRAMACIÓN", "9,10", "1", "Aprobada"),
+    ("2025-1", "MATG1046", "CÁLCULO VECTORIAL", "7,90", "1", "Aprobada"),
 ]
-PORTAL_GRADES = [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "1", "7.50", "", "", "", "EN CURSO"),
-                 ("INGENIERÍA DE SOFTWARE I", "2", "8.80", "", "", "", "EN CURSO")]
-PORTAL_CREDITS = [("Formación básica", "40", "36"), ("Formación profesional", "70", "12"), ("Optativas", "15", "0"),
-                  ("Inglés (requisito)", "Requisito", "Convalidado")]
-PORTAL_CLASSES = {("2026", "2do Término"): [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "1", "LUNES", "09:30-11:30", "15A-201"),
-                                             ("INGENIERÍA DE SOFTWARE I", "2", "MARTES", "14:30-16:30", "11C-104")],
-                  ("2026", "1er Término"): [("CIENCIAS DE LA SOSTENIBILIDAD", "3", "JUEVES", "07:30-09:30", "8-105")]}
-PORTAL_EXAMS = {"Parcial": [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "24/11/2026", "08:00", "15A-AUD")],
-                "Final": [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "02/02/2027", "10:00", "15A-AUD"),
-                          ("INGENIERÍA DE SOFTWARE I", "04/02/2027", "08:00", "11C-AUD")],
-                "Mejoramiento": [("INGENIERÍA DE SOFTWARE I", "11/02/2027", "08:00", "11C-AUD")]}
+PORTAL_LATE_GRADE = ("2026-1", "ADSG1026", "CIENCIAS DE LA SOSTENIBILIDAD", "8,80", "1", "Aprobada")
+# Créditos por Carrera: (kind of credit, required, [(code, subject, credits, status)])
+PORTAL_CREDITS = [
+    ("FORMACIÓN PROFESIONAL", "53", [("CCPG1043", "FUNDAMENTOS DE PROGRAMACIÓN", "3", "APROBADA")]),
+    ("MATEMÁTICAS Y CIENCIAS BÁSICAS", "21", [("MATG1045", "CÁLCULO DE UNA VARIABLE", "3", "APROBADA"),
+                                              ("MATG1046", "CÁLCULO VECTORIAL", "3", "APROBADA"),
+                                              ("FISG1005", "FÍSICA: MECÁNICA", "3", "APROBADA")]),
+    ("EDUCACIÓN GENERAL", "23", [("IDIG1006", "INGLÉS I", "2", "CONVALIDADA")]),
+]
+# tbl_Calificaciones: (code, subject, paralelo teórico, práctico, exam 1, exam 2, práct., mej., prom.). A subject with
+# a práctico also has a Presentar(...) link (name, parcial, final, mejoramiento, práctico, subtotal, % teórico,
+# % práctico, promedio) that opens its «Ponderación» dialog.
+PORTAL_GRADES = [("CCPG1055", "SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "1", "101", "7,50", "0", "9,00", "0", "0,00"),
+                 ("SOFG1007", "INGENIERÍA DE SOFTWARE I", "1", "", "8,80", "0", "", "0", "0,00")]
+# Información General: the student's card (never to be kept), which also carries the GPA, and the career's figures.
+PORTAL_CARD = [("Matrícula", "202499999"), ("Identificación", "0999999999"), ("Nombre", "ESTUDIANTE DE PRUEBA"),
+               ("Grupo étnico", "Prueba")]
+# The weekly grids: (day, from, to, cell) on a row per half hour, a class spanning its rows.
+PORTAL_CLASSES = [("Lunes", "09:30", "11:30", "CCPG1055 - SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE Paralelo N°1 "
+                   "Aula:15A-201 CAMPUS GUSTAVO GALINDO"),
+                  ("Martes", "14:30", "16:30", "SOFG1007 - INGENIERÍA DE SOFTWARE I Paralelo N°2 Aula:11C-104 CAMPUS "
+                   "GUSTAVO GALINDO")]
+PORTAL_EXAMS = {"PARCIAL": [("Lunes", "08:00", "10:00", "CCPG1055 - SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE "
+                             "Paralelo N°1 Aula:15A-AUD CAMPUS GUSTAVO GALINDO Fecha:24/11/2026")],
+                "FINAL": [("Martes", "10:00", "12:00", "CCPG1055 - SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE "
+                           "Paralelo N°1 Aula:15A-AUD CAMPUS GUSTAVO GALINDO Fecha:2/2/2027"),
+                          ("Jueves", "08:00", "10:00", "SOFG1007 - INGENIERÍA DE SOFTWARE I Paralelo N°2 Aula:11C-AUD "
+                           "CAMPUS GUSTAVO GALINDO Fecha:4/2/2027")],
+                "MEJORAMIENTO": [("Jueves", "08:00", "10:00", "SOFG1007 - INGENIERÍA DE SOFTWARE I Paralelo N°2 "
+                                  "Aula:11C-AUD CAMPUS GUSTAVO GALINDO Fecha:11/2/2027")]}
+PORTAL_EXAM_KINDS = {"1": "PARCIAL", "2": "FINAL", "M": "MEJORAMIENTO"}
 
 
 class FakePortal(_Server):
-    """ESPOL's Académico for one student, PORTAL_USER. `version` 2 is the portal a week later: Sostenibilidad has its
-    grade, and the GPA moved."""
+    """ESPOL's Académico for one student, PORTAL_USER. `version` 2 is the portal a week later: Sostenibilidad's grade
+    is published, in the history and in the credits."""
 
     def __init__(self):
         super().__init__(_PortalHandler)
@@ -1130,12 +1154,22 @@ class FakePortal(_Server):
             return self.codes[-1]
 
     def history(self) -> list[tuple]:
-        if self.version == 1:
-            return PORTAL_HISTORY
-        return [r if r[2] != "ADSG1026" else (*r[:4], "8.80", "APROBADA", "1") for r in PORTAL_HISTORY]
+        return PORTAL_HISTORY if self.version == 1 else [*PORTAL_HISTORY, PORTAL_LATE_GRADE]
 
     def gpa(self) -> str:
         return "8,15" if self.version == 1 else "8,22"
+
+    def career(self) -> list[tuple]:
+        left, progress = ("60", "40,00% *") if self.version == 1 else ("58", "42,50% *")
+        return [("Año-Término", "2024-1S"), ("Carrera", "Computación|Activo"), ("Materias tomadas en ESPOL", "7"),
+                ("Promedio de materias de la carrera", self.gpa()), ("Nivel", "200I"), ("Créditos por tomar", left),
+                ("Avance de la carrera", progress), ("Porcentaje de créditos reprobados", "0,00%")]
+
+    def credits(self) -> list[tuple]:
+        if self.version == 1:
+            return PORTAL_CREDITS
+        return [(kind, required, [*rows, ("ADSG1026", "CIENCIAS DE LA SOSTENIBILIDAD", "2", "APROBADA")]
+                 if kind == "EDUCACIÓN GENERAL" else rows) for kind, required, rows in PORTAL_CREDITS]
 
 
 def _captcha_jpeg(code: str) -> bytes:
@@ -1160,6 +1194,41 @@ def _grid(grid_id: str, header: list[str], rows: list[tuple]) -> str:
     body = "".join(f"<tr>{_cells(r)}</tr>" for r in rows) or '<tr><td colspan="9">No existen registros</td></tr>'
     return (f'<table cellspacing="0" rules="all" border="1" id="ctl00_contenido_{grid_id}" style="border-collapse:collapse;">'
             f'<tr class="GridHeader" style="font-weight:bold;">{_cells(header, "th")}</tr>{body}</table>')
+
+
+def _week_grid(entries: list[tuple]) -> str:
+    """horarioView's and horarioExView's tbl_Horario: a row per half hour from 07:00 (none for the hours with
+    nothing), a column per day, a class spanning its rows (the rows it covers have no cell for that day)."""
+    from html import escape
+    days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    slots = [f"{m // 60:02d}:{m % 60:02d}" for m in range(7 * 60, 21 * 60 + 1, 30)]
+    starts = {(d, a): (slots.index(b) - slots.index(a), text) for d, a, b, text in entries}
+    covered = {(d, slots[i]) for d, a, b, _ in entries for i in range(slots.index(a) + 1, slots.index(b))}
+    head = '<th id="ctl00_contenido_hora"></th>' + "".join(f'<th id="ctl00_contenido_{n}">{d}</th>'
+                                                             for n, d in enumerate(days, 1))
+    rows = ""
+    for i, (start, end) in enumerate(zip(slots, slots[1:]), 1):
+        if not any((day, start) in starts or (day, start) in covered for day in days):
+            continue
+        cells = ""
+        for n, day in enumerate(days, 1):
+            if (day, start) in covered:
+                continue
+            span, text = starts.get((day, start), (1, ""))
+            cells += (f'<td id="ctl00_contenido_{i}_{n}"{f" rowspan={chr(34)}{span}{chr(34)}" if span > 1 else ""} '
+                      f'headers="ctl00_contenido_{n}">{escape(text)}</td>')
+        rows += f'<tr id="ctl00_contenido_fila_{i}"><th>{start} - {end}</th>{cells}</tr>'
+    return f'<table id="ctl00_contenido_tbl_Horario"><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>'
+
+
+def _term_boxes(year: str = "", term: str = "") -> str:
+    """The year and term boxes and «Consultar» of the grades and the two timetables (a layout table, as the portal)."""
+    return ('<table cellspacing="1" cellpadding="1" align="center"><tr><td align="right"><b>Año:</b></td><td>'
+            f'<input name="ctl00$contenido$txtAnio" type="text" value="{year}" maxlength="4" id="ctl00_contenido_txtAnio" />'
+            '</td></tr><tr><td align="right"><b>Término:</b></td><td><input name="ctl00$contenido$txtTermino" '
+            f'type="text" value="{term}" maxlength="2" id="ctl00_contenido_txtTermino" /></td></tr><tr><td colspan="2">'
+            '{select}<input type="submit" name="ctl00$contenido$cmdConsultar" value="Consultar" '
+            'id="ctl00_contenido_cmdConsultar" /></td></tr></table>')
 
 
 class _PortalHandler(_Quiet):
@@ -1293,58 +1362,77 @@ class _PortalHandler(_Quiet):
             return self._redirect(f"/login.aspx?ReturnUrl={quote(parts.path)}")
         return self._data(sid, session, path.removeprefix("/ui/informacionacademica/"), form)
 
-    def _selects(self, form: dict, *specs) -> tuple[str, dict, dict]:
-        """Drop-downs as the page renders them, each with what the post chose (or its default)."""
-        html, chosen, allowed = "", {}, {}
-        for name, options, default, postback in specs:
-            value = form.get(f"ctl00$contenido${name}", default)
-            chosen[name], allowed[f"ctl00$contenido${name}"] = value, options
-            opts = "".join(f'<option{" selected=\"selected\"" if o == value else ""} value="{o}">{o}</option>'
-                           for o in options)
-            change = f' onchange="javascript:setTimeout(&#39;__doPostBack(\\&#39;ctl00$contenido${name}\\&#39;,\\&#39;\\&#39;)&#39;, 0)"' \
-                if postback else ""
-            html += f'<select name="ctl00$contenido${name}" id="ctl00_contenido_{name}"{change}>{opts}</select>'
-        return html, chosen, allowed
-
     def _data(self, sid, session, page: str, form: dict):
         portal: FakePortal = self.server.owner
+        asked = (form.get("ctl00$contenido$txtAnio", "").strip(), form.get("ctl00$contenido$txtTermino", "").strip())
+        consulted = "ctl00$contenido$cmdConsultar" in form
         if page == "historiaacademica_.aspx":
-            approved = sum(1 for r in portal.history() if r[5] == "APROBADA")
+            rows = "".join(f"<tr>{_cells(r)}</tr>" for r in portal.history())
             return self._page(sid, session, "Historia Académica", (
-                '<h3>Historia académica</h3><div><span id="ctl00_contenido_lblCarrera">Carrera: INGENIERÍA EN COMPUTACIÓN</span>'
-                f'</div><div><span>Promedio general:</span> <span id="ctl00_contenido_lblPromedio">{portal.gpa()}</span></div>'
-                f'<div>Materias aprobadas: {approved}</div>'
-                + _grid("gvHistoria", ["AÑO", "TÉRMINO", "CÓDIGO", "MATERIA", "NOTA", "ESTADO", "VEZ"], portal.history())))
+                '<h1>Historia Académica</h1><table id="ctl00_contenido_tbResultados" cellspacing="0"><thead><tr>'
+                + _cells(["Año Termino", "Código", "Materia", "Prom.", "No. Vez", "Estado"], "th")
+                + f"</tr></thead><tbody>{rows}</tbody></table>"))
+        if page == "informaciongeneral.aspx":
+            def card(rows):
+                return "<table>" + "".join(f"<tr><td><b>{k}:</b></td><td><span>{v}</span></td></tr>" for k, v in rows) + "</table>"
+            career = [(k, v if k != "Carrera" else
+                       "<a href=javascript:AbrirVentanaMalla('http://www.mallacurricular.espol.edu.ec/Malla/Index?token=x')>"
+                       + v.replace("|", "</a><br />")) for k, v in portal.career()]
+            student = card([*PORTAL_CARD, ("Promedio General en las materias aprobadas", portal.gpa())])
+            return self._page(sid, session, "Información General", (
+                f'<h1>Información General</h1><table><tr><td>{student}</td><td><img id="ctl00_contenido_imgEstudiante" '
+                f'src="data:image/jpeg;base64,AAAA" /></td></tr></table><h1>Información de la Carrera</h1>{card(career)}'))
         if page == "calificacionesbusqueda_.aspx":
-            selects, chosen, allowed = self._selects(form, ("ddlAnio", ["2025", "2026"], "2026", False),
-                                                     ("ddlTermino", ["1er Término", "2do Término"], "2do Término", False))
-            table = ""
-            if "ctl00$contenido$btnConsultar" in form:
-                rows = PORTAL_GRADES if (chosen["ddlAnio"], chosen["ddlTermino"]) == ("2026", "2do Término") else []
-                table = _grid("gvCalificaciones", ["MATERIA", "PARALELO", "1ER PARCIAL", "2DO PARCIAL", "3RA EVALUACIÓN",
-                                                   "PROMEDIO", "ESTADO"], rows)
-            return self._page(sid, session, "Calificaciones", (
-                f'<h3>Calificaciones por período</h3>Año: {selects}<input type="submit" name="ctl00$contenido$btnConsultar"'
-                f' value="Consultar" id="ctl00_contenido_btnConsultar" />{table}'), allowed=allowed)
+            listed = ""
+            if consulted and asked == PORTAL_TERM:
+                from html import escape
+                rows = ""
+                for code, name, theory, practice, first, second, practical, better, average in PORTAL_GRADES:
+                    shown = escape(name)
+                    if practice:
+                        args = (name, first, second, better, practical, first, "70", "30", average)
+                        shown = ('<a href="javascript:Presentar(' + ",".join(f"&#39;{escape(v)}&#39;" for v in args)
+                                 + f')">{shown}</a>')
+                    rows += (f"<tr><td>{asked[0]} - {asked[1][0]} </td><td>{code} </td><td>{shown}</td>"
+                             + _cells([theory, practice, first, second, practical, better, average, "1"]) + "<td>&nbsp;</td></tr>")
+                listed = ('<div id="ctl00_contenido_panelBusqueda"><h1>Calificaciones</h1><table id="ctl00_contenido_tbl_Calificaciones">'
+                          '<thead><tr><th rowspan="2">Año<br>Término</th><th rowspan="2">Código</th><th rowspan="2">Materia</th>'
+                          '<th colspan="2">Paralelo</th><th colspan="4">Exámenes</th><th rowspan="2">Prom.</th>'
+                          '<th rowspan="2">No.<br>Vez</th><th rowspan="2">Estado</th></tr><tr><th>Teórico</th><th>Práctico</th>'
+                          '<th>&nbsp;1&nbsp;</th><th>&nbsp;2&nbsp;</th><th>Práct.</th><th>Mej.</th></tr></thead>'
+                          f'<tbody>{rows}</tbody></table></div>')
+            dialog = ('<div id="dialog-message3" title="Ponderación"><table><thead><tr><th colspan="2">COMPONENTE</th>'
+                      '<th>NOTAS</th><th>SUBTOTAL</th><th>% PARA PROMEDIO</th><th>PROMEDIO FINAL</th></tr></thead>'
+                      '<tbody><tr><td rowspan="3">Teórico</td><td>Parcial</td><td id="nota1teorico"></td>'
+                      '<td rowspan="3" id="subpromedio"></td><td rowspan="3"></td><td rowspan="4" id="promedio"></td></tr>'
+                      '<tr><td>Final</td><td></td></tr><tr><td>Mejoramiento</td><td></td></tr>'
+                      '<tr><td>Práctico</td><td>Final</td><td></td><td></td><td></td></tr></tbody></table></div>')
+            return self._page(sid, session, "Calificaciones", '<h1>Búsqueda de Calificaciones</h1>'
+                              + _term_boxes(*asked).replace("{select}", "") + listed + dialog)
         if page == "creditoscarrera.aspx":
-            return self._page(sid, session, "Créditos", (
-                '<h3>Créditos de la carrera</h3><div>Créditos aprobados: 48</div><div>Créditos en curso: 9</div>'
-                + _grid("gvCreditos", ["TIPO", "REQUERIDOS", "APROBADOS"], PORTAL_CREDITS)))
+            grids = "".join(_grid(f"dlCreditos_ctl{i:02d}_GridView1", ["Cod. Materia", "Materia", "# Créditos", "Estado", ""],
+                                  [(*r, "") for r in rows]) for i, (_, _, rows) in enumerate(portal.credits()))
+            taken = {kind: sum(int(r[2]) for r in rows) for kind, _, rows in portal.credits()}
+            summary = _grid("gridResumen", ["Tipo de Crédito", "# Tomados", "# del Flujo", "Excedente", "Reajuste"],
+                            [(kind, taken[kind], req, taken[kind] - int(req), "") for kind, req, _ in portal.credits()])
+            card = ('<table><tr><td>Matrícula:</td><td>202499999</td></tr><tr><td>Nombre:</td><td>ESTUDIANTE DE PRUEBA</td>'
+                    '</tr><tr><td>Carrera:</td><td>Computación</td></tr></table>')
+            total = (f'<table><tr><td><b>Total de Créditos:</b> <span id="ctl00_contenido_dlCreditos_ctl00_Label2">'
+                     f'{sum(taken.values())}</span></td><td></td></tr></table>')
+            return self._page(sid, session, "Créditos", f"<h1>Créditos por Carrera</h1>{card}{grids}{total}{summary}")
         if page == "horarioview.aspx":
-            selects, chosen, allowed = self._selects(form, ("ddlAnio", ["2025", "2026"], "2026", True),
-                                                     ("ddlTermino", ["1er Término", "2do Término"], "2do Término", True))
-            rows = PORTAL_CLASSES.get((chosen["ddlAnio"], chosen["ddlTermino"]), [])
-            return self._page(sid, session, "Horario", f'<h3>Horario de clases</h3>{selects}'
-                              + _grid("gvHorario", ["MATERIA", "PARALELO", "DÍA", "HORA", "AULA"], rows), allowed=allowed)
+            grid = _week_grid(PORTAL_CLASSES) if consulted and asked == PORTAL_TERM else ""
+            return self._page(sid, session, "Horario", '<h1>Consulta tu horario</h1>'
+                              + _term_boxes(*asked).replace("{select}", "") + grid)
         if page == "horarioexview.aspx":
-            selects, chosen, allowed = self._selects(form, ("ddlAnio", ["2025", "2026"], "2026", True),
-                                                     ("ddlTermino", ["1er Término", "2do Término"], "2do Término", True),
-                                                     ("ddlTipo", ["Parcial", "Final", "Mejoramiento"], "Parcial", True))
-            if form and form.get("__EVENTTARGET") not in allowed:
-                return self._send(500, b"Invalid postback or callback argument.", "text/html")
-            rows = PORTAL_EXAMS[chosen["ddlTipo"]] if (chosen["ddlAnio"], chosen["ddlTermino"]) == ("2026", "2do Término") else []
-            return self._page(sid, session, "Horario de exámenes", f'<h3>Horario de exámenes</h3>{selects}'
-                              + _grid("gvExamenes", ["MATERIA", "FECHA", "HORA", "AULA"], rows), allowed=allowed)
+            kind = form.get("ctl00$contenido$cmbParcial", "1")
+            options = "".join(f'<option{" selected=\"selected\"" if v == kind else ""} value="{v}">{t}</option>'
+                              for v, t in PORTAL_EXAM_KINDS.items())
+            select = f'<select name="ctl00$contenido$cmbParcial" id="ctl00_contenido_cmbParcial">{options}</select>'
+            grid = _week_grid(PORTAL_EXAMS[PORTAL_EXAM_KINDS[kind]]) if consulted and asked == PORTAL_TERM else ""
+            return self._page(sid, session, "Horario de exámenes", '<h1>Consulta tu horario de Exámenes</h1>'
+                              + _term_boxes(*(asked if form else PORTAL_TERM)).replace("{select}", select) + grid,
+                              allowed={"ctl00$contenido$cmbParcial": list(PORTAL_EXAM_KINDS)})
         return self._send(404, b"not found", "text/html")
 
 

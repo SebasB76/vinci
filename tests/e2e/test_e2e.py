@@ -113,7 +113,8 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      section, the copy is saved with its date and term, and his question comes back to Vinci by itself in the same
      Hermes session. Later questions are answered from the copy, without the portal, and progress toward the degree
      never subtracts approved subjects from a total. «Actualiza mi Académico» on Telegram brings a Mini App button, a
-     second sign-in and the portal's new figures. No credential reaches the model, a chat, the relay in clear, a log
+     second sign-in and the portal's new figures. The GPA is the one on «Información General»; the student's ID, name
+     and photo on that page are never kept. No credential reaches the model, a chat, the relay in clear, a log
      or the data folder, and the sign-in's process exits.
 
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
@@ -152,8 +153,8 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 from fake_servers import (  # noqa: E402
-    DRIVE_FILE, ESPOL_ONLY_SHARE, PORTAL_PASSWORD, PORTAL_USER, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas,
-    FakeDSpace, FakePages, FakePortal, FakeRelay, FakeTelegram, FakeWeb, FakeWhatsApp, ScriptedLLM)
+    DRIVE_FILE, ESPOL_ONLY_SHARE, PORTAL_CARD, PORTAL_PASSWORD, PORTAL_USER, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6,
+    FakeCanvas, FakeDSpace, FakePages, FakePortal, FakeRelay, FakeTelegram, FakeWeb, FakeWhatsApp, ScriptedLLM)
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -633,17 +634,15 @@ class Script:
                     + ", ".join(s["name"].title() for s in approved)
                     + (f". Convalidada: {', '.join(s['name'].title() for s in credited)}." if credited else "."))
         if topic == "promedio":
-            return f"{when}: tu promedio general es {gpa}." if gpa else f"{when}: el Académico no muestra tu promedio."
+            return f"{when}: tu promedio general es {gpa}." if gpa else f"{when}: tu copia no tiene tu promedio."
         if topic == "examenes":
-            finals = data["by_kind"].get("Final") or []
             return f"{when}, tus exámenes finales:\n" + "\n".join(
-                f"- {r['MATERIA'].title()}: {r['FECHA']} a las {r['HORA']} ({r['AULA']})" for t in finals for r in t["filas"])
+                f"- {e['text']} ({e['day']} {e['start']}-{e['end']})" for e in data["exams"].get("FINAL") or [])
         if topic == "avance":
-            facts = data["credits"]["facts"]
-            return (f"{when}: llevas {facts.get('Créditos aprobados')} créditos aprobados y {facts.get('Créditos en curso')} "
-                    "en curso. Por tipo: " + "; ".join(f"{r['TIPO']} {r['APROBADOS']} de {r['REQUERIDOS']}"
-                                                    for t in data["credits"]["tables"] for r in t["filas"])
-                    + ". Cuántas materias te faltan depende de tu malla, que todavía no leo.")
+            career, facts = data["career"], data["credits"]["facts"]
+            return (f"{when}: llevas {career.get('Avance de la carrera')} de avance, {facts.get('Total de Créditos')} "
+                    f"créditos, y te faltan {career.get('Créditos por tomar')} créditos por tomar. Cuántas materias te "
+                    "faltan depende de tu malla, que todavía no leo.")
         return json.dumps(data, ensure_ascii=False)[:500]
 
     def vinci_material(self, text: str, called: list[str], results: list[str]) -> dict | None:
@@ -2384,8 +2383,11 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
         answer = wa.wait_for(lambda b: [m for m in to_him(b) if "8,15" in m.get("message", "")], 120)
         assert answer, fail(f"la pregunta no volvió a su chat: {to_him(wa)}")
         told = text_of(to_him(wa))
-        assert "✅ Listo: guardé tu Académico del 2026 · 2do Término" in told, told
-        assert "Aprobaste 4 materias" in told and "Convalidada: Inglés I" in told and "2026 · 2do Término" in told, told
+        assert "✅ Listo: guardé tu Académico del 2026 · 2S" in told, told
+        assert "Aprobaste 5 materias" in told and "Convalidada: Inglés I" in told and "promedio general es 8,15" in told, told
+        returned = next(r for r in reversed(llm.requests) if PORTAL_BACK in json.dumps(r, ensure_ascii=False))
+        assert "never one you work out from the grades" in json.dumps(returned, ensure_ascii=False), \
+            "el promedio es el de Información General, nunca uno calculado por el modelo"
         back = [r for r in llm.requests[calls:] if PORTAL_BACK in json.dumps(r, ensure_ascii=False)]
         assert back and "cuál es mi promedio y cuántas materias aprobé" in json.dumps(back[0], ensure_ascii=False), \
             "la pregunta vuelve a la misma conversación de Hermes, sin que el capitán la repita"
@@ -2395,9 +2397,28 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
         assert [outcome for _, outcome in portal.logins] == ["captcha", "ok"], portal.logins
         copy = json.loads(copy_file.read_text())
         assert stat.S_IMODE(copy_file.stat().st_mode) == 0o600
-        assert copy["period"] == "2026 · 2do Término" and copy["saved_at"] and not copy["errors"], copy["errors"]
-        assert set(copy["sections"]) == {"historial", "calificaciones", "creditos", "horario", "examenes"}
-        assert set(copy["sections"]["examenes"]["por_tipo"]) == {"Parcial", "Final", "Mejoramiento"}
+        assert copy["period"] == "2026 · 2S" and copy["saved_at"] and not copy["errors"], copy["errors"]
+        sections = copy["sections"]
+        assert set(sections) == {"general", "historial", "calificaciones", "creditos", "horario", "examenes"}
+        general = sections["general"]["datos"]
+        assert general.get("Promedio General en las materias aprobadas") == "8,15" and \
+            general.get("Carrera") == "Computación Activo" and general.get("Avance de la carrera") == "40,00% *", general
+        assert not {"Matrícula", "Identificación", "Nombre", "Grupo étnico", "Año-Término"} & set(general), general
+        assert "Matrícula" not in sections["creditos"]["datos"] and \
+            not [t for t in sections["creditos"]["tablas"] if t["columnas"][0].endswith(":")], "sin la tarjeta del estudiante"
+        grades = sections["calificaciones"]["tablas"][0]
+        assert grades["columnas"][3:9] == ["Paralelo Teórico", "Paralelo Práctico", "Exámenes 1", "Exámenes 2",
+                                           "Exámenes Práct.", "Exámenes Mej."], grades["columnas"]
+        assert grades["filas"][0]["Exámenes 1"] == "7,50" and grades["filas"][0]["Año Término"] == "2026 - 2", grades
+        assert {(s["code"], s.get("term"), s.get("grade")) for s in sections["historial"]["materias"]} >= \
+            {("MATG1045", "2024-1", "8,20"), ("ADM001099", "2024-1", "0,00")}, "cada materia con su período y su nota"
+        assert [(c["day"], c["start"], c["end"]) for c in sections["horario"]["classes"]] == \
+            [("Lunes", "09:30", "11:30"), ("Martes", "14:30", "16:30")], sections["horario"]
+        assert [(g["subject"], g["theory_weight"]) for g in sections["calificaciones"]["breakdowns"]] == \
+            [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "70")], "solo la materia con práctico tiene ponderación"
+        exams = sections["examenes"]["exams"]
+        assert set(exams) == {"PARCIAL", "FINAL", "MEJORAMIENTO"} and "Fecha:24/11/2026" in exams["PARCIAL"][0]["text"], \
+            "el primer tipo de examen también se consulta"
         mailboxes = json.loads((data_dir / "amigos" / "rele.json").read_text()).get("mailboxes", {})
         assert not [b for b in mailboxes.values() if b["kind"] == "academico"], "el buzón del ingreso se cerró"
         time.sleep(2)
@@ -2408,18 +2429,20 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
                       ("Chromium" if browser else "Node") + ") el capitán pone su usuario, después su contraseña y un "
                       "CAPTCHA equivocado (vuelve la frase del portal con otro CAPTCHA) y luego el correcto. La PC entra "
                       "con una sola sesión de ASP.NET (VIEWSTATE, EVENTVALIDATION, cookies), lee historial, "
-                      "calificaciones, créditos, horario y exámenes (parcial, final y mejoramiento), guarda la copia con "
-                      "su fecha y su período (2026 · 2do Término) y avisa en el chat; la pregunta vuelve sola a la misma "
-                      "conversación y Vinci contesta 8,15 y las 4 aprobadas, con Inglés I aparte como convalidada")
+                      "créditos, exámenes (parcial, final y mejoramiento), calificaciones y horario con el año y el "
+                      "término que trae la página de exámenes, guarda la copia con su fecha y su período (2026 · 2S) y "
+                      "avisa en el chat; la pregunta vuelve sola a la misma conversación y Vinci contesta el promedio "
+                      "de Información General (8,15) y las 5 aprobadas, con Inglés I aparte como convalidada. De esa "
+                      "página la copia guarda el promedio y el avance, no la identificación, el nombre ni la foto")
 
         # 4. From the copy, without the portal
         seen = len(portal.requests)
         approved = text_of(say(captain_jid, captain_jid, "qué materias aprobé", "Capitán"))
-        assert "Aprobaste 4 materias" in approved and "Física I" in approved, approved
+        assert "Aprobaste 5 materias" in approved and "Física: Mecánica" in approved, approved
         finals = text_of(say(captain_jid, captain_jid, "cuándo son mis exámenes finales", "Capitán"))
-        assert "02/02/2027" in finals and "04/02/2027" in finals, finals
+        assert "Fecha:2/2/2027 (Martes 10:00-12:00)" in finals and "Fecha:4/2/2027" in finals, finals
         progress = text_of(say(captain_jid, captain_jid, "cuánto me falta para graduarme", "Capitán"))
-        assert "48 créditos aprobados" in progress and "malla" in progress, progress
+        assert "40,00% * de avance" in progress and "60 créditos por tomar" in progress and "malla" in progress, progress
         avance = next(r for r in reversed(llm.requests) if "cuánto me falta para graduarme" in json.dumps(r, ensure_ascii=False))
         assert "Never work out the remaining subjects" in json.dumps(avance, ensure_ascii=False), \
             "la herramienta le prohíbe al modelo restar las aprobadas de un total"
@@ -2462,7 +2485,8 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
                   "Académico» que abre la página como Mini App; entra otra vez\n"
                   f"→ Vinci: {normalize(readable(updated))}\n")
         report.append("«Actualiza mi Académico» desde Telegram: otro botón (Mini App), otro ingreso, y la respuesta "
-                      "vuelve sola a la conversación de Telegram con el promedio nuevo (8,22) y Sostenibilidad aprobada")
+                      "vuelve sola a la conversación de Telegram con el promedio nuevo (8,22) y Sostenibilidad "
+                      "aprobada")
 
         # 6. Nothing secret anywhere
         files = b"".join(read_if_there(f) for f in data_dir.rglob("*") if f.is_file())
@@ -2478,6 +2502,9 @@ def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, 
         assert not any(c in copy_file.read_text() for c in ("ASP.NET_SessionId", ".ASPXAUTH", "__VIEWSTATE",
                                                             *{r["session"] for r in portal.requests})), \
             "la copia no guarda la sesión"
+        for value in (v for k, v in PORTAL_CARD if k != "Grupo étnico"):
+            assert value not in copy_file.read_text() and value not in json.dumps(llm.requests, ensure_ascii=False), \
+                f"la matrícula, la identificación y el nombre del estudiante ({value}) no quedan en la copia ni van al modelo"
         report.append("Ni la contraseña ni el usuario aparecen en lo que vio el modelo, en los chats, en el relé (solo "
                       "texto cifrado v2), en el registro del gateway ni en la carpeta de datos; la copia no guarda "
                       "cookies ni campos de sesión, y el proceso del ingreso termina al acabar")

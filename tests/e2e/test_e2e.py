@@ -1282,9 +1282,9 @@ def test_e2e(tmp_path):
             assert vcfg["timezone"] == "America/Guayaquil" and vcfg["model"]["provider"] == "fakellm"
             assert vcfg["model"]["default"] == "fake", "the config.toml model substitution no longer matches"
             assert set(vcfg["platform_toolsets"]["telegram"]) == {"web", "memory", "session_search", "clarify",
-                                                                  "skills", "mcp-vinci"}
+                                                                  "skills", "mcp-vinci", "vinci-paginas"}
             assert set(vcfg["platform_toolsets"]["cli"]) == set(vcfg["platform_toolsets"]["telegram"])
-            assert set(vcfg["platform_toolsets"]["cron"]) == {"web", "memory", "skills", "mcp-vinci"}
+            assert set(vcfg["platform_toolsets"]["cron"]) == {"web", "memory", "skills", "mcp-vinci", "vinci-paginas"}
             assert {"terminal", "file", "code_execution", "delegation", "cronjob"} <= \
                 set(vcfg["agent"]["disabled_toolsets"]) and "skills" not in vcfg["agent"]["disabled_toolsets"]
             assert vcfg["tools"]["tool_search"]["enabled"] == "off"

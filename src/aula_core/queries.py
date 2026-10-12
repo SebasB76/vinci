@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from aula_core import extract, ocr, timefmt
-from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, fold, is_old, term_year
+from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, assigned_files, fold, is_old, term_year
 
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
             " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review')"
@@ -117,15 +117,23 @@ def assignment(conn: sqlite3.Connection, now: datetime, assignment_id: int, ids:
     ).fetchone()
     if row is None:
         raise NotFound(f"No conozco la tarea {assignment_id}: usa el «id» que da tareas o semana.")
-    source = f"Tarea «{row['name']}»"  # how sync records where a linked file or link came from
-    files = conn.execute("SELECT id, display_name, html_url FROM files WHERE source = ? AND course_id = ? AND active = 1",
-                         (source, row["course_id"])).fetchall()
-    links = conn.execute("SELECT id, title, url FROM links WHERE source = ? AND course_id = ? AND active = 1",
-                         (source, row["course_id"])).fetchall()
-    return {**_assignment(row, now), "tipos_de_entrega": row["submission_types"],
+    material = json.loads(row["material"] or "{}")
+    fids, urls = material.get("files") or [], material.get("links") or []
+    source = f"Tarea «{row['name']}»"  # how sync recorded it before assignments kept their own list
+    files = conn.execute(
+        f"""SELECT f.*, c.name AS course_name, c.term_start, c.term FROM files f JOIN courses c ON c.id = f.course_id
+            WHERE f.active = 1 AND (f.id IN ({','.join('?' * len(fids)) or 'NULL'}) OR f.source = ? AND f.course_id = ?)""",
+        [*fids, source, row["course_id"]]).fetchall()
+    links = conn.execute(
+        f"""SELECT l.*, c.name AS course_name FROM links l JOIN courses c ON c.id = l.course_id
+            WHERE l.active = 1 AND l.course_id = ? AND (l.url IN ({','.join('?' * len(urls)) or 'NULL'}) OR l.source = ?)""",
+        [row["course_id"], *urls, source]).fetchall()
+    order = {fid: n for n, fid in enumerate(fids)}  # as the professor listed them
+    return {**_assignment(row, now), "cierra": row["lock_at"], "tipos_de_entrega": row["submission_types"],
             "consigna": row["description"] or None,
-            "archivos": [{"archivo_id": f["id"], "archivo": f["display_name"], "url": f["html_url"]} for f in files],
-            "enlaces": [{"enlace_id": li["id"], "titulo": li["title"], "url": li["url"]} for li in links]}
+            "rubrica": json.loads(row["rubric"]) if row["rubric"] else None,
+            "archivos": [_file(f, set(fids)) for f in sorted(files, key=lambda f: order.get(f["id"], len(order)))],
+            "enlaces": [_link(li) for li in links]}
 
 
 def quiz_openings(conn: sqlite3.Connection, now: datetime, lead: timedelta) -> list[dict]:
@@ -198,7 +206,7 @@ def file_state(f: dict, max_mb: float) -> str:
     return "no se pudo bajar" if f["indexado"] == "error_descarga" else "sin bajar"
 
 
-def _file(r: sqlite3.Row) -> dict:
+def _file(r: sqlite3.Row, assigned: set[int] = frozenset()) -> dict:
     return {"id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "archivo": r["display_name"],
             "extension": Path(r["filename"] or r["display_name"] or "").suffix.lower().lstrip("."),
             "modulo": r["module"], "seccion": r["section"], "carpeta": r["folder"], "origen": r["source"],
@@ -206,7 +214,8 @@ def _file(r: sqlite3.Row) -> dict:
             "descargado": r["local_path"] if r["local_path"] and Path(r["local_path"]).exists() else None,
             "indexado": r["index_status"], "paginas": r["pages"], "idioma": r["language"] or None,
             "copia_de": r["duplicate_of"], "url": r["html_url"],
-            "anterior": is_old(r["folder"], r["display_name"], term_year(r["term_start"], r["course_name"], r["term"]))}
+            "anterior": r["id"] not in assigned and is_old(r["folder"], r["display_name"],
+                                                            term_year(r["term_start"], r["course_name"], r["term"]))}
 
 
 def files(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | None = None) -> list[dict]:
@@ -217,8 +226,8 @@ def files(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | No
             WHERE f.active = 1 AND c.active = 1{extra} ORDER BY c.name, f.module, f.display_name""",
         params,
     ).fetchall()
-    needle = fold(name) if name else None
-    return [_file(r) for r in rows if not needle or any(
+    needle, assigned = (fold(name) if name else None), assigned_files(conn)
+    return [_file(r, assigned) for r in rows if not needle or any(
         needle in fold(r[k]) for k in ("display_name", "module", "section", "folder", "source"))]
 
 
@@ -289,7 +298,7 @@ def file_by_id(conn: sqlite3.Connection, file_id: int) -> dict:
     ).fetchone()
     if row is None:
         raise NotFound(f"No conozco el archivo {file_id}. Prueba `aula archivos`.")
-    return {**_file(row), "ocr": ocr_state(conn, row["digest"])}
+    return {**_file(row, assigned_files(conn)), "ocr": ocr_state(conn, row["digest"])}
 
 
 def read_pages(conn: sqlite3.Connection, file_id: int, first: int | None = None, last: int | None = None) -> dict:

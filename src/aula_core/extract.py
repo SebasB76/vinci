@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import io
 import logging
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -13,7 +16,7 @@ log = logging.getLogger(__name__)
 logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # What a "page" means for each format, used when citing.
-UNIT = {"pdf": "página", "pptx": "diapositiva", "docx": "sección", "html": "sección"}
+UNIT = {"pdf": "página", "pptx": "diapositiva", "docx": "sección", "doc": "sección", "html": "sección"}
 
 DOCX_SECTION_CHARS = 1800
 PAGE_IMAGE_EDGE = 1600  # pixels on the long side: readable, and still well under the model's image limits
@@ -27,6 +30,8 @@ def extract(path: Path) -> list[tuple[int, str]]:
         return _pptx(path)
     if ext == "docx":
         return _docx(path)
+    if ext == "doc":
+        return _doc(path)
     if ext in ("html", "htm"):
         return _html(path)
     raise ValueError(f"Formato no soportado: {path.suffix}")
@@ -118,6 +123,18 @@ def _docx(path: Path) -> list[tuple[int, str]]:
     if current:
         sections.append((len(sections) + 1, "\n".join(current)))
     return sections
+
+
+def _doc(path: Path) -> list[tuple[int, str]]:
+    """A Word 97 file (a professor's old template): LibreOffice turns it into a .docx first."""
+    office = shutil.which("soffice") or shutil.which("libreoffice")
+    if office is None:
+        raise ValueError("Leer un .doc necesita LibreOffice (soffice)")
+    with tempfile.TemporaryDirectory() as out:
+        # Its own profile: a LibreOffice the student has open would otherwise take the job and convert nothing.
+        subprocess.run([office, f"-env:UserInstallation=file://{out}/profile", "--headless", "--convert-to", "docx",
+                        "--outdir", out, str(path)], capture_output=True, timeout=120, check=True)
+        return _docx(Path(out) / f"{path.stem}.docx")
 
 
 def _html(path: Path) -> list[tuple[int, str]]:

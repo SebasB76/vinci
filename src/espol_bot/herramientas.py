@@ -142,7 +142,9 @@ GUEST_TOOLS: dict[str, frozenset[str]] = {
         "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas")
 } | {"libro_principal": frozenset({"titulo"})}
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
-        "entrega, puntos, fecha y los archivos y enlaces que trae (léelos con leer_archivo). Úsala siempre que "
+        "entrega, puntos, la rúbrica con la que la califican, las fechas ya en hora de Ecuador («vence»; «cierra»: "
+        "hasta cuándo el aula acepta una entrega atrasada) y los anexos de la consigna (archivos y enlaces; léelos "
+        "con leer_archivo). Los anexos son de esta tarea aunque estén en una carpeta de otro año. Úsala siempre que "
         "pregunten de qué trata o qué pide una tarea, antes de decir que no lo sabes.")
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
@@ -223,6 +225,33 @@ def _stale_note(ctx: Ctx) -> str:
     return (f"No pude leer el aula virtual desde el {since} ({ctx.stale.why}): estos datos son de esa hora, y lo que "
             f"entregó, publicaron o calificaron después no aparece. Empieza tu respuesta diciéndoselo{fix}. Nunca le "
             f"digas que algo sigue sin entregar o sin nota: di «al {since} no estaba entregada».")
+
+
+def _local_dates(ctx: Ctx, task: dict) -> dict:
+    """Dates as the student reads them: converting `…T04:59:59Z` by hand turned «mar 13» into «mié 14»."""
+    tz, due, closes = ctx.cfg.core.tz, task["vence"], task.pop("cierra", None)
+    task["vence"] = timefmt.human(due, tz)
+    if closes and closes != due:
+        task["cierra"] = timefmt.human(closes, tz)
+    return task
+
+
+def _task(ctx: Ctx, task: dict) -> dict:
+    task = _local_dates(ctx, task)
+    task["archivos"] = [{"archivo_id": f["id"], "archivo": f["archivo"],
+                         "estado": queries.file_state(f, ctx.cfg.core.max_file_mb), "url": f["url"]}
+                        for f in task["archivos"]]
+    task["enlaces"] = [_link_entry(link) for link in task["enlaces"]]
+    rubric = task["rubrica"]
+    task["rubrica"] = "La tarea no tiene rúbrica en el aula." if rubric is None else {
+        "titulo": rubric["title"], "puntos": rubric["points"],
+        "criterios": [{"criterio": c["description"], "puntos": c["points"],
+                       **({"detalle": c["long_description"]} if c["long_description"] else {}),
+                       "niveles": [f"{r['description']}: {r['points']:g} pts"
+                                   + (f" ({r['long_description']})" if r["long_description"] else "")
+                                   for r in c["ratings"]]}
+                      for c in rubric["criteria"]]}
+    return task
 
 
 def _noting_stale(ctx: Ctx, tools: list[Tool]) -> list[Tool]:
@@ -1150,13 +1179,15 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
-        return queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
-                               days=_int(args.get("dias"), "dias"))
+        pending = queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
+                                  days=_int(args.get("dias"), "dias"))
+        return [_local_dates(ctx, t) for t in pending]
 
     def ver_tarea(args):
         ctx.refresh()
         try:
-            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12))
+            task = queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12))
+            return _task(ctx, task)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -1596,13 +1627,15 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
-        return queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
+        pending = queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
+        return [_local_dates(ctx, t) for t in pending]
 
     def ver_tarea(args):
         ctx.refresh()
         try:
-            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12),
+            task = queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12),
                                       course_ids())
+            return _task(ctx, task)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 

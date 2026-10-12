@@ -277,6 +277,8 @@ class Setup:
             # Hermes' WhatsApp default posts a line per tool call («⚙️ mcp__vinci__semana…»); Telegram's is off.
             # Hermes' warnings («Context is over the compression threshold… Run /new») are English and for an operator,
             # not a student: in a WhatsApp group the whole group reads them.
+            # Hermes dates only a chat's first day: a chat open for a week answered «mañana» from that day.
+            "gateway": {"message_timestamps": {"enabled": True}},
             "display": {"suppress_warning_notifications": True,
                         "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
@@ -508,6 +510,7 @@ class Setup:
         merged = copy.deepcopy(current)
         gateway = merged.setdefault("gateway", {})
         gateway["multiplex_profiles"] = True
+        gateway["message_timestamps"] = {"enabled": True}
         routes = [r for r in gateway.get("profile_routes") or []
                   if not str((r or {}).get("name", "")).startswith(WHATSAPP_ROUTE_PREFIX)]
         for key, number, profile in [("captain", wa.captain, self.cfg.hermes_profile),

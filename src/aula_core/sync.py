@@ -170,6 +170,9 @@ class _Syncer:
             if a.get("published") is False:
                 continue
             bodies.append((f"Tarea «{a.get('name') or '(sin nombre)'}»", a.get("description"), []))
+            # Its own list of what the text links to: a file the folder listing already gave keeps «Archivos»
+            # as its source, so the source alone loses which assignment hands it out.
+            found = refs(a.get("description"), self.cfg.canvas_url)
             sub = a.get("submission") or {}
             row = {
                 "id": a["id"],
@@ -183,6 +186,9 @@ class _Syncer:
                 "allowed_extensions": ",".join(x.lower().lstrip(".") for x in a.get("allowed_extensions") or []),
                 "asks_scan": int(bool(ASKS_SCAN.search(f"{a.get('name') or ''} {a.get('description') or ''}"))),
                 "description": html_to_text(a.get("description")) or None,
+                "material": json.dumps({"files": [fid for _, fid, _ in found.files],
+                                        "links": [url for url, _ in found.links]}, ensure_ascii=False),
+                "rubric": _rubric(a),
                 "sub_state": sub.get("workflow_state"),
                 "submitted_at": timefmt.normalize(sub.get("submitted_at")),
                 "score": sub.get("score"),
@@ -215,15 +221,16 @@ class _Syncer:
                               {**grade_info, "nota_anterior": prev["score"], "calificacion_anterior": prev["grade"]})
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
-                     allowed_extensions, asks_scan, description, sub_state, submitted_at, score, grade, graded_at, excused, missing,
-                     late, active, first_seen)
+                     allowed_extensions, asks_scan, description, material, rubric, sub_state, submitted_at, score, grade,
+                     graded_at, excused, missing, late, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
-                     :allowed_extensions, :asks_scan, :description, :sub_state, :submitted_at, :score, :grade, :graded_at, :excused,
-                     :missing, :late, 1, :now)
+                     :allowed_extensions, :asks_scan, :description, :material, :rubric, :sub_state, :submitted_at, :score,
+                     :grade, :graded_at, :excused, :missing, :late, 1, :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
                      submission_types=excluded.submission_types, allowed_extensions=excluded.allowed_extensions,
-                     asks_scan=excluded.asks_scan, description=excluded.description, sub_state=excluded.sub_state,
+                     asks_scan=excluded.asks_scan, description=excluded.description, material=excluded.material,
+                     rubric=excluded.rubric, sub_state=excluded.sub_state,
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
                      late=excluded.late, active=1""",
@@ -583,6 +590,22 @@ class _Syncer:
             f"UPDATE {table} SET active = 0 WHERE course_id = ? AND id > 0 AND id NOT IN ({marks})",
             (course_id, *seen),
         )
+
+
+def _rubric(a: dict) -> str | None:
+    """The rubric the professor attached in the aula, which Canvas sends with the assignment."""
+    criteria = a.get("rubric") or []
+    if not criteria:
+        return None
+    settings = a.get("rubric_settings") or {}
+    return json.dumps({
+        "title": settings.get("title"), "points": settings.get("points_possible"),
+        "criteria": [{"description": c.get("description"), "long_description": c.get("long_description") or None,
+                      "points": c.get("points"),
+                      "ratings": [{"description": r.get("description"), "long_description": r.get("long_description") or None,
+                                   "points": r.get("points")} for r in c.get("ratings") or []]}
+                     for c in criteria],
+    }, ensure_ascii=False)
 
 
 def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: datetime, *,

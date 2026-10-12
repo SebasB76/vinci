@@ -16,7 +16,7 @@ import sqlite3
 from pathlib import Path
 
 from aula_core import extract
-from aula_core.catalog import fold, is_old, normalized_name, term_year
+from aula_core.catalog import assigned_files, fold, is_old, normalized_name, term_year
 
 STOPWORDS = set("""
 a al algo algun alguna algunas alguno algunos ante antes aqui asi aun cada como con contra cual cuales cuando
@@ -59,7 +59,7 @@ def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | N
     if course_ids is not None:
         extra = f" AND chunks.course_id IN ({','.join('?' * len(course_ids))})"
         params = list(course_ids)
-    hits, seen = [], set()
+    hits, seen, assigned = [], set(), assigned_files(conn)
     queries = [("todas", " AND ".join(words))] + ([("parcial", " OR ".join(words))] if len(words) > 1 else [])
     for match_kind, match in queries:
         rows = conn.execute(
@@ -76,7 +76,8 @@ def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | N
         ).fetchall()
         ranked = []
         for r in rows:
-            old = is_old(r["folder"], r["display_name"], term_year(r["term_start"], r["course_name"], r["term"]))
+            old = r["file_id"] not in assigned and is_old(r["folder"], r["display_name"],
+                                                          term_year(r["term_start"], r["course_name"], r["term"]))
             weight = MAIN_BOOK if r["file_id"] in prefer else EARLIER_SEMESTER if old else 1.0
             ranked.append((-r["score"] * weight, r, old))
         for relevance, r, old in sorted(ranked, key=lambda item: -item[0]):

@@ -91,7 +91,8 @@ from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 FIXTURES = Path(__file__).parent / "fixtures"
 PAGE_SIZE = 2
 DOWNLOADS = {5001: "capitulo-3-derivadas.pdf", 5005: "capitulo-3-derivadas.pdf", 5101: "semana-2-cinematica.pptx",
-             5010: "silabo-matg1049.pdf", 5301: "silabo-matg1049.pdf", 5102: "lectura-vectores-escaneada.pdf"}
+             5010: "silabo-matg1049.pdf", 5301: "silabo-matg1049.pdf", 5102: "lectura-vectores-escaneada.pdf",
+             6101: "taller-2-especificacion.pdf", 6102: "plantilla-taller.doc"}
 THROTTLE_ONCE = "/api/v1/courses/102/assignments"
 PUBLIC_DOC = "1PoliticasFisicaE2E-publico_0000000000000000"  # the Google Doc of Física's policies, shared with anyone
 PRIVATE_DOC = "1RubricaFisicaE2E-privado_00000000000000000"  # the project rubric, shared only with some accounts

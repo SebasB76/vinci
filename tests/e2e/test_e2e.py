@@ -515,7 +515,15 @@ class Script:
             if called == ["mcp__vinci__tareas"]:
                 taller = next(t for t in _json(results[-1]) if t["tarea"].startswith("Taller 2"))
                 return _call("mcp__vinci__ver_tarea", tarea_id=taller["id"])
-            return {"content": f"El Taller 2 pide esto: {_json(results[-1])['consigna']}"}
+            if called[-1] == "mcp__vinci__ver_tarea":
+                template = next(f for f in _json(results[-1])["archivos"] if f["archivo"].endswith(".doc"))
+                return _call("mcp__vinci__leer_archivo", archivo_id=template["archivo_id"])
+            task, template = _json(results[-2]), _json(results[-1])["contenido"][0]
+            rubric = "; ".join(f"{c['criterio']}, {c['puntos']:g} pts" for c in task["rubrica"]["criterios"])
+            return {"content": f"El Taller 2 pide esto: {task['consigna']}\nVence {task['vence']}; el aula lo recibe "
+                               f"atrasado hasta {task['cierra']}. Rúbrica: {rubric}.\nAnexos: "
+                               + ", ".join(f["archivo"] for f in task["archivos"])
+                               + f". La plantilla pide: {template['texto']} ({template['cita']})"}
         if results:
             last = _json(results[-1])
             if isinstance(last, dict) and last.get("ruta"):
@@ -1758,7 +1766,8 @@ END:VCALENDAR
                                             for label, m in sent_log if str(m.get("chat_id")) != CAPTAIN_ID])
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
-        assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102} if vinci_section else set()), \
+        # 5102 and 6102 (Angel's .doc template): read on request in the Vinci and WhatsApp steps
+        assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102, 6102} if vinci_section else set()), \
             f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
         secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
                        calendar_feed_url, announcement_feed_url, BOT_TOKEN,
@@ -2092,12 +2101,27 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             taller = text_of(say(GROUP_WA, angel_jid, f"@{bot_lid} qué pide el taller 2? y avísale a @{CAPTAIN_WA}",
                                  "Angel", group=True, mentions=[FakeWhatsApp.BOT]))
             assert "ejercicios 3, 5 y 8 de la sección 15.2" in taller and "un solo PDF" in taller, taller
+            # The annexes come from a «Proyectos/2023» folder the Files tab already lists, the first one linked by
+            # an icon with no text: they are still this assignment's, and the .doc template gets read.
+            task = next(data for req in llm.requests[calls:] for m in req.get("messages") or [] if m.get("role") == "tool"
+                        for data in [_json(flatten(m.get("content")))] if isinstance(data, dict) and "consigna" in data)
+            assert [f["archivo"] for f in task["archivos"]] == ["taller-2-especificacion.pdf", "plantilla-taller.doc"]
+            assert "semestre_anterior" not in json.dumps(task), task
+            assert (task["vence"], task["cierra"]) == ("jue 1 oct, 23:59", "vie 2 oct, 23:59"), task
+            assert task["rubrica"]["criterios"][0] == {
+                "criterio": "Planteamiento de los límites", "puntos": 6,
+                "detalle": "Dibuja la región y fija bien los límites de integración",
+                "niveles": ["Completo: 6 pts", "Sin planteamiento: 0 pts"]}, task["rubrica"]
+            assert "Resultado final, 4 pts" in taller and "hasta vie 2 oct, 23:59" in taller, taller
+            assert "Cada ejercicio con su gráfica de la región de integración" in taller, taller
             seen = json.dumps(llm.requests[calls:], ensure_ascii=False)
             assert "@vinci qué pide el taller 2? y avísale a @Capitán" in seen, seen[-2000:]
             assert f"@{bot_lid}" not in seen and f"@{CAPTAIN_WA}" not in seen
             report.append("En un grupo, una mención llega a WhatsApp como «@número»: el plugin se la pasa al modelo como "
                           "«@vinci» o con el nombre de la persona (Angel ve «@Capitán»). «¿Qué pide el taller 2?»: "
-                          "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas)")
+                          "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas), la "
+                          "rúbrica del aula, la fecha y el cierre en hora de Ecuador, y los anexos que enlaza aunque "
+                          "estén en una carpeta de 2023; la plantilla .doc se lee con LibreOffice")
 
             # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
             mark = len(wa.sent)

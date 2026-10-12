@@ -26,13 +26,14 @@ python3 scripts/docs_check.py    # te avisa si cambiaste código sin su document
 desde tu cuenta de Telegram con `tg`, lee lo que Vinci contestó por WhatsApp, abre el formulario del token y el
 dashboard en un Chrome sin ventana. Solo escribe a tus bots de Vinci. `vinci-check --help` lista sus comandos.
 
-**La prueba** es una sola, de punta a punta ([`tests/e2e/test_e2e.py`](../../tests/e2e/test_e2e.py); su encabezado
-describe cada paso). Levanta un Canvas falso con datos grabados (`tests/e2e/fixtures/`), un Telegram falso y un
-modelo con guion, y corre todo con los comandos reales, el `setup.sh` real y el gateway real de Hermes (si está
-instalado), en un HOME temporal: nunca toca tu `~/.hermes`. Cubre desde el setup y los avisos hasta crear el
-equipo desde el chat, el horario, los briefs, los cuadernos, el catálogo del material y el libro principal, las
-citas (una con su enlace, un «No está en el material» y las citas de memoria que no pasan), archivar y reactivar bots, los `/quiz` y reiniciar el gateway. Deja un reporte repetible en `artifacts/e2e/` (`REPORTE.md` y un
-archivo por tema). Toma unos minutos.
+**La prueba de punta a punta** está en [`tests/e2e/test_e2e.py`](../../tests/e2e/test_e2e.py); su encabezado
+describe cada paso. Son cuatro pruebas que corren en paralelo, cada una con su propia instalación: Canvas y el
+token (sin gateway), el chat del capitán en WhatsApp, el Vinci de un amigo en un grupo, y el Académico. Cada una
+levanta un Canvas falso con datos grabados (`tests/e2e/fixtures/`), un puente de WhatsApp falso y un modelo con
+guion, y corre los comandos reales, el `setup.sh` real y el gateway real de Hermes (si está instalado), en un HOME
+temporal: nunca toca tu `~/.hermes`. Si algo intenta hablar con Telegram, la prueba falla. Deja un reporte
+repetible en `artifacts/e2e/`: `REPORTE.md`, `tiempos.md` (dónde espera cada prueba) y un archivo por tema. Si una
+prueba falla, deja también `fallo-<prueba>.md` con el error y lo último que pasó. Toma unos 3 minutos.
 
 Al contribuir:
 

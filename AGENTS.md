@@ -57,8 +57,9 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 - `~/Projects/espol-academic-bot` is the live install: `setup.sh` writes its own path into
   the Hermes profiles and the `.venv` is an editable install. Work in a git worktree, never
   switch branches there, and never run `setup.sh` from a worktree.
-- E2E (one test, 7 to 17 minutes): never run it at the start of a session or to "check the
-  baseline". Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
+- E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to
+  "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
+  WhatsApp messages and model turns, the gateway log): read it before rerunning anything. Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
   behavior change, run it once at the end, and never rerun it for a one-line fix. The captain
   asked for this 12 times; `docs/guia/contribuir.md` is for outside contributors.
 - No unit tests and no extra review rounds.
@@ -106,7 +107,7 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 
 ```bash
 uv sync                                   # dependencies, dev included
-uv run pytest                             # the E2E (fake Canvas, fake Telegram, real Hermes)
+uv run pytest                             # the E2E: 4 tests in parallel (fake Canvas and WhatsApp, real Hermes)
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
 .venv/bin/espol-bot doctor                # poller, Canvas sync, token chain and feeds (read-only)

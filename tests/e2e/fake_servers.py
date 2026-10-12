@@ -1,4 +1,4 @@
-"""Local stand-ins for Canvas and the Telegram Bot API, used only by the E2E test.
+"""Local stand-ins for Canvas, Hermes' WhatsApp bridge and the other services Vinci reaches, used only by the E2E test.
 
 FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ (or another set) the way
 Canvas does: Bearer auth, access-token creation/deletion, public iCal/Atom feeds,
@@ -19,19 +19,7 @@ file downloads after the virus-scan page Drive shows before a big file, and a Sh
 only ESPOL accounts may open sends to login.microsoftonline.com. The first hop of each sets a cookie,
 as Google's does, so a client that keeps cookies would send it on the next one.
 
-FakeTelegram stands in for the Bot API of several bots at once (Vinci and each subject
-bot, one token each): it records every call, answers getMe, keeps inline buttons, hands
-queued updates (text, photo, voice, document, button presses) to getUpdates long polls,
-serves the files behind getFile, and plays Telegram's part in managed bots (Bot API 9.6): a
-bot marked as a manager reports can_manage_bots, the captain can "create" a bot from its
-request_managed_bot button (through the creation screen Telegram shows for it), and
-getManagedBotToken hands the manager that bot's token. A call listed in `throttle` answers 429
-once, with that retry_after.
-Each bot has a name (getMe's first_name, getMyName; setMyName renames it), and
-setMyProfilePhoto (Bot API 9.4) takes only a fresh static JPG upload, as Telegram does, and keeps
-every photo each bot set. Every chat message a bot sends is kept in order. As Telegram does,
-deleteWebhook with drop_pending_updates discards what the bot had queued; a (token, method) in
-`slow` answers that many seconds late.
+Tripwire stands where the Telegram Bot API would be and records any request: Vinci lives on WhatsApp only.
 
 FakeWhatsApp stands in for Hermes' WhatsApp bridge (bridge.js, a Baileys client on localhost): Hermes adopts it as
 a bridge already running, takes what people write from GET /messages and records every message it sends.
@@ -61,10 +49,6 @@ FakeDSpace stands in for ESPOL's DSpace (www.dspace.espol.edu.ec, through `[test
 bitstreams, and their download. Items come from fixtures/dspace/items.json; one is stored inside the
 multipart/form-data envelope it was uploaded with, as many real ones are. It records every request with its headers.
 
-BrokenIPv6 makes a server reachable as `localhost` where IPv6 is broken and IPv4 works, like
-the captain's network towards api.telegram.org: `localhost` resolves to ::1 first, and a listener
-there with a full accept queue drops every new SYN, so an IPv6 connect hangs until it times out.
-
 FakePages stands in for GitHub Pages: it serves docs/ as published, except that a page's Content-Security-Policy also
 lets it reach the given relay (a local address here, a workers.dev one for real).
 
@@ -79,11 +63,8 @@ import hashlib
 import itertools
 import json
 import re
-import socket
 import threading
 import time
-from email.parser import BytesParser
-from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
@@ -700,368 +681,21 @@ class _DSpaceHandler(_Quiet):
             return self._send(200, body, "application/octet-stream")
         return self._send(404, b"not found", "text/plain")
 
-class FakeTelegram(_Server):
-    """bots: {token: username}; a bot's name starts as its username. Chat ids are the captain's
-    user id (private chats)."""
+class Tripwire(_Server):
+    """Where the Telegram Bot API would be: Vinci lives on WhatsApp only, so any request here is a bug. It records
+    each one and answers 404."""
 
-    def __init__(self, bots: dict[str, str]):
-        super().__init__(_TelegramHandler)
-        self.bots = dict(bots)
-        self.calls: list[dict] = []          # every API call: {"bot", "method", "params", "at"}
-        self.messages: list[dict] = []       # outgoing chat messages, in order: {"bot", "method", **params}
-        self.files: dict[str, tuple[str, bytes]] = {}
-        self.updates: dict[str, list[dict]] = {}
-        self.pushed: dict[int, dict] = {}       # every update handed out, by update_id
-        self.managers: set[str] = set()         # tokens of bots that may manage other bots
-        self.managed: dict[int, tuple[str, str]] = {}  # managed bot id -> (manager token, bot token)
-        self.profile_photos: dict[str, list[bytes]] = {}  # username -> every photo it set, in order
-        self.names: dict[str, str] = {}  # token -> the bot's name, when it is not its username
-        self.throttle: dict[tuple[str, str], int] = {}  # (username, method) -> retry_after of its next call
-        self.slow: dict[tuple[str, str], float] = {}  # (token, method) -> seconds before answering
-        self.cond = threading.Condition()
-        self.lock = self.cond
-        # Hermes remembers the update ids it already handled, even across restarts: start from the clock.
-        self._next_update = int(time.time()) * 10
-        self._next_message = 1
-
-    def add_bot(self, token: str, username: str, name: str | None = None) -> None:
-        with self.cond:
-            self.bots[token] = username
-            if name:
-                self.names[token] = name
-
-    def name_of(self, token: str) -> str:
-        with self.cond:
-            return self.names.get(token, self.bots[token])
-
-    def bot_id(self, token: str) -> int:
-        return int(token.split(":", 1)[0])
-
-    # -- what the captain does -------------------------------------------------------------
-
-    def _push(self, token: str, update: dict) -> int:
-        with self.cond:
-            self._next_update += 1
-            update["update_id"] = self._next_update
-            self.updates.setdefault(token, []).append(update)
-            self.pushed[self._next_update] = update
-            self.cond.notify_all()
-            return self._next_update
-
-    def _message(self, user_id: int, **fields) -> dict:
-        with self.cond:
-            self._next_message += 1
-            message_id = self._next_message
-        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
-        return {"message_id": message_id, "date": int(time.time()), "chat": {"id": user_id, "type": "private",
-                "first_name": "Capitán"}, "from": user, **fields}
-
-    def _file(self, name: str, data: bytes) -> dict:
-        with self.cond:
-            file_id = f"file{len(self.files) + 1}"
-            self.files[file_id] = (name, data)
-        return {"file_id": file_id, "file_unique_id": f"u{file_id}", "file_size": len(data)}
-
-    def send_text(self, token: str, user_id: int, text: str, reply_to: dict | None = None) -> int:
-        extra = {"reply_to_message": reply_to} if reply_to else {}
-        return self._push(token, {"message": self._message(user_id, text=text, **extra)})
-
-    def send_web_app_data(self, token: str, user_id: int, data: str, button_text: str) -> int:
-        """What a Mini App opened from a keyboard button hands the bot (Telegram.WebApp.sendData)."""
-        return self._push(token, {"message": self._message(user_id, web_app_data={"data": data,
-                                                                                  "button_text": button_text})})
-
-    def send_photo(self, token: str, user_id: int, data: bytes, caption: str = "") -> int:
-        photo = [{**self._file("photo.jpg", data), "width": 800, "height": 600}]
-        return self._push(token, {"message": self._message(user_id, photo=photo, caption=caption)})
-
-    def send_voice(self, token: str, user_id: int, data: bytes, duration: int = 4) -> int:
-        voice = {**self._file("voice.ogg", data), "duration": duration, "mime_type": "audio/ogg"}
-        return self._push(token, {"message": self._message(user_id, voice=voice)})
-
-    def send_document(self, token: str, user_id: int, name: str, data: bytes, caption: str = "",
-                      mime: str = "application/pdf") -> int:
-        document = {**self._file(name, data), "file_name": name, "mime_type": mime}
-        return self._push(token, {"message": self._message(user_id, document=document, caption=caption)})
-
-    def as_incoming(self, token: str, record: dict, text: str) -> dict:
-        """A message this bot sent, as Telegram shows it inside an update (e.g. reply_to_message)."""
-        bot = {"id": self.bot_id(token), "is_bot": True, "first_name": self.bots[token], "username": self.bots[token]}
-        return {"message_id": record["message_id"], "date": int(time.time()), "from": bot, "text": text,
-                "chat": {"id": int(record["chat_id"]), "type": "private"}}
-
-    @staticmethod
-    def creation_screen(request: dict) -> tuple[str, str]:
-        """(name, username) as Telegram's «create bot» screen offers a request_managed_bot suggestion, or
-        AssertionError with the error it shows. The screen puts the suggested username in a 29-character field
-        before its own fixed «bot»; a username has letters, digits and underscores, starts with a letter and
-        has 5-32 characters."""
-        name, stem = str(request.get("suggested_name") or ""), str(request.get("suggested_username") or "")
-        assert 0 < len(name) <= 64, f"Name is invalid: {name!r}"
-        assert len(stem) <= 29, f"Username is too long. ({stem!r})"
-        username = stem + "bot"
-        assert re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", username), f"Username is invalid. ({username!r})"
-        return name, username
-
-    def create_managed_bot(self, manager: str, user_id: int, token: str, username: str, name: str) -> int:
-        """The captain pressed the manager's request_managed_bot button and confirmed the new bot."""
-        self.add_bot(token, username, name)
-        bot = {"id": self.bot_id(token), "is_bot": True, "first_name": name, "username": username}
-        with self.cond:
-            self.managed[bot["id"]] = (manager, token)
-        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
-        self._push(manager, {"managed_bot": {"user": user, "bot": bot}})
-        return self._push(manager, {"message": self._message(user_id, managed_bot_created={"bot": bot})})
-
-    def press(self, token: str, user_id: int, message: dict, data: str) -> int:
-        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
-        bot = {"id": self.bot_id(token), "is_bot": True, "first_name": self.bots[token], "username": self.bots[token]}
-        msg = {"message_id": message["message_id"], "date": int(time.time()), "chat": {"id": user_id, "type": "private"},
-               "from": bot, "text": message.get("text", "")}
-        markup = message.get("reply_markup")
-        if isinstance(markup, dict) and "inline_keyboard" in markup:  # as the message looks now
-            msg["reply_markup"] = markup
-        return self._push(token, {"callback_query": {"id": f"cb{time.time_ns()}", "from": user,
-                                                     "chat_instance": "1", "data": data, "message": msg}})
-
-    def answer_poll(self, token: str, user_id: int, poll_id: str, option_ids: list[int]) -> int:
-        """The captain (or anyone) votes in a non-anonymous poll this bot sent."""
-        user = {"id": user_id, "is_bot": False, "first_name": "Capitán", "language_code": "es"}
-        return self._push(token, {"poll_answer": {"poll_id": poll_id, "user": user, "option_ids": option_ids,
-                                                  "option_persistent_ids": [f"o{i}" for i in option_ids]}})
-
-    def pending(self, token: str) -> int:
-        with self.cond:
-            return len(self.updates.get(token, []))
-
-    def wait_for(self, predicate, timeout: float = 60.0, interval: float = 0.2):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            with self.cond:
-                found = predicate(self)
-            if found:
-                return found
-            time.sleep(interval)
-        return None
-
-    def messages_of(self, username: str) -> list[dict]:
-        with self.cond:
-            return [m for m in self.messages if m["bot"] == username]
+    def __init__(self):
+        super().__init__(_TripwireHandler)
+        self.requests: list[str] = []
 
 
-class _TelegramHandler(_Quiet):
-    def _params(self) -> dict:
-        self.uploads: dict[str, bytes] = {}
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length) if length else b""
-        ctype = self.headers.get("Content-Type", "")
-        if ctype.startswith("application/json"):
-            return json.loads(raw or b"{}")
-        if ctype.startswith("multipart/form-data"):
-            message = BytesParser(policy=email_policy).parsebytes(
-                b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + raw)
-            out = {}
-            for part in message.iter_parts():
-                name = part.get_param("name", header="content-disposition")
-                payload = part.get_payload(decode=True) or b""
-                filename = part.get_filename()
-                if filename:
-                    self.uploads[name] = payload
-                out[name] = {"filename": filename, "size": len(payload)} if filename else payload.decode()
-            return out
-        return dict(parse_qsl(raw.decode(), keep_blank_values=True)) if raw else dict(parse_qsl(urlsplit(self.path).query))
+class _TripwireHandler(_Quiet):
+    def _record(self):
+        self.server.owner.requests.append(f"{self.command} {self.path}")
+        self._json(404, {"ok": False, "error_code": 404, "description": "Not Found"})
 
-    @staticmethod
-    def _decode(params: dict) -> dict:
-        out = {}
-        for key, value in params.items():
-            if isinstance(value, str) and value[:1] in "[{":
-                try:
-                    value = json.loads(value)
-                except ValueError:
-                    pass
-            out[key] = value
-        return out
-
-    def do_GET(self):
-        stub: FakeTelegram = self.server.owner
-        parts = unquote(urlsplit(self.path).path).split("/")  # httpx sends the token's ":" as %3A
-        if len(parts) >= 4 and parts[1] == "file" and parts[2].startswith("bot"):
-            token = parts[2][3:]
-            file_id = parts[3]  # file_path is "<file_id>/<name>"
-            if token in stub.bots and file_id in stub.files:
-                return self._send(200, stub.files[file_id][1], "application/octet-stream")
-            return self._json(404, {"ok": False, "error_code": 404, "description": "Not Found"})
-        return self._api(self._params())
-
-    def do_POST(self):
-        return self._api(self._params())
-
-    def _api(self, params: dict):
-        stub: FakeTelegram = self.server.owner
-        parts = unquote(urlsplit(self.path).path).strip("/").split("/")
-        if len(parts) != 2 or not parts[0].startswith("bot"):
-            return self._json(404, {"ok": False, "error_code": 404, "description": "Not Found"})
-        token, method = parts[0][3:], parts[1]
-        if token not in stub.bots:
-            return self._json(401, {"ok": False, "error_code": 401, "description": "Unauthorized"})
-        username = stub.bots[token]
-        params = self._decode(params)
-        with stub.cond:
-            stub.calls.append({"bot": username, "method": method, "params": params, "at": time.time()})
-            retry = stub.throttle.pop((username, method), None)
-            delay = stub.slow.get((token, method), 0)
-        time.sleep(delay)
-        if retry:
-            return self._json(429, {"ok": False, "error_code": 429, "parameters": {"retry_after": retry},
-                                    "description": f"Too Many Requests: retry after {retry}"})
-        me = {"id": stub.bot_id(token), "is_bot": True, "first_name": stub.name_of(token), "username": username,
-              "can_join_groups": False, "can_read_all_group_messages": False, "supports_inline_queries": False}
-        if method == "getMe":
-            return self._ok({**me, "can_manage_bots": token in stub.managers})
-        if method == "getManagedBotToken":
-            owner, managed_token = stub.managed.get(int(params.get("user_id", 0) or 0), (None, None))
-            if owner != token:
-                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: bot not found"})
-            return self._ok(managed_token)
-        if method == "getUpdates":
-            return self._ok(self._updates(stub, token, params))
-        if method == "getMyName":
-            return self._ok({"name": stub.name_of(token)})
-        if method == "setMyName":
-            name = str(params.get("name", ""))
-            if not 0 < len(name) <= 64 or params.get("language_code"):
-                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: invalid name"})
-            with stub.cond:
-                stub.names[token] = name
-            return self._ok(True)
-        if method == "setMyProfilePhoto":
-            photo = params.get("photo") if isinstance(params.get("photo"), dict) else {}
-            upload = self.uploads.get(str(photo.get("photo", "")).removeprefix("attach://"), b"")
-            if photo.get("type") != "static" or not upload.startswith(b"\xff\xd8\xff"):
-                return self._json(400, {"ok": False, "error_code": 400,
-                                        "description": "Bad Request: a static profile photo must be a new JPG upload"})
-            with stub.cond:
-                stub.profile_photos.setdefault(username, []).append(upload)
-            return self._ok(True)
-        if method == "getFile":
-            file_id = params.get("file_id")
-            if file_id not in stub.files:
-                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: invalid file_id"})
-            name, data = stub.files[file_id]
-            return self._ok({"file_id": file_id, "file_unique_id": f"u{file_id}", "file_size": len(data),
-                             "file_path": f"{file_id}/{name}"})
-        if method in ("sendMessage", "sendPhoto", "sendDocument", "sendVoice", "sendAudio", "sendVideo"):
-            with stub.cond:
-                stub._next_message += 1
-                message_id = stub._next_message
-                record = {"bot": username, "method": method, "message_id": message_id, **params}
-                stub.messages.append(record)
-                stub.cond.notify_all()
-            chat = {"id": int(params.get("chat_id", 0)), "type": "private"}
-            result = {"message_id": message_id, "date": int(time.time()), "chat": chat, "from": me}
-            if "text" in params:
-                result["text"] = params["text"]
-            markup = params.get("reply_markup")
-            if isinstance(markup, dict) and "inline_keyboard" in markup:  # a Message only carries inline ones
-                result["reply_markup"] = markup
-            return self._ok(result)
-        if method == "sendPoll":
-            options = params.get("options") or []
-            if (params.get("type") != "quiz" or not 1 <= len(str(params.get("question", ""))) <= 300
-                    or not 2 <= len(options) <= 10 or any(not 1 <= len(o.get("text", "")) <= 100 for o in options)
-                    or not 0 <= int(params.get("correct_option_id", -1)) < len(options)
-                    or len(str(params.get("explanation", ""))) > 200):
-                return self._json(400, {"ok": False, "error_code": 400, "description": "Bad Request: invalid poll"})
-            with stub.cond:
-                stub._next_message += 1
-                message_id = stub._next_message
-                poll_id = f"poll{message_id}"
-                stub.messages.append({"bot": username, "method": method, "message_id": message_id,
-                                      "poll_id": poll_id, **params})
-                stub.cond.notify_all()
-            poll = {"id": poll_id, "question": params["question"], "type": "quiz", "total_voter_count": 0,
-                    "is_closed": False, "is_anonymous": bool(params.get("is_anonymous", True)),
-                    "allows_multiple_answers": False, "correct_option_id": int(params["correct_option_id"]),
-                    "options": [{"text": o["text"], "voter_count": 0, "persistent_id": f"o{i}"}
-                                for i, o in enumerate(options)]}
-            chat = {"id": int(params.get("chat_id", 0)), "type": "private"}
-            return self._ok({"message_id": message_id, "date": int(time.time()), "chat": chat, "from": me,
-                             "poll": poll})
-        if method in ("editMessageText", "editMessageReplyMarkup"):
-            message_id = int(params.get("message_id", 0) or 0)
-            with stub.cond:
-                for record in stub.messages:
-                    if record["bot"] == username and record["message_id"] == message_id:
-                        if method == "editMessageText":
-                            record["text"] = params.get("text", record.get("text"))
-                            record["edited"] = record.get("edited", 0) + 1
-                        else:
-                            record["reply_markup"] = params.get("reply_markup")
-                stub.cond.notify_all()
-            chat = {"id": int(params.get("chat_id", 0) or 0), "type": "private"}
-            return self._ok({"message_id": int(params.get("message_id", 0) or 0), "date": int(time.time()),
-                             "chat": chat, "from": me, "text": params.get("text", "")})
-        if method == "deleteWebhook":
-            if str(params.get("drop_pending_updates", "")).lower() in ("true", "1"):
-                with stub.cond:
-                    stub.updates[token] = []
-            return self._ok(True)
-        if method == "getWebhookInfo":
-            return self._ok({"url": "", "has_custom_certificate": False, "pending_update_count": 0})
-        if method in ("getMyCommands",):
-            return self._ok([])
-        if method == "getChat":
-            return self._ok({"id": int(params.get("chat_id", 0) or 0), "type": "private"})
-        return self._ok(True)  # setMyCommands, deleteWebhook, answerCallbackQuery, sendChatAction, ...
-
-    def _ok(self, result):
-        self._json(200, {"ok": True, "result": result})
-
-    @staticmethod
-    def _updates(stub: FakeTelegram, token: str, params: dict) -> list[dict]:
-        offset = int(params.get("offset", 0) or 0)
-        wait = min(float(params.get("timeout", 0) or 0), 2.0)
-        deadline = time.time() + wait
-        with stub.cond:
-            while True:
-                queue = stub.updates.setdefault(token, [])
-                queue[:] = [u for u in queue if u["update_id"] >= offset]
-                if queue or time.time() >= deadline:
-                    return list(queue)
-                stub.cond.wait(max(0.05, deadline - time.time()))
-
-
-class BrokenIPv6:
-    """`localhost:<port>` for a server that listens on 127.0.0.1 only, with IPv6 blackholed: `base` is its
-    URL, or None where this machine does not resolve localhost to ::1 first (nothing to break)."""
-
-    def __init__(self, server: _Server):
-        self.port = int(server.base.rsplit(":", 1)[1])
-        self.base: str | None = None
-        self._sockets: list[socket.socket] = []
-
-    def __enter__(self):
-        infos = socket.getaddrinfo("localhost", self.port, type=socket.SOCK_STREAM)
-        if not infos or infos[0][0] != socket.AF_INET6:
-            return self
-        hole = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        hole.bind(("::1", self.port))
-        hole.listen(0)
-        filler = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        filler.setblocking(False)
-        try:  # the one connection the backlog holds; it is never accepted
-            filler.connect(("::1", self.port))
-        except BlockingIOError:
-            pass
-        self._sockets = [hole, filler]
-        time.sleep(0.2)
-        self.base = f"http://localhost:{self.port}"
-        return self
-
-    def __exit__(self, *exc):
-        for sock in self._sockets:
-            sock.close()
+    do_GET = do_POST = _record
 
 
 class ScriptedLLM(_Server):

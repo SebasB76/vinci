@@ -18,6 +18,8 @@ RULES = [
      ["README.md", FEATURES], "«Vinci en WhatsApp»"),
     (["src/espol_bot/token_form.py", "src/espol_bot/token_renewal.py", "docs/token/*"],
      ["README.md", FEATURES + "token.md"], "«Token nuevo desde Telegram»"),
+    (["src/espol_bot/portal_login.py", "src/espol_bot/academic_portal.py", "docs/academico/*"],
+     ["README.md", FEATURES + "academico.md"], "«Tu Académico de ESPOL»"),
     (["src/espol_bot/dashboard.py", "docs/dashboard/*"],
      ["README.md", FEATURES + "dashboard.md"], "«El dashboard de entregas»"),
     (["src/espol_bot/config.py", "src/aula_core/config.py"],

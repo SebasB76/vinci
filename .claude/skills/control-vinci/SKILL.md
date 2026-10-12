@@ -37,6 +37,8 @@ All take `--json` and exit 1 on failure; a failure says what to run next.
   `/start`, `/estado` and buttons, and send model questions only when the change needs one.
 - Never `press` a button with an outside effect (`📤 Entregar`, `✅ Guardar …`, `➕ Crear`, archive)
   unless the task is exactly that, since it hands in, saves or creates for real.
+- Never press «🎓 Conectar Académico» or send «actualiza mi Académico»: a sign-in needs the
+  captain's password and CAPTCHA. Check the saved copy with `.venv/bin/espol-bot academico`.
 - `whatsapp` only reads. Nothing can write as the captain on WhatsApp: test shared logic through
   Telegram, then read the WhatsApp side. A friend's profile (`amigo-<name>`) holds their private
   chats: open it only to debug a problem they reported, and quote no more than needed.

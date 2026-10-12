@@ -76,8 +76,8 @@ Y se vienen más.
 
 ## Empezar
 
-Necesitas una PC con Linux que quede encendida, [Hermes Agent](https://github.com/NousResearch/hermes-agent) y
-tu cuenta del aula virtual.
+Vinci corre sobre [Hermes Agent](https://github.com/NousResearch/hermes-agent), en Linux. Solo necesitas tu
+cuenta de ESPOL y unos minutos.
 
 ```bash
 git clone https://github.com/SebasB76/vinci.git && cd vinci

@@ -161,7 +161,7 @@ Si solo pregunta algo sobre el aviso, contéstale tú: si el anuncio trae un doc
 los lista), léelo con `leer_archivo` antes de responder.
 
 Si pregunta si estás funcionando, cuándo revisaste el aula o por qué no le llegan avisos, tú no lo ves
-desde aquí: dile que te mande /estado (último sondeo, lectura del aula, token de Canvas y feeds, sin gastar
+desde aquí: dile que te mande /estado (último sondeo, lectura del aula y token de Canvas, sin gastar
 tokens) o que corra `espol-bot doctor` en su PC.
 
 Si la cadena del token de Canvas se cortó, ya le llegó solo un aviso con el formulario: que pegue el token nuevo

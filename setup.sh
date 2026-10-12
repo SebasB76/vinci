@@ -2,13 +2,14 @@
 # Instala o actualiza Vinci y tus bots de materia. Puedes correrlo las veces que quieras.
 #
 #   ./setup.sh              instala dependencias, el comando `aula`, la skill de Claude Code
-#                           y los perfiles de Hermes; luego prueba Canvas y Telegram
+#                           y los perfiles de Hermes; luego prueba Canvas y tu chat (WhatsApp o Telegram)
 #   ./setup.sh --skip-deps  no toca el entorno de Python (.venv ya listo)
 #   ./setup.sh --sin-pruebas  no consulta Canvas ni envía el mensaje de prueba
 #
 # Qué modifica fuera de esta carpeta (y nada más):
 #   ~/.hermes/profiles/vinci/          el perfil de Vinci (nunca el perfil por defecto)
-#   ~/.hermes/profiles/vinci-<código>/ un perfil por cada bot de materia ya registrado
+#   ~/.hermes/profiles/vinci-<código>/ un perfil por cada bot de materia ya registrado; con
+#                                      [channels] telegram = false, solo le pone gateway.parked (lo apaga)
 #   ~/.local/bin/vinci                 el alias que Hermes crea para el perfil de Vinci
 #   ~/.local/bin/aula                  el comando `aula`
 #   ~/.claude/skills/aula/             la skill para Claude Code
@@ -122,7 +123,13 @@ if [ ! -f "$SECRETS" ]; then
 fi
 chmod 600 "$SECRETS"
 missing=""
-for key in CANVAS_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_USER_ID; do
+# [channels] telegram = false: Vinci needs WhatsApp instead of its Telegram bot
+if grep -Eq '^telegram *= *false' "${AULA_CONFIG:-$REPO/config.toml}"; then
+  required="CANVAS_TOKEN WHATSAPP_CAPTAIN"
+else
+  required="CANVAS_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_USER_ID"
+fi
+for key in $required; do
   grep -Eq "^${key}=.+" "$SECRETS" || missing="$missing $key"
 done
 [ -z "$missing" ] || { echo "Faltan valores en $SECRETS:$missing" >&2; exit 1; }
@@ -179,9 +186,9 @@ if [ "$RUN_CHECKS" = 1 ]; then
   else
     echo "⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN en $SECRETS" >&2
   fi
-  say "Vinci te manda un mensaje de prueba por Telegram"
+  say "Vinci te manda un mensaje de prueba"
   AULA_SECRETS="$SECRETS" "$VENV/bin/espol-bot" probar \
-    || echo "⚠ Telegram no aceptó el mensaje; revisa TELEGRAM_BOT_TOKEN y que le hayas escrito /start a Vinci" >&2
+    || echo "⚠ No llegó el mensaje de prueba; revisa TELEGRAM_BOT_TOKEN (y el /start a Vinci) o, sin Telegram, el puente de WhatsApp" >&2
 fi
 
 PROFILE="$("$VENV/bin/python" -c 'from espol_bot.config import load_bot_config; print(load_bot_config().hermes_profile)')"

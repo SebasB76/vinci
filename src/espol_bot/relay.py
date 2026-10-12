@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import secrets
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -44,6 +45,27 @@ log = logging.getLogger(__name__)
 
 class RelayError(ConfigError):
     pass
+
+
+TURNS = "turns"
+
+
+def queue_turn(cfg: BotConfig, session: str, text: str, ttl: timedelta) -> None:
+    """A message for the vinci-whatsapp plugin to put in a Hermes session (ctx.inject_message), as if its person had
+    written it: Vinci answers it in that chat. Dropped if the gateway cannot take it within `ttl`."""
+    folder = registry_path(cfg).parent / TURNS
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    tmp = folder / f".{secrets.token_hex(8)}.tmp"
+    tmp.write_text(json.dumps({"session": session, "text": text, "expires": time.time() + ttl.total_seconds()},
+                              ensure_ascii=False), encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    # sorted by name in the plugin: the clock first keeps them in order
+    os.replace(tmp, folder / f"{time.time_ns()}-{tmp.stem.lstrip('.')}.json")
+
+
+def captain_session(cfg: BotConfig, number: str) -> str:
+    """The Hermes session of the captain's private WhatsApp chat with his Vinci."""
+    return f"agent:{cfg.hermes_profile}:whatsapp:dm:{number}"
 
 
 def registry_path(cfg: BotConfig) -> Path:

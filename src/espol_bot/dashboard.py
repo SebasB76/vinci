@@ -144,6 +144,8 @@ def page_url(cfg: BotConfig, data: dict, base: str | None = None) -> str:
 def publish(conn: sqlite3.Connection, cfg: BotConfig, telegram: Telegram, team: list[materias.Subject],
             now: datetime, *, force: bool = False) -> str | None:
     """Points the menu button at a fresh snapshot when it changed; the URL set, or None when nothing was sent."""
+    if not cfg.telegram:  # the menu button is Telegram's; `telegram` is the WhatsApp sender then
+        return None
     if not cfg.dashboard_url:
         if get_meta(conn, DIGEST) is not None:  # switched off in config.toml: the chat gets its usual menu back
             telegram.set_menu_button(None)

@@ -1,5 +1,8 @@
 # Uso diario en Telegram
 
+> Con `channels.telegram = false` en `config.toml` (lo normal ahora), Vinci te habla solo por WhatsApp y lleva todas
+> tus materias en un chat: mira [whatsapp.md](whatsapp.md). Esta guía es para cuando enciendes Telegram.
+
 ## Con Vinci
 
 - «¿Qué tengo pendiente esta semana y en qué orden lo hago?» · «¿Cómo voy en todo?» · «Hazme un plan para el

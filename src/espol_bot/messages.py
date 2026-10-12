@@ -155,8 +155,11 @@ def digest(events: list[dict], tz: ZoneInfo) -> str:
     return "\n\n".join(blocks)
 
 
-def hand_in_hint(handle: str) -> str:
-    """Under an assignment the captain does by hand: the subject bot hands it in from the photos."""
+def hand_in_hint(handle: str | None) -> str:
+    """Under an assignment the captain does by hand: the subject bot (or, without one, Vinci) hands it in from the
+    photos."""
+    if handle is None:
+        return "📸 ¿La hiciste a mano? Mándame aquí las fotos de las hojas: armo el PDF y lo entregas votando en la encuesta."
     return f"📸 ¿La hiciste a mano? Mándale las fotos de las hojas a {e(handle)}: arma el PDF y la entrega con un botón."
 
 

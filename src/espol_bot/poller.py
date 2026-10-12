@@ -72,11 +72,13 @@ class Bot:
         self.aula = aula or Aula(cfg.core, background=True)
         store.ensure(self.conn)
         try:
-            if cfg.friend:  # no subject bots: a friend's subjects are the courses of their aula, kept in step
+            if cfg.friend or not cfg.telegram:  # no subject bots: the subjects are the aula's courses, kept in step
                 from espol_bot import equipo
                 equipo.sync_team(cfg, self.conn)
             self.team = materias.load(cfg.core)  # archived subjects too: their grading schemes still count
-            self.subjects = [s for s in self.team if s.active]
+            # without Telegram, Vinci itself looks after every subject that is not archived
+            serving = cfg.telegram or cfg.friend
+            self.subjects = [s for s in self.team if s.active or (not serving and s.state != "archivada")]
             self.team_error = None
         except ConfigError as exc:
             log.error("%s", exc)
@@ -98,8 +100,9 @@ class Bot:
         return found[:MAX_BUTTONS]
 
     def _send(self, text: str, course_ids=(), extra: list[tuple[str, str]] = ()) -> None:
-        """Send to the captain; offer a handoff button per course that has an active subject bot, then `extra`."""
-        subjects = self._subjects_for(dict.fromkeys(c for c in course_ids if c is not None))
+        """Send to the captain; offer a handoff button per course that has an active subject bot, then `extra`.
+        Without Telegram there are no subject bots to hand off to."""
+        subjects = self._subjects_for(dict.fromkeys(c for c in course_ids if c is not None)) if self.cfg.telegram else []
         buttons = []
         if subjects:
             alert_id = store.new_alert(self.conn, messages.plain(text), [s.code for s in subjects], self.aula.now())
@@ -118,7 +121,7 @@ class Bot:
             return ""
         if not (row["asks_scan"] or subjects[0].code.upper() in self.cfg.handwritten_subjects):
             return ""
-        return "\n" + messages.hand_in_hint(subjects[0].handle())
+        return "\n" + messages.hand_in_hint(subjects[0].handle() if self.cfg.telegram else None)
 
     # -- failure handling ------------------------------------------------------------
 
@@ -273,9 +276,12 @@ class Bot:
                 book = libros.main_book(self.conn, self.cfg.core, subject, course_ids)
             if not libros.needs_ask(book):
                 continue
-            text = libros.ask_text(self.cfg.core, subject, book)
-            try:  # from the subject bot's own chat; a failure asks again next poll
-                Telegram(load_telegram_secrets(subject.code), api=self.cfg.telegram_api).send(text)
+            text = libros.ask_text(self.cfg.core, subject, book, whatsapp=not self.cfg.telegram)
+            try:  # from the subject bot's own chat, or Vinci's on WhatsApp; a failure asks again next poll
+                if self.cfg.telegram:
+                    Telegram(load_telegram_secrets(subject.code), api=self.cfg.telegram_api).send(text)
+                else:
+                    self.telegram.send(text)
             except (TelegramError, ConfigError) as exc:
                 log.warning("no pude pedir el libro de %s: %s", subject.code, exc)
                 continue

@@ -51,6 +51,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -86,7 +87,7 @@ SKILLS_CATEGORY = "vinci"
 TEMPLATES = REPO_ROOT / "hermes"
 
 # `skills` is what makes skills.auto_load pin each bot's own skill (see the docstring).
-VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-vinci"]
+VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-vinci", "vinci-paginas"]
 SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "skills", "mcp-materia", "vinci-paginas"]
 APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 # Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
@@ -99,6 +100,7 @@ GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", 
 WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
+TELEGRAM_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -142,8 +144,16 @@ def _join_ni(names: list[str]) -> str:
     return f"{', '.join(names[:-1])} ni {names[-1]}" if len(names) > 1 else "".join(names)
 
 
-def _render(template: Path, values: dict[str, str]) -> str:
+CHANNEL_BLOCK_RE = re.compile(r"^<!-- solo (telegram|whatsapp) -->\n(.*?)^<!-- fin -->\n?", re.S | re.M)
+
+
+def _render(template: Path, values: dict[str, str], *, telegram: bool | None = None) -> str:
+    """The template with its values; with `telegram`, only the «<!-- solo telegram/whatsapp -->» blocks of that
+    channel (Vinci's SOUL.md and SKILL.md: with Telegram off, no subject bots to speak of)."""
     text = template.read_text(encoding="utf-8")
+    if telegram is not None:
+        keep = "telegram" if telegram else "whatsapp"
+        text = CHANNEL_BLOCK_RE.sub(lambda m: m[2] if m[1] == keep else "", text)
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", value)
     return text
@@ -166,8 +176,11 @@ class Setup:
             raise ConfigError(f"Falta {self.bot_bin}; corre ./setup.sh para instalar las dependencias.")
         self.configured: list[tuple[str, str]] = []  # (profile, its pinned skill) for check_skills
         self.secrets = load_secret_values()
-        self.captain = captain_id(self.secrets)
         self.whatsapp = whatsapp_settings(self.secrets)
+        if not cfg.telegram and self.whatsapp is None:
+            raise ConfigError("[channels] telegram = false necesita WHATSAPP_CAPTAIN en secrets.env")
+        # Without Telegram the captain's Telegram id is only kept, if he has one, for when he turns it back on
+        self.captain = captain_id(self.secrets) if cfg.telegram else self.secrets.get("TELEGRAM_USER_ID", "")
         guests = {**{f"mcp__vinci__{name}": sorted(args) for name, args in herramientas.GUEST_TOOLS.items()},
                   **{name: [] for name in GUEST_HERMES_TOOLS}}
         self.values = {"BOT": str(self.bot_bin), "CONFIG": str(config_path()), "SECRETS": str(secrets_path()),
@@ -309,7 +322,8 @@ class Setup:
     def reconcile_job(self, name: str, job_name: str, schedule: str, script: str, *, no_agent: bool,
                       prompt: str | None = None, skills: tuple[str, ...] = (), enabled: bool = True,
                       deliver: str | None = None) -> None:
-        deliver = deliver or f"telegram:{self.captain}"
+        # without Telegram a failing job's output stays in Hermes' cron output; `espol-bot doctor` reports it
+        deliver = deliver or (f"telegram:{self.captain}" if self.cfg.telegram else "local")
         existing = [j for j in self.jobs(name) if j.get("name") == job_name]
         if not existing:
             self.run("-p", name, "cron", "create", schedule, *([prompt] if prompt else []), "--script", script,
@@ -390,10 +404,10 @@ class Setup:
                           f"/setuserpic ({character.avatar}).")
         _write_if_changed(stamp_file, json.dumps(stamp, ensure_ascii=False) + "\n")
 
-    def set_parked(self, name: str, parked: bool) -> bool:
+    def set_parked(self, name: str, parked: bool, why: str = "materia archivada (pídele a Vinci reactivarla)") -> bool:
         marker = self.profile_dir(name) / "gateway.parked"
         if parked and not marker.exists():
-            marker.write_text(f"{MARKER}: materia archivada (pídele a Vinci reactivarla)\n", encoding="utf-8")
+            marker.write_text(f"{MARKER}: {why}\n", encoding="utf-8")
             return True
         if not parked and marker.exists() and MARKER in marker.read_text(encoding="utf-8", errors="replace"):
             marker.unlink()
@@ -424,7 +438,7 @@ class Setup:
     def vinci(self) -> None:
         name = self.cfg.hermes_profile
         token = self.secrets.get(token_key(), "")
-        if not token:
+        if not token and self.cfg.telegram:
             raise ConfigError("Falta TELEGRAM_BOT_TOKEN (el bot de Vinci) en secrets.env")
         self.migrate_legacy()
         profile = self.ensure_profile(name, "Vinci: tu bot principal de ESPOL (avisos del aula, consultas generales, "
@@ -436,20 +450,28 @@ class Setup:
         print(f"• config.yaml {'actualizado' if changed else 'sin cambios'} (modelo {self.cfg.hermes_model}, "
               f"zona {self.cfg.core.tz}; herramientas: búsqueda web, memoria, skills y las de Vinci"
               f"{self._closed_note(None)})")
-        changed = self.telegram_env(profile, token)
-        print(f"• .env de Vinci {'actualizado' if changed else 'sin cambios'} (Telegram solo para tu ID)")
+        if self.cfg.telegram:
+            changed = self.telegram_env(profile, token)
+            print(f"• .env de Vinci {'actualizado' if changed else 'sin cambios'} (Telegram solo para tu ID)")
+        else:  # the token stays in secrets.env: telegram = true brings the bot back
+            changed = update_secret_values({}, remove=TELEGRAM_ENV, path=profile / ".env")
+            print(f"• Telegram apagado ([channels] telegram = false): Vinci te habla solo por WhatsApp"
+                  f"{' (token quitado de su perfil)' if changed else ''}")
 
         party = "\n".join(f"- «{characters.bot_name(code, c.subject or code)}»: {c.subject} ({code})"
                           for code, c in characters.party().items())
         values = {**self.values, "PROFILE_HOME": str(profile), "PARTY": party, "CODIGO": "",
                   **self._tool_limits(None)}
-        changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values))
+        telegram = self.cfg.telegram
+        changed = _write_if_changed(profile / "SOUL.md", _render(TEMPLATES / "vinci" / "SOUL.md", values,
+                                                                 telegram=telegram))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "vinci" / "SKILL.md",
-                                     _render(TEMPLATES / "vinci" / "SKILL.md", values))
+                                     _render(TEMPLATES / "vinci" / "SKILL.md", values, telegram=telegram))
         changed |= _write_if_changed(profile / "skills" / SKILLS_CATEGORY / "quiz" / "SKILL.md",
                                      _render(TEMPLATES / "vinci" / "quiz" / "SKILL.md", values))
         for script, command in {"vinci-sondeo.sh": "sondeo", "vinci-resumen.sh": "resumen",
-                                "vinci-mantenimiento.sh": "mantenimiento", "vinci-apuntes.sh": "notes"}.items():
+                                "vinci-mantenimiento.sh": "mantenimiento", "vinci-apuntes.sh": "notes",
+                                "vinci-agenda.sh": "agenda"}.items():
             changed |= _write_if_changed(profile / "scripts" / script,
                                          _render(TEMPLATES / "cron-script.sh", {**values, "COMMAND": command}), 0o755)
         plugin_changed = self._install_plugin(profile, values)
@@ -457,7 +479,8 @@ class Setup:
             self._reload_gateway_plugins(profile)
         changed |= plugin_changed | self._drop_legacy_files(profile)
         print(f"• SOUL.md, skills vinci y quiz, plugin de botones y scripts de cron {'instalados' if changed else 'sin cambios'}")
-        self.telegram_profile(profile, token, characters.vinci(), "Vinci")
+        if self.cfg.telegram:
+            self.telegram_profile(profile, token, characters.vinci(), "Vinci")
 
         self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
         self.reconcile_job(name, "vinci-sondeo", poll_schedule(self.cfg.poll_minutes, self.cfg.summary_time.minute),
@@ -467,6 +490,11 @@ class Setup:
         self.reconcile_job(name, "vinci-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
                            "vinci-resumen.sh", no_agent=True)
         self.reconcile_job(name, "vinci-apuntes", "* * * * *", "vinci-apuntes.sh", no_agent=True)
+        if self.cfg.telegram:
+            self.remove_jobs(name, ("vinci-agenda",))
+        else:  # the briefs and class notes the subject bots wrote, into the captain's WhatsApp chat (agenda.run_vinci)
+            self.reconcile_job(name, "vinci-agenda", "* * * * * */30", "vinci-agenda.sh", no_agent=True,
+                               deliver="local")
 
     def _whatsapp_bridge(self) -> Path | None:
         """Vinci's launcher next to Hermes' bridge.js (hermes/whatsapp/vinci-bridge.js: bridge.js plus the route for
@@ -705,6 +733,10 @@ class Setup:
 
     def subject(self, subject: materias.Subject) -> None:
         name = self.cfg.subject_profile(subject.code)
+        if not self.cfg.telegram:  # its profile, memory and notebook stay; Vinci does its work on WhatsApp
+            if self.profile_dir(name).is_dir() and self.set_parked(name, True, "Telegram apagado ([channels] telegram)"):
+                print(f"• {subject.display}: apagado con Telegram (gateway.parked); Vinci lleva su materia")
+            return
         token = self.secrets.get(token_key(subject.code), "")
         if not token:
             print(f"• {subject.display}: falta su token ({token_key(subject.code)}); créalo desde Vinci (pídele «arma mi equipo»).")

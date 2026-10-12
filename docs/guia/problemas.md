@@ -11,14 +11,16 @@
   que no le llega. Para el libro principal, pon el PDF en `libros/<CÓDIGO>/` de la carpeta de datos. El material
   del aula no tiene ese límite: se baja directo del aula (hasta `material.tamano_maximo_mb`).
 - **Qué se puede leer:** el texto de PDF, PPTX, DOCX, XLSX (Excel) y páginas web. Un PDF escaneado se busca por su texto de OCR
-  (con `tesseract` instalado), que falla en fórmulas, figuras y letra a mano: eso el bot de su materia lo mira
-  como imagen, de una en una. Un libro escaneado de 300 páginas tarda unos 10 a 15 minutos de OCR, repartidos en
+  (con `tesseract` instalado), que falla en fórmulas, figuras y letra a mano: eso Vinci (o, con Telegram, el bot
+  de su materia) lo mira como imagen, de una en una. Un libro escaneado de 300 páginas tarda unos 10 a 15 minutos de OCR, repartidos en
   los sondeos. Un Google Docs, Drive, SharePoint
   o Dropbox se lee solo si se abre sin iniciar sesión («cualquier persona con el enlace»); si pide tu cuenta de
   ESPOL o de Google, el bot te lo dice y te pide el PDF. Los videos, formularios, carpetas, OneDrive personal y
   Teams solo quedan listados con su enlace, para que los abras tú.
-- **Solo se busca en lo ya leído:** del catálogo, solo el sílabo se baja por su cuenta; el resto lo baja el bot de
-  la materia cuando le hace falta. Para estudiar a fondo, pregúntale a ese bot más que a Vinci.
+- **Solo se busca en lo ya leído:** del catálogo, solo el sílabo se baja por su cuenta; el resto lo baja Vinci (o,
+  con Telegram, el bot de la materia) cuando le hace falta.
+- **La materia de una foto o una nota de voz:** sin nombrarla, Vinci la elige por tu horario solo durante la clase
+  o hasta una hora después. Fuera de eso te pregunta en un mensaje, sin encuesta.
 - **Qué prueba una cita:** que el bot leyó esa página de ese archivo, no que la página diga exactamente lo que el
   bot resume. Ábrela con su enlace si te importa el detalle.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.

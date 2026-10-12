@@ -2,36 +2,36 @@
 
 Every feature, where the captain reaches it, the code behind it and how an agent verifies it.
 "Model" says whether the feature calls the LLM (costs tokens) or is a fixed script.
-User-facing detail lives in `README.md`; search it for the section named in the last column.
+User-facing detail lives in `docs/guia/`; the last column names the file and its section.
 
 ## Telegram vs WhatsApp
 
-| Feature | Telegram | WhatsApp | Model | README section |
+| Feature | Telegram | WhatsApp | Model | Guide (`docs/guia/`) |
 |---|---|---|---|---|
-| Canvas alerts, reminders, 07:00 summary | Vinci's chat, with buttons | captain's DM, a poll instead of buttons; friends get their own | no | «El resumen de las 7:00» |
-| «🎓 Consultar con …» handoff | button under each alert | not available (subject bots live on Telegram) | yes | «Qué hace» |
-| «✅ Ya lo entregué» | button | poll | no | «Qué hace» |
-| Dashboard of deliverables | «📋 Entregas» menu button, Mini App | `/entregas` → link button; ticks come back through the relay | no | «El dashboard de entregas» |
-| To-do list («anota: …») | card with «✅ Hecho» | poll | yes (parsing), no (reminders) | «Qué hace» |
-| Grade calculator | ask Vinci or a subject bot; «✅ Guardar esquema» | ask Vinci; «Guardar esquema» poll | yes, the math is a script | «La calculadora de notas» |
-| Team of subject bots | «arma mi equipo» → «➕ Crear» | not available | no | «Arma tu equipo de bots» |
-| Brief before each class | subject bot, 30 min before | not available | yes | «Con cada bot de materia» |
-| Subject notebook (notes, photos, voice) | subject bot chat | not available | yes | «Qué hace» |
-| Questions on course material, with citations | Vinci or subject bot | Vinci | yes; citations checked by a script | «El material de cada materia» |
-| Hand in handwritten work | photos to the subject bot → «📤 Entregar» | photos to Vinci → «📤 Entregar» poll | yes (PDF built by a script) | «Entregar una actividad hecha a mano» |
-| `/quiz <tema>` | subject bot (Vinci hands it over), quiz polls | Vinci, polls in the captain's DM | yes (questions), no (scoring) | «Quiz con /quiz» |
-| Académico (GPA, history, grades, timetables) | ask Vinci; «🎓 Conectar Académico» Mini App the first time | ask Vinci in the DM; the same button as a link | yes (answers), no (sign-in) | «Tu Académico de ESPOL» |
-| Assignment detail (annexes, aula rubric, local dates) | ask Vinci or a subject bot | ask Vinci | yes | «El material de cada materia» |
-| DSpace past exams | ask Vinci or a subject bot | ask Vinci | yes | «Exámenes anteriores (DSpace)» |
-| Schedule from a screenshot | screenshot to Vinci → «Guardar» | screenshot to Vinci → «✅ Guardar horario» poll | yes (reading), no (saving) | «Mándale tu horario a Vinci» |
-| Class notes folder (`//vinci`) | answers and summaries in the subject bot chat | not available | yes | «Tus apuntes de clase» |
-| Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | «Qué hace» |
-| `/estado` | Vinci | Vinci (DM only) | no | «El estado del sistema» |
-| `/token` new Canvas token | Mini App form | guide image + link button, back through the relay | no | «Token nuevo desde Telegram» |
-| `/start` | every bot | Vinci | no | «Comandos» |
-| Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it | yes | «Vinci en WhatsApp» |
-| A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | «Vinci en WhatsApp» |
-| Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | «Vinci en WhatsApp» |
+| Canvas alerts, reminders, 07:00 summary | Vinci's chat, with buttons | captain's DM, a poll instead of buttons; friends get their own | no | `uso.md` «El resumen de las 7:00» |
+| «🎓 Consultar con …» handoff | button under each alert | not available (subject bots live on Telegram) | yes | `funciones.md` |
+| «✅ Ya lo entregué» | button | poll | no | `funciones.md` |
+| Dashboard of deliverables | «📋 Entregas» menu button, Mini App | `/entregas` → link button; ticks come back through the relay | no | `uso.md` «El dashboard de entregas» |
+| To-do list («anota: …») | card with «✅ Hecho» | poll | yes (parsing), no (reminders) | `funciones.md` |
+| Grade calculator | ask Vinci or a subject bot; «✅ Guardar esquema» | ask Vinci; «Guardar esquema» poll | yes, the math is a script | `uso.md` «La calculadora de notas» |
+| Team of subject bots | «arma mi equipo» → «➕ Crear» | not available | no | `instalacion.md` «7. Arma tu equipo de bots desde el chat» |
+| Brief before each class | subject bot, 30 min before | not available | yes | `uso.md` «Con cada bot de materia» |
+| Subject notebook (notes, photos, voice) | subject bot chat | not available | yes | `funciones.md` |
+| Questions on course material, with citations | Vinci or subject bot | Vinci | yes; citations checked by a script | `uso.md` «El material de cada materia» |
+| Hand in handwritten work | photos to the subject bot → «📤 Entregar» | photos to Vinci → «📤 Entregar» poll | yes (PDF built by a script) | `uso.md` «Entregar una actividad hecha a mano» |
+| `/quiz <tema>` | subject bot (Vinci hands it over), quiz polls | Vinci, polls in the captain's DM | yes (questions), no (scoring) | `funciones.md` «Quiz con `/quiz`» |
+| Académico (GPA, history, grades, timetables) | ask Vinci; «🎓 Conectar Académico» Mini App the first time | ask Vinci in the DM; the same button as a link | yes (answers), no (sign-in) | `uso.md` «Tu Académico de ESPOL» |
+| Assignment detail (annexes, aula rubric, local dates) | ask Vinci or a subject bot | ask Vinci | yes | `uso.md` «El material de cada materia» |
+| DSpace past exams | ask Vinci or a subject bot | ask Vinci | yes | `uso.md` «Exámenes anteriores (DSpace)» |
+| Schedule from a screenshot | screenshot to Vinci → «Guardar» | screenshot to Vinci → «✅ Guardar horario» poll | yes (reading), no (saving) | `instalacion.md` «8. Mándale tu horario a Vinci» |
+| Class notes folder (`//vinci`) | answers and summaries in the subject bot chat | not available | yes | `uso.md` «Tus apuntes de clase» |
+| Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
+| `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
+| `/token` new Canvas token | Mini App form | guide image + link button, back through the relay | no | `uso.md` «Token nuevo desde Telegram (`/token`)» |
+| `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
+| Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it | yes | `whatsapp.md` «Vinci en WhatsApp» |
+| A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
+| Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | `whatsapp.md` «Vinci en WhatsApp» |
 
 ## Code and verification
 

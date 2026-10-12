@@ -117,7 +117,7 @@ if [ ! -f "$SECRETS" ]; then
   cp "$REPO/secrets.env.example" "$SECRETS"
   chmod 600 "$SECRETS"
   echo "Creé $SECRETS a partir de la plantilla."
-  echo "Complétalo (mira el README: token de Canvas, el bot de Vinci y tu ID) y vuelve a correr ./setup.sh"
+  echo "Complétalo (mira docs/guia/instalacion.md: token de Canvas, el bot de Vinci y tu ID) y vuelve a correr ./setup.sh"
   exit 1
 fi
 chmod 600 "$SECRETS"

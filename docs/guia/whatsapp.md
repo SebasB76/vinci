@@ -1,0 +1,94 @@
+# Vinci en WhatsApp
+
+Vinci también contesta por WhatsApp, a través del puente de WhatsApp de Hermes. Usa un número aparte (un chip
+prepago basta): el puente es un cliente no oficial, y WhatsApp puede bloquear el número que lo usa. No pongas tu
+número personal.
+
+1. Pon tu número en `secrets.env`: `WHATSAPP_CAPTAIN=593…` (código de país, sin «+» y sin el 0 inicial).
+2. Detén el gateway: `hermes gateway stop`.
+3. Corre `.venv/bin/espol-bot whatsapp-vincular 593…` con el número de Vinci. Te muestra un código de 8 letras.
+4. En el celular con el chip de Vinci, abre WhatsApp → Dispositivos vinculados → Vincular con el número de
+   teléfono, y escribe el código.
+5. Corre `./setup.sh` y arranca el gateway: `hermes gateway start`.
+
+**Páginas dentro de WhatsApp.** El formulario del token y el panel de entregas llegan como un botón. En el iPhone,
+el botón abre la página dentro de WhatsApp, como un Mini App de Telegram. En WhatsApp Web abre otra pestaña: Web no
+tiene otra forma de abrir una página. En Android no lo probamos. `setup.sh` agrega la ruta del botón al puente de
+Hermes sin editar su `bridge.js` (`hermes/whatsapp/vinci-bridge.js`). Si el puente no la tiene, la página llega
+como enlace. Las pruebas están en `experiments/whatsapp-webview/`.
+
+**El relé: lo que la página manda de vuelta.** WhatsApp no tiene la forma de Telegram de pasarle al bot lo que hace
+una página. El relé es un Worker de Cloudflare, gratis y sin tarjeta, que hace de buzón. La página deja ahí tu token
+cifrado o la entrega que marcaste. Tu PC lo recoge cada 3 segundos mientras un enlace está abierto, sin abrir
+ningún puerto. Vinci te confirma en el chat. El relé solo ve el texto cifrado, que únicamente tu PC puede abrir.
+Sin relé, la página te da el texto cifrado para pegar en el chat, y marcar una entrega abre el chat con `/marca …`
+escrito. La página del Académico también usa el relé en los dos sentidos: deja ahí tus datos cifrados y lee de ahí la
+imagen del CAPTCHA y cómo va el ingreso; sin relé no funciona.
+
+Para publicar tu relé:
+
+1. Crea una cuenta en [Cloudflare](https://dash.cloudflare.com/sign-up) con tu correo. No pide tarjeta.
+2. Corre `npx wrangler login` y pulsa «Allow» en el navegador.
+3. Elige el subdominio de tu cuenta en Workers (el panel de Cloudflare lo pide la primera vez).
+4. En la carpeta `relay/`, corre `npx wrangler deploy`. Anota la dirección `https://vinci-relay.<subdominio>.workers.dev`.
+5. Crea una clave: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+6. Guárdala en el relé: `npx wrangler secret put RELAY_TOKEN` (pega la clave cuando la pida).
+7. En `secrets.env`, pon `WHATSAPP_RELAY_URL=<la dirección>` y `WHATSAPP_RELAY_TOKEN=<la clave>`.
+8. Corre `./setup.sh` y reinicia el gateway: `hermes gateway restart`.
+
+**Tu chat.** Escríbele a Vinci por privado: es el mismo Vinci de Telegram, con tu aula y tu memoria. WhatsApp no
+tiene botones, así que cada tarjeta te llega a tu chat privado como mensaje con una **encuesta**: votar «✅ Hecho»,
+«✅ Ya lo entregué», «✅ Guardar horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram,
+sin pasar por el modelo. Cambiar el voto lo deshace. Solo crear o archivar bots de materia sigue en Telegram.
+
+**Tus avisos, también aquí.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a Telegram y a tu chat de WhatsApp, con su encuesta en vez de botones. «🎓 Consultar con …» queda solo en Telegram, porque los bots de materia viven ahí. Si el puente de WhatsApp falla, Telegram recibe el aviso igual.
+
+- **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
+  archivos que trae.
+- **Entregar a mano.** Mándale las fotos (o el PDF) y dile de qué tarea es: arma el PDF y te lo manda con la
+  encuesta «📤 Entregar / Cancelar». Se sube al aula solo con tu voto.
+- **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
+  te dice si acertaste y por qué, y al final tu puntaje.
+- **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
+  respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
+  con faster-whisper (`setup.sh` lo instala en Hermes), y Vinci te muestra primero lo que entendió (🎙️).
+
+**Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
+contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz
+no puede mencionar a nadie: Vinci contesta la tuya o la de un amigo con su Vinci si dice «Vinci» o responde a un
+mensaje suyo. Las notas de voz de quien no tiene su Vinci ni se transcriben. «@vinci desactiva este grupo» lo
+apaga. Solo tú puedes encender o apagar un grupo.
+
+**Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
+
+1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.
+2. Vinci le escribe a Angel por privado con un botón a la página del token (la misma de `/token`, en modo WhatsApp).
+3. Angel crea un token en el aula, lo pega en la página y pulsa «Enviar cifrado a Vinci».
+4. El token llega cifrado por el relé. Vinci lo verifica, lee el aula de Angel y le confirma sus materias en su chat.
+   Sin relé, la página le da un texto cifrado para pegar en el chat.
+
+Desde ahí, «@vinci qué tengo esta semana» le contesta a Angel con lo suyo y a ti con lo tuyo, en el mismo grupo o
+por privado. Su Vinci le avisa de sus tareas nuevas por su chat de WhatsApp y renueva su token como el tuyo.
+`/amigos` te muestra la lista y `/amigo quitar Angel` borra su Vinci, sus datos y los tokens que creó su cadena.
+
+**Comandos por WhatsApp.** Tú y cada amigo con su Vinci tienen los mismos comandos, cada uno sobre su propia aula,
+y Vinci los contesta sin gastar tokens:
+
+| Comando | Qué hace |
+|---|---|
+| `/start` | Saluda y muestra los comandos |
+| `/estado` | La salud del sistema, como en Telegram |
+| `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: pegas el token nuevo y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
+| `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
+| `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste |
+| `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
+
+En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas siempre van a tu
+chat privado (WhatsApp no deja votar a Vinci en un grupo).
+
+El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con sus recordatorios), su calculadora de
+notas con el esquema que guarda con su voto, y los recordatorios del aula con la encuesta «✅ Ya lo entregué».
+
+A quien todavía no tiene su Vinci, Vinci le contesta que te pida que lo agregues, sin usar el modelo y sin
+mostrarle nada tuyo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
+`secrets.env`.

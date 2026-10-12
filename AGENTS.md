@@ -24,8 +24,8 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
 
 These are entry points. Follow references anywhere the task leads.
 
-- User-facing behavior: `README.md` (Spanish, about 1000 lines). Search it for the section
-  you need instead of reading it whole.
+- User-facing behavior: the guides in `docs/guia/` (Spanish): `uso.md` (Telegram), `whatsapp.md`,
+  `instalacion.md`, `privacidad.md`, `problemas.md`. `README.md` is only a short front page.
 - How each bot talks and what it may do: `hermes/vinci/`, `hermes/materia/` and
   `hermes/amigo/` (`SOUL.md` is the personality, `SKILL.md` the tools and rules).
 - Gateway hooks (buttons, `/token`, the Académico's held question, WhatsApp voice): `hermes/plugins/vinci-botones/` and
@@ -61,7 +61,7 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 - E2E (one test, 7 to 17 minutes): never run it at the start of a session or to "check the
   baseline". Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
   behavior change, run it once at the end, and never rerun it for a one-line fix. The captain
-  asked for this 12 times; the README's contributing rule is for outside contributors.
+  asked for this 12 times; `docs/guia/contribuir.md` is for outside contributors.
 - No unit tests and no extra review rounds.
 - "Improve the project" means features the student notices, not refactors.
 - For a new feature idea, restate the goal and the user flow in 3 to 5 lines, then build it.
@@ -82,17 +82,20 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 
 | If you change… | Update |
 |---|---|
-| What a bot does or says (commands, buttons, alerts) | its `README.md` section + its row in the feature map |
-| A slash command (new, renamed, removed) | README «Comandos» (and the WhatsApp table) + feature map |
+| What a bot does or says (commands, buttons, alerts) | its section in `docs/guia/` + its row in the feature map |
+| A slash command (new, renamed, removed) | `uso.md` «Comandos» (and the table in `whatsapp.md`) + feature map |
 | Telegram vs WhatsApp support of a feature | the first table of the feature map |
 | A multi-step flow (`/token`, dashboard, Académico) | its file in `.claude/skills/control-vinci/references/features/` |
 | A bot's personality or rules | `hermes/<profile>/SOUL.md` or `SKILL.md` |
-| A config key | its comment in `config.toml` + README «Configuración» |
-| A secret | `secrets.env.example` + README «Completa `secrets.env`» |
-| What `setup.sh` touches outside the repo | the header of `setup.sh` + README «Actualizar y desinstalar» |
+| A config key | its comment in `config.toml` + `instalacion.md` «Configuración» |
+| A secret | `secrets.env.example` + `instalacion.md` «4. Completa `secrets.env`» |
+| What `setup.sh` touches outside the repo | the header of `setup.sh` + `instalacion.md` «Actualizar y desinstalar» |
 | A `vinci-check` command | `.claude/skills/control-vinci/SKILL.md` |
 | What runs live, or a command here | «Status» or «Commands» in this file |
-| A known limit (fixed or new) | README «Límites conocidos» |
+| A known limit (fixed or new) | `problemas.md` «Límites conocidos» |
+| A headline feature (new or gone) | the «Qué hace» table in `README.md` + `funciones.md` |
+| The summary, dashboard, Académico or hand-in messages | `docs/images/pantallas/pantallas.html`, then `scripts/render_screens.sh` |
+| A new ESPOL source (like the Académico) | «Conectado a ESPOL» in `README.md` |
 
 ## Do not re-propose
 
@@ -136,13 +139,14 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
   (`check.py`), the CLI agents use to drive the live bots.
 - `hermes/`: profile templates (personality, skills, quizzes), plugins and the WhatsApp bridge patch.
 - `docs/token/`, `docs/dashboard/`, `docs/academico/`: static pages on GitHub Pages; they store nothing.
+- `docs/guia/`: the user guides the README links to.
 - `relay/`: Cloudflare Worker that passes encrypted webview results back to the laptop.
 - `tests/e2e/`: the E2E with its fake servers, Hermes harness and fixtures.
-- `scripts/`: repo maintenance (`docs_check.py`).
+- `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README image).
 - `.claude/skills/control-vinci/`: how agents verify on the live bots, and the feature map.
 
 ## Language
 
 Code, comments, config keys and these instructions are in English. Spanish is only for
-what the student reads: bot messages, CLI output and `README.md`. Commits and PR titles are
+what the student reads: bot messages, CLI output, `README.md` and `docs/guia/`. Commits and PR titles are
 conventional commits in English.

@@ -6,10 +6,16 @@ two posts to login.aspx: the user name first, then the password with the CAPTCHA
 holds one requests session for the whole sign-in and the reading after it, and is thrown away at the end.
 
 The pages hand their data out as HTML tables, so `extract` keeps each table as headers and rows, plus the
-«label: value» lines around them (a GPA, a credit count) and the year and term each page has selected. The history
-also becomes one record per subject with its status sorted out (approved, failed, credited, in progress). Nothing is
-computed from those numbers here: a GPA is the portal's, and what is left of the degree needs the curriculum, its
-requirements, its electives and its credited subjects, which this does not read yet.
+«label: value» lines around them (a credit count) and the year and term each page asked for. The history also becomes
+one record per subject with its grade and its status sorted out (approved, failed, credited, in progress). The grades,
+the class timetable and the exam timetable show nothing until «Consultar» is pressed with a year and a term; the exam
+timetable is the one page that comes with them filled in, so its year and term are the ones the other two ask for. The
+grades table has two header rows; each subject's theory/practice weights are only in the arguments of a JavaScript
+call, `Presentar(...)`. Both timetables are a grid of half hours (without the empty ones) whose classes span rows.
+
+The GPA, the progress and the credits left are on «Información General», in label/value rows next to the student's
+ID, ethnic group and photo: only the academic rows are kept (`GENERAL_FACTS`). What is left of the degree, subject by
+subject, needs the curriculum, which this does not read yet.
 
 The copy lives in <data>/academico.json (0600), with when it was read and the term it belongs to. It holds no
 credential and no cookie.
@@ -24,6 +30,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable
@@ -46,27 +53,40 @@ MAX_CAPTCHA = 200_000
 MAX_ROWS = 400
 USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 "
               "espol-academic-bot")
-# (key, page, short name, while reading it)
+# (key, page, short name, while reading it). The exam timetable goes before the two pages that ask for its year and
+# term.
 SECTIONS = (
+    ("general", "informaciongeneral.aspx", "promedio y avance", "tu promedio y tu avance"),
     ("historial", "historiaacademica_.aspx", "historial", "tu historial académico"),
-    ("calificaciones", "calificacionesbusqueda_.aspx", "calificaciones", "tus calificaciones del período"),
     ("creditos", "CreditosCarrera.aspx", "créditos", "tus créditos y requisitos"),
-    ("horario", "horarioView.aspx", "horario", "tu horario de clases"),
     ("examenes", "horarioExView.aspx", "exámenes", "tu horario de exámenes"),
+    ("calificaciones", "calificacionesbusqueda_.aspx", "calificaciones", "tus calificaciones del período"),
+    ("horario", "horarioView.aspx", "horario", "tu horario de clases"),
 )
 # Folded header → the history record's field.
 COLUMNS = {
     "code": ("codigo", "cod", "cod materia", "codigo materia", "sigla"),
     "name": ("materia", "asignatura", "nombre", "nombre materia", "descripcion"),
     "year": ("ano", "anio", "year"),
-    "term": ("termino", "periodo", "semestre", "pao"),
-    "grade": ("nota", "nota final", "calificacion", "promedio", "calificacion final"),
+    "term": ("ano termino", "termino", "periodo", "semestre", "pao"),  # the history's «Año Termino»: 2024-1
+    "grade": ("prom", "nota", "nota final", "calificacion", "promedio", "calificacion final"),
     "status": ("estado", "observacion", "situacion"),
     "attempt": ("vez", "veces", "intento", "no vez", "num vez"),
     "credits": ("creditos", "cred", "creditos materia"),
 }
 EXAM_KINDS = re.compile(r"parcial|final|mejora", re.I)
 SEARCH_BUTTON = re.compile(r"consult|busca|ver|mostrar|cargar", re.I)
+WEEKDAYS = ("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo")
+# Presentar(nombre, nota1, nota2, nota3, nota2practica, subpromedio, porcentajeteorico, porcentajepractico, promedio)
+BREAKDOWN = ("subject", "partial", "final", "improvement", "practical", "theory_subtotal", "theory_weight",
+             "practical_weight", "average")
+# Labels of the student's identity, never kept: the credits page shows the matrícula and name above its tables.
+PERSONAL = re.compile(r"matr[ií]cula|identificaci|c[eé]dula|nombre|[eé]tnic|sanci[oó]n|\bise\b", re.I)
+# The rows of «Información General» worth keeping: not the ID, the name, the ethnic group, the sanctions or the photo.
+# Not «Año-Término» (2024-1S): the page does not say which term that is, and it is not the current one.
+GENERAL_FACTS = re.compile(r"promedio|cr[eé]dito|materias|nivel|avance|carrera|reprobad|regular", re.I)
+PRESENT_CALL = re.compile(r"(?<!function )\bPresentar\s*\(([^()]*)\)")
+JS_ARG = re.compile(r"""\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|([^,]*?))\s*(?:,|$)""")
 
 
 class PortalError(Exception):
@@ -89,8 +109,9 @@ class Table:
     id: str = ""
     caption: str = ""
     rows: list[list[str]] = field(default_factory=list)
-    has_header: bool = False
+    header_rows: int = 0  # leading rows of headers only: the grades have two (Paralelo over Teórico and Práctico)
     nested: bool = False  # a layout table: one of its cells holds another table
+    carried: dict[int, list] = field(default_factory=dict)  # column → [rows still to fill, text]: a rowspan cell
 
 
 @dataclass
@@ -98,7 +119,6 @@ class Select:
     name: str
     options: list[tuple[str, str]] = field(default_factory=list)  # (value, text)
     selected: str | None = None
-    postback: bool = False  # onchange posts the form (ASP.NET AutoPostBack)
 
     def value(self) -> str:
         return self.selected if self.selected is not None else (self.options[0][0] if self.options else "")
@@ -120,15 +140,12 @@ class Form:
         regex = re.compile(pattern, re.I)
         return next((n for n in [*self.inputs, *self.buttons, *self.selects] if regex.search(n)), None)
 
-    def data(self, values: dict[str, str] | None = None, *, button: str | None = None,
-             target: str | None = None) -> dict[str, str]:
-        """What a browser posts: every field as it stands, the selects' choices, then `values`; with the button
-        pressed, or with __EVENTTARGET for a postback a control started."""
+    def data(self, values: dict[str, str] | None = None, *, button: str | None = None) -> dict[str, str]:
+        """What a browser posts: every field as it stands, the selects' choices, then `values`, with the button
+        pressed."""
         data = {name: value for name, value in self.inputs.items() if self.types.get(name) not in ("checkbox", "radio")}
         data.update({name: select.value() for name, select in self.selects.items()})
         data.update(values or {})
-        if target:
-            data["__EVENTTARGET"], data["__EVENTARGUMENT"] = target, ""
         if button:
             data[button] = self.buttons.get(button, "")
         return data
@@ -148,7 +165,9 @@ class _Page(HTMLParser):
         self._tables: list[Table] = []
         self._row: list[str] | None = None
         self._cell: list[str] | None = None
+        self._rowspan = self._colspan = 1
         self._header_row = False
+        self._all_th = True
         self._select: Select | None = None
         self._option: tuple[str, bool] | None = None
         self._option_text: list[str] = []
@@ -178,7 +197,7 @@ class _Page(HTMLParser):
                                                                          or "checked" in a):
                 self.form.inputs[name], self.form.types[name] = a.get("value", ""), kind
         elif tag == "select" and self.form is not None:
-            self._select = Select(a.get("name", ""), postback="__doPostBack" in a.get("onchange", ""))
+            self._select = Select(a.get("name", ""))
         elif tag == "option" and self._select is not None:
             self._option, self._option_text = (a.get("value", ""), "selected" in a), []
         elif tag == "textarea" and self.form is not None and a.get("name"):
@@ -191,9 +210,14 @@ class _Page(HTMLParser):
             self._caption = []
         elif tag == "tr" and self._tables:
             self._row, self._header_row = [], "header" in (a.get("class", "") + a.get("style", "")).lower()
+            self._all_th = True
         elif tag in ("td", "th") and self._row is not None:
             self._cell = []
-            self._header_row = self._header_row or tag == "th"
+            self._rowspan = int(a["rowspan"]) if a.get("rowspan", "").isdigit() else 1
+            self._colspan = int(a["colspan"]) if a.get("colspan", "").isdigit() else 1
+            self._all_th = self._all_th and tag == "th"
+        elif tag == "br" and self._cell is not None:
+            self._cell.append(" ")  # «Año<br>Término», «Computación<br>Activo»
         elif tag in ("span", "label") and a.get("id"):
             self._label = (a["id"], [])
         elif tag == "img":
@@ -219,14 +243,20 @@ class _Page(HTMLParser):
         elif tag == "caption" and self._caption is not None and self._tables:
             self._tables[-1].caption = " ".join("".join(self._caption).split())
             self._caption = None
-        elif tag in ("td", "th") and self._cell is not None and self._row is not None:
-            self._row.append(" ".join("".join(self._cell).split()))
+        elif tag in ("td", "th") and self._cell is not None and self._row is not None and self._tables:
+            self._carry(self._tables[-1])
+            text = " ".join("".join(self._cell).split())
+            for _ in range(min(self._colspan, 50)):
+                if self._rowspan > 1:
+                    self._tables[-1].carried[len(self._row)] = [self._rowspan - 1, text]
+                self._row.append(text)
             self._cell = None
         elif tag == "tr" and self._row is not None and self._tables:
             table = self._tables[-1]
+            self._carry(table, trailing=True)
             if any(self._row):
-                if not table.rows and self._header_row:
-                    table.has_header = True
+                if (self._header_row or self._all_th) and len(table.rows) == table.header_rows:
+                    table.header_rows += 1
                 table.rows.append(self._row)
             self._row = None
         elif tag == "table" and self._tables:
@@ -252,6 +282,19 @@ class _Page(HTMLParser):
             self._label[1].append(data)
         self._line.append(data)
 
+    def _carry(self, table: Table, trailing: bool = False) -> None:
+        """The cells an earlier row's rowspan covers, at their column (the timetables' classes span several rows)."""
+        while len(self._row) in table.carried or (trailing and any(c > len(self._row) for c in table.carried)):
+            column = len(self._row)
+            if column not in table.carried:
+                self._row.append("")
+                continue
+            span = table.carried[column]
+            self._row.append(span[1])
+            span[0] -= 1
+            if not span[0]:
+                del table.carried[column]
+
     def _flush(self):
         line = " ".join("".join(self._line).split())
         if line:
@@ -268,13 +311,21 @@ def parse(html: str) -> _Page:
 
 
 def data_tables(page: _Page) -> list[dict]:
-    """The tables that hold data, not layout: a header and at least one row, no table inside."""
+    """The tables that hold data, not layout: a header and at least one row, no table inside, and a figure somewhere
+    in the rows (a code, a grade, an hour). Without that it is the year/term form or the grades page's empty dialog.
+    «Label:» rows are a card, not data (the student's matrícula and name on the credits page): `rows` reads those.
+    Two header rows become one (Paralelo Teórico, Exámenes 1)."""
     found = []
     for table in page.tables:
-        rows = [r for r in table.rows if any(c.strip() for c in r)]
-        if table.nested or len(rows) < 2 or max(len(r) for r in rows) < 2:
+        rows = table.rows
+        if table.nested or len(rows) < 2 or max(len(r) for r in rows) < 2 or rows[0][0].endswith(":"):
             continue
-        header, body = rows[0], rows[1:]
+        heads = max(table.header_rows, 1)
+        header = [" ".join(dict.fromkeys(r[i] for r in rows[:heads] if i < len(r) and r[i]))
+                  for i in range(max(len(r) for r in rows[:heads]))]
+        body = rows[heads:]
+        if not any(re.search(r"\d", c) for r in body for c in r):
+            continue
         found.append({"id": table.id, "titulo": table.caption, "columnas": header,
                       "filas": [dict(zip(header, r + [""] * (len(header) - len(r)))) if len(r) <= len(header) else
                                 {**dict(zip(header, r)), "extra": " | ".join(r[len(header):])} for r in body[:MAX_ROWS]]})
@@ -288,20 +339,39 @@ def facts(page: _Page) -> dict[str, str]:
     """The page's «label: value» lines (Promedio general: 8,35; Créditos aprobados: 120), as the portal wrote them."""
     found: dict[str, str] = {}
     lines = page.lines
+    cells = {cell for table in page.tables if not table.nested for row in table.rows for cell in row}
     for i, line in enumerate(lines):
         match = FACT_RE.match(line)
+        if match and line in cells:  # a table's cell (FÍSICA: MECÁNICA): the table already has it
+            continue
         if match:
             found.setdefault(match[1].strip(), match[2].strip())
         elif line.endswith(":") and 2 < len(line) < 62 and i + 1 < len(lines) and re.search(r"\d", lines[i + 1]):
             found.setdefault(line[:-1].strip(), lines[i + 1][:120])  # «Promedio general:» with its figure apart
-    return {k: v for k, v in found.items() if not k.lower().startswith(("http", "javascript"))}
+    return {k: v for k, v in found.items()
+            if not k.lower().startswith(("http", "javascript")) and not PERSONAL.search(k)}
+
+
+def rows(page: _Page) -> dict[str, str]:
+    """The «Label: | value» rows of the page's two-column tables (Información General), as the portal wrote them."""
+    found: dict[str, str] = {}
+    for table in page.tables:
+        for row in table.rows:
+            if len(row) == 2 and row[0].endswith(":") and row[1]:
+                found.setdefault(row[0][:-1].strip(), row[1])
+    return found
 
 
 def chosen(form: Form | None) -> dict[str, str]:
-    """What the page has selected in each drop-down (year, term, kind of exam), by what the drop-down is for."""
+    """The year and term the page asked for (its txtAnio and txtTermino boxes) and what each drop-down has selected
+    (the kind of exam), by what it is for."""
     if form is None:
         return {}
     picked = {}
+    for key, pattern in (("anio", r"txtanio$"), ("termino", r"txttermino$")):
+        name = form.field(pattern)
+        if name in form.inputs and form.inputs[name].strip():
+            picked[key] = form.inputs[name].strip()
     for name, select in form.selects.items():
         label = fold(re.sub(r"^.*\$", "", name))
         key = ("anio" if re.search(r"an(i)?o|year", label) else "termino" if re.search(r"term|period", label)
@@ -353,6 +423,44 @@ def history(tables: list[dict]) -> list[dict]:
     return records
 
 
+def breakdowns(html: str) -> list[dict]:
+    """Each subject's grades as the grades page hands them to its «Ponderación» dialog: Presentar('NOMBRE', ...)."""
+    found, seen = [], set()
+    for call in PRESENT_CALL.finditer(unescape(html)):
+        args = [next((g for g in m.groups() if g is not None), "").strip()
+                for m in JS_ARG.finditer(call[1]) if m.group(0)]
+        if len(args) != len(BREAKDOWN) or not args[0] or args[0] in seen:
+            continue
+        seen.add(args[0])
+        found.append({key: value for key, value in zip(BREAKDOWN, args) if value})
+    return found
+
+
+def timetable(tables: list[dict]) -> list[dict]:
+    """A weekly grid (a row per half hour, a column per day; the portal leaves out the hours with nothing) as the
+    classes in it: one entry per day and class, its back-to-back half hours joined."""
+    entries = []
+    for table in tables:
+        days = [h for h in table["columnas"] if fold(h).strip() in WEEKDAYS]
+        if not days:
+            continue
+        hour = next((h for h in table["columnas"] if h not in days), None)
+        if hour is None:
+            continue
+        for day in days:
+            current = None
+            for row in table["filas"]:
+                start, _, end = (part.strip() for part in row.get(hour, "").partition("-"))
+                text = row.get(day, "").strip()
+                if current and text == current["text"] and start == current["end"]:
+                    current["end"] = end
+                    continue
+                current = {"day": day, "start": start, "end": end, "text": text} if text else None
+                if current:
+                    entries.append(current)
+    return entries
+
+
 # -- the session ---------------------------------------------------------------------------------
 
 
@@ -367,6 +475,7 @@ class Portal:
         self.http.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "es-EC,es;q=0.9"})
         self.form: Form | None = None
         self.page: _Page | None = None
+        self.html = ""  # the current page as it came, for what the parser drops (the grades' Presentar calls)
         self.url = ""  # where the last answer came from (the real address, before [test] routing)
         self.captcha: tuple[bytes, str] | None = None
         self.dump: Path | None = None  # `espol-bot academico --html`: each page's HTML, to check the reader
@@ -375,6 +484,7 @@ class Portal:
         self.http.cookies.clear()
         self.http.close()
         self.form = self.page = self.captcha = None
+        self.html = ""
 
     def _address(self, path: str) -> str:
         return urljoin(self.url or self.base + "/", path)
@@ -400,7 +510,7 @@ class Portal:
                 raise PortalError(f"el Académico respondió {response.status_code}")
             self.url = url
             if "text/html" in response.headers.get("Content-Type", "text/html"):
-                self.page = parse(response.text)
+                self.html, self.page = response.text, parse(response.text)
                 self.form = self.page.form
                 if self.dump is not None and not self._on_login():
                     name = re.sub(r"[^A-Za-z0-9_.-]", "_", urlsplit(url).path.rsplit("/", 1)[-1]) or "pagina"
@@ -470,13 +580,18 @@ class Portal:
         if self._on_login():
             raise PortalError("la sesión del Académico se cerró")
 
-    def _search(self) -> None:
-        """A page that shows its data only after its button (calificaciones by term): press it with its defaults."""
-        if self.form is None or data_tables(self.page):
+    def _search(self, term: dict[str, str]) -> None:
+        """calificaciones and horario show nothing until «Consultar»: press it with `term` in the empty year and term
+        boxes."""
+        if self.form is None:
             return
         button = next((n for n, v in self.form.buttons.items() if SEARCH_BUTTON.search(v + n)), None)
-        if button and self.form.selects:
-            self._post(self.form.data(button=button))
+        boxes = {self.form.field(r"txtanio$"): "anio", self.form.field(r"txttermino$"): "termino"}
+        if button is None or None in boxes:
+            return
+        values = {name: self.form.inputs.get(name, "").strip() or term.get(key, "") for name, key in boxes.items()}
+        if all(values.values()):
+            self._post(self.form.data(values, button=button))
 
     def _section(self) -> dict:
         tables = data_tables(self.page)
@@ -484,18 +599,26 @@ class Portal:
 
     def extract(self, progress: Callable[[str], None] = lambda _: None) -> dict:
         """Every section the portal lets this student see; one that fails is noted and the rest still read."""
-        sections, errors = {}, {}
+        sections, errors, term = {}, {}, {}
         for key, page, _, label in SECTIONS:
             progress(f"Leyendo {label}…")
             try:
                 self.open(page)
                 if key == "examenes":
                     sections[key] = self._exams()
+                    term = {k: v for k, v in sections[key]["seleccion"].items() if k in ("anio", "termino")}
                     continue
-                self._search()
+                self._search(term)
                 section = self._section()
-                if key == "historial":
+                if key == "general":
+                    section = {"datos": {label: value for label, value in rows(self.page).items()
+                                         if GENERAL_FACTS.search(label)}}
+                elif key == "historial":
                     section["materias"] = history(section["tablas"])
+                elif key == "calificaciones":
+                    section["breakdowns"] = breakdowns(self.html)
+                elif key == "horario":
+                    section["classes"] = timetable(section["tablas"])
                 sections[key] = section
             except PortalError as exc:
                 log.warning("academico: %s no se pudo leer (%s)", key, exc)
@@ -505,22 +628,20 @@ class Portal:
         return {"sections": sections, "errors": errors}
 
     def _exams(self) -> dict:
-        """horarioExView: one schedule per kind of exam the drop-down offers (parcial, final, mejoramiento)."""
+        """horarioExView: one timetable per kind of exam its drop-down offers (parcial, final, mejoramiento), each
+        shown after «Consultar». The page comes with the current year and term filled in."""
+        base = self._section()
         select = next((s for s in (self.form.selects.values() if self.form else [])
                        if EXAM_KINDS.search(" ".join(t for _, t in s.options))), None)
-        if select is None:
-            return {**self._section(), "por_tipo": {}}
-        by_kind, base = {}, self._section()
+        button = self.form and next((n for n, v in self.form.buttons.items() if SEARCH_BUTTON.search(v + n)), None)
+        if select is None or not button:
+            return {**base, "por_tipo": {}, "exams": {}}
+        tables, exams = {}, {}
         for value, text in [o for o in select.options if EXAM_KINDS.search(o[1])]:
-            if select.value() != value:
-                current = self.form.selects[select.name]
-                button = None if current.postback else next(
-                    (n for n, v in self.form.buttons.items() if SEARCH_BUTTON.search(v + n)), None)
-                self._post(self.form.data({select.name: value}, button=button,
-                                          target=select.name if current.postback else None))
-            by_kind[text] = data_tables(self.page)
-            select = self.form.selects.get(select.name, select)
-        return {**base, "tablas": [], "por_tipo": by_kind}
+            self._post(self.form.data({select.name: value}, button=button))
+            tables[text] = data_tables(self.page)
+            exams[text] = timetable(tables[text])
+        return {**base, "tablas": [], "por_tipo": tables, "exams": exams}
 
 
 # -- the copy ---------------------------------------------------------------------------------------
@@ -536,10 +657,6 @@ def period_of(sections: dict) -> str | None:
         picked = (sections.get(key) or {}).get("seleccion") or {}
         if picked.get("anio") and picked.get("termino"):
             return f"{picked['anio']} · {picked['termino']}"
-    for section in sections.values():
-        for label, value in (section.get("datos") or {}).items():
-            if re.search(r"t[ée]rmino|per[íi]odo", label, re.I) and re.search(r"\d{4}", value):
-                return value
     return None
 
 

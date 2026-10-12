@@ -544,9 +544,10 @@ Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puede
 
 ### Tu Académico de ESPOL
 
-El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu historial con la nota y el estado de
-cada materia, tu promedio general, los créditos de tu carrera y tus horarios de clases y de exámenes. No tiene API,
-así que Vinci lo lee como lo harías tú en el navegador, una vez, y guarda una copia en tu PC.
+El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu promedio general y tu avance en la
+carrera, tu historial con la nota y el estado de cada materia, los créditos de tu carrera, las calificaciones del
+período y tus horarios de clases y de exámenes. No tiene API, así que Vinci lo lee como lo harías tú en el navegador,
+una vez, y guarda una copia en tu PC.
 
 1. Pregúntale a Vinci algo de ahí: «¿cuál es mi promedio?», «¿qué materias aprobé?», «¿cuándo son mis finales?».
 2. Si no tiene copia, te manda el botón «🎓 Conectar Académico» (en Telegram abre como Mini App; en WhatsApp, dentro
@@ -568,12 +569,15 @@ Académico»: te llega otro botón.
 - **Tu contraseña no se guarda.** La página la cifra en tu celular con una llave de un solo uso. Viaja por el relé
   como texto ilegible hasta tu PC, que entra al Académico una vez y la olvida junto con la sesión. Nunca pasa por el
   chat ni por el modelo, y no queda en ningún archivo ni registro.
-- **Qué lee:** el historial académico, las calificaciones del período, los créditos y requisitos, el horario de
-  clases y el de exámenes (parcial, final y mejoramiento). Si una sección falla, guarda las demás y te dice cuál
-  faltó.
-- **Qué no calcula:** el promedio es el que muestra el portal. Lo que te falta para graduarte necesita tu malla, con
-  sus optativas, convalidaciones y requisitos, y Vinci todavía no la lee: te da los créditos que dice el portal, sin
-  restar las aprobadas de un total.
+- **Qué lee:** la información general, el historial académico, las calificaciones del período, los créditos y
+  requisitos, el horario de clases y el de exámenes (parcial, final y mejoramiento). Si una sección falla, guarda las
+  demás y te dice cuál faltó.
+- **Qué lee de «Información General»:** tu promedio general, tu avance en la carrera y los créditos que te faltan,
+  tal como los muestra el portal. No guarda tu identificación, tu nombre, tu grupo étnico ni tu foto, que están en
+  la misma página.
+- **Qué no calcula:** el promedio es el del portal, nunca uno sacado de tus notas. Qué materias te faltan para
+  graduarte depende de tu malla, con sus optativas, convalidaciones y requisitos, y Vinci todavía no la lee: te da el
+  avance y los créditos que dice el portal, sin restar las aprobadas de un total.
 - **Necesita el relé** ([cómo publicarlo](#vinci-en-whatsapp)): por ahí la página recibe la imagen del CAPTCHA y
   ve cómo va el ingreso.
 - **Cada amigo con lo suyo.** El Vinci de un amigo le manda su propio botón y guarda su copia en su carpeta.
@@ -984,9 +988,9 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
   la vuelve a leer durante una hora.
 
 - **El Académico, probado contra una imitación:** la prueba E2E entra a un Académico falso que se comporta como
-  ASP.NET (VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos, CAPTCHA). Contra el portal real comprobamos la página de
-  ingreso y su segundo paso, pero todavía no un ingreso con extracción completa: el lector de tablas es genérico y
-  puede necesitar ajustes. Corre `espol-bot academico --conectar --html …` para probarlo con tu cuenta.
+  ASP.NET (VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos, CAPTCHA) y copia la forma de las páginas reales. Si
+  ESPOL cambia una página, el lector puede necesitar ajustes. Corre `.venv/bin/espol-bot academico --conectar --html
+  …` para ver qué lee con tu cuenta.
 - **La malla, todavía no:** Vinci no lee la malla de tu carrera, así que no te dice qué materias te faltan.
 - **El Académico sin relé, tampoco:** sin el relé la página no puede mostrarte el CAPTCHA.
 

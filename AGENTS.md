@@ -14,7 +14,7 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   `amigo-<name>` profile per friend.
 - Live: Telegram has Vinci (`vinci_espol_bot`) plus one bot per subject. WhatsApp has only
   Vinci, on a separate number, through Hermes's unofficial bridge.
-- Live: `docs/token/` and `docs/dashboard/` on GitHub Pages; `relay/` on Cloudflare Workers.
+- Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
 - Plan, not live: deploy to Coolify with an OpenAI key (branch `feat/coolify-deploy`).
   WhatsApp will probably become the main channel, which questions the one-bot-per-subject
   design that only Telegram has.
@@ -28,7 +28,7 @@ These are entry points. Follow references anywhere the task leads.
   you need instead of reading it whole.
 - How each bot talks and what it may do: `hermes/vinci/`, `hermes/materia/` and
   `hermes/amigo/` (`SOUL.md` is the personality, `SKILL.md` the tools and rules).
-- Gateway hooks (buttons, `/token`, WhatsApp): `hermes/plugins/vinci-botones/` and
+- Gateway hooks (buttons, `/token`, the Académico's held question, WhatsApp voice): `hermes/plugins/vinci-botones/` and
   `hermes/plugins/vinci-whatsapp/`.
 - What the E2E covers: the docstring at the top of `tests/e2e/test_e2e.py`.
 - A live problem, or checking a change on the real bots: the `control-vinci` skill
@@ -85,7 +85,7 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 | What a bot does or says (commands, buttons, alerts) | its `README.md` section + its row in the feature map |
 | A slash command (new, renamed, removed) | README «Comandos» (and the WhatsApp table) + feature map |
 | Telegram vs WhatsApp support of a feature | the first table of the feature map |
-| A multi-step flow (`/token`, dashboard) | its file in `.claude/skills/control-vinci/references/features/` |
+| A multi-step flow (`/token`, dashboard, Académico) | its file in `.claude/skills/control-vinci/references/features/` |
 | A bot's personality or rules | `hermes/<profile>/SOUL.md` or `SKILL.md` |
 | A config key | its comment in `config.toml` + README «Configuración» |
 | A secret | `secrets.env.example` + README «Completa `secrets.env`» |
@@ -108,6 +108,7 @@ uv run pytest                             # the E2E (fake Canvas, fake Telegram,
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
 .venv/bin/espol-bot doctor                # poller, Canvas sync, token chain and feeds (read-only)
+.venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins
 .venv/bin/vinci-check smoke               # status, /estado, /start to each subject bot, both pages
 .venv/bin/vinci-check --help              # chat, press, whatsapp, page… (see the control-vinci skill)
@@ -129,11 +130,12 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
 - `src/aula/`: the `aula` CLI over `aula_core`; also a Claude Code skill (`claude/skills/aula/`).
 - `src/espol_bot/`: Vinci itself: poller and alerts (`poller.py`), Telegram and WhatsApp
   (`telegram.py`, `whatsapp.py`), buttons, schedule and class briefs, notebooks and quizzes,
-  the token chain (`token_renewal.py`, `token_form.py`), friends (`amigos.py`), the MCP server
+  the token chain (`token_renewal.py`, `token_form.py`), the Académico sign-in and its copy
+  (`portal_login.py`, `academic_portal.py`), friends (`amigos.py`), the MCP server
   the bots call (`mcp_server.py`), Hermes profile setup (`hermes_setup.py`) and `vinci-check`
   (`check.py`), the CLI agents use to drive the live bots.
 - `hermes/`: profile templates (personality, skills, quizzes), plugins and the WhatsApp bridge patch.
-- `docs/token/`, `docs/dashboard/`: static pages on GitHub Pages; they store nothing.
+- `docs/token/`, `docs/dashboard/`, `docs/academico/`: static pages on GitHub Pages; they store nothing.
 - `relay/`: Cloudflare Worker that passes encrypted webview results back to the laptop.
 - `tests/e2e/`: the E2E with its fake servers, Hermes harness and fixtures.
 - `scripts/`: repo maintenance (`docs_check.py`).

@@ -20,6 +20,8 @@ User-facing detail lives in `README.md`; search it for the section named in the 
 | Questions on course material, with citations | Vinci or subject bot | Vinci | yes; citations checked by a script | «El material de cada materia» |
 | Hand in handwritten work | photos to the subject bot → «📤 Entregar» | photos to Vinci → «📤 Entregar» poll | yes (PDF built by a script) | «Entregar una actividad hecha a mano» |
 | `/quiz <tema>` | subject bot (Vinci hands it over), quiz polls | Vinci, polls in the captain's DM | yes (questions), no (scoring) | «Quiz con /quiz» |
+| Académico (GPA, history, grades, timetables) | ask Vinci; «🎓 Conectar Académico» Mini App the first time | ask Vinci in the DM; the same button as a link | yes (answers), no (sign-in) | «Tu Académico de ESPOL» |
+| Assignment detail (annexes, aula rubric, local dates) | ask Vinci or a subject bot | ask Vinci | yes | «El material de cada materia» |
 | DSpace past exams | ask Vinci or a subject bot | ask Vinci | yes | «Exámenes anteriores (DSpace)» |
 | Schedule from a screenshot | screenshot to Vinci → «Guardar» | screenshot to Vinci → «✅ Guardar horario» poll | yes (reading), no (saving) | «Mándale tu horario a Vinci» |
 | Class notes folder (`//vinci`) | answers and summaries in the subject bot chat | not available | yes | «Tus apuntes de clase» |
@@ -29,7 +31,7 @@ User-facing detail lives in `README.md`; search it for the section named in the 
 | `/start` | every bot | Vinci | no | «Comandos» |
 | Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it | yes | «Vinci en WhatsApp» |
 | A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | «Vinci en WhatsApp» |
-| Voice notes | transcribed when Hermes can | transcribed with faster-whisper | no (transcription) | «Límites conocidos» |
+| Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | «Vinci en WhatsApp» |
 
 ## Code and verification
 
@@ -46,13 +48,15 @@ User-facing detail lives in `README.md`; search it for the section named in the 
 | Material and citations | `src/aula_core/materials.py`, `search.py`, `src/espol_bot/citations.py`, `libros.py` | a material question through `chat`; check the cited file and page |
 | Handwritten hand-in | `src/espol_bot/submission.py` | E2E only: a real hand-in uploads to Canvas |
 | Quiz | `src/espol_bot/quiz.py`, `hermes/*/quiz/` | `chat <subject bot> "/quiz <tema>"` (uses the model) |
+| Académico | `src/espol_bot/portal_login.py`, `academic_portal.py`, `docs/academico/` | `espol-bot academico` (the copy, read-only); never trigger a new sign-in to test |
+| Assignment detail | `ver_tarea` in `herramientas.py`, `src/aula_core/queries.py`, `materials.py` | ask «¿qué pide <tarea>?» through `chat`; check annexes, rubric and dates (uses the model) |
 | DSpace | `src/aula_core/dspace.py` | ask for past exams through `chat` (uses the model) |
 | Schedule | `src/espol_bot/horario.py` | `chat <subject bot> /start` |
 | Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder; E2E covers the flow |
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check chat vinci_espol_bot /estado` |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/` | `vinci-check page token`; `vinci-check status` (chain age) |
-| WhatsApp, groups, polls | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group` |
+| WhatsApp, groups, polls, voice | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group`; voice: the turn starts with «🎙️» and the transcript |
 | Friends | `src/espol_bot/amigos.py`, `hermes/amigo/` | `vinci-check whatsapp --profile amigo-<name>` (their private chat) |
 | Relay | `src/espol_bot/relay.py`, `relay/worker.js` | `espol-bot whatsapp-rele` shows pending answers |
 | Bot personalities | `hermes/vinci/`, `hermes/materia/`, `hermes/amigo/` (`SOUL.md`, `SKILL.md`) | a short `chat`; read the tone |
@@ -61,3 +65,4 @@ User-facing detail lives in `README.md`; search it for the section named in the 
 
 - [`token.md`](token.md): a new Canvas token from Telegram or WhatsApp.
 - [`dashboard.md`](dashboard.md): the dashboard from the menu button or `/entregas`.
+- [`academico.md`](academico.md): connecting ESPOL's Académico from «🎓 Conectar Académico».

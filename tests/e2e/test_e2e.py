@@ -569,7 +569,7 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
-        task = re.match(r"\[Tarea del sistema para (.+?) \(", text)
+        task = re.search(r"\[Tarea del sistema para (.+?) \(", text)
         if task and "TAREA: brief_de_clase" in text:  # Telegram off: the brief comes to Vinci's chat as a task
             return {"content": f"📚 Brief de {task[1]}: repasa lo de la clase anterior y revisa lo que vence."}
         if "en el cuaderno de Cálculo pon que hoy vimos integrales dobles" in text and not called:

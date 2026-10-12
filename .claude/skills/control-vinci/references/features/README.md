@@ -55,7 +55,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Assignment detail | `ver_tarea` in `herramientas.py`, `src/aula_core/queries.py`, `materials.py` | ask «¿qué pide <tarea>?» through `chat`; check annexes, rubric and dates (uses the model) |
 | DSpace | `src/aula_core/dspace.py` | ask for past exams through `chat` (uses the model) |
 | Schedule | `src/espol_bot/horario.py` | `chat <subject bot> /start` |
-| Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder; E2E covers the flow |
+| Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder (the E2E no longer covers it) |
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/` | `vinci-check page token`; `vinci-check status` (chain age) |

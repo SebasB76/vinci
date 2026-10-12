@@ -37,5 +37,5 @@ Así está organizado el repositorio:
 | `hermes/` | Las plantillas de cada bot (su `SOUL.md` y su skill), los plugins `vinci-botones` y `vinci-whatsapp`, el parche del puente de WhatsApp, las fotos de perfil (`avatars/`) y `characters.toml`. |
 | `docs/token/`, `docs/dashboard/`, `docs/academico/` | Las páginas que abren los botones, en GitHub Pages. No guardan nada. |
 | `relay/` | El relé: un Worker de Cloudflare que lleva de vuelta lo que mandan esas páginas desde WhatsApp. |
-| `tests/e2e/` | La prueba de punta a punta, con su Canvas, su Telegram y su Académico falsos. |
+| `tests/e2e/` | La prueba de punta a punta, con su Canvas, su puente de WhatsApp y su Académico falsos. |
 | `claude/skills/aula/` | La skill para Claude Code. |

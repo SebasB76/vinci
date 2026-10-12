@@ -324,7 +324,7 @@ PORTAL_ASKS = {
 PORTAL_BACK = "Ya conecté mi Académico"  # how the question comes back after the sign-in (portal_login.py)
 
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
-VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
+VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify", "ver_pagina", "ver_foto"} | SKILL_TOOLS
 SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina", "ver_foto"} | SKILL_TOOLS
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")

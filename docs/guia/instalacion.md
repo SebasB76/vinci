@@ -171,7 +171,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `notificaciones.resumen_diario` | `"07:00"` | Hora del resumen de la semana |
 | `notificaciones.max_mensajes_por_sondeo` | `8` | Con más avisos que esto en una revisión, llegan en un solo mensaje |
 | `clases.brief_minutos_antes` | `30` | Minutos antes de cada clase en que llega el brief (entre 5 y 180) |
-| `material.extensiones` | `["pdf", "pptx", "docx", "doc"]` | Qué archivos del aula leen los bots (además de las páginas web de un enlace) |
+| `material.extensiones` | `["pdf", "pptx", "docx", "doc", "xlsx"]` | Qué archivos del aula leen los bots (además de las páginas web de un enlace) |
 | `material.tamano_maximo_mb` | `200` | Nada más grande que esto se baja |
 | `material.max_mb_per_sync` | `50` | Cuántos MB de sílabos baja como máximo cada sondeo; los demás, en los siguientes |
 | `notes.folder` | `~/Notes` | Tu carpeta de apuntes en Markdown ([cómo](uso.md#tus-apuntes-de-clase)); vacía, no la lee |

@@ -75,7 +75,7 @@ idle_minutes = 15
 # Tipos de archivo del aula que los bots leen (además de las páginas web que abren desde un enlace).
 # Solo el sílabo de cada curso se baja solo; lo demás queda en el catálogo y el bot de la materia
 # lo baja cuando lo necesita.
-extensiones = ["pdf", "pptx", "docx", "doc"]
+extensiones = ["pdf", "pptx", "docx", "doc", "xlsx"]
 # Nada más grande que esto se baja (un libro escaneado puede pesar más de 100 MB).
 tamano_maximo_mb = 200
 # Cuántos sílabos baja como máximo cada sondeo (MB); los demás, en los siguientes.

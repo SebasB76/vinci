@@ -171,7 +171,6 @@ guardaron el sondeo y el mantenimiento (no llaman al aula ni al modelo):
 | Aula virtual | se leyó con el token hace poco | ⚠️ no se lee hace más de dos intervalos, o Canvas pidió bajar el ritmo |
 | Mantenimiento | corrió hace poco | ❌ no corre hace más de 25 min (corre cada 10) |
 | Token de Canvas | se renovó hace menos de 50 min | ⚠️ tiene 50 min o más, o la última renovación falló; ❌ tiene una hora o más (ESPOL ya lo invalidó), o Canvas lo rechazó y la cadena se cortó |
-| Calendario (iCal) · Anuncios (RSS/Atom) | se leyó hace menos de 25 min | ❌ el último mantenimiento no pudo leerlo; ⚠️ no se lee hace 25 min o no está configurado |
 
 Debajo de cada línea con problema va qué hacer (si la cadena se cortó, `/token` en el chat de Vinci; en la
 terminal también `espol-bot resembrar`). `espol-bot doctor` termina con código 1 si alguna línea tiene ❌. `/estado`

@@ -20,7 +20,7 @@ The bots run the live checkout's code, not the worktree's: a behavior change is 
 
 | Command | Use it to |
 |---|---|
-| `vinci-check status` | check gateway, poller, Canvas sync, token chain and feeds |
+| `vinci-check status` | check gateway, poller, Canvas sync and token chain |
 | `vinci-check bots` | list the bots `chat` and `press` may write to |
 | `vinci-check chat <bot> "<text>"` | send as the captain and get the full reply with its buttons |
 | `vinci-check press <bot> "<button>"` | press a button (a unique part of its label is enough) |

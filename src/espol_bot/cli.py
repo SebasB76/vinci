@@ -3,11 +3,10 @@
     espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes), then OCR
                                      of the scanned pages still waiting, for a few minutes
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
-    espol-bot mantenimiento          renew Canvas access and refresh token-free feeds (no model)
+    espol-bot mantenimiento          renew Canvas access (no model)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
-    espol-bot feeds                  securely save the iCal and announcement feed URLs
     espol-bot probar                 send a test message from Vinci to your Telegram
-    espol-bot doctor                 system health: last poll and sync, token chain, feeds (read-only;
+    espol-bot doctor                 system health: last poll and sync, token chain (read-only;
                                      exits 1 when something is broken)
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
     espol-bot agenda --curso CÓDIGO  a subject bot's cron gate: prints {"wakeAgent": false} unless a
@@ -293,31 +292,17 @@ def _portal(cfg, args) -> int:
     return 0
 
 
-def _configure_feeds(cfg) -> int:
-    from aula_core import feeds
-    calendar = getpass.getpass("URL de Fuente del calendario (iCal; no se mostrará): ").strip()
-    raw = getpass.getpass("URLs RSS/Atom de Anuncios, separadas por espacios (no se mostrarán): ").strip()
-    try:
-        feeds.configure(calendar, raw.split(), cfg.core)
-    except feeds.FeedError as exc:
-        print(f"Vinci: {exc}", file=sys.stderr)
-        return 1
-    print(f"Feeds guardados de forma privada: calendario y {len(raw.split())} feed(s) de anuncios.")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
     sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
     sub.add_parser("resumen", help="enviar el resumen de la semana")
-    sub.add_parser("mantenimiento", help="renovar el token y actualizar los feeds, sin usar el modelo")
+    sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
     p = sub.add_parser("resembrar", help="guardar un token nuevo desde una entrada oculta y reactivar la renovación")
     p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
-    sub.add_parser("feeds", help="guardar de forma privada los feeds iCal y RSS/Atom")
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu chat (WhatsApp o Telegram)")
     sub.add_parser("dashboard", help="poner ya el dashboard al día en el botón de menú del chat de Vinci")
-    sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización, token y feeds (solo lectura)")
+    sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización y token (solo lectura)")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
     p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia (sin --curso: la de Vinci, sin Telegram)")
@@ -414,8 +399,6 @@ def main(argv: list[str] | None = None) -> int:
         _logging(cfg)
         if args.cmd == "resembrar":
             return _reseed(cfg, from_stdin=args.stdin)
-        if args.cmd == "feeds":
-            return _configure_feeds(cfg)
         if args.cmd == "agenda":
             return _agenda(cfg, args.curso)
         if args.cmd == "mcp":

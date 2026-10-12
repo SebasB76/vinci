@@ -110,7 +110,7 @@ uv sync                                   # dependencies, dev included
 uv run pytest                             # the E2E: 4 tests in parallel (fake Canvas and WhatsApp, real Hermes)
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
-.venv/bin/espol-bot doctor                # poller, Canvas sync, token chain and feeds (read-only)
+.venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins
 .venv/bin/vinci-check smoke               # status, /estado, both pages (and /start to each subject bot with Telegram)

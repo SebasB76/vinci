@@ -86,11 +86,6 @@ WHATSAPP_CAPTAIN=…        # tu número de WhatsApp (con telegram = false; ver 
 `secrets.env` está en `.gitignore`: nunca se sube a GitHub. Los tokens de los bots de materia
 (`TELEGRAM_BOT_TOKEN_<CÓDIGO>`) no los escribes tú: Vinci los agrega cuando crea cada bot.
 
-**Respaldo recomendado sin token (una sola vez):** copia en Canvas la **Fuente del calendario** y el enlace
-**RSS** de Anuncios de cada materia, y ejecuta `.venv/bin/espol-bot feeds`. Las entradas se piden de forma oculta
-y quedan en `secrets.env`; no las pegues en Telegram. Así las fechas, eventos y anuncios siguen llegando incluso
-si la PC estuvo apagada más de una hora y se rompió la cadena de renovación.
-
 ### 5. Corre el setup
 
 ```bash

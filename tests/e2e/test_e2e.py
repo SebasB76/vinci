@@ -23,9 +23,8 @@ test_canvas, no gateway:
   5. a fresh install where two resources fail at different polls: the rest keeps working, one alert per failure
      episode and resource.
   6. Canvas tokens rotate through three generations without interrupting polls. When every token dies, maintenance
-     says the chain is cut (never that a replacement works) and stops calling Canvas with the dead tokens; the
-     token-free calendar and announcement feeds still deliver useful alerts, and the alert itself carries the token
-     form's link (valid 24 h); the captain fills it 26 min later, it comes back sealed through the relay, and the
+     says the chain is cut (never that a replacement works) and stops calling Canvas with the dead tokens; the alert
+     itself carries the token form's link (valid 24 h); the captain fills it 26 min later, it comes back sealed through the relay, and the
      chain comes back; a hidden CLI reseed also works. `espol-bot doctor` reads each of those moments without calling
      Canvas or the chat.
 
@@ -783,11 +782,7 @@ def world(tmp_path: Path):
         tripwire = stack.enter_context(Tripwire())
         wa = stack.enter_context(FakeWhatsApp(stand_in / "bridge.js"))
         relay = stack.enter_context(FakeRelay())
-        calendar_feed_url = f"{canvas.base}/feeds/calendars/user-e2e.ics"
-        announcement_feed_url = f"{canvas.base}/feeds/announcements/course-101.atom"
         canvas.web = web.base
-        canvas.announcement_feeds["/feeds/announcements/course-101.atom"] = \
-            '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
         config = REPO.joinpath("config.toml").read_text(encoding="utf-8")
         config = config.replace('url = "https://aulavirtual.espol.edu.ec"', f'url = "{canvas.base}"')
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
@@ -805,15 +800,12 @@ def world(tmp_path: Path):
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
         secrets = tmp_path / "secrets.env"
-        secrets.write_text(f"CANVAS_TOKEN={CANVAS_TOKEN}\nCANVAS_CALENDAR_FEED_URL={calendar_feed_url}\n"
-                           f"CANVAS_ANNOUNCEMENT_FEED_URLS={announcement_feed_url}\nWHATSAPP_CAPTAIN={CAPTAIN_WA}\n"
+        secrets.write_text(f"CANVAS_TOKEN={CANVAS_TOKEN}\nWHATSAPP_CAPTAIN={CAPTAIN_WA}\n"
                            f"WHATSAPP_RELAY_URL={relay.base}\nWHATSAPP_RELAY_TOKEN={FakeRelay.KEY}\n")
         secrets.chmod(0o600)
         llm = stack.enter_context(ScriptedLLM(Script(tmp_path / "pwned", secrets)))
 
         def normalize(text: str) -> str:
-            text = text.replace(calendar_feed_url, "<calendar-feed>")
-            text = text.replace(announcement_feed_url, "<announcement-feed>")
             text = text.replace(canvas.base, "https://aulavirtual.test").replace(relay.base, "https://rele.test")
             text = text.replace(llm.base, "https://llm.test").replace(web.base, "https://profesor.test")
             text = text.replace(dspace.base, "https://dspace.test")
@@ -878,7 +870,7 @@ def world(tmp_path: Path):
             tmp_path=tmp_path, hermes=hermes, home=home, data_dir=data_dir, profiles=home / ".hermes" / "profiles",
             session=session, canvas=canvas, web=web, dspace=dspace, portal=portal, tripwire=tripwire, wa=wa,
             relay=relay, llm=llm, config=config, config_file=config_file, secrets=secrets, base_env=base_env,
-            calendar_feed_url=calendar_feed_url, announcement_feed_url=announcement_feed_url, ocr_off=ocr_off,
+            ocr_off=ocr_off,
             normalize=normalize, run=run, take=take, sent_log=sent_log, books=books, report=[], md=[], gateway=None)
         TRACE.clear()
         TRACE["world"] = w
@@ -990,11 +982,9 @@ def text_of(messages: list[dict]) -> str:
 
 
 def secrets_in(w) -> list[str]:
-    """Every token and feed this world handed out: none may reach a chat, the model or an artifact."""
+    """Every token this world handed out: none may reach a chat, the model or an artifact."""
     values = set(parse_env_file(w.secrets).values()) | set(w.canvas.valid_tokens) | set(w.canvas.accounts)
-    values |= {CANVAS_TOKEN, NEW_CANVAS_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN, PORTAL_PASSWORD,
-               w.calendar_feed_url, w.announcement_feed_url, "/feeds/calendars/user-e2e.ics",
-               "/feeds/announcements/course-101.atom"}
+    values |= {CANVAS_TOKEN, NEW_CANVAS_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN, PORTAL_PASSWORD}
     return sorted(v for v in values if len(v) >= 16 and v not in (CAPTAIN_WA, w.relay.base) and "@" not in v)
 
 
@@ -1391,13 +1381,12 @@ def test_canvas(tmp_path):
         healthy = doctor("todo al día (tercera generación del token)", T_RENEW_2, broken=False)
         assert "✅ todo en orden" in healthy and "⚠️" not in healthy and "❌" not in healthy, healthy
         for line in ("✅ Sondeo: corrió hace un momento", "✅ Mantenimiento: corrió hace un momento",
-                     "✅ Token de Canvas: renovado hace un momento (22:22); la cadena está sana",
-                     "✅ Calendario (iCal): activo", "✅ Anuncios (RSS/Atom): activo"):
+                     "✅ Token de Canvas: renovado hace un momento (22:22); la cadena está sana"):
             assert line in healthy, f"falta «{line}»:\n{healthy}"
         stale = doctor("tres horas después, con la PC apagada (nada corrió)", "2026-09-30T01:22:00-05:00", broken=True)
         for line in ("❌ Sondeo: no corre desde hace 3 h (mar 29 sep, 22:22); debería cada 30 min", "❌ Mantenimiento: no corre desde",
                      "❌ Token de Canvas: se creó hace 3 h", "⚠️ Aula virtual: leída por última vez hace 3 h",
-                     "⚠️ Calendario (iCal): leído por última vez hace 3 h", "→ hermes gateway status"):
+                     "→ hermes gateway status"):
             assert line in stale, f"falta «{line}»:\n{stale}"
         report.append("La renovación creó y verificó tres generaciones de token en segundo plano (leyendo el valor "
                       "de visible_token, como lo devuelve Canvas); después de expirar cada antecesor, el sondeo "
@@ -1426,7 +1415,7 @@ def test_canvas(tmp_path):
                         f"```\n{cut[0]['text']}\n[botón «{cut[0]['button']}» → "
                         f"{re.sub(r'k=[A-Za-z0-9_-]+', 'k=<llave de un uso>', auto_url.split('#')[0])}]\n```\n")
         assert "reemplazo funciona" not in cut_text, "no hay reemplazo: la cadena está cortada"
-        api = [request for request in canvas.requests[mark:] if not request[1].startswith("/feeds/")]
+        api = canvas.requests[mark:]
         assert [method for method, _ in api] == ["GET", "DELETE"], api
         assert parse_env_file(secrets)["CANVAS_TOKEN"] == fourth and len(canvas.issued()) == 4
         mark = len(canvas.requests)
@@ -1434,56 +1423,16 @@ def test_canvas(tmp_path):
         run([bot, "sondeo"], T_RENEW_5)
         assert take("Cadena cortada · mantenimiento y sondeo siguientes") == [], \
             "el aviso no se repite mientras su formulario sigue vigente"
-        assert all(path.startswith("/feeds/") for _, path in canvas.requests[mark:]), \
+        assert canvas.requests[mark:] == [], \
             "con la cadena cortada, nadie vuelve a llamar a Canvas con un token muerto"
         cut_health = doctor("la cadena del token se cortó", T_RENEW_5, broken=True)
         assert "❌ Token de Canvas: la cadena de renovación está cortada" in cut_health, cut_health
         assert "→ /token en el chat de Vinci, o aquí:" in cut_health and "espol-bot resembrar" in cut_health, cut_health
-        assert "✅ Calendario (iCal): activo" in cut_health, cut_health
         assert "✅ Sondeo" in cut_health and "✅ Mantenimiento" in cut_health, cut_health
         report.append("Con el token actual y la sonda vencidos, el mantenimiento avisó que la cadena se cortó (no que el "
                       "reemplazo funciona) y en el mismo mensaje mandó el formulario cifrado de /token, válido 24 h, "
                       "sin que el capitán lo pidiera; desde entonces ni el mantenimiento ni el sondeo llamaron a Canvas "
                       "con esos tokens, ni repitieron el aviso")
-
-        # 6d. With every token dead, public feeds still update due dates and announcements ------------------
-        canvas.calendar_feed = """BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:assignment-3004@canvas
-DTSTART:20260930T180000Z
-SUMMARY:Taller 2: Movimiento parabólico
-URL:{base}/courses/102/assignments/3004
-END:VEVENT
-BEGIN:VEVENT
-UID:event-lectura-1@canvas
-DTSTART:20261001T140000Z
-SUMMARY:Lectura guiada de Cálculo
-URL:{base}/courses/101/calendar_events/9001
-END:VEVENT
-END:VCALENDAR
-""".format(base=canvas.base)
-        canvas.announcement_feeds["/feeds/announcements/course-101.atom"] = """<?xml version="1.0"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <entry><id>tag:canvas,2026:topic-2999</id><title>Clase en laboratorio</title>
-  <published>2026-09-30T02:20:00Z</published><author><name>Docente</name></author>
-  <link href="{base}/courses/101/discussion_topics/2999" />
-  <content type="html">Lleven su computador cargado.</content></entry>
-</feed>
-""".format(base=canvas.base)
-        run([bot, "sondeo"], T_RENEW_5)
-        floor = take("Piso sin token · iCal y anuncios Atom")
-        floor_text = "\n".join(message["text"] for message in floor)
-        assert "cadena automática del token" not in floor_text, "el corte ya se avisó una vez"
-        assert "Cambió la fecha de entrega" in floor_text and "Clase en laboratorio" in floor_text
-        pending_floor = json.loads(run([aula, "tareas", "--sin-actualizar", "--json"], T_RENEW_5).stdout)
-        assert any(task["tarea"] == "Lectura guiada de Cálculo" for task in pending_floor)
-        mark = len(canvas.requests)
-        run([bot, "sondeo"], T_RENEW_5)
-        assert take("Piso sin token repetido") == [], "el aviso de re-siembra y los feeds no se duplican"
-        assert all(method == "GET" and path.startswith("/feeds/") for method, path in canvas.requests[mark:])
-        report.append("Con toda la cadena de tokens vencida, iCal actualizó una fecha y agregó un evento, Atom trajo "
-                      "un anuncio, y Vinci siguió alertando sin mandar Authorization a esos feeds")
 
         # 6e. The captain fills the form Vinci sent on its own, 26 min later: the chain comes back ---------------
         canvas.mint(AUTO_FORM_TOKEN, "Token personal")  # the captain creates it in the aula's settings
@@ -1501,7 +1450,7 @@ END:VCALENDAR
         mark = len(canvas.requests)
         run([bot, "sondeo"], T_RENEW_6)
         assert not any("cadena automática del token" in m["text"] for m in take("Cadena resembrada con el formulario"))
-        assert any(not path.startswith("/feeds/") for _, path in canvas.requests[mark:]), "el sondeo volvió a leer el aula"
+        assert canvas.requests[mark:], "el sondeo volvió a leer el aula"
         token_md.append(f"## El capitán pega el token en ese formulario 26 min después\n\nVinci responde:\n\n"
                         f"```\n{auto_done['respuesta']}\n```\n")
         report.append("26 minutos después del corte (un formulario de /token ya habría vencido), el capitán pegó un "
@@ -1520,10 +1469,10 @@ END:VCALENDAR
         assert not any("cadena automática del token" in message["text"] for message in after_reseed)
         reseeded_health = doctor("después de resembrar", T_RENEW_6, broken=False)
         assert "✅ Token de Canvas: renovado hace un momento" in reseeded_health, reseeded_health
-        report.append("`espol-bot doctor` mostró sondeo, lectura del aula, mantenimiento, edad del token y feeds sin "
+        report.append("`espol-bot doctor` mostró sondeo, lectura del aula, mantenimiento y edad del token sin "
                       "consultar el aula ni escribir al chat: todo ✅ con la cadena sana; tres horas sin que nada "
                       "corriera, ❌ en el sondeo, el mantenimiento y el token vencido (con qué revisar); con la "
-                      "cadena cortada, ❌ en el token y cómo resembrarlo, con los feeds todavía activos; y ✅ otra "
+                      "cadena cortada, ❌ en el token y cómo resembrarlo; y ✅ otra "
                       "vez tras resembrar")
         report.append("`espol-bot resembrar` también leyó un token con entrada oculta, lo verificó y lo dejó activo "
                       "sin imprimirlo ni enviarlo al chat")
@@ -1576,8 +1525,6 @@ END:VCALENDAR
 
 
 def safe_canvas_path(path: str) -> str:
-    if urlsplit(path).path.startswith("/feeds/"):
-        return "/feeds/<secret>"
     return re.sub(r"verifier=[^&]+", "verifier=…", path)
 
 

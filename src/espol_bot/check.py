@@ -1,6 +1,6 @@
 """vinci-check: drive and inspect the live bots the way the captain would, so an agent can verify its own work.
 
-    vinci-check status                       gateway, poller, token chain and feeds
+    vinci-check status                       gateway, poller and token chain
     vinci-check bots                         the bots chat/press may talk to
     vinci-check chat <bot> "<text>"          send as the captain, wait for the bot's reply
     vinci-check press <bot> "<button>"       press a button on the bot's latest message that has it
@@ -374,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
                                      epilog="\n".join(__doc__.splitlines()[1:]))
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("status", help="gateway, poller, token chain and feeds")
+    sub.add_parser("status", help="gateway, poller and token chain")
     sub.add_parser("bots", help="the bots chat and press may talk to")
     p = sub.add_parser("chat", help="send a message as the captain and wait for the reply")
     p.add_argument("bot")

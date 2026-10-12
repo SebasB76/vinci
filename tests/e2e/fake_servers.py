@@ -1,7 +1,7 @@
 """Local stand-ins for Canvas, Hermes' WhatsApp bridge and the other services Vinci reaches, used only by the E2E test.
 
 FakeCanvas serves the recorded fixtures under fixtures/canvas/<state>/ (or another set) the way
-Canvas does: Bearer auth, access-token creation/deletion, public iCal/Atom feeds,
+Canvas does: Bearer auth, access-token creation/deletion,
 `Link` pagination (capped at 2 items per page so the client must follow it),
 `X-Rate-Limit-Remaining`, one 429 to exercise backoff, a course whose Files tab
 is hidden (401 unauthorized), and file downloads.
@@ -115,8 +115,6 @@ class FakeCanvas(_Server):
         self.failing: set[str] = set()
         self.slow_downloads: dict[int, float] = {}
         self.web = "http://web.invalid"
-        self.calendar_feed = ""
-        self.announcement_feeds: dict[str, str] = {}
         # Other students' accounts (a friend's Vinci): token → [fixtures folder, state]. A token minted with one
         # belongs to the same account; the captain's are the rest.
         self.accounts: dict[str, list] = {}
@@ -502,11 +500,6 @@ class _CanvasHandler(_Quiet):
             canvas.requests.append(("GET", self.path))
             canvas.times.append(time.time())
         url = urlsplit(self.path)
-        if url.path == "/feeds/calendars/user-e2e.ics":
-            return self._send(200, canvas.calendar_feed.encode(), "text/calendar; charset=utf-8")
-        if url.path in canvas.announcement_feeds:
-            return self._send(200, canvas.announcement_feeds[url.path].encode(),
-                              "application/atom+xml; charset=utf-8")
         if not self._authorized(canvas):
             return self._json(401, {"errors": [{"message": "Invalid access token."}]},
                               {"WWW-Authenticate": 'Bearer realm="canvas-lms"'})

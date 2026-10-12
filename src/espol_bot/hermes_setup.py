@@ -218,7 +218,7 @@ class Setup:
         """The bot's toolsets and blocked list once the captain's [hermes.herramientas] switches are applied."""
         extra = self.cfg.extra_toolsets(code)
         if extra:
-            print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en el README)")
+            print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en docs/guia/privacidad.md)")
         return toolsets + [t for t in extra if t not in toolsets], [t for t in blocked if t not in extra]
 
     def _closed(self, code: str | None, files: str) -> list[str]:

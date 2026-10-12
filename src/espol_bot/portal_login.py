@@ -82,7 +82,7 @@ def request(cfg: BotConfig, channel: dict, topic: str, question: str, now: datet
         "state": "requested", "chat": {"platform": platform, "to": to}, "friend": cfg.friend,
         "turn": {"session": session, "topic": topic, "question": question[:500]}})
     if box is None:
-        raise LoginError("Para conectar el Académico, Vinci necesita su relé (ver «El relé» en el README): sin él, la "
+        raise LoginError("Para conectar el Académico, Vinci necesita su relé (ver «El relé» en docs/guia/whatsapp.md): sin él, la "
                          "página no puede mostrarte el CAPTCHA.")
     log.info("academico: conexión pedida (%s)", platform)
     return {"minutes": cfg.portal_login_minutes}

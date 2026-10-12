@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "id": 9601,
+    "name": "course files",
+    "full_name": "course files",
+    "parent_folder_id": null
+  },
+  {
+    "id": 9602,
+    "name": "2023",
+    "full_name": "course files/Proyectos/2023",
+    "parent_folder_id": 9601
+  }
+]

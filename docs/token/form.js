@@ -1,7 +1,8 @@
 // The /token Mini App: encrypts a Canvas token on the phone with the one-time public key in ?k= and hands
-// Telegram only the ciphertext, as web_app_data. It makes no network request (the page's CSP forbids them)
-// and talks to Telegram through its documented web events, so no third-party script ever sees the token.
-// With ?w=1 (a friend's Vinci, on WhatsApp) it opens in any browser and shows the ciphertext to copy into the chat.
+// Telegram only the ciphertext, as web_app_data, through Telegram's documented web events: no third-party script
+// ever sees the token. With ?w=1 (WhatsApp) it opens in any browser: given Vinci's relay (?r=, a workers.dev
+// address, the only host the CSP lets it reach) and a mailbox (#m=), it posts the ciphertext there; else, or if
+// that fails, it shows the ciphertext to copy into the chat.
 // espol_bot/token_form.py holds the private half and decrypts it with the same RSA-OAEP / SHA-256.
 
 export const PREFIX = "v1.";
@@ -27,6 +28,18 @@ export async function seal(publicKey, token) {
   const key = await crypto.subtle.importKey("spki", fromBase64Url(publicKey), { name: "RSA-OAEP", hash: "SHA-256" },
     false, ["encrypt"]);
   return PREFIX + toBase64Url(new Uint8Array(await crypto.subtle.encrypt({ name: "RSA-OAEP" }, key, plain)));
+}
+
+export const MAILBOX_RE = /^[A-Za-z0-9_-]{22,64}$/;
+
+// WhatsApp's way back to Vinci: the relay keeps the ciphertext until Vinci's PC fetches it (relay/worker.js).
+export async function deliver(relay, mailbox, sealed) {
+  const response = await fetch(`${relay}/m/${mailbox}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "token", sealed }),
+  });
+  if (!response.ok) throw new Error(`relay ${response.status}`);
 }
 
 // https://core.telegram.org/api/web-events: the native apps inject TelegramWebviewProxy; Telegram Web
@@ -63,6 +76,9 @@ function init() {
   const params = new URLSearchParams(location.search);
   const publicKey = params.get("k") || "";
   const whatsapp = params.get("w") === "1";
+  const relay = params.get("r") || "";  // the CSP lets the page reach workers.dev only
+  const mailbox = new URLSearchParams(location.hash.slice(1)).get("m") || "";
+  const relayed = whatsapp && Boolean(relay) && MAILBOX_RE.test(mailbox);
   const say = (text, kind = "error") => {
     status.textContent = text;
     status.dataset.kind = kind;
@@ -74,7 +90,7 @@ function init() {
     return;
   }
   if (whatsapp) {
-    send.textContent = "Cifrar";
+    if (!relayed) send.textContent = "Cifrar";
   } else {
     postEvent("web_app_ready");
     postEvent("web_app_expand");
@@ -101,6 +117,15 @@ function init() {
     try {
       const data = await seal(publicKey, token);
       input.value = "";
+      if (relayed) {
+        try {
+          await deliver(relay, mailbox, data);
+          say("🔒 Enviado cifrado. Vinci te confirma en el chat; ya puedes cerrar esta ventana.", "ok");
+        } catch {
+          showCopy(data, "No pude enviarlo. Cópialo y pégalo en tu chat con Vinci.");
+        }
+        return;
+      }
       if (whatsapp) {
         showCopy(data);
         return;
@@ -113,9 +138,10 @@ function init() {
     }
   });
 
-  function showCopy(data) {
+  function showCopy(data, why = "") {
     const sealed = $("sealed"), copy = $("copy-button");
     form.hidden = true;
+    if (why) $("copy-why").textContent = why;
     $("copy").hidden = false;
     sealed.value = data;
     copy.addEventListener("click", async () => {

@@ -5,6 +5,7 @@ ones belong to an earlier semester. No Canvas calls; the only SQL is `mark_dupli
 from __future__ import annotations
 
 import html
+import json
 import re
 import sqlite3
 import unicodedata
@@ -230,6 +231,16 @@ def is_old(folder: str | None, name: str | None, term_year: int | None) -> bool:
     """Material of an earlier semester: its folder or name only mentions earlier years (`Slides/2021`)."""
     found = years(folder, name)
     return bool(term_year and found) and max(found) < term_year
+
+
+def assigned_files(conn: sqlite3.Connection) -> set[int]:
+    """Files a current assignment hands out. A professor reuses `Proyectos/2023/…` as this semester's
+    instructions, so such a file is never «of an earlier semester»."""
+    found: set[int] = set()
+    for (material,) in conn.execute("SELECT a.material FROM assignments a JOIN courses c ON c.id = a.course_id"
+                                    " WHERE a.active = 1 AND c.active = 1 AND a.material IS NOT NULL"):
+        found.update(json.loads(material).get("files") or [])
+    return found
 
 
 def normalized_name(name: str | None) -> str:

@@ -28,6 +28,16 @@ url = "https://sebasb76.github.io/vinci/dashboard/"
 # según el aula, que también cuenta los exámenes y la recuperación.
 semester_end = "2027-01-15"
 
+[academic_portal]
+# El Académico de ESPOL: tu historial, notas, créditos y horarios. Vinci no guarda tu usuario ni tu contraseña:
+# cuando le preguntas algo de ahí y no tiene una copia, te manda el botón «🎓 Conectar Académico», que abre esta
+# página (docs/academico/ publicado en GitHub Pages). Ahí pones tu usuario, tu contraseña y el CAPTCHA; viajan cifrados
+# por el relé hasta tu PC, que entra una vez, guarda la copia y los olvida. Necesita el relé (ver «El relé» en docs/guia/whatsapp.md).
+url = "https://www.academico.espol.edu.ec"
+form_url = "https://sebasb76.github.io/vinci/academico/"
+# Minutos que vale el botón «🎓 Conectar Académico» (lo que dura el ingreso, CAPTCHA incluido).
+login_minutes = 15
+
 [general]
 # Zona horaria para fechas, recordatorios y el resumen.
 zona_horaria = "America/Guayaquil"
@@ -65,7 +75,7 @@ idle_minutes = 15
 # Tipos de archivo del aula que los bots leen (además de las páginas web que abren desde un enlace).
 # Solo el sílabo de cada curso se baja solo; lo demás queda en el catálogo y el bot de la materia
 # lo baja cuando lo necesita.
-extensiones = ["pdf", "pptx", "docx"]
+extensiones = ["pdf", "pptx", "docx", "doc"]
 # Nada más grande que esto se baja (un libro escaneado puede pesar más de 100 MB).
 tamano_maximo_mb = 200
 # Cuántos sílabos baja como máximo cada sondeo (MB); los demás, en los siguientes.
@@ -88,7 +98,7 @@ modelo = "claude-haiku-5-5"
 [hermes.herramientas]
 # Herramientas de Hermes que cada bot tiene APAGADAS y puedes encender. Nadie las trae de fábrica:
 # escribe los nombres que quieras, vuelve a correr ./setup.sh y reinicia el gateway (hermes gateway restart).
-# Quitar un nombre la vuelve a apagar. La tabla con el riesgo de cada una está en el README (Seguridad y privacidad).
+# Quitar un nombre la vuelve a apagar. La tabla con el riesgo de cada una está en docs/guia/privacidad.md.
 #   terminal, file, code_execution, browser, computer_use, delegation, cronjob, kanban, vision, video,
 #   image_gen, video_gen, tts, todo, connections, homeassistant, spotify, x_search, a2a
 #   (a los bots de materia además: web, search)

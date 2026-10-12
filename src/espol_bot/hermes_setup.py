@@ -230,7 +230,7 @@ class Setup:
         """The bot's toolsets and blocked list once the captain's [hermes.herramientas] switches are applied."""
         extra = self.cfg.extra_toolsets(code)
         if extra:
-            print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en el README)")
+            print(f"• {label}: herramientas extra activadas en config.toml: {', '.join(extra)} (riesgos en docs/guia/privacidad.md)")
         return toolsets + [t for t in extra if t not in toolsets], [t for t in blocked if t not in extra]
 
     def _closed(self, code: str | None, files: str) -> list[str]:
@@ -475,6 +475,18 @@ class Setup:
                            "vinci-resumen.sh", no_agent=True)
         self.reconcile_job(name, "vinci-apuntes", "* * * * *", "vinci-apuntes.sh", no_agent=True)
 
+    def _whatsapp_bridge(self) -> Path | None:
+        """Vinci's launcher next to Hermes' bridge.js (hermes/whatsapp/vinci-bridge.js: bridge.js plus the route for
+        URL buttons), which the gateway then starts instead; None when Hermes' bridge is not installed yet."""
+        from espol_bot import whatsapp
+        try:
+            bridge_dir = whatsapp.bridge_dir()
+        except ConfigError:
+            return None
+        for name in ("vinci-bridge.js", "url_button.js"):
+            _write_if_changed(bridge_dir / name, (TEMPLATES / "whatsapp" / name).read_text(encoding="utf-8"))
+        return bridge_dir / "vinci-bridge.js"
+
     def whatsapp_session(self) -> Path:
         return self.root / "platforms" / "whatsapp" / "session"
 
@@ -519,22 +531,36 @@ class Setup:
         section.update({
             "reply_prefix": "",
             "unauthorized_dm_behavior": "ignore",
-            # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list.
-            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b"],
+            # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list. A voice
+            # note cannot mention anyone: the bridge's text for one lets it through, and the plugin hears it.
+            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b", r"^\[(?:ptt|audio) received\]$"],
         })
         test = self.cfg.core.raw.get("test") or {}
         if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port
             section["bridge_port"] = int(str(test["whatsapp_puente"]).rsplit(":", 1)[1])
             section["bridge_script"] = str(test["whatsapp_script"])
-        # The default profile transcribes WhatsApp's voice notes: Spanish here too, not Whisper's English hint.
+        else:
+            launcher = self._whatsapp_bridge()
+            if launcher is not None:
+                section["bridge_script"] = str(launcher)
+            else:
+                section.pop("bridge_script", None)
+        # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
         _deep_merge(merged, {"display": {"platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
                              "stt": {"language": "es"}})
         plugins = merged.setdefault("plugins", {})
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
+        # Only the default profile's plugins get the gateway's injector: this one puts a question the Académico's
+        # sign-in held back in its Vinci session (portal_login.py).
+        entries = plugins.setdefault("entries", {})
+        entries.setdefault(WHATSAPP_PLUGIN, {})["allow_gateway_injection"] = True
         if merged != current:
             changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 
+        from espol_bot import relay
+        mailboxes = relay.registry_path(self.cfg)
+        changed |= relay.set_url(mailboxes, self.secrets.get("WHATSAPP_RELAY_URL", "").rstrip("/"))
         values = {**self.values, "CAPTAIN": wa.captain, "REGISTRY": str(amigos.registry_path(self.cfg)),
                   "GROUPS": str(amigos.groups_path(self.cfg)), "BRIDGE": self.cfg.whatsapp_bridge,
                   "SESSION": str(self.whatsapp_session()),
@@ -543,10 +569,14 @@ class Setup:
         # plugin goes in every profile a WhatsApp route reaches, plus the default for anything unrouted.
         routed = [self.profile_dir(self.cfg.hermes_profile), *(self.profile_dir(amigos.profile_name(f)) for f in friends)]
         for home in [self.root, *routed]:
+            if home != self.root:
+                changed |= self._share_whatsapp_ids(home)
             plugin_changed = home != self.root and self.managed_config(home, {}, plugins=[WHATSAPP_PLUGIN])
+            # only the default profile's copy polls the relay: one poller, in the process that owns the bridge
+            own = {**values, "RELAY": str(mailboxes) if home == self.root else ""}
             for plugin_file in sorted((TEMPLATES / "plugins" / WHATSAPP_PLUGIN).glob("*.*")):
                 plugin_changed |= _write_if_changed(home / "plugins" / WHATSAPP_PLUGIN / plugin_file.name,
-                                                    _render(plugin_file, values))
+                                                    _render(plugin_file, own))
             if plugin_changed:
                 self._reload_gateway_plugins(home)
             changed |= plugin_changed
@@ -557,6 +587,25 @@ class Setup:
                   "<número>` y vuelve a correr ./setup.sh.")
         elif changed:
             print("  Reinicia el gateway para que lo tome: hermes gateway restart")
+
+    def _share_whatsapp_ids(self, profile: Path) -> bool:
+        """The bridge's lid-mapping files, seen from a routed profile. Hermes keys a chat that arrives by its LID
+        under the profile's home during the turn and under the default home in the adapter; without the files there
+        the two keys differ and the adapter drops every message a plugin injects (the Académico's held question)."""
+        link = profile / "platforms" / "whatsapp" / "session"
+        target = self.whatsapp_session()
+        if link.is_symlink():
+            if link.readlink() == target:
+                return False
+            link.unlink()
+        elif link.is_dir():
+            if any(link.iterdir()):  # not ours to remove
+                print(f"⚠ WhatsApp: {link} ya tiene archivos; no lo enlazo a la sesión del puente")
+                return False
+            link.rmdir()
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target, target_is_directory=True)
+        return True
 
     def _whatsapp_routes(self, name: str, number: str, profile: str) -> list[dict]:
         """One person's routes. Hermes compares a route's user_id with the sender as the bridge gives it: the

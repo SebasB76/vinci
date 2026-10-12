@@ -3,9 +3,9 @@
     "id": 66001,
     "course_id": 601,
     "name": "Taller 2: Integrales dobles",
-    "description": "<p>Taller 2: Integrales dobles.</p><p>Resuelve a mano los ejercicios 3, 5 y 8 de la sección 15.2, escanéalos en <strong>un solo PDF</strong> de máximo 4 páginas y súbelo aquí.</p>",
+    "description": "<p>Taller 2: Integrales dobles.</p><p>Resuelve a mano los ejercicios 3, 5 y 8 de la sección 15.2, escanéalos en <strong>un solo PDF</strong> de máximo 4 páginas y súbelo aquí.</p><p>Anexos:</p><ul><li><a class=\"instructure_file_link\" href=\"{{BASE}}/courses/601/files/6101/download?verifier=v6101&amp;wrap=1\"><img src=\"{{BASE}}/images/pdf.png\" alt=\"\"></a></li><li><a class=\"instructure_file_link\" href=\"{{BASE}}/courses/601/files/6102/download?verifier=v6102&amp;wrap=1\">plantilla-taller.doc</a></li></ul>",
     "due_at": "2026-10-02T04:59:00Z",
-    "lock_at": null,
+    "lock_at": "2026-10-03T04:59:00Z",
     "unlock_at": null,
     "points_possible": 10,
     "submission_types": [
@@ -29,6 +29,56 @@
       "excused": null,
       "missing": false,
       "late": false
-    }
+    },
+    "rubric_settings": {
+      "id": 7001,
+      "title": "Taller de integrales",
+      "points_possible": 10,
+      "free_form_criterion_comments": false,
+      "hide_score_total": false,
+      "hide_points": false
+    },
+    "rubric": [
+      {
+        "id": "c1",
+        "points": 6,
+        "description": "Planteamiento de los límites",
+        "long_description": "Dibuja la región y fija bien los límites de integración",
+        "ratings": [
+          {
+            "id": "r1",
+            "points": 6,
+            "description": "Completo",
+            "long_description": ""
+          },
+          {
+            "id": "r2",
+            "points": 0,
+            "description": "Sin planteamiento",
+            "long_description": ""
+          }
+        ]
+      },
+      {
+        "id": "c2",
+        "points": 4,
+        "description": "Resultado final",
+        "long_description": "",
+        "ratings": [
+          {
+            "id": "r3",
+            "points": 4,
+            "description": "Correcto",
+            "long_description": ""
+          },
+          {
+            "id": "r4",
+            "points": 0,
+            "description": "Incorrecto",
+            "long_description": ""
+          }
+        ]
+      }
+    ]
   }
 ]

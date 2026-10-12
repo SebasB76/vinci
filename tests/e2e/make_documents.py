@@ -14,7 +14,9 @@ saved as a PDF with Pillow (no text at all, like a photocopy run through a scann
 - ejercicios-derivadas-escaneados.pdf: a scanned exercise sheet the captain sends Cálculo (prose OCR reads well);
 - politicas-del-curso.pdf, guia-laboratorio-1.pdf: what Física's Google Doc and Drive file hand over (FakeWeb);
 - examen-calculo-2025-2s-1p.pdf, examen-calculo-2024-1s-1p.pdf, examen-poo-2026-1s-1p.docx: past exams in ESPOL's
-  DSpace (FakeDSpace); the 2024 one repeats the 2025 chain-rule question with other data, as professors do.
+  DSpace (FakeDSpace); the 2024 one repeats the 2025 chain-rule question with other data, as professors do;
+- taller-2-especificacion.pdf, plantilla-taller.doc: the annexes Angel's Taller 2 links from a «Proyectos/2023»
+  folder (the .doc needs LibreOffice to be written and read).
 """
 
 from __future__ import annotations
@@ -221,6 +223,35 @@ def make_lab_guide(path: Path) -> None:
 
 
 
+def make_project_spec(path: Path) -> None:
+    write_pdf(path, [
+        _lines(["Cálculo de varias variables - Taller 2: especificación",
+                "Cada ejercicio va en una hoja aparte, con el enunciado copiado arriba.",
+                "Entregas atrasadas: se reciben hasta 24 horas después, con 10 % menos por hora."]),
+    ])
+
+
+def make_template_doc(path: Path) -> None:
+    """A Word 97 template, as professors still hand out: python-docx writes a .docx and LibreOffice saves it as .doc."""
+    import datetime as _dt
+    import subprocess
+    import tempfile
+    from docx import Document
+
+    doc = Document()
+    for line in ["Plantilla de presentación del taller",
+                 "Portada: nombre, matrícula y paralelo.",
+                 "Cada ejercicio con su gráfica de la región de integración."]:
+        doc.add_paragraph(line)
+    doc.core_properties.author = "ESPOL"
+    doc.core_properties.created = doc.core_properties.modified = _dt.datetime(2026, 9, 1)
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / f"{path.stem}.docx"
+        doc.save(str(source))
+        subprocess.run(["soffice", f"-env:UserInstallation=file://{tmp}/profile", "--headless", "--convert-to", "doc",
+                        "--outdir", str(path.parent), str(source)], check=True, capture_output=True)
+
+
 def make_exam(path: Path, period: str, pages: list[list[str]]) -> None:
     header = ["ESCUELA SUPERIOR POLITÉCNICA DEL LITORAL", f"CÁLCULO DE UNA VARIABLE - PRIMERA EVALUACIÓN {period}",
               "Nombre: ______________________    Paralelo: ____"]
@@ -313,4 +344,6 @@ if __name__ == "__main__":
     for name, (period, pages) in EXAMS.items():
         make_exam(OUT / name, period, pages)
     make_exam_docx(OUT / "examen-poo-2026-1s-1p.docx")
+    make_project_spec(OUT / "taller-2-especificacion.pdf")
+    make_template_doc(OUT / "plantilla-taller.doc")
     print(f"Fixtures escritos en {OUT}")

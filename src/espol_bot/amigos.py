@@ -62,6 +62,8 @@ class Friend:
 class Outcome:
     respuesta: str            # for the chat it came from, WhatsApp-formatted
     reiniciar: bool = False   # the routes changed: the gateway must restart to serve them
+    button: dict | None = None  # {"text", "url"}: the answer ends in a button that opens that page
+    image: str | None = None  # a picture sent before the answer (the token guide)
 
     def json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -177,7 +179,7 @@ def find(friends: list[Friend], who: str) -> Friend | None:
     return next((f for f in friends if f.numero == number or f.slug == key or f.nombre.lower() == key), None)
 
 
-def _captain(cfg: BotConfig) -> str:
+def captain_number(cfg: BotConfig) -> str:
     wa = whatsapp_settings()
     if wa is None:
         raise ConfigError("Vinci no está en WhatsApp: falta WHATSAPP_CAPTAIN en secrets.env")
@@ -187,7 +189,7 @@ def _captain(cfg: BotConfig) -> str:
 # -- the steps -----------------------------------------------------------------------------------
 
 def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
-    captain = _captain(cfg)
+    captain = captain_number(cfg)
     number = whatsapp.normalize_number(number_text)
     name = re.sub(r"\s+", " ", name).strip()[:40]
     if not name:
@@ -211,7 +213,8 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
                 form = token_form.new_form(fcfg, conn, now, _invitation(friend), ttl=token_form.AUTO_FORM_TTL)
         finally:
             conn.close()
-    whatsapp.WhatsApp(number, cfg.whatsapp_bridge).send(form["respuesta"])
+    whatsapp.WhatsApp(number, cfg.whatsapp_bridge).send(form["respuesta"], link=form.get("button"),
+                                                             image=form.get("image"))
     save(cfg, friends)
     log.info("amigo agregar: %s (pendiente)", friend.slug)
     return Outcome(f"Le escribí a {friend.nombre} por privado con el enlace para su token. Cuando lo pegue, armo su "
@@ -233,7 +236,8 @@ def submit_token(cfg: BotConfig, number: str, data: str, now: datetime) -> Outco
     with scope(cfg, friend) as fcfg:
         result = token_form.submit(fcfg, data, now)
         if not result.get("ok"):
-            return Outcome(whatsapp.from_html(result["respuesta"]))
+            return Outcome(whatsapp.from_html(result["respuesta"]), button=result.get("button"),
+                           image=result.get("image"))
         if friend.estado == ACTIVE:  # a new token after the chain broke
             return Outcome("✅ Listo, ya vuelvo a leer tu aula.")
         try:
@@ -245,7 +249,7 @@ def submit_token(cfg: BotConfig, number: str, data: str, now: datetime) -> Outco
     _provision(cfg)
     listed = ", ".join(names[:8]) + ("…" if len(names) > 8 else "")
     try:
-        whatsapp.WhatsApp(_captain(cfg), cfg.whatsapp_bridge).send(
+        whatsapp.WhatsApp(captain_number(cfg), cfg.whatsapp_bridge).send(
             f"✅ {friend.nombre} ya tiene su Vinci: veo sus {len(names)} materias.")
     except whatsapp.WhatsAppError as exc:
         log.warning("no pude avisarle al capitán: %s", exc)
@@ -308,7 +312,7 @@ def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) ->
     """Vinci's own slash commands on WhatsApp, for the captain or an active friend, each over their own aula:
     /start, /estado and /token, plus the ciphertext the captain pastes after his /token, and a vote on one of
     the polls that stand in for a card's buttons (`data`: {"encuesta", "opcion"})."""
-    captain = number == _captain(cfg)
+    captain = number == captain_number(cfg)
     friend = None if captain else next((f for f in active(cfg) if f.numero == number), None)
     if not captain and friend is None:
         raise ConfigError("ese número no tiene su Vinci")
@@ -321,11 +325,11 @@ def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) ->
         with scope(cfg, friend) as fcfg:
             return act(fcfg, data, now)
     if friend is None:
-        return Outcome(whatsapp.from_html(_command_html(cfg, name, data, now)))
+        return _command(cfg, name, data, now)
     if name == "token-cifrado":
         return submit_token(cfg, number, data, now)
     with scope(cfg, friend) as fcfg:
-        return Outcome(whatsapp.from_html(_command_html(fcfg, name, data, now)))
+        return _command(fcfg, name, data, now)
 
 
 MARK_RE = re.compile(r"\s*([st])(\d{1,12})\s+(ok|no)\b", re.I)
@@ -342,18 +346,22 @@ def _mark(cfg: BotConfig, data: str, now: datetime) -> Outcome:
 
 
 def _deliverables(cfg: BotConfig, data: str, now: datetime) -> Outcome:
-    """/entregas: a link to the dashboard with this aula's deliverables, ticks pointed back at this chat."""
-    from espol_bot import dashboard, materias
+    """/entregas: a button to the dashboard with this aula's deliverables. A tick goes back through the relay when
+    there is one (relay.py), else to this chat with /marca typed."""
+    from espol_bot import dashboard, materias, relay
+    if not cfg.dashboard_page:
+        return Outcome("El panel de entregas está apagado en esta instalación.")
+    box = relay.issue(cfg, "mark", relay.owner(cfg), relay.DASHBOARD_TTL, now)
     aula = Aula(cfg.core)
     try:
         conn = store_ensure(aula.conn)
-        url = dashboard.whatsapp_url(conn, cfg, materias.load(cfg.core), now, whatsapp.own_number())
+        url = dashboard.whatsapp_url(conn, cfg, materias.load(cfg.core), now, whatsapp.own_number(), box)
     finally:
         aula.close()
-    if url is None:
-        return Outcome("El panel de entregas está apagado en esta instalación.")
-    return Outcome(f"📋 Tus entregas, el semestre y lo nuevo del aula: {url}\n\nAl marcar una en el panel, vuelves a "
-                   "este chat con el mensaje listo: envíalo y la cuento.")
+    after = ("Marca una como entregada en el panel y te confirmo aquí." if box else
+             "Al marcar una en el panel, vuelves a este chat con el mensaje listo: envíalo y la cuento.")
+    return Outcome(f"📋 Tus entregas, el semestre y lo nuevo del aula.\n\n{after}",
+                   button={"text": "📋 Ver mis entregas", "url": url})
 
 
 def _vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
@@ -373,18 +381,18 @@ def _vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
     return Outcome(whatsapp.from_html(answer.get("respuesta") or answer.get("aviso") or ""))
 
 
-def _command_html(cfg: BotConfig, name: str, data: str, now: datetime) -> str:
+def _command(cfg: BotConfig, name: str, data: str, now: datetime) -> Outcome:
     from espol_bot import health
     if name == "estado":
         conn = health.open_readonly(cfg.core.db_path)
         try:
-            return health.telegram_report(health.checks(cfg, conn, now), now, cfg.core.tz)
+            return Outcome(whatsapp.from_html(health.telegram_report(health.checks(cfg, conn, now), now, cfg.core.tz)))
         finally:
             if conn is not None:
                 conn.close()
-    if name == "token":
-        return token_form.open_form(cfg, now, whatsapp=True)["respuesta"]
-    return token_form.submit(cfg, data, now, whatsapp=True)["respuesta"]
+    form = (token_form.open_form(cfg, now, whatsapp=True) if name == "token"
+            else token_form.submit(cfg, data, now, whatsapp=True))
+    return Outcome(whatsapp.from_html(form["respuesta"]), button=form.get("button"), image=form.get("image"))
 
 
 def _greeting(friend: Friend | None) -> str:

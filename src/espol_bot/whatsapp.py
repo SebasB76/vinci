@@ -5,6 +5,8 @@ through it what the poller of a friend's Vinci would send to Telegram, converted
 WhatsApp's formatting. WhatsApp has no inline buttons: a message's buttons follow it as a poll, recorded in POLLS
 (poll id → option → callback data) so the plugin can run the vote as the button (`espol-bot whatsapp-comando voto`).
 A card with one button gets its undo as a second option, since a poll needs two: changing the vote undoes it.
+A page (the /token form, the dashboard) goes as a URL button (the bridge's /send-url-button, which setup.sh adds:
+hermes/whatsapp/vinci-bridge.js); on iPhone it opens inside WhatsApp. A bridge without that route gets the link as text.
 
 `espol-bot whatsapp-vincular` (hermes/whatsapp/vincular.mjs) links the number with an 8-character code typed on
 its phone and lists its groups. It writes the session the bridge uses, <hermes>/platforms/whatsapp/session, so it
@@ -136,12 +138,22 @@ class WhatsApp:
         self.sent = 0
 
     def send(self, html_text: str, buttons: list[tuple[str, str]] | None = None, *,
-             reply_markup: dict | None = None) -> None:
+             reply_markup: dict | None = None, link: dict | None = None, image: str | None = None) -> None:
+        """`link` ({"text", "url"}): the message ends in a button that opens that page; `image`, a picture before it."""
         text = from_html(html_text)
+        if image:
+            self._post("send-media", {"chatId": self._chat, "filePath": image, "mediaType": "image"})
+        if link:
+            self.send_link(text, link)
+            return
         for start in range(0, len(text), LIMIT):
             self._post("send", {"chatId": self._chat, "message": text[start:start + LIMIT]})
         if buttons and self._polls is not None:
             self.poll(buttons)
+
+    def send_link(self, text: str, link: dict, reply_to: str | None = None) -> None:
+        send_link(self._bridge, self._chat, text, link, reply_to)
+        self.sent += 1
 
     def send_document(self, path: Path, file_name: str, html_caption: str,
                       buttons: list[tuple[str, str]] | None = None) -> None:
@@ -199,6 +211,23 @@ class Mirror:
         return getattr(self._telegram, name)
 
 
+def send_link(bridge: str, chat_id: str, text: str, link: dict, reply_to: str | None = None) -> None:
+    """`text` with a button that opens `link["url"]`; the URL as text when the bridge has no /send-url-button."""
+    payload = {"chatId": chat_id, "text": text[:LIMIT], "buttonText": link["text"], "url": link["url"],
+               **({"replyTo": reply_to} if reply_to else {})}
+    try:
+        response = requests.post(f"{bridge.rstrip('/')}/send-url-button", json=payload, timeout=TIMEOUT)
+    except requests.RequestException as exc:
+        raise WhatsAppError(f"el puente de WhatsApp no responde ({exc.__class__.__name__})") from None
+    if response.status_code == 404:  # Hermes' own bridge.js, without Vinci's route
+        log.info("el puente no tiene /send-url-button: mando el enlace como texto")
+        WhatsApp("", bridge)._post("send", {"chatId": chat_id, "message": f"{text}\n\n{link['url']}",
+                                            **({"replyTo": reply_to} if reply_to else {})})
+        return
+    if response.status_code != 200:
+        raise WhatsAppError(f"el puente de WhatsApp respondió {response.status_code}: {response.text[:200]}")
+
+
 def send_text(bridge: str, chat_id: str, text: str) -> None:
     """One plain message to any chat (a person's JID or a group's), as is."""
     WhatsApp("", bridge)._post("send", {"chatId": chat_id, "message": text})
@@ -217,6 +246,11 @@ def own_number() -> str:
 
 def session_dir() -> Path:
     return hermes_root() / "platforms" / "whatsapp" / "session"
+
+
+def bridge_dir() -> Path:
+    """Hermes' WhatsApp bridge (bridge.js and its node_modules)."""
+    return _modules().parent
 
 
 def _modules() -> Path:

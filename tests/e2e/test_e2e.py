@@ -106,6 +106,17 @@ captain run) in a throwaway HOME with its own XDG folders and no D-Bus session: 
      as too long). Every suggested username fits Telegram's rules. setup.sh once more asks
      Telegram for nothing.
 
+  10k. ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA): the captain asks for
+     his GPA on WhatsApp with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his
+     chat. On its page (in a real headless Chromium when there is one) he gives his user, then a wrong CAPTCHA (the
+     portal's words and a new image come back) and the right one; one portal session signs in and reads every
+     section, the copy is saved with its date and term, and his question comes back to Vinci by itself in the same
+     Hermes session. Later questions are answered from the copy, without the portal, and progress toward the degree
+     never subtracts approved subjects from a total. «Actualiza mi Académico» on Telegram brings a Mini App button, a
+     second sign-in and the portal's new figures. The GPA is the one on «Información General»; the student's ID, name
+     and photo on that page are never kept. No credential reaches the model, a chat, the relay in clear, a log
+     or the data folder, and the sign-in's process exits.
+
 The artifact goes to artifacts/e2e/ (override with E2E_ARTIFACT_DIR). Ports and
 temporary paths are normalized, so reruns produce comparable files.
 """
@@ -130,6 +141,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import requests
 import yaml
 
 from aula_core.config import parse_env_file
@@ -141,8 +153,8 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 from fake_servers import (  # noqa: E402
-    DRIVE_FILE, ESPOL_ONLY_SHARE, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6, FakeCanvas, FakeDSpace, FakeTelegram, FakeWeb,
-    FakeWhatsApp, ScriptedLLM)
+    DRIVE_FILE, ESPOL_ONLY_SHARE, PORTAL_CARD, PORTAL_PASSWORD, PORTAL_USER, PRIVATE_DOC, PUBLIC_DOC, BrokenIPv6,
+    FakeCanvas, FakeDSpace, FakePages, FakePortal, FakeRelay, FakeTelegram, FakeWeb, FakeWhatsApp, ScriptedLLM)
 from hermes_harness import find_hermes, telegram_support  # noqa: E402
 
 CANVAS_TOKEN = "7~prueba-token-de-canvas"
@@ -182,6 +194,7 @@ USERNAMES = {BOT_TOKEN: "vinci_bot", MATG: "vinci_calculo_bot", FIS: "vinci_fisi
 CAPTAIN_ID = "987654321"
 # WhatsApp (Vinci's number, through Hermes' bridge): the captain, his friend Angel, someone else in the group.
 CAPTAIN_WA, ANGEL_WA, STRANGER_WA = "593980000001", "593990000002", "593990000003"
+CAPTAIN_LID = "770000000000001"  # how WhatsApp names the captain when it hides his number
 GROUP_WA = "120363000000000001@g.us"
 ANGEL_TOKEN = ("AngelTokenDelAula8" * 4)[:64]  # Angel's own aula token, pasted in the page Vinci sends him
 CAPTAIN_WA_TOKEN = ("CapitanTokenWhatsApp9" * 4)[:64]  # a new one for the captain, after his /token on WhatsApp
@@ -292,6 +305,16 @@ FIS_SCHEME = {
                     {"name": "Deberes", "weight": 20, "match": ["tarea", "taller"]}]}],
     "sources": ["Me lo dijo el estudiante el 30 sep"]}
 
+# The Académico (academic_record): what the captain asks → (topic, whether he asks to update the copy).
+PORTAL_ASKS = {
+    "cuál es mi promedio y cuántas materias aprobé": ("historial", False),
+    "qué materias aprobé": ("historial", False),
+    "cuándo son mis exámenes finales": ("examenes", False),
+    "cuánto me falta para graduarme": ("avance", False),
+    "actualiza mi Académico y dime mi promedio": ("promedio", True),
+}
+PORTAL_BACK = "Ya conecté mi Académico"  # how the question comes back after the sign-in (portal_login.py)
+
 SKILL_TOOLS = {"skills_list", "skill_view", "skill_manage"}
 VINCI_TOOLS_OK = {"web_search", "web_extract", "memory", "session_search", "clarify"} | SKILL_TOOLS
 SUBJECT_TOOLS_OK = {"memory", "session_search", "clarify", "ver_pagina", "ver_foto"} | SKILL_TOOLS
@@ -338,6 +361,34 @@ def page_seal(url: str, token: str) -> str:
                           timeout=60)
     assert proc.returncode == 0, proc.stderr
     return proc.stdout
+
+
+def _node_module(path: Path, call: str, *args: str) -> None:
+    script = f"const page = await import({json.dumps(path.as_uri())}); {call}"
+    proc = subprocess.run([NODE, "--input-type=module", "-e", script, *args], capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+
+
+def page_send(url: str, token: str) -> None:
+    """The page opened from WhatsApp with Vinci's relay (?r=, #m=): it seals the token and posts it there
+    (docs/token/form.js's own deliver)."""
+    sealed, relay, mailbox = page_seal(url, token), parse_qs(urlsplit(url).query)["r"][0], urlsplit(url).fragment[2:]
+    if NODE is None:
+        requests.post(f"{relay}/m/{mailbox}", json={"kind": "token", "sealed": sealed}, timeout=10).raise_for_status()
+        return
+    _node_module(REPO / "docs" / "token" / "form.js",
+                 "await page.deliver(process.argv[1], process.argv[2], process.argv[3]);", relay, mailbox, sealed)
+
+
+def page_tick(snapshot: dict, item: str, done: bool = True) -> None:
+    """A tick on the dashboard opened from WhatsApp with the relay: docs/dashboard/dashboard.js's postMark."""
+    if NODE is None:
+        requests.post(f"{snapshot['relay']}/m/{snapshot['mailbox']}", json={"kind": "mark", "id": item, "done": done},
+                      timeout=10).raise_for_status()
+        return
+    _node_module(REPO / "docs" / "dashboard" / "dashboard.js",
+                 "if (!(await page.postMark(JSON.parse(process.argv[1]), process.argv[2], process.argv[3] === '1')))"
+                 " process.exit(4);", json.dumps(snapshot), item, "1" if done else "0")
 
 
 def flatten(content) -> str:
@@ -464,7 +515,15 @@ class Script:
             if called == ["mcp__vinci__tareas"]:
                 taller = next(t for t in _json(results[-1]) if t["tarea"].startswith("Taller 2"))
                 return _call("mcp__vinci__ver_tarea", tarea_id=taller["id"])
-            return {"content": f"El Taller 2 pide esto: {_json(results[-1])['consigna']}"}
+            if called[-1] == "mcp__vinci__ver_tarea":
+                template = next(f for f in _json(results[-1])["archivos"] if f["archivo"].endswith(".doc"))
+                return _call("mcp__vinci__leer_archivo", archivo_id=template["archivo_id"])
+            task, template = _json(results[-2]), _json(results[-1])["contenido"][0]
+            rubric = "; ".join(f"{c['criterio']}, {c['puntos']:g} pts" for c in task["rubrica"]["criterios"])
+            return {"content": f"El Taller 2 pide esto: {task['consigna']}\nVence {task['vence']}; el aula lo recibe "
+                               f"atrasado hasta {task['cierra']}. Rúbrica: {rubric}.\nAnexos: "
+                               + ", ".join(f["archivo"] for f in task["archivos"])
+                               + f". La plantilla pide: {template['texto']} ({template['cita']})"}
         if results:
             last = _json(results[-1])
             if isinstance(last, dict) and last.get("ruta"):
@@ -502,7 +561,8 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
-        flow = self.exams("vinci", text, called, results) or self.vinci_material(text, called, results)
+        flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
+                or self.vinci_material(text, called, results))
         if flow is not None:
             return flow
         if results:
@@ -553,6 +613,45 @@ class Script:
         if "terminal" in text:
             return _call("terminal", command=f"touch {self.pwned}")
         return {"content": "Hola, soy Vinci. ¿En qué te ayudo?"}
+
+    def portal(self, text: str, called: list[str], results: list[str]) -> dict | None:
+        """The Académico: asked with no copy, the tool sends the sign-in button; the question comes back on its own
+        once the copy is saved («Ya conecté mi Académico…»), and later ones are answered from the copy."""
+        for ask, (topic, refresh) in PORTAL_ASKS.items():
+            if ask not in text:
+                continue
+            if not called:
+                again = refresh and PORTAL_BACK not in text
+                return _call("mcp__vinci__academic_record", topic=topic, question=ask, **({"refresh": True} if again else {}))
+            return {"content": self.portal_answer(topic, _json(results[-1]))}
+        return None
+
+    @staticmethod
+    def portal_answer(topic: str, data) -> str:
+        if not isinstance(data, dict) or data.get("error"):
+            return _problem(json.dumps(data, ensure_ascii=False))
+        if data.get("connect"):
+            return ("🎓 Te mando el botón «Conectar Académico»: ábrelo y entra con tu usuario, tu contraseña y el código "
+                    "de la imagen. Tu contraseña no pasa por este chat.")
+        when = f"Según tu Académico ({data['period']}, leído el {data['saved_at']})"
+        gpa = next(iter((data.get("gpa") or {}).values()), None)
+        if topic == "historial":
+            approved = data["subjects"].get("approved", [])
+            credited = data["subjects"].get("credited", [])
+            return (f"{when}: tu promedio general es {gpa}. Aprobaste {len(approved)} materias: "
+                    + ", ".join(s["name"].title() for s in approved)
+                    + (f". Convalidada: {', '.join(s['name'].title() for s in credited)}." if credited else "."))
+        if topic == "promedio":
+            return f"{when}: tu promedio general es {gpa}." if gpa else f"{when}: tu copia no tiene tu promedio."
+        if topic == "examenes":
+            return f"{when}, tus exámenes finales:\n" + "\n".join(
+                f"- {e['text']} ({e['day']} {e['start']}-{e['end']})" for e in data["exams"].get("FINAL") or [])
+        if topic == "avance":
+            career, facts = data["career"], data["credits"]["facts"]
+            return (f"{when}: llevas {career.get('Avance de la carrera')} de avance, {facts.get('Total de Créditos')} "
+                    f"créditos, y te faltan {career.get('Créditos por tomar')} créditos por tomar. Cuántas materias te "
+                    "faltan depende de tu malla, que todavía no leo.")
+        return json.dumps(data, ensure_ascii=False)[:500]
 
     def vinci_material(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """Vinci reading an outside link: one an assignment carries (found in the catalog) or an announcement's;
@@ -1009,7 +1108,7 @@ def test_e2e(tmp_path):
     pwned = tmp_path / "pwned"
 
     with FakeCanvas(CANVAS_TOKEN) as canvas, FakeTelegram({BOT_TOKEN: USERNAMES[BOT_TOKEN]}) as telegram, \
-            FakeWeb() as web, FakeDSpace() as dspace:
+            FakeWeb() as web, FakeDSpace() as dspace, FakePortal() as portal:
         calendar_feed_url = f"{canvas.base}/feeds/calendars/user-e2e.ics"
         announcement_feed_url = f"{canvas.base}/feeds/announcements/course-101.atom"
         canvas.web = web.base
@@ -1023,7 +1122,7 @@ def test_e2e(tmp_path):
         config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
-        hosts += f', "dspace.espol.edu.ec" = "{dspace.base}"'
+        hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
         config += f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
@@ -1061,6 +1160,8 @@ def test_e2e(tmp_path):
             # Hermes refuses to open ~/.hermes/state.db from a process launched by pytest (it also
             # checks the process ancestry). Here ~ is the temporary HOME (asserted below).
             "HERMES_STATE_DB_GUARD_BYPASS": "1",
+            # Whisper's model, from the real cache: the temporary HOME would download it on every run
+            "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE") or str(Path.home() / ".cache" / "huggingface" / "hub"),
         })
         # OCR: the real tesseract behind a wrapper that logs each call; while `ocr_off` exists it looks missing
         real_tesseract = shutil.which("tesseract")
@@ -1667,12 +1768,13 @@ END:VCALENDAR
                                             for label, m in sent_log if str(m.get("chat_id")) != CAPTAIN_ID])
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
-        assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102} if vinci_section else set()), \
+        # 5102 and 6102 (Angel's .doc template): read on request in the Vinci and WhatsApp steps
+        assert downloaded == {5001, 5005, 5010, 5301, 5101} | ({5102, 6102} if vinci_section else set()), \
             f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
         secrets_all = [CANVAS_TOKEN, NEW_CANVAS_TOKEN, first, second, third,
                        calendar_feed_url, announcement_feed_url, BOT_TOKEN,
                        *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
-                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN, PORTAL_PASSWORD,
                        *PARTY_TOKENS.values()]
         telegram_dump = json.dumps(telegram.messages, ensure_ascii=False)
         llm_dump = json.dumps(llm.requests, ensure_ascii=False)
@@ -1731,7 +1833,7 @@ END:VCALENDAR
                        calendar_feed_url, announcement_feed_url, "/feeds/calendars/user-e2e.ics",
                        "/feeds/announcements/course-101.atom", BOT_TOKEN,
                        *SUBJECT_TOKENS.values(), UNKNOWN_TOKEN, STRANGER_TOKEN, FORM_TOKEN,
-                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN,
+                       REFUSED_FORM_TOKEN, PASTED_TOKEN, AUTO_FORM_TOKEN, ANGEL_TOKEN, CAPTAIN_WA_TOKEN, PORTAL_PASSWORD,
                        *PARTY_TOKENS.values()):
             assert secret not in text, f"{path.name} contiene un token"
     counts = {label: sum(1 for l, _ in sent_log if l == label) for label in dict.fromkeys(l for l, _ in sent_log)}
@@ -1767,10 +1869,12 @@ END:VCALENDAR
 
 
 def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, run, report, gateway, artifact,
-                  normalize, secrets, config_file, tmp_path, **_) -> None:
+                  normalize, secrets, config_file, tmp_path, portal, **_) -> None:
     """Section 10: Vinci on WhatsApp, through Hermes' bridge (a stand-in here): the captain's chat, a group he turns
-    on, a friend with a Vinci of his own (invited, his token through the page, his week, slides, his alerts), the
-    block for whoever is not a Vinci's owner, and the friend removed with his tokens."""
+    on, a friend with a Vinci of his own (invited, his token through the page and Vinci's relay, his week, slides, his
+    alerts), voice notes and audio files heard by the real local Whisper (in a group, only one that says «Vinci»), the
+    block for whoever is not a Vinci's owner, and the friend removed with his tokens. Pages go as URL buttons (the
+    bridge's /send-url-button), and what they send back comes through the relay (a stand-in here)."""
     bot = str(VENV_BIN / "espol-bot")
     captain_jid, angel_jid, stranger_jid = (f"{n}@s.whatsapp.net" for n in (CAPTAIN_WA, ANGEL_WA, STRANGER_WA))
     stand_in = tmp_path / "whatsapp-bridge"
@@ -1783,16 +1887,20 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
     # paired (the real pairing is `espol-bot whatsapp-vincular`); its «me» says which ids are Vinci's own
     (session / "creds.json").write_text(json.dumps({"me": {"id": f"{FakeWhatsApp.BOT.split('@')[0]}:7@s.whatsapp.net",
                                                            "lid": "880000000000001:7@lid"}}))
+    # the bridge's record of the captain's LID, which Hermes reads to give his chat one key in either form
+    (session / f"lid-mapping-{CAPTAIN_WA}.json").write_text(json.dumps(CAPTAIN_LID))
+    (session / f"lid-mapping-{CAPTAIN_LID}_reverse.json").write_text(json.dumps(CAPTAIN_WA))
     md = ["# Vinci en WhatsApp\n",
           "Lo que llega al puente de WhatsApp de Hermes (aquí FakeWhatsApp): cada mensaje con quién lo escribe, y lo "
           "que Vinci contesta.\n"]
 
-    with FakeWhatsApp(stand_in / "bridge.js") as wa:
+    with FakeWhatsApp(stand_in / "bridge.js") as wa, FakeRelay() as relay:
         with config_file.open("a", encoding="utf-8") as fh:  # [test] is the file's last table
             fh.write(f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
                      "whatsapp_sin_reinicio = true  # the test restarts its own gateway\n")
         with secrets.open("a", encoding="utf-8") as fh:
-            fh.write(f"WHATSAPP_CAPTAIN={CAPTAIN_WA}\n")
+            fh.write(f"WHATSAPP_CAPTAIN={CAPTAIN_WA}\nWHATSAPP_RELAY_URL={relay.base}\n"
+                     f"WHATSAPP_RELAY_TOKEN={FakeRelay.KEY}\n")
         setup = run(["bash", str(REPO / "setup.sh"), "--skip-deps"], T_VINCI)
         assert "• WhatsApp: tu chat" in setup.stdout, setup.stdout
         default_env = parse_env_file(home / ".hermes" / ".env")
@@ -1800,14 +1908,22 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
         default_cfg = yaml.safe_load((home / ".hermes" / "config.yaml").read_text())
         routes = default_cfg["gateway"]["profile_routes"]
         assert [(r.get("user_id") or r.get("chat_id"), r["profile"]) for r in routes] == [
-            (f"{CAPTAIN_WA}@s.whatsapp.net", "vinci"), (CAPTAIN_WA, "vinci"), (None, "vinci")], \
+            (f"{CAPTAIN_WA}@s.whatsapp.net", "vinci"), (f"{CAPTAIN_LID}@lid", "vinci"), (CAPTAIN_WA, "vinci"),
+            (None, "vinci")], \
             "el capitán va a Vinci; cualquier otro remitente, a las herramientas de invitado de Vinci y nunca al " \
             f"perfil por defecto: {routes}"
+        shared = home / ".hermes" / "profiles" / "vinci" / "platforms" / "whatsapp" / "session"
+        assert shared.is_symlink() and shared.readlink() == session, "Vinci ve las equivalencias de LID del puente"
         assert "vinci-whatsapp" in default_cfg["plugins"]["enabled"]
+        assert default_cfg["plugins"]["entries"]["vinci-whatsapp"]["allow_gateway_injection"] is True, \
+            "only this plugin may put a question back in its chat (the Académico's sign-in)"
         plugin_src = (home / ".hermes" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text()
         assert "{{" not in plugin_src and CAPTAIN_WA in plugin_src
-        assert (profiles / "vinci" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text() == plugin_src, \
-            "the gateway runs the dispatch hook with the routed profile's plugins: Vinci's needs it too"
+        relay_line = f'RELAY = "{data_dir / "amigos" / "rele.json"}"'
+        assert relay_line in plugin_src, "the default profile's copy polls the relay"
+        assert (profiles / "vinci" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text() == \
+            plugin_src.replace(relay_line, 'RELAY = ""'), \
+            "the gateway runs the dispatch hook with the routed profile's plugins: Vinci's needs it too (it does not poll)"
         vcfg = yaml.safe_load((profiles / "vinci" / "config.yaml").read_text())
         assert vcfg["platform_toolsets"]["whatsapp"] == vcfg["platform_toolsets"]["telegram"], \
             "en WhatsApp, Vinci tiene las mismas herramientas que en Telegram"
@@ -1891,11 +2007,18 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             # 10c. The captain invites Angel: his own private chat gets the link to the page
             invited = say(captain_jid, captain_jid, "/amigo agregar 099 000 0002 Angel", "Capitán")
             assert "Le escribí a Angel" in text_of(invited)
-            letter = wa.wait_for(lambda b: b.messages_to(angel_jid), 30)
-            assert letter and "Hola, Angel" in letter[0]["message"], letter
-            url = re.search(r"https://\S+[?&]k=[\w-]+\S*", letter[0]["message"])[0]
-            assert parse_qs(urlsplit(url).query).get("w") == ["1"], url
-            md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])}\n")
+            got = wa.wait_for(lambda b: (lambda m: m if len(m) >= 2 else None)(b.messages_to(angel_jid)), 30)
+            assert got and got[0]["path"] == "send-media" and got[0]["filePath"].endswith("token-guide.png"), \
+                f"the guide with the steps comes first: {got}"
+            letter = got[1:]
+            assert "Hola, Angel" in letter[0]["message"] and "Integraciones aprobadas" in letter[0]["message"], letter
+            assert letter[0]["path"] == "send-url-button" and letter[0]["buttonText"] == "🔑 Abrir formulario", letter
+            url = letter[0]["url"]
+            query = parse_qs(urlsplit(url).query)
+            assert query.get("w") == ["1"] and query.get("r") == [relay.base], url
+            assert re.fullmatch(r"m=[\w-]{22,64}", urlsplit(url).fragment), "the mailbox rides in the fragment"
+            assert "toca «Enviar cifrado a Vinci»" in letter[0]["message"] and "v1." not in letter[0]["message"], letter
+            md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])} [botón «{letter[0]['buttonText']}»]\n")
             friends = json.loads((data_dir / "amigos" / "amigos.json").read_text())["amigos"]
             assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Angel", ANGEL_WA, "pendiente")]
             waiting = say(GROUP_WA, angel_jid, "@vinci hola", "Angel", group=True)
@@ -1903,12 +2026,24 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             raw = say(angel_jid, angel_jid, f"este es mi token {ANGEL_TOKEN}", "Angel")
             assert "bórralo de este chat" in text_of(raw)
 
-            # 10d. Angel pastes what the page gives him: his token is checked, his aula read, his Vinci set up
+            # 10d. Angel sends his token from the page: it reaches Vinci through the relay, sealed; his token is checked,
+            # his aula read, his Vinci set up, and he is told in his chat. Nothing to paste.
             canvas.add_account(ANGEL_TOKEN, "canvas-amigo")
-            calls = len(llm.requests)
-            done = say(angel_jid, angel_jid, page_seal(url, ANGEL_TOKEN), "Angel", expect=2, timeout=240)
-            assert "Recibido" in done[0]["message"] and "ya veo tus 2 materias" in done[1]["message"], done
+            calls, mark = len(llm.requests), len(wa.sent)
+            relay.messages.append({"id": "R-stray", "mailbox": "M" * 32, "data": {"kind": "token", "sealed": "v1.x"},
+                                   "at": 0})  # someone posting to a mailbox Vinci never issued
+            page_send(url, ANGEL_TOKEN)
+            done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                          if "ya veo tus 2 materias" in m.get("message", "")], 240)
+            assert done, fail(f"el token de Angel no llegó por el relé: {wa.sent[mark:]}")
+            md.append(f"**Angel** pulsa «Enviar» en la página (por el relé) → Vinci: {normalize(done[0]['message'])}\n")
             assert len(llm.requests) == calls, "el texto cifrado no pasa por el modelo"
+            assert relay.messages == [], "Vinci borra del relé lo que atendió, y lo que nadie pidió"
+            assert all(m["data"].get("sealed", "").startswith("v1.") for m in relay.posted), "el relé solo ve cifrado"
+            page_send(url, ANGEL_TOKEN)  # the same link again: its mailbox served once
+            time.sleep(8)
+            assert not [m for m in wa.messages_to(angel_jid, mark) if "materias" in m.get("message", "")][1:], \
+                "un enlace, un token"
             told = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid) if "Angel ya tiene su Vinci" in
                                           m.get("message", "")], 30)
             assert told, "el capitán se entera de que Angel ya tiene su Vinci"
@@ -1923,13 +2058,16 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert default_env["WHATSAPP_ALLOWED_USERS"] == f"{CAPTAIN_WA},{ANGEL_WA}"
             routes = yaml.safe_load((home / ".hermes" / "config.yaml").read_text())["gateway"]["profile_routes"]
             assert (f"{ANGEL_WA}@s.whatsapp.net", "amigo-angel") in [(r.get("user_id"), r["profile"]) for r in routes]
+            assert (angel_profile / "platforms" / "whatsapp" / "session").readlink() == session
             jobs = {j["name"]: j for j in json.loads((angel_profile / "cron" / "jobs.json").read_text())["jobs"]}
             assert set(jobs) == {"amigo-sondeo", "amigo-mantenimiento", "amigo-resumen"}
             assert all(j["deliver"] == "local" for j in jobs.values())
-            report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con el enlace a "
-                          "la página (modo WhatsApp); Angel pega lo que la página cifró y, sin pasar por el modelo, su "
-                          "token se verifica, arranca su propia cadena de renovación, se lee su aula y queda su Vinci "
-                          "(perfil amigo-angel, sus crons, su ruta)")
+            report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con un botón a la "
+                          "página (modo WhatsApp, con el relé y un buzón de un uso en el enlace); Angel pulsa «Enviar» y "
+                          "el token llega cifrado por el relé, sin pegar nada ni pasar por el modelo: se verifica, "
+                          "arranca su propia cadena de renovación, se lee su aula y queda su Vinci (perfil amigo-angel, "
+                          "sus crons, su ruta). El mismo enlace no sirve dos veces, y Vinci descarta lo que llega a un "
+                          "buzón que no abrió")
 
             # 10e. After the restart that loads his route: Angel's own week, in the same group as the captain
             gateway.stop()
@@ -1966,12 +2104,27 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             taller = text_of(say(GROUP_WA, angel_jid, f"@{bot_lid} qué pide el taller 2? y avísale a @{CAPTAIN_WA}",
                                  "Angel", group=True, mentions=[FakeWhatsApp.BOT]))
             assert "ejercicios 3, 5 y 8 de la sección 15.2" in taller and "un solo PDF" in taller, taller
+            # The annexes come from a «Proyectos/2023» folder the Files tab already lists, the first one linked by
+            # an icon with no text: they are still this assignment's, and the .doc template gets read.
+            task = next(data for req in llm.requests[calls:] for m in req.get("messages") or [] if m.get("role") == "tool"
+                        for data in [_json(flatten(m.get("content")))] if isinstance(data, dict) and "consigna" in data)
+            assert [f["archivo"] for f in task["archivos"]] == ["taller-2-especificacion.pdf", "plantilla-taller.doc"]
+            assert "semestre_anterior" not in json.dumps(task), task
+            assert (task["vence"], task["cierra"]) == ("jue 1 oct, 23:59", "vie 2 oct, 23:59"), task
+            assert task["rubrica"]["criterios"][0] == {
+                "criterio": "Planteamiento de los límites", "puntos": 6,
+                "detalle": "Dibuja la región y fija bien los límites de integración",
+                "niveles": ["Completo: 6 pts", "Sin planteamiento: 0 pts"]}, task["rubrica"]
+            assert "Resultado final, 4 pts" in taller and "hasta vie 2 oct, 23:59" in taller, taller
+            assert "Cada ejercicio con su gráfica de la región de integración" in taller, taller
             seen = json.dumps(llm.requests[calls:], ensure_ascii=False)
             assert "@vinci qué pide el taller 2? y avísale a @Capitán" in seen, seen[-2000:]
             assert f"@{bot_lid}" not in seen and f"@{CAPTAIN_WA}" not in seen
             report.append("En un grupo, una mención llega a WhatsApp como «@número»: el plugin se la pasa al modelo como "
                           "«@vinci» o con el nombre de la persona (Angel ve «@Capitán»). «¿Qué pide el taller 2?»: "
-                          "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas)")
+                          "ver_tarea le trae la consigna que escribió el profesor (ejercicios, formato, páginas), la "
+                          "rúbrica del aula, la fecha y el cierre en hora de Ecuador, y los anexos que enlaza aunque "
+                          "estén en una carpeta de 2023; la plantilla .doc se lee con LibreOffice")
 
             # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
             mark = len(wa.sent)
@@ -1980,11 +2133,15 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert polls and polls[0]["options"] == ["✅ Hecho", "⏳ Todavía no"], fail(f"sin encuesta: {wa.sent[mark:]}")
             card = text_of(wa.messages_to(angel_jid, mark))
             assert "repasar integrales dobles" in card, card
+            # the vote only after the model's own reply: a late «Anotado» would pass for the vote's answer
+            assert wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                          if m.get("message", "").startswith("Anotado")], 60), wa.sent[mark:]
             calls, mark = len(llm.requests), len(wa.sent)
             wa.vote(angel_jid, angel_jid, polls[0]["messageId"], "✅ Hecho")
-            # The model's own «Anotado: …» can land after the poll: wait for the vote's answer, not the next message.
-            done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark) if "Hecho:" in text_of([m])], 60)
-            assert done and "Hecho: «repasar integrales dobles»" in text_of(done), done
+            # the vote's answer, not the model's «Anotado» if it lands after the poll
+            done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                          if "Hecho: «repasar integrales dobles»" in m.get("message", "")], 60)
+            assert done, wa.messages_to(angel_jid, mark)
             assert len(llm.requests) == calls, "un voto se resuelve sin el modelo"
             md.append(f"→ a Angel: [encuesta «{polls[0]['question']}»: {' / '.join(polls[0]['options'])}]\n"
                       f"**Angel** vota «✅ Hecho» → Vinci: {normalize(text_of(done))}\n")
@@ -1992,23 +2149,36 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                           "una encuesta «✅ Hecho / ⏳ Todavía no» en su chat privado; su voto cierra el pendiente como "
                           "el botón de Telegram, sin el modelo")
 
-            # 10f4. /entregas: the dashboard on WhatsApp, its ticks typed back into the chat as /marca
+            # 10f4. /entregas: a button to the dashboard on WhatsApp; a tick on it comes back through the relay, and
+            # typed as /marca still works (what the page does when the relay fails)
             calls = len(llm.requests)
-            panel = text_of(say(angel_jid, angel_jid, "/entregas", "Angel"))
-            link = re.search(r"https://\S+#d=([\w-]+)", panel)
-            assert link, panel
+            [panel] = say(angel_jid, angel_jid, "/entregas", "Angel")
+            assert panel["path"] == "send-url-button" and panel["buttonText"] == "📋 Ver mis entregas", panel
+            link = re.search(r"#d=([\w-]+)", panel["url"])
+            assert link and "#d=" not in panel["message"], panel
             from espol_bot import dashboard as dashboard_module
             snap = dashboard_module.decode(link[1])
             assert snap["wa"] == FakeWhatsApp.BOT.split("@")[0] and "bot" not in snap, snap
+            assert snap["relay"] == relay.base and re.fullmatch(r"[\w-]{22,64}", snap["mailbox"]), snap
             taller = next(i for i in snap["items"] if i["title"].startswith("Taller 2"))
+            mark = len(wa.sent)
+            page_tick(snap, taller["id"])
+            ticked = wa.wait_for(lambda b: b.messages_to(angel_jid, mark), 60)
+            assert ticked and "cuenta como entregada" in text_of(ticked), fail(f"la marca no llegó: {wa.sent[mark:]}")
+            md.append(f"**Angel** marca «{taller['title']}» en el panel (por el relé) → Vinci: "
+                      f"{normalize(text_of(ticked))}\n")
+            page_tick(snap, taller["id"], done=False)
+            both = wa.wait_for(lambda b: (lambda m: m if len(m) >= 2 else None)(b.messages_to(angel_jid, mark)), 60)
+            assert both, "desmarcar también llega por el relé"
             marked = text_of(say(angel_jid, angel_jid, f"/marca {taller['id']} ok · {taller['title']}", "Angel"))
             assert "cuenta como entregada" in marked, marked
             assert len(llm.requests) == calls, "/entregas y /marca no pasan por el modelo"
             private = text_of(say(GROUP_WA, angel_jid, "@vinci /entregas", "Angel", group=True))
             assert "por privado" in private, private
-            report.append("/entregas le da a Angel el enlace a su panel de entregas (el mismo de Telegram), con el número "
-                          "de Vinci en vez del bot: marcar una abre su chat con «/marca s… ok» escrito, que el plugin "
-                          "cuenta como entregada sin el modelo; en un grupo, /entregas pide ir por privado")
+            report.append("/entregas le da a Angel un botón a su panel de entregas (el mismo de Telegram), que en el iPhone "
+                          "abre dentro de WhatsApp: marcar una llega a Vinci por el relé y Vinci la cuenta como entregada "
+                          "sin el modelo, igual que «/marca s… ok» escrito en el chat; en un grupo, /entregas pide ir "
+                          "por privado")
 
             # 10g. Vinci's commands on WhatsApp, each over the sender's own aula; Hermes' own pass through
             calls = len(llm.requests)
@@ -2020,9 +2190,12 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert "por privado" in private, private
             captain_hello = text_of(say(captain_jid, captain_jid, "/start", "Capitán"))
             assert "/amigo agregar" in captain_hello and "Telegram" in captain_hello, captain_hello
-            form = text_of(say(captain_jid, captain_jid, "/token", "Capitán"))
+            wa.missing.add("send-url-button")  # Hermes' own bridge.js: the page goes as a plain link
+            form = text_of(say(captain_jid, captain_jid, "/token", "Capitán", expect=2))  # the guide, then the form
+            wa.missing.discard("send-url-button")
             form_url = re.search(r"https://\S+[?&]k=[\w-]+\S*", form)[0]
             assert parse_qs(urlsplit(form_url).query).get("w") == ["1"], form_url
+            # pasting what the page shows still works: what it does when it cannot reach the relay
             canvas.valid_tokens.add(CAPTAIN_WA_TOKEN)
             canvas.mint(CAPTAIN_WA_TOKEN, "Token personal")
             reseeded = text_of(say(captain_jid, captain_jid, page_seal(form_url, CAPTAIN_WA_TOKEN), "Capitán"))
@@ -2030,7 +2203,15 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             assert parse_env_file(secrets)["CANVAS_TOKEN"] in canvas.valid_tokens
             assert len(llm.requests) == calls, "/start, /estado, /token y el texto cifrado no pasan por el modelo"
             # the captain's own alerts and 7:00 summary reach his WhatsApp too, with polls instead of buttons
+            with sqlite3.connect(data_dir / "espol.db") as conn:  # vinci_flow already sent this test day's summary
+                conn.execute("DELETE FROM meta WHERE key = 'bot_last_summary'")
             mark, tg_mark = len(wa.sent), len(telegram.messages)
+            conn = sqlite3.connect(data_dir / "espol.db")
+            try:  # vinci_flow already sent this test day's summary, and it goes once a day
+                conn.execute("DELETE FROM meta WHERE key = 'bot_last_summary'")
+                conn.commit()
+            finally:
+                conn.close()
             run([bot, "resumen"], T_VINCI)
             copies = wa.messages_to(captain_jid, mark)
             assert copies and len(telegram.messages) > tg_mark, (copies, telegram.messages[tg_mark:])
@@ -2043,9 +2224,68 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
                 "«/quiz tema» le llega al modelo como pedido de un quiz"
             report.append("Los comandos de Vinci también van por WhatsApp, cada uno sobre el aula de quien escribe y sin "
                           "el modelo: /start (con los comandos; los de /amigo, solo al capitán), /estado y /token (en un "
-                          "grupo, piden ir por privado). Tras /token, el capitán pegó el texto cifrado de la página y su "
+                          "grupo, piden ir por privado). Con un puente sin la ruta de botones, /token llega como enlace; "
+                          "el capitán pegó el texto cifrado que muestra la página cuando no alcanza el relé, y su "
                           "cadena del token volvió a arrancar. «/quiz integrales dobles» llega al modelo como pedido de "
                           "un quiz, que Vinci manda como encuestas (send_quiz)")
+
+            # 10g2. Voice: Hermes' local Whisper (on for this step only) hears voice notes and audio files
+            gateway.stop()
+            for cfg_file in (profiles / "vinci" / "config.yaml", angel_profile / "config.yaml",
+                             home / ".hermes" / "config.yaml"):
+                data = yaml.safe_load(cfg_file.read_text())
+                data.setdefault("stt", {}).update(enabled=True, provider="local")
+                cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            start()
+            def skips(reason: str) -> int:  # the gateway logs each message under the profile it is routed to
+                return sum(f.read_text(errors="replace").count(reason)
+                           for f in (home / ".hermes").glob("**/logs/gateway.log"))
+
+            def speak(chat: str, sender: str, fixture: str, name: str, *, group: bool = False,
+                      skipped: str = "") -> str:
+                """An audio from the fixtures, saved where the bridge saves it; with `skipped`, the plugin's reason
+                for dropping it, and nothing reaches the chat or the model."""
+                audio = home / ".hermes" / "cache" / "audio" / f"aud_{next(audio_ids)}{Path(fixture).suffix}"
+                audio.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(FILES / fixture, audio)
+                mark, calls, seen = len(wa.sent), len(llm.requests), skips(skipped) if skipped else 0
+                wa.audio(chat, sender, audio, name=name, group=group)
+                md.append(f"**{name}** ({'grupo' if group else 'privado'}): [{'nota de voz' if audio.suffix == '.ogg'
+                                                                               else 'audio'} {fixture}]\n")
+                if skipped:
+                    dropped = wa.wait_for(lambda _: skips(skipped) > seen, 120)
+                    assert dropped, fail(f"el plugin no descartó {fixture} ({skipped})")
+                    time.sleep(3)
+                    assert not wa.messages_to(chat, mark) and len(llm.requests) == calls, wa.messages_to(chat, mark)
+                    md.append("→ (sin respuesta)\n")
+                    return ""
+                got = wa.wait_for(lambda b: (lambda m: m if any(not x.get("message", "").startswith("🎙️") for x in m)
+                                             else None)(b.messages_to(chat, mark)), 180)
+                assert got, fail(f"nadie contestó a {fixture}")
+                for m in got:
+                    md.append(f"→ Vinci: {normalize(m.get('message', ''))}\n")
+                return text_of(got)
+
+            audio_ids = itertools.count(1)
+            heard = speak(captain_jid, captain_jid, "whatsapp-voz-vinci.ogg", "Capitán")
+            assert "Esta semana:" in heard and "qué tengo esta semana" in heard, \
+                f"Hermes muestra lo que entendió y Vinci contesta: {heard}"
+            his = speak(GROUP_WA, angel_jid, "whatsapp-voz-vinci.ogg", "Angel", group=True)
+            assert "EDO de primer orden" in his, his  # his week; /marca above closed the Taller 2
+            speak(GROUP_WA, captain_jid, "whatsapp-voz-charla.ogg", "Capitán", group=True,
+                  skipped="audio que no llama a Vinci")
+            speak(GROUP_WA, stranger_jid, "whatsapp-voz-vinci.ogg", "Alguien", group=True,
+                  skipped="audio de alguien sin Vinci")
+            calls = len(llm.requests)
+            file_week = speak(angel_jid, angel_jid, "whatsapp-audio-semana.m4a", "Angel")
+            assert "EDO de primer orden" in file_week, file_week
+            assert '"Oye, ¿qué tengo esta semana?' in json.dumps(llm.requests[calls:], ensure_ascii=False), \
+                "un archivo de audio le llega al modelo transcrito, como una nota de voz"
+            report.append("Voz en WhatsApp, con el Whisper local de Hermes: una nota de voz por privado («Vinci, ¿qué "
+                          "tengo esta semana?») recibe la semana del capitán. En un grupo encendido, la nota de voz de "
+                          "Angel que dice «Vinci» recibe su semana; una charla del capitán sin «Vinci» y la nota de "
+                          "alguien sin su Vinci no llegan al modelo (la de ese alguien ni se transcribe). Un archivo de "
+                          "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin")
 
             # 10h. Should someone reach a Vinci that is not theirs, its owner's data stays shut
             gateway.stop()
@@ -2080,6 +2320,11 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
             report.append("El sondeo del Vinci de Angel le avisa por su chat de WhatsApp (formato de WhatsApp, sin "
                           "HTML) y nunca por el Telegram del capitán; su mantenimiento renueva su propia cadena de token")
 
+            # 10k. ESPOL's Académico: connected from its button, the question answered by itself, then from the copy
+            academico_flow(wa=wa, relay=relay, portal=portal, llm=llm, telegram=telegram, data_dir=data_dir,
+                           say=say, text_of=text_of, fail=fail, report=report, artifact=artifact, normalize=normalize,
+                           captain_jid=captain_jid, gateway=gateway, tmp_path=tmp_path)
+
             # 10j. The captain lists and removes Angel; then turns the group off
             listed = say(captain_jid, captain_jid, "/amigos", "Capitán")
             assert "Angel: tiene su Vinci" in text_of(listed)
@@ -2097,10 +2342,273 @@ def whatsapp_flow(*, hermes, home, profiles, data_dir, canvas, telegram, llm, ru
         finally:
             gateway.stop()
 
-        dumps = json.dumps(wa.sent, ensure_ascii=False) + json.dumps(llm.requests, ensure_ascii=False)
+        dumps = (json.dumps(wa.sent, ensure_ascii=False) + json.dumps(llm.requests, ensure_ascii=False)
+                 + json.dumps(relay.posted))
         for secret in canvas.accounts:  # his seed and every token his chain minted
             assert secret not in dumps, "un token de Angel apareció en WhatsApp o llegó al modelo"
     (artifact / "whatsapp.md").write_text("\n".join(md), encoding="utf-8")
+
+class PortalPage:
+    """The page behind «🎓 Conectar Académico» (docs/academico/), as the student uses it: in a real headless Chromium
+    when there is one (served as GitHub Pages would, by FakePages), else its own module's `answer` on Node. Either
+    way it reads what to ask from the relay and posts each answer sealed."""
+
+    def __init__(self, url: str, relay: FakeRelay, pages: FakePages | None, browser):
+        parts = urlsplit(url)
+        query = parse_qs(parts.query)
+        self.key, self.relay_url, self.mailbox = query["k"][0], query["r"][0], parts.fragment.removeprefix("m=")
+        self.relay, self.browser, self.sent = relay, browser, 0
+        self.page = browser.open(f"{pages.base}/academico/?{parts.query}#{parts.fragment}") if browser else None
+
+    def status(self, state: str, timeout: float = 60, error: str = "") -> dict:
+        end = time.time() + timeout
+        while time.time() < end:
+            found = self.relay.statuses.get(self.mailbox) or {}
+            if found.get("state") == state and error in (found.get("error") or "") and found.get("handled", 0) >= self.sent:
+                return found
+            time.sleep(0.3)
+        raise AssertionError(f"la página nunca llegó a «{state}»: {self.relay.statuses.get(self.mailbox)}")
+
+    def _until(self, expr: str, timeout: float = 30):
+        end = time.time() + timeout
+        while time.time() < end:
+            value = self.browser.eval(self.page, expr)
+            if value:
+                return value
+            time.sleep(0.2)
+        raise AssertionError(f"la página nunca cumplió {expr}: {self.browser.eval(self.page, 'document.body.innerText')}")
+
+    def _answer(self, step: str, data: dict) -> None:
+        self.sent += 1
+        if self.browser is None:
+            _node_module(REPO / "docs" / "academico" / "portal.js",
+                         "await page.answer(process.argv[1], process.argv[2], process.argv[3], process.argv[4], "
+                         "Number(process.argv[5]), JSON.parse(process.argv[6]));",
+                         self.key, self.relay_url, self.mailbox, step, str(self.sent), json.dumps(data))
+            return
+        if step == "user":
+            self._until("!document.getElementById('user-form').hidden && !document.getElementById('user').disabled")
+            self.browser.eval(self.page, f"document.getElementById('user').value = {json.dumps(data['user'])};"
+                                         "document.getElementById('user-form').requestSubmit(); true")
+        else:
+            self._until("!document.getElementById('login-form').hidden && !document.getElementById('code').disabled"
+                        " && document.getElementById('captcha').src.startsWith('data:image/jpeg')")
+            self.browser.eval(self.page, f"document.getElementById('password').value = {json.dumps(data['password'])};"
+                                         f"document.getElementById('code').value = {json.dumps(data['captcha'])};"
+                                         "document.getElementById('login-form').requestSubmit(); true")
+
+    def sign_in(self, user: str) -> None:
+        self.status("user")
+        self._answer("user", {"user": user})
+        self.status("login")
+
+    def log_in(self, password: str, code: str) -> None:
+        self._answer("login", {"password": password, "captcha": code})
+
+    def shown(self) -> str:
+        return self.browser.eval(self.page, "document.body.innerText") if self.browser else ""
+
+    def done(self, timeout: float = 120) -> str:
+        message = self.status("done", timeout)["message"]
+        if self.browser:
+            self._until("document.body.dataset.done === '1'")
+            self.browser.close(self.page)
+        return message
+
+
+def academico_flow(*, wa, relay, portal, llm, telegram, data_dir, say, text_of, fail, report, artifact, normalize,
+                   captain_jid, gateway, tmp_path) -> None:
+    """Section 10k: ESPOL's Académico. The captain asks for his GPA; with no copy, Vinci's tool asks for the sign-in
+    and a «🎓 Conectar Académico» button reaches his chat. On its page he gives his user, then his password with a
+    wrong CAPTCHA (the portal's words and a new one come back), then the right one: the worker signs in with one
+    session, reads every section, saves the copy and tells the chat, and his question comes back to Vinci by itself
+    in the same session, answered from the copy. Later questions use the copy without the portal; asked to update it
+    on Telegram, a new sign-in brings the portal's new figures. No credential reaches the model, the chat, the relay
+    in clear, a log or the copy."""
+    from test_webview_experiment import CHROMIUM, Browser
+    browser = Browser() if NODE and CHROMIUM else None
+    pages_ctx = FakePages(REPO / "docs", relay.base) if browser else None
+    pages = pages_ctx.__enter__() if pages_ctx else None
+    md = ["# El Académico de ESPOL\n",
+          "Lo que pregunta el capitán, el botón que le llega, lo que hace en la página (" +
+          ("un Chromium real" if browser else "el módulo de la página en Node") + ") y lo que contesta Vinci. El "
+          "Académico es FakePortal: ASP.NET con VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos y CAPTCHA.\n"]
+    bot = USERNAMES[BOT_TOKEN]
+    copy_file = data_dir / "academico.json"
+    try:
+        # 1. No copy yet: the tool asks for the sign-in, the button arrives, nothing secret is asked in the chat. His
+        # chat arrives as WhatsApp often names it, by his LID (bridge.js still gives his number as the sender): the
+        # question must still come back to this session.
+        mark, calls = len(wa.sent), len(llm.requests)
+        lid_jid = f"{CAPTAIN_LID}@lid"
+        asked = say(lid_jid, captain_jid, "cuál es mi promedio y cuántas materias aprobé", "Capitán")
+        assert "Conectar Académico" in text_of(asked), text_of(asked)
+        button = wa.wait_for(lambda b: [m for m in b.sent[mark:] if m["path"] == "send-url-button"
+                                        and m["buttonText"] == "🎓 Conectar Académico"], 60)
+        assert button, fail(f"no llegó el botón del Académico: {wa.sent[mark:]}")
+        url = button[0]["url"]
+        assert url.startswith("https://sebasb76.github.io/vinci/academico/?k=") and "#m=" in url, url
+        assert "contraseña" in button[0]["message"] and "vence en 15 min" in button[0]["message"], button[0]
+        assert not copy_file.exists() and not portal.logins, "nada se guardó ni se intentó todavía"
+        md.append(f"**Capitán**: cuál es mi promedio y cuántas materias aprobé\n→ Vinci: {normalize(text_of(asked))}\n"
+                  f"→ Vinci: {normalize(button[0]['message'])} [botón «{button[0]['buttonText']}»]\n")
+
+        # 2. The page: user, a wrong CAPTCHA, the right one
+        page = PortalPage(url, relay, pages, browser)
+        page.sign_in(PORTAL_USER)
+        page.log_in(PORTAL_PASSWORD, "AAAAA")
+        refused = page.status("login", error="no es correcto")
+        assert refused["captcha"].startswith("data:image/jpeg;base64,"), refused
+        if browser:
+            page._until("document.getElementById('status').textContent.includes('no es correcto')")
+        md.append("**Capitán**, en la página: escribe su usuario → la PC entra al primer paso y le muestra el CAPTCHA; "
+                  f"pone su contraseña y un código equivocado → la página dice «{refused['error']}» con un CAPTCHA "
+                  "nuevo; pone el código correcto.\n")
+        mark = len(wa.sent)
+        page.log_in(PORTAL_PASSWORD, portal.last_code())
+        finished = page.done()
+        assert "Vinci te responde en el chat" in finished, finished
+
+        # 3. The chat: the copy saved, then the question answered by itself in the same session
+        # one chat on his phone: the worker writes to his number, Vinci answers where the question came from
+        def to_him(b):
+            return [m for m in b.sent[mark:] if m.get("chatId") in (captain_jid, lid_jid)
+                    and m["path"] in ("send", "send-media", "send-url-button")]
+        answer = wa.wait_for(lambda b: [m for m in to_him(b) if "8,15" in m.get("message", "")], 120)
+        assert answer, fail(f"la pregunta no volvió a su chat: {to_him(wa)}")
+        told = text_of(to_him(wa))
+        assert "✅ Listo: guardé tu Académico del 2026 · 2S" in told, told
+        assert "Aprobaste 5 materias" in told and "Convalidada: Inglés I" in told and "promedio general es 8,15" in told, told
+        returned = next(r for r in reversed(llm.requests) if PORTAL_BACK in json.dumps(r, ensure_ascii=False))
+        assert "never one you work out from the grades" in json.dumps(returned, ensure_ascii=False), \
+            "el promedio es el de Información General, nunca uno calculado por el modelo"
+        back = [r for r in llm.requests[calls:] if PORTAL_BACK in json.dumps(r, ensure_ascii=False)]
+        assert back and "cuál es mi promedio y cuántas materias aprobé" in json.dumps(back[0], ensure_ascii=False), \
+            "la pregunta vuelve a la misma conversación de Hermes, sin que el capitán la repita"
+        md.append(f"→ Vinci: {normalize(told)}\n")
+        sessions = {r["session"] for r in portal.requests}
+        assert len(sessions) == 1 and None not in sessions, f"un solo ingreso, una sola sesión: {sessions}"
+        assert [outcome for _, outcome in portal.logins] == ["captcha", "ok"], portal.logins
+        copy = json.loads(copy_file.read_text())
+        assert stat.S_IMODE(copy_file.stat().st_mode) == 0o600
+        assert copy["period"] == "2026 · 2S" and copy["saved_at"] and not copy["errors"], copy["errors"]
+        sections = copy["sections"]
+        assert set(sections) == {"general", "historial", "calificaciones", "creditos", "horario", "examenes"}
+        general = sections["general"]["datos"]
+        assert general.get("Promedio General en las materias aprobadas") == "8,15" and \
+            general.get("Carrera") == "Computación Activo" and general.get("Avance de la carrera") == "40,00% *", general
+        assert not {"Matrícula", "Identificación", "Nombre", "Grupo étnico", "Año-Término"} & set(general), general
+        assert "Matrícula" not in sections["creditos"]["datos"] and \
+            not [t for t in sections["creditos"]["tablas"] if t["columnas"][0].endswith(":")], "sin la tarjeta del estudiante"
+        grades = sections["calificaciones"]["tablas"][0]
+        assert grades["columnas"][3:9] == ["Paralelo Teórico", "Paralelo Práctico", "Exámenes 1", "Exámenes 2",
+                                           "Exámenes Práct.", "Exámenes Mej."], grades["columnas"]
+        assert grades["filas"][0]["Exámenes 1"] == "7,50" and grades["filas"][0]["Año Término"] == "2026 - 2", grades
+        assert {(s["code"], s.get("term"), s.get("grade")) for s in sections["historial"]["materias"]} >= \
+            {("MATG1045", "2024-1", "8,20"), ("ADM001099", "2024-1", "0,00")}, "cada materia con su período y su nota"
+        assert [(c["day"], c["start"], c["end"]) for c in sections["horario"]["classes"]] == \
+            [("Lunes", "09:30", "11:30"), ("Martes", "14:30", "16:30")], sections["horario"]
+        assert [(g["subject"], g["theory_weight"]) for g in sections["calificaciones"]["breakdowns"]] == \
+            [("SISTEMAS DISTRIBUIDOS Y COMPUTACIÓN EN LA NUBE", "70")], "solo la materia con práctico tiene ponderación"
+        exams = sections["examenes"]["exams"]
+        assert set(exams) == {"PARCIAL", "FINAL", "MEJORAMIENTO"} and "Fecha:24/11/2026" in exams["PARCIAL"][0]["text"], \
+            "el primer tipo de examen también se consulta"
+        mailboxes = json.loads((data_dir / "amigos" / "rele.json").read_text()).get("mailboxes", {})
+        assert not [b for b in mailboxes.values() if b["kind"] == "academico"], "el buzón del ingreso se cerró"
+        time.sleep(2)
+        alive = subprocess.run(["pgrep", "-f", "espol_bot portal-worker"], capture_output=True, text=True)
+        assert alive.returncode == 1, f"el proceso del ingreso terminó y soltó la sesión: {alive.stdout}"
+        report.append("El Académico: «¿cuál es mi promedio y cuántas materias aprobé?» sin copia → academic_record pide "
+                      "el ingreso y al chat le llega el botón «🎓 Conectar Académico». En su página (" +
+                      ("Chromium" if browser else "Node") + ") el capitán pone su usuario, después su contraseña y un "
+                      "CAPTCHA equivocado (vuelve la frase del portal con otro CAPTCHA) y luego el correcto. La PC entra "
+                      "con una sola sesión de ASP.NET (VIEWSTATE, EVENTVALIDATION, cookies), lee historial, "
+                      "créditos, exámenes (parcial, final y mejoramiento), calificaciones y horario con el año y el "
+                      "término que trae la página de exámenes, guarda la copia con su fecha y su período (2026 · 2S) y "
+                      "avisa en el chat; la pregunta vuelve sola a la misma conversación y Vinci contesta el promedio "
+                      "de Información General (8,15) y las 5 aprobadas, con Inglés I aparte como convalidada. De esa "
+                      "página la copia guarda el promedio y el avance, no la identificación, el nombre ni la foto")
+
+        # 4. From the copy, without the portal
+        seen = len(portal.requests)
+        approved = text_of(say(captain_jid, captain_jid, "qué materias aprobé", "Capitán"))
+        assert "Aprobaste 5 materias" in approved and "Física: Mecánica" in approved, approved
+        finals = text_of(say(captain_jid, captain_jid, "cuándo son mis exámenes finales", "Capitán"))
+        assert "Fecha:2/2/2027 (Martes 10:00-12:00)" in finals and "Fecha:4/2/2027" in finals, finals
+        progress = text_of(say(captain_jid, captain_jid, "cuánto me falta para graduarme", "Capitán"))
+        assert "40,00% * de avance" in progress and "60 créditos por tomar" in progress and "malla" in progress, progress
+        avance = next(r for r in reversed(llm.requests) if "cuánto me falta para graduarme" in json.dumps(r, ensure_ascii=False))
+        assert "Never work out the remaining subjects" in json.dumps(avance, ensure_ascii=False), \
+            "la herramienta le prohíbe al modelo restar las aprobadas de un total"
+        assert len(portal.requests) == seen, "con copia, Vinci no vuelve a entrar al Académico"
+        for asked_, said in (("qué materias aprobé", approved), ("cuándo son mis exámenes finales", finals),
+                             ("cuánto me falta para graduarme", progress)):
+            md.append(f"**Capitán**: {asked_}\n→ Vinci: {normalize(said)}\n")
+        report.append("Con la copia, «¿qué materias aprobé?», «¿cuándo son mis exámenes finales?» y «¿cuánto me falta "
+                      "para graduarme?» se contestan sin volver al Académico; para el avance la herramienta da los "
+                      "créditos que dice el portal y le prohíbe al modelo calcular lo que falta restando de un total, "
+                      "porque la malla todavía no se lee")
+
+        # 5. Updating it, from Telegram: a new sign-in, the portal's new figures
+        portal.version = 2
+        mark = len(telegram.messages)
+        telegram.send_text(BOT_TOKEN, CAPTAIN, "actualiza mi Académico y dime mi promedio")
+
+        def web_app_button(t):
+            for m in t.messages[mark:]:
+                markup = m.get("reply_markup")
+                markup = json.loads(markup) if isinstance(markup, str) else markup or {}
+                for row in markup.get("inline_keyboard") or []:
+                    for key in row:
+                        if m["bot"] == bot and key.get("text") == "🎓 Conectar Académico" and key.get("web_app"):
+                            return key["web_app"]["url"]
+            return None
+        tg_url = telegram.wait_for(web_app_button, 120)
+        assert tg_url, fail(f"no llegó el botón por Telegram: {[readable(m)[:100] for m in telegram.messages[mark:]]}")
+        page = PortalPage(tg_url, relay, pages, browser)
+        page.sign_in(PORTAL_USER)
+        page.log_in(PORTAL_PASSWORD, portal.last_code())
+        page.done()
+        updated = telegram.wait_for(lambda t: next((m for m in t.messages[mark:] if m["bot"] == bot
+                                                    and "8,22" in readable(m)), None), 120)
+        assert updated, fail(f"la pregunta no volvió por Telegram: {[readable(m)[:120] for m in telegram.messages[mark:]]}")
+        copy = json.loads(copy_file.read_text())
+        assert next(s for s in copy["sections"]["historial"]["materias"] if s["code"] == "ADSG1026")["status_kind"] == \
+            "approved", "la copia nueva trae la nota que el portal publicó después"
+        md.append("**Capitán** (Telegram): actualiza mi Académico y dime mi promedio\n→ Vinci: un botón «🎓 Conectar "
+                  "Académico» que abre la página como Mini App; entra otra vez\n"
+                  f"→ Vinci: {normalize(readable(updated))}\n")
+        report.append("«Actualiza mi Académico» desde Telegram: otro botón (Mini App), otro ingreso, y la respuesta "
+                      "vuelve sola a la conversación de Telegram con el promedio nuevo (8,22) y Sostenibilidad "
+                      "aprobada")
+
+        # 6. Nothing secret anywhere
+        files = b"".join(read_if_there(f) for f in data_dir.rglob("*") if f.is_file())
+        dumps = (json.dumps(llm.requests, ensure_ascii=False) + json.dumps(wa.sent, ensure_ascii=False)
+                 + json.dumps(telegram.messages, ensure_ascii=False) + json.dumps(relay.posted)
+                 + json.dumps(relay.status_log, ensure_ascii=False) + gateway.tail(100000))
+        for secret in (PORTAL_PASSWORD, f'"user": "{PORTAL_USER}"'):
+            assert secret not in dumps, f"«{secret}» llegó al modelo, al chat, al relé o al registro del gateway"
+        assert PORTAL_PASSWORD.encode() not in files and PORTAL_USER.encode() not in files, \
+            "ni la contraseña ni el usuario quedan en la carpeta de datos (copia, bot.log, registro del relé)"
+        assert all(re.fullmatch(r"v2\.[\w-]+\.[\w-]{16}\.[\w-]+", m["data"]["sealed"]) for m in relay.posted
+                   if m["data"].get("kind") == "academico"), "el relé solo ve texto cifrado"
+        assert not any(c in copy_file.read_text() for c in ("ASP.NET_SessionId", ".ASPXAUTH", "__VIEWSTATE",
+                                                            *{r["session"] for r in portal.requests})), \
+            "la copia no guarda la sesión"
+        for value in (v for k, v in PORTAL_CARD if k != "Grupo étnico"):
+            assert value not in copy_file.read_text() and value not in json.dumps(llm.requests, ensure_ascii=False), \
+                f"la matrícula, la identificación y el nombre del estudiante ({value}) no quedan en la copia ni van al modelo"
+        report.append("Ni la contraseña ni el usuario aparecen en lo que vio el modelo, en los chats, en el relé (solo "
+                      "texto cifrado v2), en el registro del gateway ni en la carpeta de datos; la copia no guarda "
+                      "cookies ni campos de sesión, y el proceso del ingreso termina al acabar")
+    finally:
+        if browser:
+            browser.quit()
+        if pages_ctx:
+            pages_ctx.__exit__(None, None, None)
+        (artifact / "academico.md").write_text("\n".join(md), encoding="utf-8")
+
 
 def vinci_flow(*, hermes, home, profiles, data_dir, canvas, telegram, web, dspace, llm, run, take, report, gateway,
                artifact, equipo_md, horario_md, briefs_md, party_md, material_md, quiz_md, tools_seen, pwned, secrets, base_env,

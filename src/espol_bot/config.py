@@ -18,6 +18,9 @@ DEFAULT_WHATSAPP_BRIDGE = "http://127.0.0.1:3000"  # Hermes' bridge.js listens t
 DEFAULT_TOKEN_FORM_URL = "https://sebasb76.github.io/vinci/token/"
 # The dashboard behind Vinci's menu button (docs/dashboard/). It holds no data: the snapshot rides in its URL.
 DEFAULT_DASHBOARD_URL = "https://sebasb76.github.io/vinci/dashboard/"
+DEFAULT_PORTAL_URL = "https://www.academico.espol.edu.ec"
+# The page where the student signs in to the Académico (docs/academico/). It keeps nothing: credentials leave it sealed.
+DEFAULT_PORTAL_FORM_URL = "https://sebasb76.github.io/vinci/academico/"
 # Removed everywhere, whatever a platform list says (Hermes applies this last).
 BLOCKED_TOOLSETS = [
     "terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
@@ -59,6 +62,9 @@ class BotConfig:
     handwritten_subjects: tuple[str, ...] = ()  # codes whose assignments the captain does by hand and hands in as a PDF
     friend: str | None = None  # a friend's Vinci (amigos.py): its slug; None for the captain's own
     whatsapp_bridge: str = DEFAULT_WHATSAPP_BRIDGE  # Hermes' WhatsApp bridge, where a friend's alerts go out
+    portal_url: str = DEFAULT_PORTAL_URL  # ESPOL's Académico (academic_portal.py)
+    portal_form_url: str = DEFAULT_PORTAL_FORM_URL
+    portal_login_minutes: int = 15
 
     def extra_toolsets(self, code: str | None) -> tuple[str, ...]:
         """Toolsets the captain switched on for Vinci (`code` None) or for one subject bot, in config.toml."""
@@ -135,6 +141,15 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     except ValueError:
         raise ConfigError(f"dashboard.semester_end debe ser una fecha AAAA-MM-DD, no {end_raw!r}") from None
 
+    portal = section(core.raw, "academic_portal")
+    portal_url = str(portal.get("url") or DEFAULT_PORTAL_URL).rstrip("/")
+    portal_form_url = str(portal.get("form_url") or DEFAULT_PORTAL_FORM_URL)
+    if not portal_url.startswith("https://") or not portal_form_url.startswith("https://"):
+        raise ConfigError("[academic_portal] url y form_url deben empezar con https://")
+    login_minutes = int(portal.get("login_minutes", 15))
+    if not 5 <= login_minutes <= 60:
+        raise ConfigError("[academic_portal] login_minutes debe estar entre 5 y 60")
+
     friend = os.environ.get("ESPOL_AMIGO") or None
     bridge = str(section(core.raw, "test").get("whatsapp_puente") or DEFAULT_WHATSAPP_BRIDGE).rstrip("/")
 
@@ -162,6 +177,9 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         handwritten_subjects=tuple(c.strip().upper() for c in handwritten),
         friend=friend,
         whatsapp_bridge=bridge,
+        portal_url=portal_url,
+        portal_form_url=portal_form_url,
+        portal_login_minutes=login_minutes,
     )
 
 

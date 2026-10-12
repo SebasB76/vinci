@@ -33,6 +33,11 @@ Past exams come from ESPOL's public DSpace, only when asked (aula_core/dspace.py
 live, after a line in the captain's chat that says so, and `open_past_exam` downloads one into the material (a
 subject bot's own course; for Vinci an inactive course of its own), so it is read and cited like any document.
 
+ESPOL's Académico (history, GPA, credits, timetables) is a second source with no API: `academic_record` answers from
+the copy a sign-in saved (academic_portal.py); with none, or asked to refresh it, it has the student sent a button
+to sign in themselves (portal_login.py), and the question comes back once the copy is there. No tool sees their
+password, and the copy holds none.
+
 The Canvas token stays inside this process: no tool ever returns it.
 """
 
@@ -59,8 +64,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
-from espol_bot import (agenda, citations, diapositivas, grades, health, horario, libros, materias, messages, priority,
-                       quiz, store, submission)
+from espol_bot import (academic_portal, agenda, citations, diapositivas, grades, health, horario, libros, materias,
+                       messages, portal_login, priority, quiz, store, submission)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -137,7 +142,9 @@ GUEST_TOOLS: dict[str, frozenset[str]] = {
         "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas")
 } | {"libro_principal": frozenset({"titulo"})}
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
-        "entrega, puntos, fecha y los archivos y enlaces que trae (léelos con leer_archivo). Úsala siempre que "
+        "entrega, puntos, la rúbrica con la que la califican, las fechas ya en hora de Ecuador («vence»; «cierra»: "
+        "hasta cuándo el aula acepta una entrega atrasada) y los anexos de la consigna (archivos y enlaces; léelos "
+        "con leer_archivo). Los anexos son de esta tarea aunque estén en una carpeta de otro año. Úsala siempre que "
         "pregunten de qué trata o qué pide una tarea, antes de decir que no lo sabes.")
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
@@ -151,7 +158,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas"})
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record"})
 
 
 @dataclass
@@ -218,6 +225,33 @@ def _stale_note(ctx: Ctx) -> str:
     return (f"No pude leer el aula virtual desde el {since} ({ctx.stale.why}): estos datos son de esa hora, y lo que "
             f"entregó, publicaron o calificaron después no aparece. Empieza tu respuesta diciéndoselo{fix}. Nunca le "
             f"digas que algo sigue sin entregar o sin nota: di «al {since} no estaba entregada».")
+
+
+def _local_dates(ctx: Ctx, task: dict) -> dict:
+    """Dates as the student reads them: converting `…T04:59:59Z` by hand turned «mar 13» into «mié 14»."""
+    tz, due, closes = ctx.cfg.core.tz, task["vence"], task.pop("cierra", None)
+    task["vence"] = timefmt.human(due, tz)
+    if closes and closes != due:
+        task["cierra"] = timefmt.human(closes, tz)
+    return task
+
+
+def _task(ctx: Ctx, task: dict) -> dict:
+    task = _local_dates(ctx, task)
+    task["archivos"] = [{"archivo_id": f["id"], "archivo": f["archivo"],
+                         "estado": queries.file_state(f, ctx.cfg.core.max_file_mb), "url": f["url"]}
+                        for f in task["archivos"]]
+    task["enlaces"] = [_link_entry(link) for link in task["enlaces"]]
+    rubric = task["rubrica"]
+    task["rubrica"] = "La tarea no tiene rúbrica en el aula." if rubric is None else {
+        "titulo": rubric["title"], "puntos": rubric["points"],
+        "criterios": [{"criterio": c["description"], "puntos": c["points"],
+                       **({"detalle": c["long_description"]} if c["long_description"] else {}),
+                       "niveles": [f"{r['description']}: {r['points']:g} pts"
+                                   + (f" ({r['long_description']})" if r["long_description"] else "")
+                                   for r in c["ratings"]]}
+                      for c in rubric["criteria"]]}
+    return task
 
 
 def _noting_stale(ctx: Ctx, tools: list[Tool]) -> list[Tool]:
@@ -793,6 +827,27 @@ QUIZ_QUESTIONS = {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
                                                        "(una foto, un apunte, un texto que te pasó)"}},
     "required": ["question", "options", "answer", "explanation"]}}
 CHANNEL_FRESH = 600  # seconds: canal.json older than this is from another conversation
+PORTAL_TOPICS = ("historial", "promedio", "avance", "calificaciones", "horario", "examenes", "todo")
+PORTAL_OLD = timedelta(days=30)
+GPA_NOTE = ("Give the GPA exactly as the portal shows it (`gpa`, from Información General), never one you work out "
+            "from the grades. If `gpa` is empty this copy was saved before Vinci read that page: say so and offer to "
+            "update it (refresh: true).")
+PORTAL = ("ESPOL's Académico (academico.espol.edu.ec), not the aula virtual: the student's academic history (every "
+          "subject with its grade and status: approved, failed, credited, in progress), the GPA and the progress "
+          "through the degree as the portal shows them, credits and requirements of the degree, this term's grades, "
+          "and the class and exam timetables (parcial, final, mejoramiento). Use it for those questions, never "
+          "`notas` or `semana`. With a saved copy it answers from it, with when it was read and its term. With none "
+          "(or with refresh) it sends the student a «🎓 Conectar Académico» button to sign in on a page of their own; "
+          "their question comes back to you by itself once the copy is saved. Never ask for their user, password or "
+          "CAPTCHA in the chat.")
+PORTAL_PROPERTIES = {
+    "topic": {"type": "string", "enum": list(PORTAL_TOPICS),
+              "description": "historial: approved/failed subjects; promedio: GPA; avance: credits and progress; "
+                             "calificaciones: this term's grades; horario: class timetable; examenes: exam timetable"},
+    "question": {"type": "string", "description": "the student's question, in their words (it comes back to you "
+                                                  "after they connect)"},
+    "refresh": {"type": "boolean", "description": "true only when they ask to update or reconnect the Académico"},
+}
 
 
 def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
@@ -1016,6 +1071,102 @@ def _slides_tool(ctx: Ctx) -> Tool:
     return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
 
 
+def _channel(ctx: Ctx) -> dict:
+    """Where this tool call's conversation happens (canal.json, which the vinci-botones plugin writes before it)."""
+    if ctx.hermes_home is None:
+        return {}
+    try:
+        note = json.loads((ctx.hermes_home / "canal.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return note if time.time() - float(note.get("en") or 0) < CHANNEL_FRESH else {}
+
+
+def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
+    sections, now = copy["sections"], ctx.now()
+    saved = timefmt.parse(copy.get("saved_at"))
+    answer = {"saved_at": timefmt.human(saved, ctx.cfg.core.tz), "period": copy.get("period") or "unknown",
+              "source": "Académico ESPOL"}
+    if saved is not None and now - saved > PORTAL_OLD:
+        answer["old"] = (f"This copy is from {answer['saved_at']}: say so, and offer to update it (refresh: true).")
+    if copy.get("errors"):
+        answer["not_read"] = copy["errors"]
+    history = sections.get("historial") or {}
+    subjects = history.get("materias") or []
+    by_kind = {kind: [{k: v for k, v in s.items() if k != "status_kind" and v} for s in subjects
+                      if s["status_kind"] == kind]
+               for kind in ("approved", "credited", "failed", "in_progress", "withdrawn", "other")}
+    career = (sections.get("general") or {}).get("datos") or {}
+    gpa = {label: value for label, value in career.items() if re.search(r"promedio", label, re.I)}
+    if topic == "historial":
+        answer["subjects"] = {kind: items for kind, items in by_kind.items() if items}
+        answer["counts"] = {kind: len(items) for kind, items in by_kind.items() if items}
+        answer["gpa"] = gpa
+        if not subjects:
+            answer["tables"] = history.get("tablas") or []
+        answer["note"] = ("Credited (convalidada, homologada) subjects are not approved ones taken here: name them "
+                          "apart. " + GPA_NOTE)
+    elif topic == "promedio":
+        answer["gpa"] = gpa
+        answer["counts"] = {kind: len(items) for kind, items in by_kind.items() if items}
+        answer["note"] = GPA_NOTE
+    elif topic == "avance":
+        credits = sections.get("creditos") or {}
+        answer.update({"career": career,
+                       "credits": {"facts": credits.get("datos") or {}, "tables": credits.get("tablas") or []},
+                       "counts": {kind: len(items) for kind, items in by_kind.items() if items},
+                       "in_progress": by_kind["in_progress"]})
+        answer["note"] = ("The curriculum (malla) is not read yet. Report only what the portal states about credits, "
+                          "requirements and progress (`career`: Avance de la carrera, Créditos por tomar). The portal "
+                          "marks the progress with * as referential: the career's coordinator confirms it at the end. "
+                          "Never work out the remaining subjects or credits by subtracting the approved ones from a "
+                          "total: electives, credited subjects and each degree's requirements change that count.")
+    elif topic in ("calificaciones", "horario", "examenes"):
+        section = _portal_section(sections.get(topic) or {})
+        answer.update({"selected": section.pop("selected", {}), **section})
+        if not any(section.get(k) for k in ("breakdowns", "classes", "exams", "tables", "tables_by_kind")):
+            answer["note"] = "The portal showed nothing for this term: say so."
+    else:
+        answer.update({"counts": {kind: len(items) for kind, items in by_kind.items() if items}, "gpa": gpa,
+                       "sections": {key: _portal_section(s) for key, s in sections.items()},
+                       "subjects": {kind: items for kind, items in by_kind.items() if items},
+                       "note": GPA_NOTE})
+    return answer
+
+
+def _portal_section(section: dict) -> dict:
+    """A section of the copy, named in English, without what a shorter form already holds (the history's table is
+    its subjects, a timetable's half-hour grid its classes, the exam grids their exams) and without empty parts."""
+    drop = {"materias"}
+    if section.get("classes"):
+        drop.add("tablas")
+    if any((section.get("exams") or {}).values()):
+        drop.add("por_tipo")
+    names = {"tablas": "tables", "datos": "facts", "seleccion": "selected", "por_tipo": "tables_by_kind"}
+    return {names.get(k, k): v for k, v in section.items() if k not in drop and v}
+
+
+def _academic_record(ctx: Ctx, args: dict) -> dict:
+    topic = args.get("topic") if args.get("topic") in PORTAL_TOPICS else "todo"
+    copy = academic_portal.load(ctx.cfg)
+    if copy is not None and copy.get("just_saved"):
+        academic_portal.mark_used(ctx.cfg, copy)
+        return _portal_answer(ctx, copy, topic)
+    if copy is not None and not args.get("refresh"):
+        return _portal_answer(ctx, copy, topic)
+    question = str(args.get("question") or "").strip()
+    try:
+        sent = portal_login.request(ctx.cfg, _channel(ctx), topic, question, ctx.now())
+    except portal_login.LoginError as exc:
+        raise ToolError(str(exc)) from None
+    return {"connect": "button on its way",
+            "mensaje": ("I am sending the student a «🎓 Conectar Académico» button in this chat (it may take a few "
+                        "seconds). Tell them in one or two lines to open it and sign in there with their ESPOL user, "
+                        f"password and the code in the picture; it expires in {sent['minutes']} min. Their password "
+                        "never goes through the chat. When they finish, their question comes back to you with the "
+                        "data saved: answer it then. Do not ask for anything else now.")}
+
+
 def vinci_tools(ctx: Ctx) -> list[Tool]:
     def materias_(args):
         subjects = ctx.subjects()
@@ -1043,13 +1194,15 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
-        return queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
-                               days=_int(args.get("dias"), "dias"))
+        pending = queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
+                                  days=_int(args.get("dias"), "dias"))
+        return [_local_dates(ctx, t) for t in pending]
 
     def ver_tarea(args):
         ctx.refresh()
         try:
-            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12))
+            task = queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12))
+            return _task(ctx, task)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 
@@ -1421,6 +1574,8 @@ def vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("reactivar_materia", "Le muestra un botón para reactivar el bot archivado de una materia.", reactivar,
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
         _slides_tool(ctx),
+        Tool("academic_record", PORTAL, lambda args: _academic_record(ctx, args), PORTAL_PROPERTIES, ["topic", "question"],
+             read_only=False),
     ])
 
 
@@ -1487,13 +1642,15 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
-        return queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
+        pending = queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
+        return [_local_dates(ctx, t) for t in pending]
 
     def ver_tarea(args):
         ctx.refresh()
         try:
-            return queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12),
+            task = queries.assignment(ctx.conn, ctx.now(), _int(args.get("tarea_id"), "tarea_id", hi=10**12),
                                       course_ids())
+            return _task(ctx, task)
         except queries.NotFound as exc:
             raise ToolError(str(exc)) from None
 

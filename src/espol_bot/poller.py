@@ -160,7 +160,10 @@ class Bot:
             form = token_form.new_form(self.cfg, self.conn, now, text + "\n\n", ttl=token_form.AUTO_FORM_TTL)
             try:
                 button = form.get("web_app_button")
-                self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(button) if button else None)
+                if form.get("button"):  # a friend's Vinci, on WhatsApp
+                    self.telegram.send(form["respuesta"], link=form["button"], image=form.get("image"))
+                else:
+                    self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(button) if button else None)
                 set_meta(self.conn, "bot_alert_token", refused)
                 set_meta(self.conn, "bot_alert_token_at", timefmt.iso(now))
                 self.conn.commit()

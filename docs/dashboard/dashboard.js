@@ -2,8 +2,9 @@
 // (#d=<base64url of raw DEFLATE JSON>, espol_bot/dashboard.py) and the page asks no server for anything: its CSP
 // forbids connections. A tick opens Vinci's deep link (/start s_<id>_ok), which the plugin vinci-botones runs as
 // the «✅ Ya lo entregué» / «✅ Hecho» button would; from WhatsApp's /entregas (a «wa» number in the snapshot) it
-// opens Vinci's WhatsApp chat with «/marca s<id> ok» typed instead. The tick is kept on the phone until a newer
-// snapshot comes.
+// opens Vinci's WhatsApp chat with «/marca s<id> ok» typed instead, unless the snapshot names Vinci's relay and a
+// mailbox: then the tick is posted there (a workers.dev address, the only host the CSP allows) and Vinci confirms in
+// the chat. The tick is kept on the phone until a newer snapshot comes.
 
 const DAY = 864e5;
 const WEEKDAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -13,6 +14,33 @@ const NEWS = {
   grade: ["✅", "Nota"], file: ["📚", "Material"], link: ["🔗", "Enlace"], course: ["🎓", "Materia nueva"],
 };
 const STORE = "vinci-dashboard";
+
+const MAILBOX_RE = /^[A-Za-z0-9_-]{22,64}$/;
+
+export async function postMark(data, id, done) {
+  // Where it may post is the CSP's to say (connect-src: workers.dev only)
+  if (!data.relay || !MAILBOX_RE.test(data.mailbox || "")) return false;
+  try {
+    const response = await fetch(`${data.relay}/m/${data.mailbox}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "mark", id, done }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function toast(text) {
+  let note = document.getElementById("toast");
+  if (!note) {
+    note = Object.assign(document.createElement("p"), { id: "toast", role: "status" });
+    document.body.append(note);
+  }
+  note.textContent = text;
+  note.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => note.classList.remove("show"), 3500);
+}
 
 const esc = (text) => String(text ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -215,10 +243,13 @@ async function init() {
       state.marks = { ...state.marks, [id]: { done, at: Date.now() } };
       save(state);
       render();
-      if (data.wa) {  // opened from /entregas on WhatsApp: back to Vinci's chat with the command typed
-        const item = (data.items || []).find((i) => i.id === id);
-        const text = `/marca ${id} ${done ? "ok" : "no"}${item ? ` · ${item.title}` : ""}`;
-        window.location.href = `https://wa.me/${data.wa}?text=${encodeURIComponent(text)}`;
+      if (data.wa) {  // opened from /entregas on WhatsApp: through the relay, else back to the chat with it typed
+        postMark(data, id, done).then((sent) => {
+          if (sent) return toast(done ? "✅ Enviado: Vinci te confirma en el chat." : "↩️ Desmarcada: Vinci te confirma en el chat.");
+          const item = (data.items || []).find((i) => i.id === id);
+          const text = `/marca ${id} ${done ? "ok" : "no"}${item ? ` · ${item.title}` : ""}`;
+          window.location.href = `https://wa.me/${data.wa}?text=${encodeURIComponent(text)}`;
+        });
         return;
       }
       const link = `/${data.bot}?start=${id[0]}_${id.slice(1)}_${done ? "ok" : "no"}`;

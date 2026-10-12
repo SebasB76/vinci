@@ -13,14 +13,16 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 ![Hermes Agent](https://img.shields.io/badge/Hermes%20Agent-7c3aed?style=flat-square)
 ![Python 3.11+](https://img.shields.io/badge/Python%203.11+-3776AB?style=flat-square&logo=python&logoColor=white)
 
-[Qué hace](#qué-hace) · [Empezar](#empezar) · [Guías](#guías) · [Privacidad](#privacidad)
+[Qué hace](#qué-hace) · [ESPOL](#conectado-a-espol) · [Empezar](#empezar) · [Guías](#guías) · [Privacidad](#privacidad)
 
 </div>
 
 <br>
 
 <p align="center">
-  <img src="docs/images/vinci-en-telegram.png" alt="Tres chats de Telegram: Vinci arma el equipo de bots, un aviso del aula con el botón para consultarlo con el bot de la materia, y el brief de una clase" width="100%">
+  <img src="docs/images/vinci-pantallas.png" alt="Tres celulares: en Telegram, el resumen de las 7:00 con el panel de entregas abierto; en WhatsApp, una nota de voz que pregunta el promedio y Vinci contesta desde el Académico; en Telegram, fotos de un deber que el bot de Física convierte en PDF y entrega en el aula" width="100%">
+</p>
+<p align="center"><sub>Datos ficticios, con los mensajes que los bots mandan en la prueba E2E.</sub>
 </p>
 
 ## Qué hace
@@ -38,6 +40,18 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 
 Todo corre en tu PC y solo te contesta a ti. Lo automático (revisar el aula, avisar, recordar) no usa la IA ni
 gasta tokens. [Todas las funciones →](docs/guia/funciones.md#qué-hace-vinci)
+
+## Conectado a ESPOL
+
+Vinci lee lo que ESPOL ya tiene sobre ti, desde un solo chat:
+
+| | | |
+|---|---|---|
+| 🏫 **[Aula virtual](https://aulavirtual.espol.edu.ec)** | Canvas | Tareas, fechas, anuncios, notas y el material de cada curso. Entrega tus deberes hechos a mano. |
+| 🎓 **[Académico](https://www.academico.espol.edu.ec)** | Portal académico | Promedio, avance de la carrera, historial, calificaciones y horarios de clases y exámenes. |
+| 📝 **[DSpace](https://www.dspace.espol.edu.ec)** | Repositorio | Unos 20 000 exámenes anteriores de todas las facultades, que Vinci busca y resuelve. |
+
+Y se vienen más.
 
 ## Empezar
 

@@ -94,6 +94,8 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 | What runs live, or a command here | «Status» or «Commands» in this file |
 | A known limit (fixed or new) | `problemas.md` «Límites conocidos» |
 | A headline feature (new or gone) | the «Qué hace» table in `README.md` + `funciones.md` |
+| The summary, dashboard, Académico or hand-in messages | `docs/images/pantallas/pantallas.html`, then `scripts/render_screens.sh` |
+| A new ESPOL source (like the Académico) | «Conectado a ESPOL» in `README.md` |
 
 ## Do not re-propose
 
@@ -140,7 +142,7 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
 - `docs/guia/`: the user guides the README links to.
 - `relay/`: Cloudflare Worker that passes encrypted webview results back to the laptop.
 - `tests/e2e/`: the E2E with its fake servers, Hermes harness and fixtures.
-- `scripts/`: repo maintenance (`docs_check.py`).
+- `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README image).
 - `.claude/skills/control-vinci/`: how agents verify on the live bots, and the feature map.
 
 ## Language

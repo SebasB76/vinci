@@ -76,8 +76,8 @@ Y se vienen más.
 
 ## Empezar
 
-Vinci corre sobre [Hermes Agent](https://github.com/NousResearch/hermes-agent), en Linux. Solo necesitas tu
-cuenta de ESPOL y unos minutos.
+Vinci corre sobre [Hermes Agent](https://github.com/NousResearch/hermes-agent). Solo necesitas tu cuenta de
+ESPOL y unos minutos.
 
 ```bash
 git clone https://github.com/SebasB76/vinci.git && cd vinci

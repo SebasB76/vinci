@@ -257,15 +257,33 @@ class FakeWhatsApp(_Server):
         return hashlib.sha256(self.script.read_bytes()).hexdigest()[:16]
 
     def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False,
-            mentions: list[str] | None = None) -> str:
-        """A message someone writes: in a private chat (`chat` is the sender's JID) or a group (…@g.us)."""
+            mentions: list[str] | None = None, quote: str | None = None) -> str:
+        """A message someone writes: in a private chat (`chat` is the sender's JID) or a group (…@g.us); with
+        `quote`, a reply to that text of a message Vinci's account sent."""
         message_id = f"E2E{next(self._ids):06d}"
+        quoted = ({"hasQuotedMessage": True, "quotedMessageId": f"BOT{next(self._ids):06d}", "quotedText": quote,
+                   "quotedParticipant": self.BOT, "quotedRemoteJid": chat} if quote else {})
         with self.lock:
             self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
                                "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
                                "isGroup": group, "body": text, "hasMedia": False, "mediaType": "", "mediaUrls": [],
                                "mentionedIds": mentions or [], "botIds": [self.BOT], "timestamp": int(time.time()),
-                               "fromMe": False})
+                               "fromMe": False, **quoted})
+        return message_id
+
+    def sticker(self, chat: str, sender: str, path: Path, *, name: str = "", group: bool = False,
+                quote: str | None = None) -> str:
+        """A sticker as bridge.js reports it: a .webp already in Hermes' image cache, often a reply to Vinci."""
+        message_id = f"E2E{next(self._ids):06d}"
+        quoted = ({"hasQuotedMessage": True, "quotedMessageId": f"BOT{next(self._ids):06d}", "quotedText": quote,
+                   "quotedParticipant": self.BOT, "quotedRemoteJid": chat} if quote else {})
+        with self.lock:
+            self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
+                               "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
+                               "isGroup": group, "body": "[Sticker]", "hasMedia": True, "mediaType": "sticker",
+                               "mime": "image/webp", "nativeType": "stickerMessage", "mediaUrls": [str(path)],
+                               "mentionedIds": [], "botIds": [self.BOT], "timestamp": int(time.time()),
+                               "fromMe": False, **quoted})
         return message_id
 
     def audio(self, chat: str, sender: str, path: Path, *, name: str = "", group: bool = False) -> str:

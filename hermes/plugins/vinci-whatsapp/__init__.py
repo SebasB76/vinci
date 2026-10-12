@@ -25,7 +25,12 @@ friend's and in the default one; it acts only on WhatsApp.
   says «Vinci» or answers one of its messages goes on; anyone else's is not even heard.
 - Anyone else, in private: nothing.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
-  instead, from the names of everyone who has written to Vinci (kept in NAMES).
+  instead, from the names of everyone who has written to Vinci (kept in NAMES), also in the message it quotes.
+- A sticker never reaches a Vinci: Hermes would hand it over as a document it cannot open.
+- In a group, what goes on to a Vinci starts with who wrote it, already checked by their number. Every Vinci speaks
+  from the same WhatsApp account, so Hermes calls any of their messages «your previous message»: a quote counts as
+  this Vinci's own only when its text is in this conversation. After GROUP_IDLE without a message, the conversation
+  starts over, as /new would: a group chat that grew for days got too big for Hermes to summarize.
 
 - The /token page and the dashboard, opened from a button: what they post to Vinci's relay (src/espol_bot/relay.py)
   is fetched here every few seconds while a link is open (`espol-bot whatsapp-rele`), only by the default profile's
@@ -63,6 +68,7 @@ BRIDGE = "{{BRIDGE}}"
 SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are Vinci's own
 NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
+GROUP_IDLE = int("{{GROUP_IDLE}}")  # seconds; the E2E test shortens it
 RELAY = "{{RELAY}}"  # relay.py's mailboxes; set only in the default profile's copy, the one that polls
 RELAY_EVERY = 3
 TURNS = os.path.join(os.path.dirname(RELAY), "turns") if RELAY else ""
@@ -89,6 +95,9 @@ RAW_TOKEN = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este cha
 RAW_TOKEN_ACTIVE = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y "
                     "escríbeme /token: te mando un enlace que lo cifra en tu celular.")
 FAILED = "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."
+GROUP_HEADER = "[{name} te escribe en un grupo de WhatsApp]"
+NOT_YOURS = ("(un mensaje de Vinci que no está en tu conversación: es del Vinci de otra persona del grupo, o de hace "
+             "rato) ")
 AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an audio file
 CALLS_VINCI_RE = re.compile(r"\b[bv]in(?:ch|c|s)h?i\b")  # «Vinci» as Whisper may spell it, over _plain text
 _HEARD = {}  # the last audio heard: a group's audio file is heard to place it, then again for the model
@@ -102,7 +111,7 @@ def register(ctx):
         threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
 
 
-async def _dispatch(event=None, gateway=None, **_):
+async def _dispatch(event=None, gateway=None, session_store=None, **_):
     if gateway is not None:
         _GATEWAY[:] = [gateway]
     source = getattr(event, "source", None)
@@ -119,6 +128,14 @@ async def _dispatch(event=None, gateway=None, **_):
             if kind == "audio":
                 text = _with_transcript(text, await _hear(audio))
             named = _named(text, names)
+            if getattr(event, "reply_to_text", None):  # Hermes quotes it after this hook: fixed here, in place
+                event.reply_to_text = _named(str(event.reply_to_text), names)
+            if str(getattr(source, "chat_id", "")).endswith("@g.us") and not _strip_mention(named).startswith("/"):
+                key = _session_key(gateway, source)
+                await _fresh_start(gateway, session_store, event, key)
+                _own_quote(event, session_store, key)
+                name = names.get(_bare(getattr(source, "user_id", None))) or getattr(source, "user_name", "") or "Alguien"
+                named = f"{GROUP_HEADER.format(name=name)}\n{named}"
             if named != original:
                 return {"action": "rewrite", "text": named}
         return result
@@ -138,6 +155,9 @@ async def _sort(event, source, gateway):
     friend = next((f for f in _read(REGISTRY, "amigos") if f.get("numero") in senders), None)
     captain = CAPTAIN in senders
     reply_to = getattr(event, "message_id", None)
+
+    if (getattr(event, "raw_message", None) or {}).get("mediaType") == "sticker":
+        return _skip("sticker")
 
     if (getattr(event, "raw_message", None) or {}).get("mediaType") == "poll_update":
         who = CAPTAIN if captain else (friend or {}).get("numero") if (friend or {}).get("estado") == "activo" else None
@@ -261,6 +281,60 @@ def _with_transcript(text, heard):
         return text  # Hermes still tells the model where the file is
     caption = "" if text.strip() == "[audio received]" else text.strip()
     return f'"{heard}"' + (f"\n\n{caption}" if caption else "")
+
+
+def _session_key(gateway, source):
+    try:
+        return gateway._session_key_for_source(source)
+    except Exception:
+        return None
+
+
+async def _fresh_start(gateway, session_store, event, key):
+    """A group conversation idle for GROUP_IDLE starts over, through Hermes' own /new handler, whose notice nobody
+    gets: it returns the notice instead of sending it."""
+    try:
+        entry = session_store.lookup_by_session_key(key) if key else None
+    except Exception:
+        entry = None
+    updated = getattr(entry, "updated_at", None)
+    if updated is None or (datetime.now(updated.tzinfo) - updated).total_seconds() < GROUP_IDLE:
+        return
+    try:
+        import dataclasses
+        await gateway._handle_reset_command(dataclasses.replace(event, text="/new"))
+        logger.info("grupo inactivo: conversación nueva")
+    except Exception:  # the message still goes on, in the old conversation
+        logger.exception("no pude empezar de nuevo la conversación del grupo")
+
+
+def _own_quote(event, session_store, key):
+    """Whether the quoted Vinci message is this Vinci's: its text is in this conversation (Hermes' state.db for
+    the profile this copy of the plugin is in)."""
+    if not getattr(event, "reply_to_is_own_message", False) or not getattr(event, "reply_to_text", None):
+        return
+    quoted = _letters(event.reply_to_text)[:80]
+    found = False
+    try:
+        session_id = session_store.peek_session_id(key)
+        db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "state.db")
+        if session_id and quoted and os.path.exists(db):
+            import sqlite3
+            with sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5) as conn:
+                rows = conn.execute("SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' "
+                                    "ORDER BY id DESC LIMIT 300", (session_id,)).fetchall()
+            found = any(quoted in _letters(row[0] or "") for row in rows)
+    except Exception:  # a quote left as Hermes put it
+        logger.exception("no pude ver de quién es el mensaje citado")
+        return
+    if not found:
+        event.reply_to_is_own_message = False
+        event.reply_to_text = NOT_YOURS + str(event.reply_to_text)
+
+
+def _letters(text):
+    # WhatsApp gives a quote back with its own formatting (_x_ for *x*, links unwrapped): compare letters only
+    return re.sub(r"[^a-z0-9]", "", _plain(str(text)))
 
 
 def _strip_mention(text):

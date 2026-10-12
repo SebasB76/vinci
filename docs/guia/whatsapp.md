@@ -59,6 +59,11 @@ no puede mencionar a nadie: Vinci contesta la tuya o la de un amigo con su Vinci
 mensaje suyo. Las notas de voz de quien no tiene su Vinci ni se transcriben. «@vinci desactiva este grupo» lo
 apaga. Solo tú puedes encender o apagar un grupo.
 
+En un grupo, Vinci sabe quién le escribe y empieza con su nombre cuando habla de su aula. Da entregas, plazos y
+notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por privado. Vinci no contesta los
+stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no
+cambian.
+
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.

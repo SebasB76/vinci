@@ -98,6 +98,7 @@ COMPRESSION_THRESHOLD_TOKENS = 80_000
 GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "session_search", "clarify"]
 WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
+GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -558,7 +559,8 @@ class Setup:
         values = {**self.values, "CAPTAIN": wa.captain, "REGISTRY": str(amigos.registry_path(self.cfg)),
                   "GROUPS": str(amigos.groups_path(self.cfg)), "BRIDGE": self.cfg.whatsapp_bridge,
                   "SESSION": str(self.whatsapp_session()),
-                  "RESTART": "" if test.get("whatsapp_sin_reinicio") else "1"}
+                  "RESTART": "" if test.get("whatsapp_sin_reinicio") else "1",
+                  "GROUP_IDLE": str(int(test.get("whatsapp_grupo_inactivo_segundos") or GROUP_IDLE_SECONDS))}
         # The gateway runs pre_gateway_dispatch with the plugins of the profile the sender is routed to, so the
         # plugin goes in every profile a WhatsApp route reaches, plus the default for anything unrouted.
         routed = [self.profile_dir(self.cfg.hermes_profile), *(self.profile_dir(amigos.profile_name(f)) for f in friends)]

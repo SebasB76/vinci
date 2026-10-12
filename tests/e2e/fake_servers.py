@@ -268,6 +268,21 @@ class FakeWhatsApp(_Server):
                                "fromMe": False})
         return message_id
 
+    def audio(self, chat: str, sender: str, path: Path, *, name: str = "", group: bool = False) -> str:
+        """A voice note (.ogg) or an audio file (anything else) as bridge.js reports it: the file already saved in
+        Hermes' audio cache, and its placeholder as the text."""
+        kind = "ptt" if path.suffix == ".ogg" else "audio"
+        message_id = f"E2E{next(self._ids):06d}"
+        with self.lock:
+            self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
+                               "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
+                               "isGroup": group, "body": f"[{kind} received]", "hasMedia": True, "mediaType": kind,
+                               "mime": "audio/ogg; codecs=opus" if kind == "ptt" else "audio/mp4",
+                               "nativeType": "pttMessage" if kind == "ptt" else "audioMessage",
+                               "mediaUrls": [str(path)], "mentionedIds": [], "botIds": [self.BOT],
+                               "timestamp": int(time.time()), "fromMe": False})
+        return message_id
+
     def vote(self, chat: str, sender: str, poll_id: str, option: str) -> None:
         """A vote on one of Vinci's polls, as bridge.js reports it: the chosen option's text, quoting the poll."""
         with self.lock:

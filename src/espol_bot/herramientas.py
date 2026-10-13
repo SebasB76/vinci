@@ -149,6 +149,26 @@ TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué 
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
                   "pendientes. Con «entregada»: false vuelve a sus pendientes. No cambia nada en el aula.")
+STUDY_ACTIVITY = ("Lo que están haciendo en este chat, para dejarlo y retomarlo: un quiz (se abre solo con send_quiz) o "
+                  "una sesión de estudio. start abre una (kind, topic, materia; minutes y goal si las dijo) y deja en "
+                  "pausa la que estaba; progress guarda un paso (done, next, practiced, struggled); pause la deja; "
+                  "resume la retoma (un quiz: le vuelvo a mandar las preguntas que le faltan); finish la cierra con "
+                  "done. Las abiertas te llegan en el contexto de cada mensaje con su «#id».")
+STUDY_PROPERTIES = {
+    "action": {"type": "string", "enum": ["start", "progress", "pause", "resume", "finish"]},
+    "activity_id": {"type": "integer", "description": "el #id del contexto; vacío: la última abierta"},
+    "kind": {"type": "string", "enum": ["study", "jury"], "description": "start: study, o jury para practicar una "
+                                                                          "exposición"},
+    "topic": {"type": "string", "description": "start: el tema, corto"},
+    "materia": {"type": "string", "description": "start: la materia"},
+    "minutes": {"type": "integer", "description": "start: los minutos que tiene"},
+    "goal": {"type": "string", "description": "start: la meta que cabe en ese tiempo"},
+    "source": {"type": "string", "description": "start: el material (archivo y páginas) o el documento que usan"},
+    "done": {"type": "string", "description": "progress: lo que hicieron en este paso; finish: el cierre"},
+    "next": {"type": "string", "description": "progress: lo que sigue"},
+    "practiced": {"type": "string", "description": "progress: un concepto que practicó bien"},
+    "struggled": {"type": "string", "description": "progress: un concepto que le costó"},
+}
 CHAT_NOTE = ("Una nota que vale solo en este chat: cómo quiere un grupo que le hables, algo que acordaron ahí, algo que "
              "pidió solo para esta conversación. Te llega al final de cada mensaje de este chat y de ningún otro. Lo "
              "que vale en todos sus chats (sus preferencias, su contexto) va a tu memoria, no aquí. «remove» con el "
@@ -168,7 +188,7 @@ FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
     "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record", "chat_note",
-    "set_assignment_delivery"})
+    "set_assignment_delivery", "study_activity"})
 
 
 @dataclass
@@ -1119,6 +1139,17 @@ def _slides_tool(ctx: Ctx) -> Tool:
     return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
 
 
+def _open_activity(ctx: Ctx, session: str, activity_id) -> dict:
+    """The activity named by its #id, else the newest open one in this conversation."""
+    found = conversation.open_activities(ctx.conn, session, ctx.now())
+    if activity_id not in (None, ""):
+        wanted = _int(activity_id, "activity_id", hi=10**12)
+        found = [a for a in found if a["id"] == wanted]
+    if not found:
+        raise ToolError("No hay una actividad abierta con eso en este chat.")
+    return found[0]
+
+
 def _channel(ctx: Ctx) -> dict:
     """Where this tool call's conversation happens (canal.json, which the vinci-botones plugin writes before it)."""
     if ctx.hermes_home is None:
@@ -1290,7 +1321,13 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                     raise ToolError(f"La pregunta {position} no dice de dónde sale: «file_id» y «page» del material "
                                     "que leíste, o «entry_id» del cuaderno de la materia.")
                 questions.append(quiz.question(item, position, source))
-            return quiz.send(chat, nb, str(args["topic"]), questions, ctx.now())
+            sent = quiz.send(chat, nb, str(args["topic"]), questions, ctx.now())
+            session = _channel(ctx).get("sesion", "")
+            if session:
+                conversation.start_activity(ctx.conn, session, "quiz", subject.code, sent["topic"],
+                                            {"code": subject.code, "quiz_id": sent["quiz"]}, ctx.now())
+                conversation.set_focus(ctx.conn, session, subject.code, ctx.now(), "activity")
+            return sent
         except (quiz.QuizError, queries.NotFound) as exc:
             raise ToolError(str(exc)) from None
         finally:
@@ -1321,6 +1358,58 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                 "message": "Le mandé el PDF a su chat privado de WhatsApp con una encuesta «Entregar / Cancelar». Se "
                            "entrega solo cuando vote Entregar; tú no puedes entregarlo. Dile en una línea que lo revise "
                            "y vote (si estás en un grupo, que se lo mandaste por privado)."}
+
+    def study_activity(args):
+        session = _channel(ctx).get("sesion", "")
+        if not session:
+            raise ToolError("No sé en qué chat estás: una actividad se abre desde una conversación.")
+        action, now = str(args.get("action") or ""), ctx.now()
+        try:
+            if action == "start":
+                subject = one_subject(args["materia"]) if args.get("materia") else None
+                data = {k: args[k] for k in ("minutes", "goal", "source") if args.get(k) not in (None, "")}
+                if args.get("minutes") not in (None, ""):
+                    data["minutes"] = _int(args["minutes"], "minutes", lo=5, hi=240)
+                data["steps"] = []
+                item = conversation.start_activity(ctx.conn, session, str(args.get("kind") or "study"),
+                                                   subject.code if subject else None, args.get("topic") or "", data, now)
+                if subject:
+                    conversation.set_focus(ctx.conn, session, subject.code, now, "activity")
+                return {"activity": item, "message": "Abierta. Desde ahora la ves en el contexto de cada mensaje."}
+            item = _open_activity(ctx, session, args.get("activity_id"))
+            if action == "progress":
+                step = {"at": timefmt.iso(now), "done": " ".join(str(args.get("done") or "").split())[:300]}
+                if not step["done"]:
+                    raise ToolError("Con «progress» va «done»: qué hicieron en este paso, corto.")
+                if args.get("next"):
+                    step["next"] = " ".join(str(args["next"]).split())[:200]
+                data = {**item["data"], "steps": [*item["data"].get("steps", []), step][-12:]}
+                for key in ("practiced", "struggled"):
+                    if args.get(key):
+                        data[key] = sorted({*data.get(key, []), " ".join(str(args[key]).split())[:120]})
+                return {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="active", data=data)}
+            if action == "pause":
+                return {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="paused"),
+                        "message": "En pausa: queda para cuando la pida."}
+            if action == "resume":
+                item = conversation.update_activity(ctx.conn, item["id"], now, state="active")
+                result = {"activity": item}
+                if item["kind"] == "quiz":
+                    chat = _whatsapp_chat(ctx)
+                    if chat is None:
+                        raise ToolError("El quiz se retoma en WhatsApp.")
+                    sent = quiz.resend(chat, ctx.cfg.core, item["data"]["code"], int(item["data"]["quiz_id"]))
+                    result["message"] = (f"Le mandé de nuevo las {sent} pregunta(s) que le faltaban, como encuestas al "
+                                         "final de su chat privado. Díselo en una línea, sin repetirlas."
+                                         if sent else "Ya respondió todas: el quiz terminó.")
+                return result
+            if action == "finish":
+                data = {**item["data"], "summary": " ".join(str(args.get("done") or "").split())[:500]}
+                return {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="completed",
+                                                                 data=data)}
+        except (conversation.NoteError, quiz.QuizError) as exc:
+            raise ToolError(str(exc)) from None
+        raise ToolError("«action» debe ser start, progress, pause, resume o finish.")
 
     def marcar_entregada(args):
         tid = _int(args.get("tarea_id"), "tarea_id", hi=10**12)
@@ -1578,6 +1667,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
               "files": {"type": "array", "items": {"type": "string"},
                         "description": "las rutas de las fotos (o de un PDF), en el orden de las páginas"}},
              ["assignment_id", "files"], read_only=False),
+        Tool("study_activity", STUDY_ACTIVITY, study_activity, STUDY_PROPERTIES, ["action"], read_only=False),
         Tool("marcar_entregada", MARK_SUBMITTED, marcar_entregada,
              {**TASK_PROPERTIES, "entregada": {"type": "boolean", "description": "false: vuelve a sus pendientes"}},
              ["tarea_id"], read_only=False),
@@ -1680,6 +1770,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
 
 RECENT_CLASS = timedelta(hours=1)  # a photo or a voice note this long after a class still belongs to it
 TEAM_TOOLS = ("entregar_a_materia", "proponer_equipo", "archivar_materia", "reactivar_materia")
+FOCUS_TOOLS = ("anotar", "guardar_adjunto", "agregar_material")
 SUBJECT_WORK = ("cuaderno", "anotar", "resolver", "guardar_adjunto", "class_notes", "bajar_archivo",
                 "agregar_material")
 MATERIA_ARG = {"type": "string", "description": "la materia (nombre o código); vacía: la de la clase en curso o "
@@ -1701,16 +1792,24 @@ def _class_subject(ctx: Ctx) -> materias.Subject | None:
 
 
 def _work_subject(ctx: Ctx, materia) -> materias.Subject:
+    """The subject named; else the one this chat is about (conversation.focus); else the one in class. When the chat
+    is about one subject and the class is another, it asks."""
     if materia:
         try:
             return materias.resolve(ctx.subjects(), str(materia))
         except materias.Ambiguous as exc:
             raise ToolError(str(exc)) from None
-    subject = _class_subject(ctx)
+    current = conversation.focus(ctx.conn, _channel(ctx).get("sesion", ""), ctx.now())
+    talked = materias.by_code(ctx.subjects(), current["subject"]) if current else None
+    in_class = _class_subject(ctx)
+    if talked and in_class and talked.code != in_class.code:
+        raise ToolError(f"No sé si es de {talked.name} (de la que venían hablando) o de {in_class.name} (su clase de "
+                        "ahora). Pregúntale en una línea cuál y vuelve a llamarme con «materia».")
+    subject = talked or in_class
     if subject is None:
         names = ", ".join(s.name for s in ctx.subjects())
-        raise ToolError(f"No sé de qué materia es: no está en clase ni salió de una hace poco. Pregúntale en una línea "
-                        f"cuál es ({names}) y vuelve a llamarme con «materia».")
+        raise ToolError(f"No sé de qué materia es: no nombró una en este chat, no está en clase ni salió de una hace "
+                        f"poco. Pregúntale en una línea cuál es ({names}) y vuelve a llamarme con «materia».")
     return subject
 
 
@@ -1720,6 +1819,8 @@ def _subject_work_tools(ctx: Ctx) -> list[Tool]:
     def run(name: str):
         def handler(args):
             subject = _work_subject(ctx, args.get("materia"))
+            if args.get("materia") and name in FOCUS_TOOLS:  # what he saves where he said keeps the chat on it
+                conversation.set_focus(ctx.conn, _channel(ctx).get("sesion", ""), subject.code, ctx.now(), "tool")
             sub = Ctx(ctx.cfg, ctx.hermes_home, subject.code)
             try:
                 tool = next(t for t in subject_tools(sub) if t.name == name)

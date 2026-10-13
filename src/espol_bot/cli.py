@@ -33,9 +33,10 @@
                                      score to send (the plugin calls it)
     espol-bot citas [--curso CÓDIGO] an answer read from stdin with its citations checked against the pages
                                      that bot was shown (the plugin runs it before an answer is sent)
-    espol-bot contexto --chat <canal:id> --tipo dm|group
-                                     what the model reads at the end of each turn: the clock and the notes of
-                                     that chat (conversation.py; the plugin runs it before each turn)
+    espol-bot contexto --chat <canal:id> --tipo dm|group --sesion <clave>
+                                     what the model reads at the end of each turn: the clock, that chat's notes,
+                                     the subject in focus and the activities open there, after reading the
+                                     student's message from stdin (conversation.py; the plugin, before each turn)
     espol-bot notes                 read the captain's notes folder: each note's subject, its //vinci
                                      questions and, once its class is over, its summary (Vinci's no-agent
                                      cron, every minute)
@@ -368,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
                                         "plugin vinci-botones)")
     p.add_argument("--chat", default="", help="canal:id del chat (whatsapp:…@g.us)")
     p.add_argument("--tipo", default="", help="dm o group")
+    p.add_argument("--sesion", default="", help="la clave de sesión de Hermes (un chat; en un grupo, una persona); "
+                                                "el mensaje del estudiante, por stdin")
     p = sub.add_parser("whatsapp-vincular", help="vincular el número de WhatsApp de Vinci con un código y ver sus "
                                                  "grupos (con el gateway detenido)")
     p.add_argument("numero", nargs="?", default=None, help="el número de Vinci (593…), solo si no está vinculado")
@@ -477,9 +480,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "contexto":
             from aula_core import store as core_store
-            from espol_bot import conversation, store
+            from espol_bot import conversation, equipo, materias, store
             conn = store.ensure(core_store.connect(cfg.core.db_path))
-            text = conversation.context(conn, cfg.core, now_utc(), chat=args.chat, chat_type=args.tipo)
+            subjects = equipo.propose(cfg, conn)[0] if cfg.friend or not cfg.telegram else materias.load(cfg.core)
+            now = now_utc()
+            message = "" if sys.stdin.isatty() else sys.stdin.read()
+            conversation.note_turn(conn, subjects, args.sesion, message, now)
+            text = conversation.context(conn, cfg.core, now, chat=args.chat, chat_type=args.tipo, session=args.sesion,
+                                        subjects=subjects)
             print(json.dumps({"contexto": text}, ensure_ascii=False))
             return 0
         if args.cmd == "citas":

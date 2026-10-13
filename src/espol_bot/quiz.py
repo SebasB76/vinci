@@ -189,6 +189,46 @@ def send(channel: Telegram | WhatsApp, notebook: Notebook, topic: str, questions
                        "pregunta. Contéstale en una línea, sin repetir las preguntas ni revelar las respuestas."}
 
 
+def progress(core: CoreConfig, code: str, quiz_id: int) -> dict | None:
+    """How far a quiz went: its topic, questions, answered, right and whether it is over; None when it is gone."""
+    notebook = Notebook(core, code)
+    try:
+        if not notebook.db_path.exists():
+            return None
+        conn = _db(notebook)
+        quiz = conn.execute("SELECT topic, finished_at FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
+        if quiz is None:
+            return None
+        rows = conn.execute("SELECT chosen, correct FROM quiz_questions WHERE quiz_id = ?", (quiz_id,)).fetchall()
+    finally:
+        notebook.close()
+    answered = [r for r in rows if r["chosen"] is not None]
+    return {"topic": quiz["topic"], "questions": len(rows), "answered": len(answered),
+            "right": sum(r["chosen"] == r["correct"] for r in answered), "finished": quiz["finished_at"] is not None}
+
+
+def resend(channel: WhatsApp, core: CoreConfig, code: str, quiz_id: int) -> int:
+    """The questions still unanswered, as new polls at the bottom of the chat; a vote on an old one no longer counts.
+    How many went."""
+    notebook = Notebook(core, code)
+    try:
+        conn = _db(notebook)
+        total = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = ?", (quiz_id,)).fetchone()[0]
+        rows = conn.execute("SELECT * FROM quiz_questions WHERE quiz_id = ? AND chosen IS NULL ORDER BY position",
+                            (quiz_id,)).fetchall()
+        for r in rows:
+            q = Question(r["question"], json.loads(r["options"]), r["correct"], r["explanation"] or "", r["source"],
+                         r["source_url"])
+            poll_id = _post(channel, code, f"{r['position']}/{total}. {q.text}", q)
+            conn.execute("UPDATE quiz_questions SET poll_id = ? WHERE poll_id = ?", (poll_id, r["poll_id"]))
+            conn.commit()
+        return len(rows)
+    except (TelegramError, KeyError, TypeError) as exc:
+        raise QuizError(f"No pude volver a mandar las preguntas: {exc}") from None
+    finally:
+        notebook.close()
+
+
 def answer(core: CoreConfig, code: str, poll_id: str, chosen: int, now: datetime) -> str:
     """A vote in a WhatsApp quiz poll, which shows no right answer: whether it was right and why (HTML), and after
     the last question the score. Empty for a poll that is not a quiz question."""

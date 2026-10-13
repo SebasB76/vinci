@@ -47,9 +47,11 @@ el voto lo deshace.
 **Tus materias, en un solo chat.** No hay un bot por materia: Vinci sabe de qué materia hablas en cada mensaje.
 1. Si nombras la materia («en Estadística: no entendí la varianza»), usa esa.
 2. Si respondes a un aviso, a un brief o a un resumen de apuntes, usa la materia de ese mensaje.
-3. Si mandas una foto o una nota de voz durante tu clase, o hasta una hora después, usa la materia de esa clase
+3. Si nombraste una materia en las últimas 3 horas («estamos en Física»), lo que mandes sin materia (una foto, una
+   nota de voz, «anota…») es de esa. Si a la vez estás en clase de otra, te pregunta cuál.
+4. Si mandas una foto o una nota de voz durante tu clase, o hasta una hora después, usa la materia de esa clase
    según tu horario.
-4. Si nada de eso alcanza, te pregunta cuál es.
+5. Si nada de eso alcanza, te pregunta cuál es.
 
 Cada materia tiene su cuaderno: lo que se vio en clase, tus dudas, los temas que te cuestan, las fotos de la pizarra y
 tus notas de voz. Vinci te confirma dónde guardó cada cosa («📘 Estadística · guardé la foto»); si se equivocó, dile
@@ -68,7 +70,12 @@ su encuesta en vez de botones.
 - **Entregar a mano.** Mándale las fotos (o el PDF) y dile de qué tarea es: arma el PDF y te lo manda con la
   encuesta «📤 Entregar / Cancelar». Se sube al aula solo con tu voto.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
-  te dice si acertaste y por qué, y al final tu puntaje.
+  te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
+  contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al
+  final del chat.
+- **Dejar algo y retomarlo.** Lo mismo vale para una sesión de estudio: «tengo 20 minutos, repasemos derivadas»,
+  luego otra pregunta, luego «sigamos». Vinci guarda por dónde iban, aunque el chat empiece de cero o se reinicie.
+  Lo que dejas más de 3 días ya no te lo recuerda.
 - **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
   respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
   con faster-whisper (`setup.sh` lo instala en Hermes), y Vinci te muestra primero lo que entendió (🎙️).

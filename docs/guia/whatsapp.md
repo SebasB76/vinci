@@ -90,6 +90,19 @@ nadie se lo pida:
 Los avisos nunca llevan notas, entregas hechas ni tu cuaderno. «@vinci desactiva los avisos» los apaga. Solo tú
 puedes encenderlos, y funcionan aunque el grupo esté apagado para las preguntas.
 
+**Grupo de confianza.** En un grupo de amigos que comparten su aula entre sí, escribe «@vinci este grupo es de
+confianza» (también enciende los avisos). Ahí los avisos usan el aula de cada amigo con su Vinci que está en el
+grupo:
+
+- el recordatorio de clase menciona a quienes están en tu mismo paralelo de esa materia, y en una clase virtual
+  trae el enlace de Zoom, Teams o Meet si está en el aula;
+- en «Vence esta semana», cada tarea dice quién ya la entregó y menciona a quien le falta;
+- las novedades también salen del aula de tus amigos, una sola vez aunque varios tengan la materia, y mencionan a
+  quien la ve.
+
+Una nota sale en el grupo solo si alguien la pide. «@vinci este grupo ya no es de confianza» vuelve a los avisos
+simples.
+
 En un grupo, Vinci sabe quién le escribe y empieza con su nombre cuando habla de su aula. Da entregas, plazos y
 notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por privado. Vinci no contesta los
 stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no

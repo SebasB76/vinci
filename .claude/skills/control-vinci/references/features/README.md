@@ -35,6 +35,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it, by name, with no unasked reminders; ignores stickers; starts over after 4 h idle | yes | `whatsapp.md` «Vinci en WhatsApp» |
 | A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
 | Group notices («@vinci activa los avisos») | not available | yes; a reminder `brief_minutos_antes` before each class (room, virtual, what is due in 7 days), plus new announcements, assignments and due-date changes; no model | yes (`src/espol_bot/avisos.py`) | `whatsapp.md` «Vinci en WhatsApp» |
+| Trusted group («@vinci este grupo es de confianza») | not available | yes; the notices tag who has the subject (same paralelo for a class), say who handed in each task, carry a virtual class's meeting link, and pass on the friends' aula news once | yes (`src/espol_bot/avisos.py`) | `whatsapp.md` «Vinci en WhatsApp» |
 | Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | `whatsapp.md` «Vinci en WhatsApp» |
 
 ## Code and verification

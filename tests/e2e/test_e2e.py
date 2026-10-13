@@ -33,7 +33,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names
   and asks which one when nothing says it; `vinci-check say` talks to it.
 
-test_whatsapp_friend: a group the captain turns on, and its notices (a reminder before a class); his friend Angel invited with a Vinci of his own (his token through
+test_whatsapp_friend: a group the captain turns on, and its notices (a reminder before a class; trusted, a friend's
+  news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, a quote, a sticker, a group
   that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»); his alerts; the block for whoever is not a Vinci's owner; Angel
@@ -1034,7 +1035,7 @@ def test_canvas(tmp_path):
             assert sorted(j["name"] for j in jobs) == ["vinci-agenda", "vinci-apuntes", "vinci-mantenimiento",
                                                        "vinci-resumen", "vinci-sondeo"], jobs
             by_name = {j["name"]: j for j in jobs}
-            assert by_name["vinci-sondeo"]["schedule_display"] == "15,45 * * * *", "cada 30 min, lejos del resumen"
+            assert by_name["vinci-sondeo"]["schedule_display"] == "5,15,25,35,45,55 * * * *", "cada 10 min, lejos del resumen"
             assert by_name["vinci-mantenimiento"]["schedule_display"] == "2,12,22,32,42,52 * * * *"
             assert by_name["vinci-apuntes"]["schedule_display"] == "* * * * *", "la carpeta de notas, cada minuto"
             assert by_name["vinci-resumen"]["schedule"].get("expr") == "0 7 * * *" or \
@@ -2001,6 +2002,10 @@ def test_whatsapp_friend(tmp_path):
         # 10i. Angel's alerts reach his own chat, never the captain's
         angel_env = {"AULA_SECRETS": str(angel_dir / "secrets.env"), "AULA_DATA_DIR": str(angel_dir),
                      "ESPOL_AMIGO": "angel"}
+        trust = say(GROUP_WA, captain_jid, "@vinci este grupo es de confianza", "Capitán", group=True)
+        assert "es de confianza" in text_of(trust), text_of(trust)
+        assert json.loads((data_dir / "amigos" / "whatsapp.json").read_text())["confianza"] == [GROUP_WA]
+        run([bot, "sondeo"], "2026-09-30T08:50:00-05:00")  # the captain's poll starts reading Angel's news from here
         canvas.set_account_state("canvas-amigo", "state2")
         mark = len(wa.sent)
         run([bot, "sondeo"], "2026-09-30T09:00:00-05:00", env_extra=angel_env)
@@ -2008,6 +2013,16 @@ def test_whatsapp_friend(tmp_path):
                                        m.get("message", "")], 30)
         assert alert and "<b>" not in alert[0]["message"], alert
         md.append(f"→ a Angel (sondeo de su Vinci): {normalize(alert[0]['message'])}\n")
+        # 10i'. In a trusted group the captain's poll passes on Angel's news too, tagging him, in one message, once
+        run([bot, "sondeo"], "2026-09-30T09:05:00-05:00")
+        news = [m for m in wa.messages_to(GROUP_WA, mark) if "Novedades del aula" in m.get("message", "")]
+        assert len(news) == 1 and "Coordenadas polares" in news[0]["message"], news
+        assert f"@{ANGEL_WA}" in news[0]["message"] and news[0].get("mentions") == [angel_jid], news[0]
+        run([bot, "sondeo"], "2026-09-30T09:15:00-05:00")
+        assert len([m for m in wa.messages_to(GROUP_WA, mark) if "Novedades del aula" in m.get("message", "")]) == 1
+        md.append(f"→ al grupo de confianza (sondeo del capitán): {normalize(news[0]['message'])}\n")
+        report.append("En un grupo de confianza («@vinci este grupo es de confianza»), el sondeo del capitán pasa al "
+                      "grupo lo nuevo del aula de Angel, en un solo mensaje que lo menciona, y no lo repite")
         before = set(parse_env_file(angel_dir / "secrets.env").values())
         canvas.expire(ANGEL_TOKEN)  # ESPOL's hour: the seed, kept as the chain's probe, is dead by 09:45
         run([bot, "mantenimiento"], "2026-09-30T09:45:00-05:00", env_extra=angel_env)

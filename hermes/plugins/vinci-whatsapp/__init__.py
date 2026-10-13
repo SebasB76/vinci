@@ -12,7 +12,8 @@ friend's and in the default one; it acts only on WhatsApp.
   (/new, /usage, /stop, /help) go on to Hermes.
 - A group: only a mention of Vinci gets here (Hermes' require_mention). The captain's «@vinci activa este grupo» /
   «desactiva este grupo» turns it on or off (`espol-bot whatsapp-grupo`); «activa los avisos» / «desactiva los
-  avisos» do the same for the class reminders and the aula's news there (avisos.py). In a group that is on, the captain and
+  avisos» do the same for the class reminders and the aula's news there (avisos.py); «este grupo es de confianza»
+  makes it a friends' group, where those notices tag people and say who handed in. In a group that is on, the captain and
   every friend with their own Vinci go on to it (Hermes routes each sender to their profile); a friend still
   without one, or anyone else, gets a fixed answer. A group that is off gets nothing.
 - A friend's private chat: the ciphertext the token page gave them goes to `espol-bot amigo token` on stdin, so
@@ -86,6 +87,8 @@ QUIZ = "Hazme un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacad
 PRIVATE = "Eso te lo contesto por privado: escríbeme /{0} en nuestro chat."
 ON_RE = re.compile(r"\bactiva(?:r|te)? (?:este|el) grupo\b")
 OFF_RE = re.compile(r"\bdesactiva(?:r|te)? (?:este|el) grupo\b")
+TRUST_OFF_RE = re.compile(r"\b(?:este|el) grupo (?:ya )?no es de confianza\b")
+TRUST_ON_RE = re.compile(r"\b(?:este|el) grupo es de confianza\b")
 NOTICES_ON_RE = re.compile(r"\b(?:activa(?:r)?|manda(?:r)?) (?:los )?avisos\b")
 NOTICES_OFF_RE = re.compile(r"\b(?:desactiva(?:r)?|quita(?:r)?) (?:los )?avisos\b|\bno mandes (?:los )?avisos\b")
 NO_VINCI = ("Todavía no tengo tu aula, así que no puedo contestarte con lo tuyo. Pídele a quien maneja Vinci que te "
@@ -172,6 +175,10 @@ async def _sort(event, source, gateway):
 
     if chat.endswith("@g.us"):
         plain = _plain(text)
+        if captain and (TRUST_OFF_RE.search(plain) or TRUST_ON_RE.search(plain)):
+            action = "sin-confianza" if TRUST_OFF_RE.search(plain) else "confianza"
+            await _answer(chat, await _run("whatsapp-grupo", action, chat), reply_to, gateway)
+            return _skip(f"grupo {action}")
         if captain and (NOTICES_OFF_RE.search(plain) or NOTICES_ON_RE.search(plain)):
             action = "sin-avisos" if NOTICES_OFF_RE.search(plain) else "avisos"
             await _answer(chat, await _run("whatsapp-grupo", action, chat), reply_to, gateway)

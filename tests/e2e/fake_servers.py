@@ -229,6 +229,7 @@ class FakeWhatsApp(_Server):
         self.served: list[float] = []  # when Hermes polled /messages
         self.failing: set[str] = set()  # POST paths that answer 503 (a bridge that lost WhatsApp) until removed
         self.missing: set[str] = set()  # POST paths that answer 404 (a route this bridge does not have)
+        self.members: dict[str, set[str]] = {}  # group → whoever wrote there, as /chat/<id> lists its participants
         self.lock = threading.Lock()
         self._ids = itertools.count(1)
 
@@ -243,6 +244,8 @@ class FakeWhatsApp(_Server):
         quoted = ({"hasQuotedMessage": True, "quotedMessageId": f"BOT{next(self._ids):06d}", "quotedText": quote,
                    "quotedParticipant": self.BOT, "quotedRemoteJid": chat} if quote else {})
         with self.lock:
+            if group:
+                self.members.setdefault(chat, set()).add(sender)
             self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
                                "senderName": name or sender.split("@")[0], "chatName": name if not group else "Grupo",
                                "isGroup": group, "body": text, "hasMedia": False, "mediaType": "", "mediaUrls": [],
@@ -328,7 +331,9 @@ class _WhatsAppHandler(_Quiet):
             return self._json(200, batch)
         if path.startswith("/chat/"):
             chat = unquote(path[len("/chat/"):])
-            return self._json(200, {"name": chat.split("@")[0], "isGroup": chat.endswith("@g.us"), "participants": []})
+            with bridge.lock:
+                inside = sorted(bridge.members.get(chat, ()))
+            return self._json(200, {"name": chat.split("@")[0], "isGroup": chat.endswith("@g.us"), "participants": inside})
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):

@@ -279,14 +279,14 @@ class Bot:
     def _deliver_events(self, result: PollResult, now: datetime) -> None:
         events = core_sync.pending_events(self.conn)
         result.events = len(events)
-        if not events:
-            return
-        if not self.cfg.friend:
+        if not self.cfg.friend:  # also with nothing new here: a trusted group takes the friends' aulas too
             try:
                 from espol_bot import avisos
-                avisos.send_events(self.cfg, events, now)
+                avisos.send_events(self.cfg, self.conn, events, now)
             except Exception:
                 log.exception("avisos a los grupos")
+        if not events:
+            return
         if len(events) > self.cfg.max_messages_per_poll:
             text = messages.digest(events, self.tz)
             self._send(text, [ev["course_id"] for ev in events])

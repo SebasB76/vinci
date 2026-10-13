@@ -171,7 +171,9 @@ def stale_notice(stale, tz: ZoneInfo) -> str:
 
 
 def reminder_message(task: dict, hours: int, tz: ZoneInfo, now: datetime, stale=None) -> str:
-    offline = "\n(No tiene entrega en línea: revisa cómo se entrega.)" if task["sin_entrega_en_linea"] else ""
+    offline = {"external_submission": "\n(Se entrega fuera del aula: si ya lo hiciste, márcalo como entregado.)",
+               "scheduled_event": "\n(Es presencial: no hay nada que subir.)",
+               "unknown": "\n(El aula no dice cómo se entrega: revisa la consigna.)"}.get(task.get("delivery"), "")
     since = f"Al {e(timefmt.human(stale.since, tz))}" if stale else ""
     answered = f"{since} no lo habías respondido (no leo el aula desde entonces)." if stale else "Aún no lo has respondido."
     handed = f"{since} no la habías entregado (no leo el aula desde entonces)." if stale else "Aún no la has entregado."

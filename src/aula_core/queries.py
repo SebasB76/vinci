@@ -4,6 +4,7 @@ so the CLI, the bot, or a future web page can render them however they like."""
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,13 +12,31 @@ from pathlib import Path
 from aula_core import extract, ocr, timefmt
 from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, assigned_files, fold, is_old, term_year
 
+# A grade on something Canvas takes no upload for is the only sign from the aula that it is done.
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
             " OR COALESCE(a.sub_state, '') IN ('submitted', 'graded', 'pending_review')"
+            " OR (COALESCE(a.submission_types, '') IN ('none', 'on_paper', 'external_tool') AND a.score IS NOT NULL)"
             " OR a.id IN (SELECT assignment_id FROM marked_submitted))")
 OFFLINE_TYPES = {"none", "on_paper"}
 QUIZ_FIELDS = ("question_count", "time_limit", "allowed_attempts", "unlock_at", "lock_at", "hide_results")
-QUIZ_SQL = ", ".join(f"q.{f} AS quiz_{f}" for f in QUIZ_FIELDS) + ", q.quiz_id"
+QUIZ_SQL = (", ".join(f"q.{f} AS quiz_{f}" for f in QUIZ_FIELDS) + ", q.quiz_id"
+            ", (SELECT kind FROM assignment_delivery d WHERE d.assignment_id = a.id) AS delivery_said")
 QUIZ_JOIN = "LEFT JOIN quizzes q ON q.assignment_id = a.id"
+
+# How an assignment is handed in. For «none» and «on_paper» Canvas only says that nothing is uploaded there, which
+# fits an exam in class as well as a lab finished on another platform: the instructions tell them apart, and the
+# student's word (assignment_delivery) wins over both. Only a past event leaves the pending list on its own.
+CANVAS_SUBMISSION, EXTERNAL_SUBMISSION, SCHEDULED_EVENT, UNKNOWN = (
+    "canvas_submission", "external_submission", "scheduled_event", "unknown")
+DELIVERIES = (CANVAS_SUBMISSION, EXTERNAL_SUBMISSION, SCHEDULED_EVENT, UNKNOWN)
+DELIVERY_LABEL = {CANVAS_SUBMISSION: "se entrega en el aula", EXTERNAL_SUBMISSION: "se entrega fuera del aula",
+                  SCHEDULED_EVENT: "es presencial: no hay nada que subir",
+                  UNKNOWN: "el aula no dice cómo se entrega"}
+# Over the folded instructions. Canvas itself appends «(Enlaces a un sitio externo.)» to a link that leaves the aula.
+ELSEWHERE_RE = re.compile(r"\b(plataforma|laboratorio|labs?|submit|suban|subir|sube|subirlo|envien|enviar|repositorio|"
+                          r"github|formulario|evidencia|captura|perusall|sitio externo)\b")
+IN_PERSON_RE = re.compile(r"\b(examen(es)?|leccion(es)?|presencial|exposicion(es)?|sustentacion|defensa|prueba escrita|"
+                          r"evaluacion escrita|asistencias?|participacion)\b")
 
 
 class NotFound(Exception):
@@ -51,17 +70,39 @@ def _course_filter(ids: list[int] | None, column: str) -> tuple[str, list]:
     return f" AND {column} IN ({','.join('?' * len(ids))})", list(ids)
 
 
+def delivery(r: sqlite3.Row) -> tuple[str, str]:
+    """(kind, what it rests on: «student», «canvas», «instructions», «title» or «no_instructions»)."""
+    if r["delivery_said"] in DELIVERIES:
+        return r["delivery_said"], "student"
+    types = set((r["submission_types"] or "").split(",")) - {""}
+    if "external_tool" in types:
+        return EXTERNAL_SUBMISSION, "canvas"
+    if not types or not types <= OFFLINE_TYPES:
+        return CANVAS_SUBMISSION, "canvas"
+    material = json.loads(r["material"] or "{}")
+    if not r["description"] and not material.get("files") and not material.get("links"):
+        # a grade column (the exam, participation), unless its name points elsewhere («PERUSALL: …»)
+        return (EXTERNAL_SUBMISSION, "title") if ELSEWHERE_RE.search(fold(r["name"])) else (SCHEDULED_EVENT,
+                                                                                            "no_instructions")
+    text = fold(r["description"])
+    elsewhere, in_person = bool(ELSEWHERE_RE.search(text)), bool(IN_PERSON_RE.search(text))
+    if elsewhere != in_person:
+        return (EXTERNAL_SUBMISSION if elsewhere else SCHEDULED_EVENT), "instructions"
+    return UNKNOWN, "instructions"
+
+
 def _assignment(r: sqlite3.Row, now: datetime) -> dict:
     types = set((r["submission_types"] or "").split(",")) - {""}
     done = bool(r["done"])
     due = timefmt.parse(r["due_at"])
-    offline = bool(types) and types <= OFFLINE_TYPES
+    kind, basis = delivery(r)
     return {
         "id": r["id"], "curso": r["course_name"], "curso_id": r["course_id"], "tarea": r["name"],
         "vence": r["due_at"], "entregada": done,
-        # Canvas never records a submission for paper/no-submission items, so they are never "late".
-        "atrasada": bool(due and due < now and not done and not offline),
-        "sin_entrega_en_linea": offline,
+        # An event that passed was held, not missed; work done elsewhere is late until marked or graded.
+        "atrasada": bool(due and due < now and not done and kind != SCHEDULED_EVENT),
+        "sin_entrega_en_linea": bool(types) and types <= OFFLINE_TYPES,
+        "delivery": kind, "delivery_basis": basis,
         "puntos": r["points_possible"], "nota": r["score"], "calificacion": r["grade"], "url": r["html_url"],
         "quiz": quiz_info(r, "quiz_"),
     }
@@ -103,8 +144,8 @@ def pending(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = Non
         [since, *([until] if until else []), *params],
     ).fetchall()
     tasks = [_assignment(r, now) for r in rows]
-    # A paper exam from yesterday is not "pending": it just never gets a Canvas submission.
-    return [t for t in tasks if not (t["sin_entrega_en_linea"] and t["vence"] and timefmt.parse(t["vence"]) < now)]
+    # A paper exam from yesterday is not "pending"; a lab handed in on another platform still is.
+    return [t for t in tasks if not (t["delivery"] == SCHEDULED_EVENT and t["vence"] and timefmt.parse(t["vence"]) < now)]
 
 
 def assignment(conn: sqlite3.Connection, now: datetime, assignment_id: int, ids: list[int] | None = None) -> dict:

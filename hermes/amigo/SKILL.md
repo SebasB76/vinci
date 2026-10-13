@@ -25,6 +25,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 | Guardar cómo se evalúa una materia / una nota que no está en el aula | `propose_grading_scheme`, `record_grade` |
 | Anotar algo en su lista («anota: …», «recuérdame …») | `add_todo` (`text`, `subject`, `due`) |
 | «Ya lo entregué» (por fuera del aula) / «ya lo hice» | `marcar_entregada` (`tarea_id`), `marcar_hecho` (`id`) |
+| Cómo se entrega una tarea, cuando él te corrige | `set_assignment_delivery` (`tarea_id`, `delivery`) |
 | Material: catálogo, buscar, leer (también un enlace de fuera) | `archivos`, `buscar_material`, `leer_archivo` |
 | El libro principal de una materia | `libro_principal` (`materia`) |
 | Exámenes anteriores de cualquier materia (DSpace): buscar, abrir, resolver | `find_past_exams`, `open_past_exam` |
@@ -55,6 +56,11 @@ no está en el aula («saqué 16/20 en la lección») va con `record_grade`.
 - «Ya entregué el Perusall» (en papel, por correo, o no lo va a hacer): `marcar_entregada` con el «id» de `tareas`;
   deja de recordárselo. «Ya hice lo de …»: `marcar_hecho` con el «id» de su lista. Nada de esto cambia el aula.
 - Los recordatorios del aula también traen esa encuesta: votar es lo mismo que decírtelo.
+- Cada tarea trae `delivery`: `canvas_submission` (se sube al aula), `external_submission` (se hace fuera: un lab en
+  otra plataforma, Perusall, en papel; sigue pendiente aunque venza, hasta que la marque o tenga nota),
+  `scheduled_event` (presencial; sale sola cuando pasa) o `unknown` (el aula no lo dice: si venció, pregúntale si la
+  hizo). Si te dice que se entrega de otra forma, `set_assignment_delivery`; si marcó algo por error,
+  `marcar_entregada` con `entregada: false`.
 
 ## Material
 

@@ -13,7 +13,8 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
 1. En tu proyecto, pulsa **+ New** → **Public Repository** y pega la dirección de este repo, rama `main`.
 2. En **Build Pack**, elige **Dockerfile**. Vinci no abre ningún puerto: deja vacíos el dominio y los puertos.
 3. En **Persistent Storage**, agrega un volumen montado en `/opt/data`.
-4. En **Advanced**, activa **Consistent Container Names**. Con un nombre fijo, Coolify apaga el contenedor viejo antes
+4. En **Advanced → Container → Container naming**, elige **Consistent name (no rolling updates)**. En versiones
+   anteriores, la opción se llama **Consistent Container Names**. Con un nombre fijo, Coolify apaga el contenedor viejo antes
    de encender el nuevo en cada despliegue. Sin eso, los dos corren a la vez un momento sobre el mismo volumen. No
    actives **Preview Deployments**, y deja una sola réplica.
 5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Si Vinci llega al tope, se
@@ -34,6 +35,12 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    cron jobs y los plugins.
 8. Espera a que Coolify muestre la app como **Healthy**, no solo **Running**. La imagen marca **Unhealthy** si la
    creación de perfiles falló o si el gateway no corre: en ese caso, mira los **Logs** (las líneas `[vinci]`).
+   Si vas a importar tu instalación y aún no cargaste los secretos, el primer arranque puede aparecer como
+   **Unhealthy**. Continúa con la importación: cuando crea los perfiles correctamente, elimina esa marca de fallo.
+   **Healthy** comprueba el proceso del gateway; confirma una respuesta por WhatsApp para verificar también el modelo.
+
+Conserva el arranque de la imagen y no agregues `--init` en **Custom Docker options**. Hermes necesita controlar el
+proceso inicial del contenedor para ejecutar la preparación de Vinci y supervisar el gateway.
 
 Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se transcriben con la misma key de
 OpenAI. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
@@ -51,6 +58,8 @@ el chip otra vez.
 3. Sirve solo esa carpeta con un túnel temporal: corre el `python3 -m http.server 8765 --directory …` que te mostró el
    paso 2, y `cloudflared tunnel --url http://localhost:8765` en otra terminal. No sirvas la carpeta del repo: ahí
    está tu `secrets.env` sin cifrar.
+   Si elegiste un archivo de salida con `export ARCHIVO`, copia únicamente ese archivo a una carpeta vacía antes
+   de servirlo. La exportación con ruta personalizada no muestra un comando para publicar su carpeta.
 4. En Coolify, abre la **Terminal** del contenedor de Vinci y corre `vinci-move import https://…/vinci-export.bin`.
    Escribe la clave cuando la pida. Vinci corrige las rutas de tu PC, guarda aparte lo que ya había en el volumen y
    enciende el gateway.
@@ -70,4 +79,3 @@ contenedor:
 
 Desde la Terminal de Coolify usa siempre `espol-bot`, `vinci-move` y `hermes` tal cual: los tres corren como el
 usuario de Hermes, y así no dejan archivos que el gateway no pueda leer.
-

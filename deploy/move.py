@@ -15,6 +15,7 @@ import io
 import json
 import os
 import secrets
+import shlex
 import shutil
 import sqlite3
 import struct
@@ -126,7 +127,7 @@ def _gateway_running() -> bool:
     return False
 
 
-def export(target: Path) -> int:
+def export(target: Path, *, isolated_directory: bool = False) -> int:
     if _gateway_running():
         raise SystemExit("El gateway de Hermes está encendido. Apágalo (hermes gateway stop) y vuelve a correr esto: "
                          "así la copia sale entera y el número de WhatsApp no queda abierto en dos lugares.")
@@ -154,7 +155,10 @@ def export(target: Path) -> int:
     print(f"Listo: {target} ({target.stat().st_size / 1e6:.0f} MB), con {len(profiles)} perfiles: "
           f"{', '.join(p.name for p in profiles)}.")
     print(f"Clave para importarlo (no la pegues en un chat): {passphrase}")
-    print(f"Para servirlo, solo esa carpeta: python3 -m http.server 8765 --directory {target.parent}")
+    if isolated_directory:
+        print(f"Para servirlo, solo esa carpeta: python3 -m http.server 8765 --directory {shlex.quote(str(target.parent))}")
+    else:
+        print("Para servirlo, copia únicamente este archivo a una carpeta vacía. No sirvas la carpeta del repo.")
     return 0
 
 
@@ -209,16 +213,19 @@ def import_(source: str) -> int:
 
     rewritten = sum(_rewrite_paths(db, manifest["data_dir"], str(data)) for db in data.rglob("espol.db"))
     print(f"Datos en {data}; {rewritten} rutas de la PC corregidas. Lo que había antes quedó en {aside}.")
-    subprocess.run([bot, "hermes-perfil"], check=False)
-    subprocess.run([hermes, "gateway", "start"], env=env, check=False)
+    subprocess.run([bot, "hermes-perfil"], check=True)
+    (root / "vinci" / "boot-failed").unlink(missing_ok=True)
+    subprocess.run([hermes, "gateway", "start"], env=env, check=True)
     return 0
 
 
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "export":
         # A folder of its own by default: a server over the repo would also hand out secrets.env.
+        if len(sys.argv) > 2:
+            return export(Path(sys.argv[2]).resolve())
         folder = Path(tempfile.mkdtemp(prefix="vinci-move-"))
-        return export(Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else folder / "vinci-export.bin")
+        return export(folder / "vinci-export.bin", isolated_directory=True)
     if len(sys.argv) == 3 and sys.argv[1] == "import":
         return import_(sys.argv[2])
     print(__doc__.strip())

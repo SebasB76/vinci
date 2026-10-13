@@ -31,8 +31,10 @@ test_canvas, no gateway:
 test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes his WhatsApp to Vinci (and anyone else
   to Vinci's guest tools); his week; work handed in outside the aula stays pending and late until he says it is done
   (and back with «todavía no»), an exam held in class leaves on its own, and the summary lists the same; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
-  brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names
-  and asks which one when nothing says it; `vinci-check say` talks to it.
+  brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names,
+  and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
+  half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
+  poll; `vinci-check say` talks to it.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
@@ -500,7 +502,8 @@ class Script:
         if "háblanos en plural" in text and not called:
             return _call("mcp__vinci__chat_note", text="Hablarles en plural, como «nosotros»")
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
-                or self.vinci_material(text, called, results) or self.pending(text, called, results))
+                or self.vinci_material(text, called, results) or self.pending(text, called, results)
+                or self.vinci_study(text, called, results))
         if flow is not None:
             return flow
         if results:
@@ -551,6 +554,30 @@ class Script:
         if "terminal" in text:
             return _call("terminal", command=f"touch {self.pwned}")
         return {"content": "Hola, soy Vinci. ¿En qué te ayudo?"}
+
+    @staticmethod
+    def vinci_study(text: str, called: list[str], results: list[str]) -> dict | None:
+        """/quiz on WhatsApp: questions from the notebook, sent as polls; left for something else and taken up again
+        («sigamos con el quiz»), which sends back only the ones still unanswered."""
+        if "Hazme un quiz corto de integrales dobles" in text:
+            if not called:
+                return _call("mcp__vinci__cuaderno", materia="cálculo")
+            if called == ["mcp__vinci__cuaderno"]:
+                entries = _json(results[-1])["entradas"][:2]
+                return _call("mcp__vinci__send_quiz", materia="cálculo", topic="Integrales dobles", questions=[
+                    {"question": f"¿Qué anotaste el {e['creado'][:10]} (#{e['id']})?",
+                     "options": [e["texto"], "La serie de Taylor", "Nada"], "answer": e["texto"],
+                     "explanation": "Lo dice tu cuaderno.", "entry_id": e["id"]} for e in entries])
+            data = _json(results[-1])
+            return {"content": f"📝 Te mandé el quiz: {data['questions']} preguntas como encuestas."
+                    if isinstance(data, dict) and data.get("quiz") else _problem(results[-1])}
+        if "sigamos con el quiz" in text:
+            if not called:
+                return _call("mcp__vinci__study_activity", action="resume")
+            data = _json(results[-1])
+            return {"content": data.get("message") if isinstance(data, dict) and data.get("message")
+                    else _problem(results[-1])}
+        return None
 
     def portal(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """The Académico: asked with no copy, the tool sends the sign-in button; the question comes back on its own
@@ -1019,6 +1046,12 @@ def ready_gateway(w, *, voice: bool = False) -> None:
 
     w.fail, w.start, w.say = fail, start, say
     start()
+
+
+def turn_context(requests: list[dict]) -> str:
+    """What Vinci read as the student's message in the first of these turns, with the chat's context at its end."""
+    first = next(r for r in requests if bot_of(r) == "Vinci")
+    return flatten([m for m in first["messages"] if m.get("role") == "user"][-1].get("content"))
 
 
 def text_of(messages: list[dict]) -> str:
@@ -1699,16 +1732,50 @@ def test_whatsapp_captain(tmp_path):
                    for t in r.get("tools") or []}
         assert {"mcp__vinci__anotar", "mcp__vinci__guardar_adjunto", "ver_pagina", "ver_foto"} <= offered, offered
         assert not offered & {"mcp__vinci__entregar_a_materia", "mcp__vinci__proponer_equipo"}, offered
+        calls = len(llm.requests)
         which = text_of(say(captain_jid, captain_jid, "pon en el cuaderno que no entendí la regla de L'Hôpital",
                             "Capitán"))
-        assert "No sé de qué materia es" in which, which
+        assert "📘 Cálculo de una Variable · anotado en el cuaderno" in which, \
+            f"sin materia, la nota va a la que nombró hace un momento: {which}"
+        assert "Materia en foco: Cálculo de una Variable" in turn_context(llm.requests[calls:]), which
+
+        # 10m'. A quiz left for something else stays open, out of the way, and is taken up where it was
+        mark = len(wa.sent)
+        say(captain_jid, captain_jid, "/quiz integrales dobles", "Capitán")
+        polls = wa.wait_for(lambda b: b.polls_to(captain_jid, mark) if len(b.polls_to(captain_jid, mark)) == 2
+                            else None, 30)
+        assert polls and polls[0]["question"].startswith("1/2."), fail(f"el quiz no llegó: {wa.sent[mark:]}")
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, polls[0]["messageId"], polls[0]["options"][0])
+        assert wa.wait_for(lambda b: b.messages_to(captain_jid, mark), 60), fail("el voto no tuvo respuesta")
+        calls = len(llm.requests)
+        assert "Esta semana:" in text_of(say(captain_jid, captain_jid, "qué tengo esta semana", "Capitán"))
+        seen = turn_context(llm.requests[calls:])
+        assert re.search(r"Actividades abiertas aquí: #\d+ quiz «Integrales dobles» de Cálculo de una Variable "
+                         r"\(en curso\): respondió 1 de 2", seen), seen
+        mark = len(wa.sent)
+        resumed = text_of(say(captain_jid, captain_jid, "sigamos con el quiz", "Capitán"))
+        assert "Le mandé de nuevo las 1 pregunta(s)" in resumed, resumed
+        again = wa.polls_to(captain_jid, mark)
+        assert [p["question"][:4] for p in again] == ["2/2."], again
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, again[0]["messageId"], again[0]["options"][0])
+        score = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Quiz: Integrales dobles" in m.get("message", "")],
+                            60)
+        assert score, fail(f"sin puntaje al terminar: {wa.messages_to(captain_jid, mark)}")
+        md.append(f"**Capitán**: /quiz integrales dobles → [2 encuestas]; vota la 1; «qué tengo esta semana»; "
+                  f"«sigamos con el quiz» → Vinci: {normalize(resumed)} → [la 2/2 otra vez]; vota → "
+                  f"{normalize(text_of(score))[:200]}\n")
 
         checked = run([str(VENV_BIN / "vinci-check"), "say", "qué tengo esta semana", "--timeout", "150"], T_VINCI,
                       check=False)
         assert checked.returncode == 0 and "Esta semana:" in checked.stdout, checked.stdout + checked.stderr
         report.append("`espol-bot agenda` pone el brief de Cálculo en el chat del capitán como tarea del sistema y "
-                      "Vinci lo contesta ahí; Vinci escribe el cuaderno de la materia que le nombran y, si nada dice "
-                      "cuál, pregunta; `vinci-check say` le escribe por WhatsApp y lee su respuesta")
+                      "Vinci lo contesta ahí; Vinci escribe el cuaderno de la materia que le nombran, y una nota sin "
+                      "materia va a la de la que venían hablando (la «materia en foco» que ve en cada mensaje). Un "
+                      "quiz que deja a medias para preguntar otra cosa sigue abierto en el contexto («respondió 1 de "
+                      "2»); «sigamos con el quiz» le vuelve a mandar solo la pregunta que faltaba, y al votarla llega "
+                      "el puntaje. `vinci-check say` le escribe por WhatsApp y lee su respuesta")
         (ARTIFACT / "whatsapp-capitan.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "capitán")
     write_part("test_whatsapp_captain", "WhatsApp: el chat del capitán", w.report, started)

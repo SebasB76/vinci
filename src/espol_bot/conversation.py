@@ -1,31 +1,48 @@
-"""What Vinci knows about the chat it answers, kept outside the model's history: the clock and what kind of chat
-it is, and the notes that hold in that chat only (`chat_note`: how a group wants to be spoken to, something agreed
-there).
+"""What Vinci knows about the conversation it answers, kept outside the model's history so it survives a new
+conversation, a restart and a long chat's summary:
 
-The vinci-botones plugin adds `context()` to every turn's message (hook pre_llm_call, `espol-bot contexto`). Hermes
-stamps a conversation with the day it started, so a chat open for days kept that day as «today»; and a group's habits
-saved in Vinci's memory (MEMORY.md, USER.md, the same in every chat) followed the student into his private chat.
+- the clock and what kind of chat it is;
+- notes that hold in that chat only (`chat_note`: how a group wants to be spoken to, something agreed there);
+- the subject in focus: the one the student last named here, for what comes in without one (a photo, a voice note,
+  «anota…»), while it lasts;
+- the activity open here (a quiz, a study session), active or paused, with where it got to: Vinci answers whatever
+  else comes up without dragging it along, and takes it up again when asked.
+
+The vinci-botones plugin adds `context()` to every turn's message (hook pre_llm_call, `espol-bot contexto`), after
+`note_turn` read the student's message. Hermes stamps a conversation with the day it started, so a chat open for days
+kept that day as «today»; and a group's habits saved in Vinci's memory followed the student into his private chat.
+A focus and an activity belong to one Hermes session key: a private chat, or one person in a group.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aula_core import timefmt
 from aula_core.config import CoreConfig
+from espol_bot import materias
 
 MAX_NOTES = 10
 NOTE_CHARS = 300
+FOCUS_TTL = timedelta(hours=3)
+ACTIVITY_IDLE = timedelta(hours=4)  # an activity left this long is paused: it waits to be asked for again
+ACTIVITY_KEEP = timedelta(days=3)  # one paused longer is not brought up any more (it stays in the table)
+KINDS = {"quiz": "quiz", "study": "sesión de estudio", "jury": "práctica de exposición"}
 HEADER = "[Contexto de este chat: lo agrega el sistema en cada mensaje; el estudiante no lo escribió ni lo ve]"
+SYSTEM_TASK = "[Tarea del sistema"
 
 
 class NoteError(ValueError):
-    """A note the model must fix or drop: the message says why."""
+    """A note or an activity the model must fix: the message says why."""
 
 
 def chat_key(platform: str, chat_id: str) -> str:
     return f"{platform}:{chat_id}" if platform and chat_id else ""
+
+
+# -- notes of one chat --------------------------------------------------------------------
 
 
 def notes(conn: sqlite3.Connection, chat: str) -> list[dict]:
@@ -55,13 +72,150 @@ def remove_note(conn: sqlite3.Connection, chat: str, note_id: int) -> bool:
     return removed
 
 
+# -- the subject in focus -----------------------------------------------------------------
+
+
+def set_focus(conn: sqlite3.Connection, session: str, code: str, now: datetime, how: str) -> None:
+    if not session:
+        return
+    conn.execute("INSERT INTO chat_focus(session, subject, set_at, how) VALUES (?, ?, ?, ?) ON CONFLICT(session) DO "
+                 "UPDATE SET subject = excluded.subject, set_at = excluded.set_at, how = excluded.how",
+                 (session, code, timefmt.iso(now), how))
+    conn.commit()
+
+
+def focus(conn: sqlite3.Connection, session: str, now: datetime) -> dict | None:
+    """{subject (its code), set_at, how} while it lasts (FOCUS_TTL since it was last named), else None."""
+    row = conn.execute("SELECT * FROM chat_focus WHERE session = ?", (session,)).fetchone() if session else None
+    if row is None or now - timefmt.parse(row["set_at"]) > FOCUS_TTL:
+        return None
+    return {"subject": row["subject"], "set_at": row["set_at"], "how": row["how"]}
+
+
+def note_turn(conn: sqlite3.Connection, subjects: list[materias.Subject], session: str, message: str,
+              now: datetime) -> None:
+    """The student's own message: a single subject named in it becomes the focus. A system task (a brief) is not his."""
+    if not session or not message or message.lstrip().startswith(SYSTEM_TASK):
+        return
+    named = materias.mentioned(subjects, message)
+    if len(named) == 1:
+        set_focus(conn, session, named[0].code, now, "named")
+
+
+# -- activities ---------------------------------------------------------------------------
+
+
+def _activity(row: sqlite3.Row) -> dict:
+    return {"id": row["id"], "kind": row["kind"], "subject": row["subject"], "topic": row["topic"],
+            "state": row["state"], "data": json.loads(row["data"] or "{}"), "started_at": row["started_at"],
+            "updated_at": row["updated_at"]}
+
+
+def start_activity(conn: sqlite3.Connection, session: str, kind: str, subject: str | None, topic: str, data: dict,
+                   now: datetime) -> dict:
+    """A new activity, active; the one open before it is paused, not lost."""
+    if kind not in KINDS:
+        raise NoteError(f"«kind» debe ser uno de: {', '.join(KINDS)}.")
+    topic = " ".join(str(topic or "").split())[:120]
+    if not topic:
+        raise NoteError("Falta el tema («topic»).")
+    conn.execute("UPDATE activities SET state = 'paused', updated_at = ? WHERE session = ? AND state = 'active'",
+                 (timefmt.iso(now), session))
+    activity_id = conn.execute(
+        "INSERT INTO activities(session, kind, subject, topic, state, data, started_at, updated_at) "
+        "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+        (session, kind, subject, topic, json.dumps(data, ensure_ascii=False), timefmt.iso(now), timefmt.iso(now))
+    ).lastrowid
+    conn.commit()
+    return activity(conn, activity_id)
+
+
+def activity(conn: sqlite3.Connection, activity_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM activities WHERE id = ?", (activity_id,)).fetchone()
+    return _activity(row) if row else None
+
+
+def update_activity(conn: sqlite3.Connection, activity_id: int, now: datetime, *, state: str | None = None,
+                    data: dict | None = None) -> dict:
+    current = activity(conn, activity_id)
+    if current is None:
+        raise NoteError("Esa actividad ya no existe.")
+    if state == "active":  # only one active per conversation
+        conn.execute("UPDATE activities SET state = 'paused', updated_at = ? WHERE session = ? AND state = 'active' "
+                     "AND id != ?", (timefmt.iso(now), _session_of(conn, activity_id), activity_id))
+    conn.execute("UPDATE activities SET state = ?, data = ?, updated_at = ? WHERE id = ?",
+                 (state or current["state"], json.dumps(data if data is not None else current["data"],
+                                                        ensure_ascii=False), timefmt.iso(now), activity_id))
+    conn.commit()
+    return activity(conn, activity_id)
+
+
+def _session_of(conn: sqlite3.Connection, activity_id: int) -> str:
+    return conn.execute("SELECT session FROM activities WHERE id = ?", (activity_id,)).fetchone()["session"]
+
+
+def open_activities(conn: sqlite3.Connection, session: str, now: datetime) -> list[dict]:
+    """The activities not done here, newest first; one left alone for ACTIVITY_IDLE is paused on the way, and one
+    untouched for ACTIVITY_KEEP is left out."""
+    if not session:
+        return []
+    found = []
+    for row in conn.execute("SELECT * FROM activities WHERE session = ? AND state != 'completed' AND updated_at >= ? "
+                            "ORDER BY updated_at DESC, id DESC LIMIT 5",
+                            (session, timefmt.iso(now - ACTIVITY_KEEP))).fetchall():
+        item = _activity(row)
+        if item["state"] == "active" and now - timefmt.parse(item["updated_at"]) > ACTIVITY_IDLE:
+            conn.execute("UPDATE activities SET state = 'paused' WHERE id = ?", (item["id"],))
+            conn.commit()
+            item["state"] = "paused"
+        found.append(item)
+    return found
+
+
+# -- the turn's context -------------------------------------------------------------------
+
+
 def clock(now: datetime, core: CoreConfig) -> str:
     local = now.astimezone(core.tz)
     return (f"{timefmt.DAYS_LONG[local.weekday()]} {local.day} {timefmt.MONTHS[local.month - 1]} {local.year}, "
             f"{local:%H:%M}")
 
 
-def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: str, chat_type: str) -> str:
+def _ago(moment: str, now: datetime) -> str:
+    return timefmt.until(moment, now).removeprefix("hace ") or "un momento"
+
+
+def _describe(core: CoreConfig, conn: sqlite3.Connection, item: dict, names: dict[str, str],
+              now: datetime) -> str | None:
+    """One line on an open activity; None for a quiz already answered in full (it is closed on the way)."""
+    from espol_bot import quiz
+    subject = names.get(item["subject"] or "", item["subject"] or "")
+    where = f" de {subject}" if subject else ""
+    state = "en curso" if item["state"] == "active" else "en pausa"
+    if item["kind"] == "quiz":
+        done = quiz.progress(core, item["data"].get("code", ""), int(item["data"].get("quiz_id") or 0))
+        if done is None or done["finished"]:
+            conn.execute("UPDATE activities SET state = 'completed' WHERE id = ?", (item["id"],))
+            conn.commit()
+            return None
+        return (f"#{item['id']} quiz «{item['topic']}»{where} ({state}): respondió {done['answered']} de "
+                f"{done['questions']}; las encuestas siguen en su chat privado")
+    data, line = item["data"], f"#{item['id']} {KINDS[item['kind']]} «{item['topic']}»{where} ({state})"
+    if data.get("minutes"):
+        left = int(data["minutes"]) - int((now - timefmt.parse(item["started_at"])).total_seconds() // 60)
+        line += f", {data['minutes']} min desde hace {_ago(item['started_at'], now)}" + (
+            f" (quedan unos {left} min)" if item["state"] == "active" and left > 0 else "")
+    if data.get("goal"):
+        line += f"; meta: {data['goal']}"
+    steps = data.get("steps") or []
+    if steps:
+        line += f"; último paso: {steps[-1].get('done')}" + (f"; sigue: {steps[-1]['next']}" if steps[-1].get("next")
+                                                            else "")
+    return line
+
+
+def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: str, chat_type: str,
+            session: str = "", subjects: list[materias.Subject] | None = None) -> str:
     """The block the model reads at the end of each message of this chat."""
     lines = [HEADER, f"Ahora: {clock(now, core)} (hora de Ecuador). Úsala para «hoy», «mañana» y lo que vence."]
     if chat_type == "group":
@@ -71,4 +225,15 @@ def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: 
     here = notes(conn, chat) if chat else []
     if here:
         lines.append("Notas de este chat (valen solo aquí): " + " · ".join(f"#{n['id']} {n['text']}" for n in here))
+    names = {s.code: s.name for s in subjects or []}
+    current = focus(conn, session, now)
+    if current:
+        name = names.get(current["subject"], current["subject"])
+        lines.append(f"Materia en foco: {name} (desde hace {_ago(current['set_at'], now)}). Una foto, una nota de voz "
+                     f"o un «anota…» que llega sin materia es de {name}, salvo que diga otra.")
+    described = [line for line in (_describe(core, conn, a, names, now) for a in open_activities(conn, session, now))
+                 if line]
+    if described:
+        lines.append("Actividades abiertas aquí: " + " · ".join(described) + ". Si su mensaje no es parte de una, "
+                     "contesta lo que pide y no la retomes ni la ofrezcas: sigue abierta para cuando él la pida.")
     return "\n".join(lines)

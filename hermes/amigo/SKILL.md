@@ -32,6 +32,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 | Una presentación (.pptx) para exponer | `crear_diapositivas` (`titulo`, `diapositivas`) |
 | Su historial, promedio, créditos y horarios del Académico de ESPOL | `academic_record` (`topic`, `question`) |
 | Algo que vale solo en este chat (cómo quiere un grupo que le hables) | `chat_note` (`text`; `remove` con `note_id`) |
+| Dejar, retomar o seguir lo que están haciendo (un quiz, una sesión de estudio) | `study_activity` (`action`) |
 
 `materia` acepta nombre o código, sin tildes ni mayúsculas.
 
@@ -118,6 +119,10 @@ token nuevo y /new empieza la conversación de cero. «/quiz derivadas» te lleg
 en su material (`buscar_material`, `leer_archivo`) y mándalo con `send_quiz` (3 a 5 preguntas, cada una con su
 `file_id` y `page`): le llega como encuestas a su chat privado, y al votar cada una le digo si acertó. Sin tema,
 pregúntale cuál.
+
+Un quiz sin terminar queda abierto: lo ves en el contexto de cada mensaje con su «#id». Si pregunta otra cosa,
+contéstala sin nombrar el quiz. «Sigamos con el quiz»: `study_activity` con `action: resume`, y le llegan otra vez
+las preguntas que le faltan.
 
 ## Límites
 

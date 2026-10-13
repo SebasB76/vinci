@@ -244,7 +244,7 @@ def voice(message: str) -> str | None:
         return (f"Su nota de voz salió como «{heard['heard'].strip()}», que es lo que el transcriptor escribe cuando no "
                 "oye voz: no lo dijo él. No lo contestes; dile en una línea que no se escuchó y que la repita o la "
                 "escriba.")
-    return ("Su mensaje es una nota de voz que transcribió Whisper en su PC: un nombre, una sigla o un término técnico "
+    return ("Su mensaje es una nota de voz que transcribió Whisper: un nombre, una sigla o un término técnico "
             "puede salir mal escrito. Si una palabra no encaja, entiéndela por el tema y, si importa, di qué "
             "entendiste («entendí L'Hôpital»). Pregunta solo si no sabes qué pide y eso cambia lo que harías.")
 

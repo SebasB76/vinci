@@ -88,7 +88,7 @@ su encuesta en vez de botones.
   Lo que dejas más de 3 días ya no te lo recuerda.
 - **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
   respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
-  con faster-whisper (`setup.sh` lo instala en Hermes), y Vinci te muestra primero lo que entendió (🎙️). Si no se
+  con faster-whisper (`setup.sh` lo instala en Hermes); en un servidor, con tu key de OpenAI. Vinci te muestra primero lo que entendió (🎙️). Si no se
   oyó (silencio, ruido), Vinci te lo dice y te pide repetirla o escribirla: no adivina. Si se oyó pero un nombre salió
   raro, lo entiende por el tema y te dice qué entendió; solo pregunta si no sabe qué pides.
 

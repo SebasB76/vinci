@@ -75,6 +75,7 @@ from espol_bot.config import (
     BotConfig,
     TelegramSecrets,
     captain_id,
+    hermes_root,
     token_key,
     whatsapp_settings,
 )
@@ -101,6 +102,9 @@ WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
 TELEGRAM_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
+# The model's API key in the Docker image comes from the container's environment (Coolify), but a multiplexed
+# gateway reads each profile's secrets from that profile's .env only: setup copies it there.
+MODEL_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")
 
 
 def find_hermes(explicit: str | None) -> str:
@@ -118,6 +122,13 @@ def _deep_merge(base: dict, extra: dict) -> dict:
         else:
             base[key] = value
     return base
+
+
+def _section(parent: dict, key: str) -> dict:
+    """parent[key] as a dict to write into; Hermes' own config.yaml has empty sections (`gateway:` is None)."""
+    if not isinstance(parent.get(key), dict):
+        parent[key] = {}
+    return parent[key]
 
 
 def _write_if_changed(path: Path, text: str, mode: int | None = None) -> bool:
@@ -169,7 +180,7 @@ class Setup:
     def __init__(self, cfg: BotConfig, *, hermes_bin: str | None = None):
         self.cfg = cfg
         self.hermes = find_hermes(hermes_bin)
-        self.root = Path.home() / ".hermes"
+        self.root = hermes_root()
         self.bin_dir = Path(sys.prefix) / "bin"
         self.bot_bin = self.bin_dir / "espol-bot"
         if not self.bot_bin.exists():
@@ -185,7 +196,7 @@ class Setup:
                   **{name: [] for name in GUEST_HERMES_TOOLS}}
         self.values = {"BOT": str(self.bot_bin), "CONFIG": str(config_path()), "SECRETS": str(secrets_path()),
                        "MARKER": MARKER, "USER_ID": self.captain, "MINUTOS": str(cfg.brief_minutes),
-                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes,
+                       "VINCI": cfg.hermes_profile, "HERMES": self.hermes, "HERMES_ROOT": str(self.root),
                        # Whose Vinci a profile is, on WhatsApp: the captain's number here, a friend's in theirs.
                        "WHATSAPP_OWNER": self.whatsapp.captain if self.whatsapp else "",
                        "GUEST_TOOLS": json.dumps(guests, sort_keys=True),
@@ -199,6 +210,8 @@ class Setup:
 
     def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         env = {k: v for k, v in os.environ.items() if k != "HERMES_HOME"}
+        if os.environ.get("VINCI_HERMES_ROOT"):  # the Docker image: Hermes' root is the volume, not ~/.hermes
+            env["HERMES_HOME"] = str(self.root)
         proc = subprocess.run([self.hermes, *args], env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if check and proc.returncode != 0:
             raise ConfigError(f"`hermes {' '.join(args)}` falló:\n{proc.stdout}\n{proc.stderr}".strip())
@@ -218,9 +231,15 @@ class Setup:
         config_file = profile / "config.yaml"
         current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
         current = current if isinstance(current, dict) else {}
+        keys = {k: os.environ[k] for k in MODEL_KEYS if os.environ.get(k)}
+        if "model" in managed and keys and os.environ.get("VINCI_HERMES_ROOT"):
+            upsert_env(profile / ".env", keys)
         merged = _deep_merge(copy.deepcopy(current), managed)
+        if "model" in managed:
+            # `hermes profile create` seeds OpenRouter's base_url, which would send any other provider's calls there.
+            merged["model"].pop("base_url", None)
         if plugins:
-            section = merged.setdefault("plugins", {})
+            section = _section(merged, "plugins")
             enabled = section.get("enabled") if isinstance(section.get("enabled"), list) else []
             section["enabled"] = enabled + [p for p in plugins if p not in enabled]
         if merged == current and config_file.exists():  # Hermes may re-serialize the file: compare values
@@ -282,7 +301,8 @@ class Setup:
             "compression": {"threshold_tokens": COMPRESSION_THRESHOLD_TOKENS},
             "mcp_servers": {mcp_name: {
                 "command": str(self.bot_bin), "args": ["mcp", *mcp_args],
-                "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"]},
+                "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"],
+                        "VINCI_HERMES_ROOT": self.values["HERMES_ROOT"]},
                 "timeout": 180, "tools": {"resources": False, "prompts": False},
             }},
             "approvals": {"deny": APPROVALS_DENY},
@@ -537,7 +557,7 @@ class Setup:
         current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
         current = current if isinstance(current, dict) else {}
         merged = copy.deepcopy(current)
-        gateway = merged.setdefault("gateway", {})
+        gateway = _section(merged, "gateway")
         gateway["multiplex_profiles"] = True
         gateway["message_timestamps"] = {"enabled": True}
         routes = [r for r in gateway.get("profile_routes") or []
@@ -548,7 +568,7 @@ class Setup:
         routes.append({"name": f"{WHATSAPP_ROUTE_PREFIX}others", "platform": "whatsapp",
                        "profile": self.cfg.hermes_profile})
         gateway["profile_routes"] = routes
-        section = merged.setdefault("whatsapp", {})
+        section = _section(merged, "whatsapp")
         section.pop("group_allowed_chats", None)  # groups are the plugin's now
         section.update({
             "reply_prefix": "",
@@ -571,13 +591,13 @@ class Setup:
         _deep_merge(merged, {"display": {"suppress_warning_notifications": True,
                                          "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
                              "stt": {"language": "es"}})
-        plugins = merged.setdefault("plugins", {})
+        plugins = _section(merged, "plugins")
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
         # Only the default profile's plugins get the gateway's injector: this one puts a question the Académico's
         # sign-in held back in its Vinci session (portal_login.py).
-        entries = plugins.setdefault("entries", {})
-        entries.setdefault(WHATSAPP_PLUGIN, {})["allow_gateway_injection"] = True
+        entries = _section(plugins, "entries")
+        _section(entries, WHATSAPP_PLUGIN)["allow_gateway_injection"] = True
         if merged != current:
             changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 

@@ -52,6 +52,10 @@ def _interpreters(hermes: str, env: dict) -> list[tuple[str, str | None]]:
     sibling = Path(hermes).resolve().parent / "python3"
     if sibling.exists():
         found.append((str(sibling), None))
+    # The Docker image's launcher: <root>/libexec/hermes runs <root>/.venv/bin/python on the checkout at <root>.
+    root = Path(hermes).resolve().parent.parent
+    if (root / ".venv" / "bin" / "python").exists() and (root / "hermes_cli").is_dir():
+        found.append((str(root / ".venv" / "bin" / "python"), str(root)))
     try:
         command = json.loads(subprocess.run([hermes, "--print-runtime-command"], env=env, capture_output=True,
                                             text=True, check=True, stdin=subprocess.DEVNULL, timeout=120).stdout)

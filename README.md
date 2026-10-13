@@ -99,6 +99,7 @@ La [instalación paso a paso](docs/guia/instalacion.md#paso-a-paso) explica de d
 | [Instalación](docs/guia/instalacion.md) | Paso a paso, configuración, actualizar y desinstalar |
 | [Uso diario](docs/guia/uso.md) | Vinci, los bots de materia, botones, comandos, `/token`, el Académico |
 | [WhatsApp](docs/guia/whatsapp.md) | Vincular el número, grupos, amigos y el relé |
+| [En un servidor](docs/guia/servidor.md) | Vinci en Coolify con Docker, y cómo pasar tu Vinci de la PC al servidor |
 | [Todas las funciones](docs/guia/funciones.md) | Cada función en detalle |
 | [Cómo funciona](docs/guia/como-funciona.md) | Hermes, el sondeo, la renovación del token y el repositorio |
 | [Terminal y Claude Code](docs/guia/terminal.md) | El comando `aula` y `espol-bot` |
@@ -109,7 +110,7 @@ La [instalación paso a paso](docs/guia/instalacion.md#paso-a-paso) explica de d
 ## Privacidad
 
 - **Solo lee tu aula.** Lo único que escribe es una entrega que tú confirmaste.
-- **Tus datos se quedan en tu PC.** No hay servidor de Vinci.
+- **Tus datos se quedan en tu PC**, o en tu propio servidor. No hay un servidor central de Vinci.
 - **Los tokens y tu contraseña nunca pasan por el chat ni por la IA.** Viajan cifrados.
 
 [Qué sale de tu PC y por qué →](docs/guia/privacidad.md#seguridad-y-privacidad)

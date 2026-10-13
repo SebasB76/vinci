@@ -220,6 +220,9 @@ disco ni el contexto del modelo:
   semestre anterior (por ejemplo `Slides/2021`) va al final.
 - **Qué se baja:** solo el sílabo de cada curso se baja por su cuenta. Lo demás lo baja el bot de la materia cuando le hace
   falta para responderte, y ya bajado se queda.
+- **Las dudas sobre una tarea:** con la tarea identificada, la búsqueda mira primero sus anexos y los marca como de
+  la tarea; el resto del material puede ser de otra tarea o de otro año, y el bot lo dice así. Los anexos sin bajar
+  se bajan en ese momento.
 - **El libro principal:** el bot lo saca de la bibliografía básica del sílabo, o se lo dices tú («el libro de Física
   es el Serway», a Vinci o al bot). La búsqueda lo pone primero. Si su PDF no está en el aula, el bot te lo pide
   **una sola vez**: hasta 20 MB se lo mandas por su chat; si pesa más, lo pones en

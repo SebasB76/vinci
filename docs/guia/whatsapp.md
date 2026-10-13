@@ -66,7 +66,11 @@ folder`) también llegan aquí: las preguntas `//vinci` y el resumen con feedbac
 su encuesta en vez de botones.
 
 - **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
-  archivos que trae.
+  archivos que trae. No hace falta el nombre exacto: «el taller de integrales» la encuentra entre todas las del
+  semestre, también las entregadas; si dos encajan, te pregunta cuál, y si le dices «esa no es», busca otra. Para tus
+  dudas sobre esa tarea busca primero en sus anexos, y separa lo que pide la tarea (con su cita) de lo que te sugiere.
+- **Lo que de verdad pasó.** Vinci no te dice «ya lo entregué» si solo preparó el PDF: en cada mensaje sabe qué PDF
+  espera tu voto y cuál se subió, falló o cancelaste en las últimas 24 horas.
 - **Entregar a mano.** Mándale las fotos (o el PDF) y dile de qué tarea es: arma el PDF y te lo manda con la
   encuesta «📤 Entregar / Cancelar». Se sube al aula solo con tu voto.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar

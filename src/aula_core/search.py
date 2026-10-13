@@ -51,7 +51,7 @@ def _fingerprint(text: str) -> str:
 
 
 def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | None = None, limit: int = 5,
-           prefer: set[int] | frozenset[int] = frozenset()) -> list[dict]:
+           prefer: set[int] | frozenset[int] = frozenset(), file_ids: list[int] | None = None) -> list[dict]:
     words = terms(question)
     if not words:
         return []
@@ -59,6 +59,9 @@ def search(conn: sqlite3.Connection, question: str, *, course_ids: list[int] | N
     if course_ids is not None:
         extra = f" AND chunks.course_id IN ({','.join('?' * len(course_ids))})"
         params = list(course_ids)
+    if file_ids is not None:
+        extra += f" AND chunks.file_id IN ({','.join('?' * len(file_ids)) or 'NULL'})"
+        params += list(file_ids)
     hits, seen, assigned = [], set(), assigned_files(conn)
     queries = [("todas", " AND ".join(words))] + ([("parcial", " OR ".join(words))] if len(words) > 1 else [])
     for match_kind, match in queries:

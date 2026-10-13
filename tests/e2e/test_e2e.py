@@ -34,12 +34,13 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names,
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
-  poll; `vinci-check say` talks to it.
+  poll; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
-  the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, a quote, a sticker, a group
+  the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
+  its words and searched in its own attachments first, a quote, a sticker, a group
   that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»); his alerts; the block for whoever is not a Vinci's owner; Angel
   removed with his tokens.
@@ -431,6 +432,15 @@ class Script:
                                f"atrasado hasta {task['cierra']}. Rúbrica: {rubric}.\nAnexos: "
                                + ", ".join(f["archivo"] for f in task["archivos"])
                                + f". La plantilla pide: {template['texto']} ({template['cita']})"}
+        if "en el taller de integrales" in text:
+            if not called:
+                return _call("mcp__vinci__tareas", buscar="taller integrales")
+            if called == ["mcp__vinci__tareas"]:
+                first = _json(results[-1])["candidatas"][0]
+                return _call("mcp__vinci__buscar_material", pregunta="ejercicio hoja enunciado", tarea_id=first["id"])
+            official = [h for h in _json(results[-1])["resultados"] if h.get("de_la_tarea")]
+            return {"content": "\n".join(f"La tarea dice: {h['fragmento']} {h['cita']}" for h in official)
+                    or _problem(results[-1])}
         if results:
             last = _json(results[-1])
             if isinstance(last, dict) and last.get("ruta"):
@@ -1763,6 +1773,17 @@ def test_whatsapp_captain(tmp_path):
         score = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Quiz: Integrales dobles" in m.get("message", "")],
                             60)
         assert score, fail(f"sin puntaje al terminar: {wa.messages_to(captain_jid, mark)}")
+        # 10m''. What became of a PDF comes from the table the vote writes, in every private turn
+        db = sqlite3.connect(data_dir / "espol.db")
+        db.execute("INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, "
+                   "created_at) VALUES ('FIS', 102, 3005, 'Tarea 3: Dinámica', '/tmp/tarea3.pdf', 2, "
+                   "'2026-09-30T13:00:00Z')")
+        db.commit()
+        db.close()
+        calls = len(llm.requests)
+        say(captain_jid, captain_jid, "ya quedó entregada la tarea 3?", "Capitán")
+        seen = turn_context(llm.requests[calls:])
+        assert "el PDF de «Tarea 3: Dinámica» (2 pág.) espera su voto «Entregar»: todavía NO está entregado" in seen, seen
         md.append(f"**Capitán**: /quiz integrales dobles → [2 encuestas]; vota la 1; «qué tengo esta semana»; "
                   f"«sigamos con el quiz» → Vinci: {normalize(resumed)} → [la 2/2 otra vez]; vota → "
                   f"{normalize(text_of(score))[:200]}\n")
@@ -2030,6 +2051,23 @@ def test_whatsapp_friend(tmp_path):
                       "su texto está en esa conversación, y si no, el modelo sabe que es del Vinci de otra persona. "
                       f"Un sticker no llega a ningún Vinci. Tras un rato sin mensajes (4 h; {GROUP_IDLE} s aquí), el grupo "
                       "empieza una conversación nueva, sin aviso")
+
+        # 10f2c. A question about an assignment: first which one (by its words, among all of the semester), then its
+        # own attachments, marked, before the rest of the course's material
+        calls = len(llm.requests)
+        how = text_of(say(angel_jid, angel_jid, "en el taller de integrales, cómo va cada ejercicio?", "Angel"))
+        tool_data = [data for req in llm.requests[calls:] for m in req.get("messages") or [] if m.get("role") == "tool"
+                     for data in [_json(flatten(m.get("content")))] if isinstance(data, dict)]
+        found = next(d for d in tool_data if "candidatas" in d)
+        assert found["candidatas"][0]["tarea"] == "Taller 2: Integrales dobles", found
+        searched = next(d for d in tool_data if "resultados" in d)
+        assert searched["tarea"]["id"] == found["candidatas"][0]["id"], searched
+        assert searched["resultados"][0].get("de_la_tarea") and searched["resultados"][0]["archivo"] in (
+            "taller-2-especificacion.pdf", "plantilla-taller.doc"), searched["resultados"]
+        assert "aparte, con el «enunciado» copiado arriba" in how and "📄 taller-2-especificacion.pdf" in how, how
+        md.append(f"**Angel**: en el taller de integrales, cómo va cada ejercicio? → Vinci: {normalize(how)}\n")
+        report.append("«En el taller de integrales…»: `tareas` con `buscar` encuentra el Taller 2 por sus palabras, y "
+                      "`buscar_material` con su `tarea_id` trae primero sus anexos, marcados «de_la_tarea», con su cita")
 
         # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
         mark = len(wa.sent)

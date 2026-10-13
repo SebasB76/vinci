@@ -340,17 +340,59 @@ def _kinds(ctx: Ctx) -> set[str]:
     return {*ctx.cfg.core.material_extensions, "html"}
 
 
+def _find_tasks(ctx: Ctx, words: str, course_ids: list[int] | None) -> dict:
+    found = [_local_dates(ctx, t) for t in queries.find_assignments(ctx.conn, ctx.now(), words, course_ids)]
+    if not found:
+        return {"candidatas": [], "nota": "Ninguna tarea del semestre tiene esas palabras en el título ni en la "
+                                          "consigna. Prueba con otras (el número, el tema) o pregúntale cómo se llama."}
+    note = ("Están todas las del semestre, también las entregadas o vencidas, la que más coincide primero. Si dos o más "
+            "encajan y nada dice cuál, pregúntale en una línea con su nombre y su fecha. Si te dijo que una no era, "
+            "no la vuelvas a proponer.")
+    return {"candidatas": found, "nota": note}
+
+
+def _search_task(ctx: Ctx, task_id, course_ids: list[int] | None) -> dict:
+    """The assignment a search is about, its attached files fetched first (a few, reading the aula only)."""
+    try:
+        task = queries.assignment(ctx.conn, ctx.now(), _int(task_id, "tarea_id", hi=10**12), course_ids)
+    except queries.NotFound as exc:
+        raise ToolError(str(exc)) from None
+    for f in [f for f in task["archivos"] if queries.file_state(f, ctx.cfg.core.max_file_mb) == "sin bajar"][:3]:
+        try:
+            _fetch(ctx, f["id"])
+        except ToolError:  # its state says so below
+            pass
+    return queries.assignment(ctx.conn, ctx.now(), task["id"], course_ids)
+
+
 def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int], *, can_fetch: bool) -> dict:
-    """The question, and its translation when given (the material is often in English), merged by relevance."""
+    """The question, and its translation when given (the material is often in English), merged by relevance. With
+    «tarea_id», that assignment's own attachments come first, marked, and the rest is its course's material."""
     n = _int(args.get("n"), "n", 5, 1, 10)
     questions = [str(args["pregunta"]), *([str(args["traduccion"])] if args.get("traduccion") else [])]
-    found: dict[tuple, dict] = {}
-    for question in questions:
-        for hit in search.search(ctx.conn, question, course_ids=course_ids, limit=n, prefer=prefer):
-            key = (normalized_name(hit["archivo"]), hit["pagina"])
-            if key not in found or hit["puntaje"] > found[key]["puntaje"]:
-                found[key] = hit
-    hits = sorted(found.values(), key=lambda h: (h["coincide"] != "todas", -h["puntaje"]))[:n]
+    task = _search_task(ctx, args["tarea_id"], course_ids) if args.get("tarea_id") not in (None, "") else None
+    if task:
+        course_ids = [task["curso_id"]]
+    own = [f["id"] for f in task["archivos"]] if task else []
+
+    def ranked(file_ids: list[int] | None) -> list[dict]:
+        found: dict[tuple, dict] = {}
+        for question in questions:
+            for hit in search.search(ctx.conn, question, course_ids=course_ids, limit=n, prefer=prefer,
+                                     file_ids=file_ids):
+                key = (normalized_name(hit["archivo"]), hit["pagina"])
+                if key not in found or hit["puntaje"] > found[key]["puntaje"]:
+                    found[key] = hit
+        return sorted(found.values(), key=lambda h: (h["coincide"] != "todas", -h["puntaje"]))
+
+    hits = []
+    if task:
+        hits = ranked(own)[:n]
+        for hit in hits:
+            hit["de_la_tarea"] = True
+    seen = {(h["archivo_id"], h["pagina"]) for h in hits}
+    hits += [h for h in ranked(None) if h["archivo_id"] not in own and (h["archivo_id"], h["pagina"]) not in seen
+             ][:n - len(hits)]
     for hit in hits:
         hit["cita"] = citations.cite(hit["archivo"], hit["unidad"], hit["pagina"], url=hit["url"])
         citations.record(ctx.conn, ctx.bot, hit["archivo_id"], [hit["pagina"]], ctx.now())
@@ -366,6 +408,18 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
                           "materias": sorted({c["nombre"] for c in queries.courses(ctx.conn)
                                               if course_ids is None or c["id"] in course_ids})}
     notes = []
+    if task:
+        result["tarea"] = {"id": task["id"], "tarea": task["tarea"], "curso": task["curso"],
+                           "anexos": [{"archivo_id": f["id"], "archivo": f["archivo"],
+                                       "estado": queries.file_state(f, ctx.cfg.core.max_file_mb)}
+                                      for f in task["archivos"]],
+                           "enlaces": [_link_entry(link) for link in task["enlaces"]]}
+        notes.append("Lo marcado «de_la_tarea» sale de los anexos de esa tarea: es lo oficial. Lo demás es material "
+                     "del curso que comparte palabras, quizá de otra tarea o de otro año: si lo usas, dilo así."
+                     + (" Sus enlaces (un Google Doc, un Drive) no entran en esta búsqueda: léelos con "
+                        "leer_archivo(enlace_id) si la pregunta puede estar ahí." if task["enlaces"] else "")
+                     + ("" if task["archivos"] or task["enlaces"] else " La tarea no trae anexos: lo oficial es su "
+                        "consigna (ver_tarea)."))
     if not hits:
         result["en_el_material"] = False
         if not (unread and can_fetch):
@@ -1284,6 +1338,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
+        if args.get("buscar"):
+            return _find_tasks(ctx, str(args["buscar"]), _vinci_course_ids(ctx, args.get("materia")))
         pending = queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
                                   days=_int(args.get("dias"), "dias"))
         return [_local_dates(ctx, t) for t in pending]
@@ -1649,8 +1705,9 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "cada cuaderno (dudas abiertas y temas débiles). "
              "Úsala para «¿qué tengo esta semana?», «¿cómo voy en todo?» y planes de estudio.", semana,
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
-        Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,
-             {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("tareas", "Entregas pendientes del aula virtual, por fecha. Con «buscar», encuentra la tarea que nombra "
+             "entre todas las del semestre.", tareas,
+             {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}, "buscar": {"type": "string", "description": "palabras de la tarea que nombra (título, número, tema): la busco entre todas las del semestre, no solo las pendientes"}}),
         Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("send_quiz", "En WhatsApp: manda un quiz corto (/quiz) a su chat privado, una encuesta por pregunta; al "
              "votar cada una le digo si acertó y por qué, y al terminar su puntaje con la fuente de cada pregunta (lo "
@@ -1707,10 +1764,10 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              {**materia, "nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
         Tool("buscar_material", "Busca en el texto del material ya leído; devuelve archivo, página, fragmento y la "
              "«cita» lista para copiar, con el libro principal primero. Mucho material está en inglés: pasa también "
-             "«traduccion».",
+             "«traduccion». Si la pregunta es sobre una tarea, pasa «tarea_id»: sus anexos van primero, marcados.",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
-                      **materia, "n": {"type": "integer"}}, ["pregunta"]),
+                      **materia, "n": {"type": "integer"}, "tarea_id": {"type": "integer", "description": "si la pregunta es sobre una tarea: su «id»; busco primero en sus anexos"}}, ["pregunta"]),
         Tool("leer_archivo", "Lee el texto de un archivo del material por páginas, cada una con su «cita»; con "
              "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del "
              "estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
@@ -1904,6 +1961,8 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
+        if args.get("buscar"):
+            return _find_tasks(ctx, str(args["buscar"]), course_ids())
         pending = queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
         return [_local_dates(ctx, t) for t in pending]
 
@@ -2093,8 +2152,9 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     return _noting_stale(ctx, [
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
-        Tool("tareas", "Entregas pendientes de tu materia.", tareas,
-             {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("tareas", "Entregas pendientes de tu materia. Con «buscar», encuentra la tarea que nombra entre todas "
+             "las del semestre.", tareas,
+             {"dias": {"type": "integer", "description": "solo las que vencen en N días"}, "buscar": {"type": "string", "description": "palabras de la tarea que nombra (título, número, tema): la busco entre todas las del semestre, no solo las pendientes"}}),
         Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
              "SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
@@ -2117,10 +2177,11 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              archivos, {"nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
         Tool("buscar_material", "Busca en el texto del material ya leído de tu materia (archivo, página, fragmento y "
              "la «cita» lista para copiar), con tu libro principal primero. Mucho material está en inglés: pasa "
-             "también «traduccion».",
+             "también «traduccion». Si la pregunta es sobre una tarea, pasa «tarea_id»: sus anexos van primero, "
+             "marcados.",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
-                      "n": {"type": "integer"}}, ["pregunta"]),
+                      "n": {"type": "integer"}, "tarea_id": {"type": "integer", "description": "si la pregunta es sobre una tarea: su «id»; busco primero en sus anexos"}}, ["pregunta"]),
         Tool("leer_archivo", "Lee un archivo del material de tu materia, por páginas, cada una con su «cita»; con "
              "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta "
              "del estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),

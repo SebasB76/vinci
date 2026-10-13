@@ -36,6 +36,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
 | Group notices («@vinci activa los avisos») | not available | yes; a reminder `brief_minutos_antes` before each class (room, virtual, what is due in 7 days), plus new announcements, assignments and due-date changes; no model | yes (`src/espol_bot/avisos.py`) | `whatsapp.md` «Vinci en WhatsApp» |
 | Trusted group («@vinci este grupo es de confianza») | not available | yes; the notices tag who has the subject (same paralelo for a class), say who handed in each task, carry a virtual class's meeting link, and pass on the friends' aula news once | yes (`src/espol_bot/avisos.py`) | `whatsapp.md` «Vinci en WhatsApp» |
+| Chat context in every turn (clock, chat kind, notes that hold in one chat: `chat_note`) | the same, per chat | the same; a group's note never reaches the DM | no (a script adds it) | `whatsapp.md` «Vinci en WhatsApp» |
 | Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | `whatsapp.md` «Vinci en WhatsApp» |
 
 ## Code and verification
@@ -57,6 +58,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Assignment detail | `ver_tarea` in `herramientas.py`, `src/aula_core/queries.py`, `materials.py` | ask «¿qué pide <tarea>?» through `chat`; check annexes, rubric and dates (uses the model) |
 | DSpace | `src/aula_core/dspace.py` | ask for past exams through `chat` (uses the model) |
 | Schedule | `src/espol_bot/horario.py` | `chat <subject bot> /start` |
+| Chat context | `src/espol_bot/conversation.py`, `espol-bot contexto`, hook `pre_llm_call` in `hermes/plugins/vinci-botones/` | `vinci-check whatsapp --chat dm`: the user turn ends with «[Contexto de este chat…]» and today's clock |
 | Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder (the E2E no longer covers it) |
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |

@@ -29,6 +29,10 @@ of the default profile drops whoever has none. Should anyone else still reach th
 GUEST_TOOLS (hook pre_tool_call): the course material, a past exam, slides, the web; never the owner's deliverables,
 grades, lists, schedule or memory. When the hook cannot tell who asks, it blocks.
 
+Every turn ends with what Vinci must know about its chat (hook pre_llm_call, `espol-bot contexto`): the clock,
+since Hermes dates a conversation by the day it started, and the notes that hold in that chat only
+(conversation.py). If it fails, the turn goes on without it.
+
 Every answer that cites the material goes through `espol-bot citas` before it is sent (hook
 transform_llm_output): a citation of a page the bot was never shown becomes a warning, and a missing or
 wrong aula link is set right. If the check fails, the answer goes as it is.
@@ -319,6 +323,7 @@ def register(ctx):
     ctx.register_platform_handler("telegram", _wire)
     ctx.register_hook("transform_llm_output", _check_citations)
     ctx.register_hook("pre_tool_call", _guard_guests)
+    ctx.register_hook("pre_llm_call", _turn_context)
     # Vinci (no SUBJECT) gets them too: without Telegram it reads every subject's pages and notebooks itself
     photo = PHOTO_TOOL if SUBJECT else VINCI_PHOTO_TOOL
     ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
@@ -361,6 +366,7 @@ def _note_channel():
         from gateway.session_context import get_session_env
         note = {"canal": get_session_env("HERMES_SESSION_PLATFORM", ""),
                 "tipo": get_session_env("HERMES_SESSION_CHAT_TYPE", ""),
+                "chat": _chat_key(get_session_env),
                 # the session an answer can be put back in (the Académico's sign-in: portal_login.py)
                 "sesion": get_session_env("HERMES_SESSION_KEY", ""), "en": time.time()}
         if note["canal"]:
@@ -369,6 +375,26 @@ def _note_channel():
             os.replace(tmp, CHANNEL)
     except Exception as exc:  # the card goes to Telegram, as before
         logger.warning("no pude anotar el canal: %s", exc)
+
+
+def _chat_key(get_session_env):
+    platform, chat = get_session_env("HERMES_SESSION_PLATFORM", ""), get_session_env("HERMES_SESSION_CHAT_ID", "")
+    return f"{platform}:{chat}" if platform and chat else ""
+
+
+def _turn_context(**_):
+    try:
+        from gateway.session_context import get_session_env
+        if get_session_env("HERMES_SESSION_PLATFORM", "") not in ("whatsapp", "telegram"):
+            return None  # a cron run or the CLI: no chat to speak of
+        proc = subprocess.run([BOT, "contexto", "--chat", _chat_key(get_session_env),
+                               "--tipo", get_session_env("HERMES_SESSION_CHAT_TYPE", "")],
+                              capture_output=True, text=True, timeout=10, env=_env())
+        text = json.loads(proc.stdout or "{}").get("contexto")
+        return {"context": text} if text else None
+    except Exception as exc:  # the turn goes on without it
+        logger.warning("contexto del turno: %s", exc)
+        return None
 
 
 def _check_citations(response_text="", **_):

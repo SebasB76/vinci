@@ -46,6 +46,8 @@
                                      list them, or take their encrypted token from stdin (the plugin vinci-whatsapp)
     espol-bot whatsapp-grupo activar|desactivar <ID>
                                      a WhatsApp group where Vinci answers whoever mentions it (the plugin)
+    espol-bot whatsapp-grupo avisos|sin-avisos <ID>
+                                     the class reminders and the aula's news in that group (avisos.py)
     espol-bot whatsapp-comando start|estado|token|token-cifrado <número>
                                      /start, /estado and /token on WhatsApp, for the captain or a friend over
                                      their own aula (the plugin vinci-whatsapp)
@@ -174,7 +176,14 @@ def _friend_outcome(cfg, args):
     if args.cmd == "whatsapp-comando":
         data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
-    if args.cmd == "whatsapp-grupo":
+    if args.cmd == "whatsapp-grupo" and args.accion in ("avisos", "sin-avisos"):
+        on = args.accion == "avisos"
+        changed = amigos.set_group(cfg, args.grupo, on, key="avisos")
+        text = (("✅ Listo: aquí aviso antes de cada clase, con lo que vence en la semana, y paso los anuncios y las "
+                 "tareas nuevas del aula." if changed else "Ya mandaba los avisos aquí.")
+                if on else ("Listo: ya no mando avisos a este grupo." if changed else "No mandaba avisos aquí."))
+        outcome = amigos.Outcome(text)
+    elif args.cmd == "whatsapp-grupo":
         on = args.accion == "activar"
         changed = amigos.set_group(cfg, args.grupo, on)
         text = (("✅ Listo: en este grupo le contesto a quien me mencione con @vinci, a cada uno con lo suyo. Quien "
@@ -349,7 +358,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-grupo", help="activar o desactivar un grupo de WhatsApp donde Vinci contesta (lo "
                                               "usa el plugin vinci-whatsapp)")
-    p.add_argument("accion", choices=["activar", "desactivar"])
+    p.add_argument("accion", choices=["activar", "desactivar", "avisos", "sin-avisos"],
+                   help="avisos / sin-avisos: los recordatorios de clase y las novedades del aula en ese grupo")
     p.add_argument("grupo", help="el ID del grupo (…@g.us)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-comando", help="/start, /estado y /token por WhatsApp, del capitán o de un amigo "

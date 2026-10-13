@@ -79,6 +79,17 @@ no puede mencionar a nadie: Vinci contesta la tuya o la de un amigo con su Vinci
 mensaje suyo. Las notas de voz de quien no tiene su Vinci ni se transcriben. «@vinci desactiva este grupo» lo
 apaga. Solo tú puedes encender o apagar un grupo.
 
+**Avisos en un grupo.** Escribe en el grupo «@vinci activa los avisos». Desde entonces Vinci manda ahí, sin que
+nadie se lo pida:
+
+- un recordatorio antes de cada clase de tu horario (los mismos `brief_minutos_antes`), con el aula, si es virtual y
+  lo que vence esa semana en esa materia;
+- los anuncios nuevos de tus profesores, las tareas nuevas y los cambios de fecha, todo lo de una lectura del aula
+  en un solo mensaje.
+
+Los avisos nunca llevan notas, entregas hechas ni tu cuaderno. «@vinci desactiva los avisos» los apaga. Solo tú
+puedes encenderlos, y funcionan aunque el grupo esté apagado para las preguntas.
+
 En un grupo, Vinci sabe quién le escribe y empieza con su nombre cuando habla de su aula. Da entregas, plazos y
 notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por privado. Vinci no contesta los
 stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no

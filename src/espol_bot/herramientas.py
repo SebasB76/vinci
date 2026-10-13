@@ -475,11 +475,13 @@ def _dates_in(text: str | None, posted: str | None) -> dict[str, str]:
     return found
 
 
-def _announcements(conn, course_ids: list[int] | None, n: int) -> list[dict]:
+def _announcements(conn, course_ids: list[int] | None, n: int, tz) -> list[dict]:
     items = queries.announcements(conn, course_ids, limit=n)
     for item in items:
         if dates := _dates_in(item.get("texto"), item.get("publicado")):
             item["fechas_del_texto"] = dates  # the weekday of each date in it: copy these, never work one out
+        if item.get("publicado"):  # Canvas gives UTC: the model shifted «19:27» to «mar 13, 00:27»
+            item["publicado"] = timefmt.human(item["publicado"], tz)
         item["enlaces"] = [_link_entry(link) for link in item["enlaces"]]
         for key in ("archivos", "enlaces"):
             if not item[key]:
@@ -1316,7 +1318,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
 
     def anuncios(args):
         ctx.refresh()
-        return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30))
+        return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30),
+                              ctx.cfg.core.tz)
 
     def notas(args):
         ctx.refresh()
@@ -1742,7 +1745,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         main = book()
         return {"materia": s.name, "codigo": s.code, "bot": s.display, "proximas_clases": _upcoming(ctx, 7, s.code),
                 "pendientes": queries.pending(ctx.conn, now, cids, days=14),
-                "anuncios": _announcements(ctx.conn, cids, 3), "cuaderno": notebook,
+                "anuncios": _announcements(ctx.conn, cids, 3, ctx.cfg.core.tz), "cuaderno": notebook,
                 "libro_principal": {"titulo": main["titulo"], "archivos": [
                     {k: f[k] for k in ("archivo_id", "archivo", "estado")} for f in main["archivos"]]}}
 
@@ -1762,7 +1765,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def anuncios(args):
         ctx.refresh()
-        return _announcements(ctx.conn, course_ids(), _int(args.get("n"), "n", 5, 1, 30))
+        return _announcements(ctx.conn, course_ids(), _int(args.get("n"), "n", 5, 1, 30), ctx.cfg.core.tz)
 
     def notas(args):
         ctx.refresh()

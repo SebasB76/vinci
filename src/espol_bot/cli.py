@@ -487,7 +487,7 @@ def main(argv: list[str] | None = None) -> int:
             message = "" if sys.stdin.isatty() else sys.stdin.read()
             conversation.note_turn(conn, subjects, args.sesion, message, now)
             text = conversation.context(conn, cfg.core, now, chat=args.chat, chat_type=args.tipo, session=args.sesion,
-                                        subjects=subjects)
+                                        subjects=subjects, message=message)
             print(json.dumps({"contexto": text}, ensure_ascii=False))
             return 0
         if args.cmd == "citas":

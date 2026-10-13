@@ -43,7 +43,7 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a quote, a sticker, a group
   that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
-  Whisper (in a group, only one that says «Vinci»); his alerts; the block for whoever is not a Vinci's owner; Angel
+  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; the block for whoever is not a Vinci's owner; Angel
   removed with his tokens.
 
 test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA). The captain
@@ -1081,8 +1081,8 @@ def ready_gateway(w, *, voice: bool = False) -> None:
 
 
 def turn_context(requests: list[dict]) -> str:
-    """What Vinci read as the student's message in the first of these turns, with the chat's context at its end."""
-    first = next(r for r in requests if bot_of(r) == "Vinci")
+    """What the bot read as the student's message in the first of these turns, with the chat's context at its end."""
+    first = next(r for r in requests if bot_of(r))
     return flatten([m for m in first["messages"] if m.get("role") == "user"][-1].get("content"))
 
 
@@ -2207,9 +2207,12 @@ def test_whatsapp_friend(tmp_path):
             return text_of(got)
 
         audio_ids = itertools.count(1)
+        calls = len(llm.requests)
         heard = speak(captain_jid, captain_jid, "whatsapp-voz-vinci.ogg", "Capitán")
         assert "Esta semana:" in heard and "qué tengo esta semana" in heard, \
             f"Hermes muestra lo que entendió y Vinci contesta: {heard}"
+        assert "nota de voz que transcribió Whisper" in turn_context(llm.requests[calls:]), \
+            "una nota de voz llega con su aviso: un nombre o un término pudo salir mal escrito"
         his = speak(GROUP_WA, angel_jid, "whatsapp-voz-vinci.ogg", "Angel", group=True)
         assert "EDO de primer orden" in his, his  # his week; /marca above closed the Taller 2
         speak(GROUP_WA, captain_jid, "whatsapp-voz-charla.ogg", "Capitán", group=True,
@@ -2221,11 +2224,17 @@ def test_whatsapp_friend(tmp_path):
         assert "EDO de primer orden" in file_week, file_week
         assert '"Oye, ¿qué tengo esta semana?' in json.dumps(llm.requests[calls:], ensure_ascii=False), \
             "un archivo de audio le llega al modelo transcrito, como una nota de voz"
+        calls = len(llm.requests)
+        speak(angel_jid, angel_jid, "whatsapp-voz-silencio.ogg", "Angel")
+        assert "Su nota de voz no se pudo oír: es un problema del audio" in turn_context(llm.requests[calls:]), \
+            "una nota de voz en silencio no se contesta como si dijera algo"
         report.append("Voz en WhatsApp, con el Whisper local de Hermes: una nota de voz por privado («Vinci, ¿qué "
                       "tengo esta semana?») recibe la semana del capitán. En un grupo encendido, la nota de voz de "
                       "Angel que dice «Vinci» recibe su semana; una charla del capitán sin «Vinci» y la nota de "
                       "alguien sin su Vinci no llegan al modelo (la de ese alguien ni se transcribe). Un archivo de "
-                      "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin")
+                      "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin. Cada nota de voz llega con "
+                      "un aviso en el contexto (un término pudo salir mal escrito); una en silencio, con que no se "
+                      "oyó y no hay que adivinar")
 
         # 10i. Angel's alerts reach his own chat, never the captain's
         angel_env = {"AULA_SECRETS": str(angel_dir / "secrets.env"), "AULA_DATA_DIR": str(angel_dir),

@@ -7,6 +7,7 @@ conversation, a restart and a long chat's summary:
   «anota…»), while it lasts;
 - the activity open here (a quiz, a study session), active or paused, with where it got to: Vinci answers whatever
   else comes up without dragging it along, and takes it up again when asked;
+- for a voice note, that a local Whisper heard it (a word may be wrong) or heard nothing (a filler line);
 - in a private chat, the PDFs waiting for the student's vote and what became of the recent ones, so «ya lo entregué»
   only comes after the vote did it.
 
@@ -19,6 +20,7 @@ A focus and an activity belong to one Hermes session key: a private chat, or one
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -35,6 +37,15 @@ RECENT = timedelta(hours=24)  # a submission's outcome stays in the context this
 KINDS = {"quiz": "quiz", "study": "sesión de estudio", "jury": "práctica de exposición"}
 HEADER = "[Contexto de este chat: lo agrega el sistema en cada mensaje; el estudiante no lo escribió ni lo ve]"
 SYSTEM_TASK = "[Tarea del sistema"
+GROUP_LINE_RE = re.compile(r"^\[.+ te escribe en un grupo de WhatsApp\]$")
+
+
+# How Hermes hands over a voice note: its transcript as a quoted line, or one of its notes when there was none.
+VOICE_RE = re.compile(r'^"(?P<heard>[^"\n]+)"(?:\n\n|$)')
+UNHEARD_MARKS = ("[The user sent a voice message but it came through empty", "[voice message could not be transcribed")
+# What Whisper writes when it hears no speech (silence, noise): subtitle credits it learned from videos.
+FILLER_RE = re.compile(r"^(¡?gracias por ver( el video)?!?|subt[ií]tulos (realizados )?por la comunidad de amara\.org|"
+                       r"suscr[ií]bete.*|\[?m[uú]sica\]?|\.+|transcripci[oó]n.*amara.*)\.?$", re.I)
 
 
 class NoteError(ValueError):
@@ -219,6 +230,25 @@ def _describe(core: CoreConfig, conn: sqlite3.Connection, item: dict, names: dic
     return line
 
 
+def voice(message: str) -> str | None:
+    """What to keep in mind when this message was a voice note: a local Whisper heard it, so a name or a technical
+    word may come out wrong, and a filler line means it heard nothing."""
+    body = "\n".join(line for line in (message or "").strip().splitlines() if not GROUP_LINE_RE.match(line)).strip()
+    if body.startswith(UNHEARD_MARKS):
+        return ("Su nota de voz no se pudo oír: es un problema del audio, no de lo que pidió. No adivines: dile en una "
+                "línea que no se escuchó y que la repita o la escriba.")
+    heard = VOICE_RE.match(body)
+    if not heard:
+        return None
+    if FILLER_RE.match(heard["heard"].strip()):
+        return (f"Su nota de voz salió como «{heard['heard'].strip()}», que es lo que el transcriptor escribe cuando no "
+                "oye voz: no lo dijo él. No lo contestes; dile en una línea que no se escuchó y que la repita o la "
+                "escriba.")
+    return ("Su mensaje es una nota de voz que transcribió Whisper en su PC: un nombre, una sigla o un término técnico "
+            "puede salir mal escrito. Si una palabra no encaja, entiéndela por el tema y, si importa, di qué "
+            "entendiste («entendí L'Hôpital»). Pregunta solo si no sabes qué pide y eso cambia lo que harías.")
+
+
 def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> str | None:
     """The PDFs waiting for the student's vote and what became of the recent ones, from the table the vote writes:
     what Vinci says it did has to match this, not what the conversation remembers."""
@@ -238,7 +268,7 @@ def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> st
 
 
 def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: str, chat_type: str,
-            session: str = "", subjects: list[materias.Subject] | None = None) -> str:
+            session: str = "", subjects: list[materias.Subject] | None = None, message: str = "") -> str:
     """The block the model reads at the end of each message of this chat."""
     lines = [HEADER, f"Ahora: {clock(now, core)} (hora de Ecuador). Úsala para «hoy», «mañana» y lo que vence."]
     if chat_type == "group":
@@ -259,6 +289,9 @@ def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: 
     if described:
         lines.append("Actividades abiertas aquí: " + " · ".join(described) + ". Si su mensaje no es parte de una, "
                      "contesta lo que pide y no la retomes ni la ofrezcas: sigue abierta para cuando él la pida.")
+    heard = voice(message)
+    if heard:
+        lines.append(heard)
     handed = submissions(conn, core, now) if chat_type and chat_type != "group" else None
     if handed:
         lines.append(handed)

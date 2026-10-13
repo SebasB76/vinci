@@ -6,7 +6,9 @@ conversation, a restart and a long chat's summary:
 - the subject in focus: the one the student last named here, for what comes in without one (a photo, a voice note,
   «anota…»), while it lasts;
 - the activity open here (a quiz, a study session), active or paused, with where it got to: Vinci answers whatever
-  else comes up without dragging it along, and takes it up again when asked.
+  else comes up without dragging it along, and takes it up again when asked;
+- in a private chat, the PDFs waiting for the student's vote and what became of the recent ones, so «ya lo entregué»
+  only comes after the vote did it.
 
 The vinci-botones plugin adds `context()` to every turn's message (hook pre_llm_call, `espol-bot contexto`), after
 `note_turn` read the student's message. Hermes stamps a conversation with the day it started, so a chat open for days
@@ -29,6 +31,7 @@ NOTE_CHARS = 300
 FOCUS_TTL = timedelta(hours=3)
 ACTIVITY_IDLE = timedelta(hours=4)  # an activity left this long is paused: it waits to be asked for again
 ACTIVITY_KEEP = timedelta(days=3)  # one paused longer is not brought up any more (it stays in the table)
+RECENT = timedelta(hours=24)  # a submission's outcome stays in the context this long
 KINDS = {"quiz": "quiz", "study": "sesión de estudio", "jury": "práctica de exposición"}
 HEADER = "[Contexto de este chat: lo agrega el sistema en cada mensaje; el estudiante no lo escribió ni lo ve]"
 SYSTEM_TASK = "[Tarea del sistema"
@@ -214,6 +217,24 @@ def _describe(core: CoreConfig, conn: sqlite3.Connection, item: dict, names: dic
     return line
 
 
+def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> str | None:
+    """The PDFs waiting for the student's vote and what became of the recent ones, from the table the vote writes:
+    what Vinci says it did has to match this, not what the conversation remembers."""
+    rows = conn.execute("SELECT assignment_name, pages, state, created_at, updated_at FROM submission_proposals "
+                        "WHERE state IN ('pending', 'submitting') OR (state IN ('submitted', 'failed', 'cancelled') AND updated_at >= ?) "
+                        "ORDER BY id DESC LIMIT 4", (timefmt.iso(now - RECENT),)).fetchall()
+    said = []
+    for r in rows:
+        at = f"{timefmt.parse(r['updated_at'] or r['created_at']).astimezone(core.tz):%H:%M}"
+        said.append({"pending": f"el PDF de «{r['assignment_name']}» ({r['pages']} pág.) espera su voto «Entregar»: "
+                                "todavía NO está entregado",
+                     "submitting": f"«{r['assignment_name']}» se está subiendo al aula ahora, con su voto",
+                     "submitted": f"«{r['assignment_name']}» se entregó en el aula a las {at}, con su voto",
+                     "failed": f"la entrega de «{r['assignment_name']}» falló a las {at}: NO está entregada",
+                     "cancelled": f"canceló la entrega de «{r['assignment_name']}» a las {at}"}[r["state"]])
+    return ("Entregas con PDF (lo que de verdad pasó; no digas otra cosa): " + " · ".join(said) + ".") if said else None
+
+
 def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: str, chat_type: str,
             session: str = "", subjects: list[materias.Subject] | None = None) -> str:
     """The block the model reads at the end of each message of this chat."""
@@ -236,4 +257,7 @@ def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: 
     if described:
         lines.append("Actividades abiertas aquí: " + " · ".join(described) + ". Si su mensaje no es parte de una, "
                      "contesta lo que pide y no la retomes ni la ofrezcas: sigue abierta para cuando él la pida.")
+    handed = submissions(conn, core, now) if chat_type and chat_type != "group" else None
+    if handed:
+        lines.append(handed)
     return "\n".join(lines)

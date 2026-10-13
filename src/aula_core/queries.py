@@ -10,7 +10,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from aula_core import extract, ocr, timefmt
-from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY, assigned_files, fold, is_old, term_year
+from aula_core.catalog import (KIND_LABEL, PUBLIC, WHY_LINK_ONLY, assigned_files, fold, html_to_text, is_old,
+                                term_year)
 
 # A grade on something Canvas takes no upload for is the only sign from the aula that it is done.
 DONE_SQL = ("(a.excused = 1 OR a.submitted_at IS NOT NULL"
@@ -146,6 +147,45 @@ def pending(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = Non
     tasks = [_assignment(r, now) for r in rows]
     # A paper exam from yesterday is not "pending"; a lab handed in on another platform still is.
     return [t for t in tasks if not (t["delivery"] == SCHEDULED_EVENT and t["vence"] and timefmt.parse(t["vence"]) < now)]
+
+
+FIND_STOPWORDS = set("""de del la las el los en con para por que una uno un y o mi tu su sus al lo esa ese esta este
+tarea tareas deber deberes entrega trabajo actividad sobre the of and""".split())
+
+
+def find_assignments(conn: sqlite3.Connection, now: datetime, words: str, ids: list[int] | None = None,
+                     limit: int = 8) -> list[dict]:
+    """Every assignment of the semester whose title or instructions carry the student's words («taller 2», «el de
+    vectores»), handed in or past included, best match first. A number must match as a whole word."""
+    wanted = [w for w in re.findall(r"\w+", fold(words)) if w not in FIND_STOPWORDS and (len(w) > 2 or w.isdigit())]
+    if not wanted:
+        return []
+    extra, params = _course_filter(ids, "a.course_id")
+    rows = conn.execute(
+        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done, {QUIZ_SQL} FROM assignments a
+            JOIN courses c ON c.id = a.course_id {QUIZ_JOIN} WHERE a.active = 1 AND c.active = 1{extra}""",
+        params).fetchall()
+
+    def hits(text: str, word: str) -> bool:
+        pattern = rf"\b{word}\b" if word.isdigit() else rf"\b{re.escape(word[:max(4, len(word) - 2)])}"
+        return re.search(pattern, text) is not None
+
+    scored = []
+    for r in rows:
+        title, body = fold(r["name"]), fold(html_to_text(r["description"]))
+        in_title = [w for w in wanted if hits(title, w)]
+        in_body = [w for w in wanted if w not in in_title and hits(body, w)]
+        score = 3 * len(in_title) + len(in_body)
+        if score:
+            due = timefmt.parse(r["due_at"])
+            distance = abs((due - now).total_seconds()) if due else float("inf")
+            scored.append((-score, distance, r, "título" if in_title else "consigna"))
+    found = []
+    for _, _, r, where in sorted(scored, key=lambda item: item[:2])[:limit]:
+        material = json.loads(r["material"] or "{}")
+        found.append({**_assignment(r, now), "coincide_en": where, "anexos": len(material.get("files") or [])
+                      + len(material.get("links") or [])})
+    return found
 
 
 def assignment(conn: sqlite3.Connection, now: datetime, assignment_id: int, ids: list[int] | None = None) -> dict:

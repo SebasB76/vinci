@@ -22,6 +22,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Brief before each class | subject bot, 30 min before | Vinci's DM, 30 min before (a system task Vinci answers) | yes | `whatsapp.md` «El brief antes de cada clase» |
 | Subject notebook (notes, photos, voice) | subject bot chat | Vinci's DM; the subject named, replied to, or in class by the schedule | yes | `whatsapp.md` «Tus materias, en un solo chat» |
 | Questions on course material, with citations | Vinci or subject bot | Vinci | yes; citations checked by a script | `uso.md` «El material de cada materia» |
+| Questions about one assignment: found by its words (`tareas` `buscar`), its annexes searched first (`tarea_id`), official vs suggestion | the same | the same; the DM context also says which PDF waits for the vote and what was handed in | yes | `whatsapp.md` «Lo que pide una tarea» |
 | Hand in handwritten work | photos to the subject bot → «📤 Entregar» | photos to Vinci → «📤 Entregar» poll | yes (PDF built by a script) | `uso.md` «Entregar una actividad hecha a mano» |
 | `/quiz <tema>` | subject bot (Vinci hands it over), quiz polls | Vinci, polls in the captain's DM | yes (questions), no (scoring) | `funciones.md` «Quiz con `/quiz`» |
 | Académico (GPA, history, grades, timetables) | ask Vinci; «🎓 Conectar Académico» Mini App the first time | ask Vinci in the DM; the same button as a link | yes (answers), no (sign-in) | `uso.md` «Tu Académico de ESPOL» |
@@ -59,6 +60,8 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Quiz | `src/espol_bot/quiz.py`, `hermes/*/quiz/` | `chat <subject bot> "/quiz <tema>"` (uses the model) |
 | Académico | `src/espol_bot/portal_login.py`, `academic_portal.py`, `docs/academico/` | `espol-bot academico` (the copy, read-only); never trigger a new sign-in to test |
 | Assignment detail | `ver_tarea` in `herramientas.py`, `src/aula_core/queries.py`, `materials.py` | ask «¿qué pide <tarea>?» through `chat`; check annexes, rubric and dates (uses the model) |
+| Finding an assignment and searching its annexes | `queries.find_assignments` (`tareas` with `buscar`), `_search` with `tarea_id`, `search.search(file_ids=…)` | `vinci-check say "en el <tarea por su tema>, qué piden de …?"`, then `vinci-check whatsapp --chat dm`: hits marked `de_la_tarea` first |
+| What happened to a PDF submission | `conversation.submissions` (line «Entregas con PDF» of the turn context) | after a `prepare_submission`, the next DM turn says it waits for the vote |
 | DSpace | `src/aula_core/dspace.py` | ask for past exams through `chat` (uses the model) |
 | Schedule | `src/espol_bot/horario.py` | `chat <subject bot> /start` |
 | Chat context | `src/espol_bot/conversation.py`, `espol-bot contexto`, hook `pre_llm_call` in `hermes/plugins/vinci-botones/` | `vinci-check whatsapp --chat dm`: the user turn ends with «[Contexto de este chat…]» and today's clock |

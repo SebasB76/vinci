@@ -1035,7 +1035,7 @@ def test_canvas(tmp_path):
             assert sorted(j["name"] for j in jobs) == ["vinci-agenda", "vinci-apuntes", "vinci-mantenimiento",
                                                        "vinci-resumen", "vinci-sondeo"], jobs
             by_name = {j["name"]: j for j in jobs}
-            assert by_name["vinci-sondeo"]["schedule_display"] == "15,45 * * * *", "cada 30 min, lejos del resumen"
+            assert by_name["vinci-sondeo"]["schedule_display"] == "5,15,25,35,45,55 * * * *", "cada 10 min, lejos del resumen"
             assert by_name["vinci-mantenimiento"]["schedule_display"] == "2,12,22,32,42,52 * * * *"
             assert by_name["vinci-apuntes"]["schedule_display"] == "* * * * *", "la carpeta de notas, cada minuto"
             assert by_name["vinci-resumen"]["schedule"].get("expr") == "0 7 * * *" or \

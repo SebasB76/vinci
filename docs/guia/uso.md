@@ -220,6 +220,9 @@ disco ni el contexto del modelo:
   semestre anterior (por ejemplo `Slides/2021`) va al final.
 - **Qué se baja:** solo el sílabo de cada curso se baja por su cuenta. Lo demás lo baja el bot de la materia cuando le hace
   falta para responderte, y ya bajado se queda.
+- **Las dudas sobre una tarea:** con la tarea identificada, la búsqueda mira primero sus anexos y los marca como de
+  la tarea; el resto del material puede ser de otra tarea o de otro año, y el bot lo dice así. Los anexos sin bajar
+  se bajan en ese momento.
 - **El libro principal:** el bot lo saca de la bibliografía básica del sílabo, o se lo dices tú («el libro de Física
   es el Serway», a Vinci o al bot). La búsqueda lo pone primero. Si su PDF no está en el aula, el bot te lo pide
   **una sola vez**: hasta 20 MB se lo mandas por su chat; si pesa más, lo pones en
@@ -393,12 +396,27 @@ Sin peso conocido, por fecha
 Lo atrasado va aparte, debajo, con su peso. «¿Qué tengo esta semana?» usa el mismo orden y los mismos pesos. El
 resumen lo arma un script, sin el modelo ni tokens.
 
+**Lo que no se sube al aula.** Algunas actividades no tienen dónde subir nada en el aula. Vinci lee su consigna para
+saber de cuál se trata:
+
+- **Se entrega fuera** (un laboratorio en otra plataforma, una lectura en Perusall, un trabajo en papel): sigue en
+  tus pendientes, y atrasada si ya venció, porque el aula nunca se entera. Sale cuando le dices «ya lo hice», votas
+  «✅ Ya lo entregué» o el profesor le pone nota.
+- **Es presencial** (un examen, una lección): cuando pasa su hora, sale sola de tus pendientes.
+- **El aula no lo dice**: queda en tus pendientes. Si ya venció, Vinci te pregunta si la hiciste.
+
+Si Vinci lo entendió mal, díselo («ese lab se entrega en AWS», «eso fue el examen en clase») y lo corrige para esa
+tarea. Si marcaste algo por error, «todavía no lo hago» lo devuelve a tus pendientes. El chat, el resumen y el
+dashboard usan la misma lista.
+
 ## Qué recuerda cada bot
 
 | | Dónde vive | Quién lo escribe |
 |---|---|---|
-| **La conversación** | En el perfil de Hermes del bot. Al llegar a unos 80 000 tokens, Hermes la resume (por defecto esperaría a 256 000), porque cada mensaje viaja con todo el chat. | Hermes |
-| **La memoria** | En el perfil de Hermes del bot: lo que el bot decide recordar de ti entre conversaciones. | Cada bot, la suya |
+| **La conversación** | En el perfil de Hermes del bot. Al llegar a unos 80 000 tokens, Hermes la resume (por defecto esperaría a 256 000), porque cada mensaje viaja con todo el chat. En WhatsApp, un chat sin mensajes por 4 horas empieza una conversación nueva; la anterior queda guardada. | Hermes |
+| **La memoria** | En el perfil de Hermes del bot: lo que el bot decide recordar de ti entre conversaciones, igual en todos tus chats. La hora y lo que hacen sus herramientas no van ahí: se los dicen ellas cada vez. | Cada bot, la suya |
+| **Las notas de un chat** | `espol.db` (tabla `chat_notes`): lo que vale en un solo chat, como la forma de hablarle a un grupo. Vinci las lee en cada mensaje de ese chat, junto con la hora de ahora. | Vinci, cuando se lo pides |
+| **Lo que están haciendo** | `espol.db` (tablas `chat_focus` y `activities`): la materia de la que hablaban (3 horas) y lo que dejaron a medias en ese chat, como un quiz o una sesión de estudio, con por dónde iban. Vinci lo lee en cada mensaje de ese chat. | Vinci (la materia, sola, cuando nombras una) |
 | **El cuaderno** | `cuadernos/<CÓDIGO>/` en la carpeta de datos: lo visto en clase, apuntes, dudas, temas débiles, fotos, audios, documentos, lo que Vinci le pasó y los quiz con tus respuestas. | Solo el bot de esa materia (Vinci lo lee) |
 | **El aula** | `espol.db`: tus materias, tareas, anuncios, notas, el catálogo del material y su índice. | El sondeo (y el bot que baja un documento) |
 

@@ -24,6 +24,9 @@ Tables:
   marked_submitted
                  assignments the student says were handed in outside Canvas (on paper, by email, in
                  the lab): counted as submitted everywhere, since Canvas never learns about them
+  assignment_delivery
+                 how the student says an assignment is handed in, when the aula and its instructions read
+                 otherwise (queries.delivery): it wins over both
   chunks         full-text index (FTS5) of downloaded course material, one row per page
   ocr_pages      the PDF pages that are only an image, by the SHA-256 of their file (`files.digest`), with
                  the text OCR read from them; NULL text: not read yet. Keyed by content, so a copy of
@@ -184,6 +187,12 @@ CREATE TABLE IF NOT EXISTS marked_submitted (
     marked_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS assignment_delivery (
+    assignment_id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    set_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ocr_pages (
     digest TEXT NOT NULL,
     page INTEGER NOT NULL,
@@ -257,6 +266,17 @@ def set_marked_submitted(conn: sqlite3.Connection, assignment_id: int, marked: b
         cur = conn.execute("DELETE FROM marked_submitted WHERE assignment_id = ?", (assignment_id,))
     conn.commit()
     return cur.rowcount == 1
+
+
+def set_delivery(conn: sqlite3.Connection, assignment_id: int, kind: str | None, now: str) -> None:
+    """The student's word on how an assignment is handed in; None goes back to what the aula says."""
+    if kind is None:
+        conn.execute("DELETE FROM assignment_delivery WHERE assignment_id = ?", (assignment_id,))
+    else:
+        conn.execute("INSERT INTO assignment_delivery(assignment_id, kind, set_at) VALUES (?, ?, ?) "
+                     "ON CONFLICT(assignment_id) DO UPDATE SET kind = excluded.kind, set_at = excluded.set_at",
+                     (assignment_id, kind, now))
+    conn.commit()
 
 
 @contextmanager

@@ -125,8 +125,8 @@ def render_tasks(rows, aula: Aula) -> str:
         flags = []
         if t["atrasada"]:
             flags.append("ATRASADA")
-        if t["sin_entrega_en_linea"]:
-            flags.append("sin entrega en línea")
+        if t["delivery"] != queries.CANVAS_SUBMISSION:
+            flags.append(queries.DELIVERY_LABEL[t["delivery"]])
         flag = f" [{', '.join(flags)}]" if flags else ""
         lines.append(f"• {when} — {t['curso']}: {t['tarea']}{flag}\n  {t['url']}")
     return "\n".join(lines)

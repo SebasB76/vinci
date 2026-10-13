@@ -47,9 +47,11 @@ el voto lo deshace.
 **Tus materias, en un solo chat.** No hay un bot por materia: Vinci sabe de qué materia hablas en cada mensaje.
 1. Si nombras la materia («en Estadística: no entendí la varianza»), usa esa.
 2. Si respondes a un aviso, a un brief o a un resumen de apuntes, usa la materia de ese mensaje.
-3. Si mandas una foto o una nota de voz durante tu clase, o hasta una hora después, usa la materia de esa clase
+3. Si nombraste una materia en las últimas 3 horas («estamos en Física»), lo que mandes sin materia (una foto, una
+   nota de voz, «anota…») es de esa. Si a la vez estás en clase de otra, te pregunta cuál.
+4. Si mandas una foto o una nota de voz durante tu clase, o hasta una hora después, usa la materia de esa clase
    según tu horario.
-4. Si nada de eso alcanza, te pregunta cuál es.
+5. Si nada de eso alcanza, te pregunta cuál es.
 
 Cada materia tiene su cuaderno: lo que se vio en clase, tus dudas, los temas que te cuestan, las fotos de la pizarra y
 tus notas de voz. Vinci te confirma dónde guardó cada cosa («📘 Estadística · guardé la foto»); si se equivocó, dile
@@ -64,14 +66,31 @@ folder`) también llegan aquí: las preguntas `//vinci` y el resumen con feedbac
 su encuesta en vez de botones.
 
 - **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
-  archivos que trae.
+  archivos que trae. No hace falta el nombre exacto: «el taller de integrales» la encuentra entre todas las del
+  semestre, también las entregadas; si dos encajan, te pregunta cuál, y si le dices «esa no es», busca otra. Para tus
+  dudas sobre esa tarea busca primero en sus anexos, y separa lo que pide la tarea (con su cita) de lo que te sugiere.
+- **Lo que de verdad pasó.** Vinci no te dice «ya lo entregué» si solo preparó el PDF: en cada mensaje sabe qué PDF
+  espera tu voto y cuál se subió, falló o cancelaste en las últimas 24 horas.
 - **Entregar a mano.** Mándale las fotos (o el PDF) y dile de qué tarea es: arma el PDF y te lo manda con la
   encuesta «📤 Entregar / Cancelar». Se sube al aula solo con tu voto.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
-  te dice si acertaste y por qué, y al final tu puntaje.
+  te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
+  contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al
+  final del chat.
+- **Tengo 20 minutos.** «Tengo 20 minutos para Física»: Vinci mira lo que te cuesta, tus dudas abiertas y lo que
+  vence pronto, te propone qué cabe en ese tiempo y lo hacen paso a paso, con ejercicios de tu material. Al final te
+  pregunta si guarda en el cuaderno lo que te costó; el próximo quiz o la próxima sesión empiezan por ahí.
+- **Jurado de exposición.** «Hazme de jurado para la exposición del proyecto»: dile el documento o la tarea con su
+  rúbrica. Vinci te hace una pregunta a la vez, como el profesor, y después de cada respuesta te dice qué estuvo
+  bien, qué faltó y dónde está. Al final, tus fortalezas y debilidades. Es práctica: no te pone una nota.
+- **Dejar algo y retomarlo.** Lo mismo vale para una sesión de estudio: «tengo 20 minutos, repasemos derivadas»,
+  luego otra pregunta, luego «sigamos». Vinci guarda por dónde iban, aunque el chat empiece de cero o se reinicie.
+  Lo que dejas más de 3 días ya no te lo recuerda.
 - **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
   respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
-  con faster-whisper (`setup.sh` lo instala en Hermes), y Vinci te muestra primero lo que entendió (🎙️).
+  con faster-whisper (`setup.sh` lo instala en Hermes), y Vinci te muestra primero lo que entendió (🎙️). Si no se
+  oyó (silencio, ruido), Vinci te lo dice y te pide repetirla o escribirla: no adivina. Si se oyó pero un nombre salió
+  raro, lo entiende por el tema y te dice qué entendió; solo pregunta si no sabe qué pides.
 
 **Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
 contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz
@@ -107,6 +126,19 @@ En un grupo, Vinci sabe quién le escribe y empieza con su nombre cuando habla d
 notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por privado. Vinci no contesta los
 stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no
 cambian.
+
+Tu chat privado también empieza de cero después de 4 horas sin mensajes: así Vinci arranca con sus reglas y su
+memoria al día. Tus datos, tu lista, tus cuadernos y las notas de cada chat siguen ahí, y te puede buscar lo que
+hablaron antes si se lo pides.
+
+Lo que pides para un grupo vale solo en ese grupo. Si escribes «@vinci en este grupo háblanos en plural», Vinci lo
+guarda como nota de ese chat y lo tiene presente en cada mensaje de ahí; en tu chat privado te sigue hablando como
+siempre. Para quitarla, pídele que olvide esa nota del grupo. Lo que vale en todos tus chats (cómo prefieres las
+cosas, tus metas) va a su memoria de siempre.
+
+Lo mismo sirve para repartir un trabajo: «@vinci quedamos en que yo hago la intro y Angel el análisis» queda como
+acuerdo de ese grupo, con la fecha. Después, «@vinci ¿quién hacía qué?» se contesta desde ahí. Tu Vinci solo lee
+tus mensajes: guarda lo que tú le dices que acordaron.
 
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 

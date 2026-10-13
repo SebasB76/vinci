@@ -28,6 +28,12 @@
                        (and how), whether Vinci asked or the captain said it is not from class, and the text
                        last handed to the subject bot for a summary
   note_questions       the «//vinci …» lines of a note, each handed to the subject bot once
+  chat_notes           what holds in one chat only (a group's way of being spoken to), which Vinci reads in
+                       every turn there and nowhere else (conversation.py)
+  chat_focus           per conversation (Hermes' session key: a chat, and in a group one person): the subject it is
+                       about, while it lasts, for what comes in without one (a photo, a voice note)
+  activities           per conversation: a quiz or a study session open, paused or done, with where it got to, so
+                       it can be left for something else and taken up again
 """
 
 from __future__ import annotations
@@ -171,6 +177,29 @@ CREATE TABLE IF NOT EXISTS shown_pages (
     page INTEGER NOT NULL,
     shown_at TEXT NOT NULL,
     PRIMARY KEY (bot, file_id, page)
+);
+CREATE TABLE IF NOT EXISTS chat_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_focus (
+    session TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    set_at TEXT NOT NULL,
+    how TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    subject TEXT,
+    topic TEXT NOT NULL,
+    state TEXT NOT NULL,
+    data TEXT NOT NULL DEFAULT '{}',
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 """
 

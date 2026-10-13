@@ -127,7 +127,8 @@ function termView(term, items, now, inline) {
 function itemView(item, now, done) {
   const icon = item.todo ? "📌 " : item.quiz ? "⏱️ " : "";
   const due = item.due ? new Date(item.due) : null;
-  const sub = [due && !item.allDay ? clock(due) : "", item.course || (item.todo ? "Personal" : "")].filter(Boolean).join(" · ");
+  const sub = [due && !item.allDay ? clock(due) : "", item.course || (item.todo ? "Personal" : ""),
+    item.elsewhere ? "fuera del aula" : ""].filter(Boolean).join(" · ");
   const date = due ? `<div class="date"><small>${WEEKDAYS[due.getDay()]}</small><b>${due.getDate()}</b>${
     due.getMonth() !== now.getMonth() ? `<small>${MONTHS[due.getMonth()]}</small>` : ""}</div>` : "";
   return `<div class="it${done ? " done" : ""}" id="it-${esc(item.id)}">

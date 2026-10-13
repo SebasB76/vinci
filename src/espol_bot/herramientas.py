@@ -63,9 +63,9 @@ from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
-from aula_core.store import get_meta, set_meta
-from espol_bot import (academic_portal, agenda, citations, diapositivas, grades, health, horario, libros, materias,
-                       messages, portal_login, priority, quiz, store, submission)
+from aula_core.store import get_meta, set_delivery, set_meta
+from espol_bot import (academic_portal, agenda, citations, conversation, diapositivas, grades, health, horario, libros,
+                       materias, messages, portal_login, priority, quiz, store, submission)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -149,6 +149,48 @@ TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué 
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
                   "pendientes. Con «entregada»: false vuelve a sus pendientes. No cambia nada en el aula.")
+STUDY_ACTIVITY = ("Lo que están haciendo en este chat, para dejarlo y retomarlo: un quiz (se abre solo con send_quiz), "
+                  "una sesión de estudio («tengo 20 minutos») o una práctica de exposición con jurado. start abre una "
+                  "(kind, topic, materia; minutes y goal si las dijo; el jurado, con source o tarea_id) y te trae con "
+                  "qué planearla; deja en pausa la que estaba. progress guarda un paso (done, next, practiced, "
+                  "struggled); pause la deja; resume la retoma (un quiz: le vuelvo a mandar las preguntas que le "
+                  "faltan); finish la cierra con done y, si aceptó, save_weak. Las abiertas te llegan en el contexto "
+                  "de cada mensaje con su «#id».")
+STUDY_GUIDE = ("Con «para_planear» (lo que le cuesta, sus dudas, lo que vence) propón en dos líneas qué cabe en sus "
+               "minutos y arranca el primer paso. Un paso a la vez: explicas corto, le pides que lo intente y corriges. "
+               "Guarda cada paso con progress (practiced o struggled). Cuando se acabe el tiempo, díselo; antes de "
+               "finish, pregúntale si guardas en el cuaderno lo que le costó (save_weak).")
+JURY_GUIDE = ("Eres el jurado: una pregunta a la vez sobre el documento o la rúbrica, como la haría el profesor, y "
+              "esperas su respuesta. Después de cada una: qué estuvo bien, qué faltó y lo que debía decir con su cita; "
+              "guarda progress (practiced o struggled, por criterio). Unas 5 preguntas, o hasta que diga basta. Al "
+              "final, fortalezas, debilidades y qué repasar; pregúntale si guardas lo débil en el cuaderno (finish con "
+              "save_weak). Es práctica: no le pongas una nota como si fuera la real.")
+STUDY_PROPERTIES = {
+    "action": {"type": "string", "enum": ["start", "progress", "pause", "resume", "finish"]},
+    "activity_id": {"type": "integer", "description": "el #id del contexto; vacío: la última abierta"},
+    "kind": {"type": "string", "enum": ["study", "jury"], "description": "start: study, o jury para practicar una "
+                                                                          "exposición"},
+    "topic": {"type": "string", "description": "start: el tema, corto"},
+    "materia": {"type": "string", "description": "start: la materia"},
+    "minutes": {"type": "integer", "description": "start: los minutos que tiene"},
+    "goal": {"type": "string", "description": "start: la meta que cabe en ese tiempo"},
+    "source": {"type": "string", "description": "start: el material (archivo y páginas) o el documento que usan"},
+    "tarea_id": {"type": "integer", "description": "start: la tarea de la que trata (trae su rúbrica)"},
+    "save_weak": {"type": "boolean", "description": "finish: true si aceptó guardar en el cuaderno lo que le costó"},
+    "done": {"type": "string", "description": "progress: lo que hicieron en este paso; finish: el cierre"},
+    "next": {"type": "string", "description": "progress: lo que sigue"},
+    "practiced": {"type": "string", "description": "progress: un concepto que practicó bien"},
+    "struggled": {"type": "string", "description": "progress: un concepto que le costó"},
+}
+CHAT_NOTE = ("Una nota que vale solo en este chat: cómo quiere un grupo que le hables, algo que acordaron ahí, algo que "
+             "pidió solo para esta conversación. Te llega al final de cada mensaje de este chat y de ningún otro. Lo "
+             "que vale en todos sus chats (sus preferencias, su contexto) va a tu memoria, no aquí. «remove» con el "
+             "«id» borra una que ya no vale.")
+SET_DELIVERY = ("Corrige cómo se entrega una tarea cuando te lo dice él («ese lab se entrega en AWS», «eso fue el examen "
+                "en clase»). external_submission: se hace fuera del aula y sigue en sus pendientes aunque venza, hasta "
+                "que la marque entregada o tenga nota. scheduled_event: es presencial y sale de pendientes cuando pasa "
+                "su hora. canvas_submission: se sube al aula. auto: vuelve a lo que dicen el aula y la consigna. No "
+                "marca nada como entregado (eso es marcar_entregada).")
 MARK_DONE = ("Cierra un pendiente de su lista personal (el «id» de un «tu_lista» en semana, o de «todos») cuando dice "
              "que ya lo hizo; con «hecho»: false lo reabre.")
 TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
@@ -158,7 +200,8 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record"})
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record", "chat_note",
+    "set_assignment_delivery", "study_activity"})
 
 
 @dataclass
@@ -310,17 +353,98 @@ def _kinds(ctx: Ctx) -> set[str]:
     return {*ctx.cfg.core.material_extensions, "html"}
 
 
+def _find_tasks(ctx: Ctx, words: str, course_ids: list[int] | None) -> dict:
+    found = [_local_dates(ctx, t) for t in queries.find_assignments(ctx.conn, ctx.now(), words, course_ids)]
+    if not found:
+        return {"candidatas": [], "nota": "Ninguna tarea del semestre tiene esas palabras en el título ni en la "
+                                          "consigna. Prueba con otras (el número, el tema) o pregúntale cómo se llama."}
+    note = ("Están todas las del semestre, también las entregadas o vencidas, la que más coincide primero. Si dos o más "
+            "encajan y nada dice cuál, pregúntale en una línea con su nombre y su fecha. Si te dijo que una no era, "
+            "no la vuelvas a proponer.")
+    return {"candidatas": found, "nota": note}
+
+
+def _study_plan(ctx: Ctx, subject: materias.Subject | None, task_id: int | None) -> dict:
+    """What a study session or a jury can build on: what the student finds hard, his open doubts, what is due soon
+    in that subject, and the assignment's rubric when it is about one."""
+    plan: dict = {}
+    if subject:
+        nb = Notebook(ctx.cfg.core, subject.code, read_only=True)
+        try:
+            seen = nb.overview()
+        finally:
+            nb.close()
+        plan["le_cuesta"] = seen["temas_debiles"][:6]
+        plan["dudas_abiertas"] = seen["dudas_abiertas"][:6]
+        plan["vence_pronto"] = [{"id": t["id"], "tarea": t["tarea"], "vence": t["vence"]} for t in
+                                (_local_dates(ctx, t) for t in queries.pending(
+                                    ctx.conn, ctx.now(), agenda.course_ids_for(ctx.conn, subject), days=10)[:3])]
+    if task_id:
+        try:
+            task = _task(ctx, queries.assignment(ctx.conn, ctx.now(), task_id))
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+        plan["tarea"] = {"id": task["id"], "tarea": task["tarea"], "consigna": (task["consigna"] or "")[:1500],
+                         "rubrica": task["rubrica"]}
+    return plan
+
+
+def _save_weak(ctx: Ctx, item: dict, concepts: list[str], now) -> list[str]:
+    """What the student struggled with, as weak topics in the subject's notebook (he said yes): later sessions and
+    quizzes start from there."""
+    if not item["subject"]:
+        raise ToolError("La sesión no tiene materia: no sé en qué cuaderno guardarlo. Pregúntale cuál.")
+    label = "Práctica de exposición" if item["kind"] == "jury" else "Sesión de estudio"
+    nb = Notebook(ctx.cfg.core, item["subject"])
+    try:
+        return [nb.add("tema_debil", f"{label} «{item['topic']}»: {concept}", now, origin="estudio")["texto"]
+                for concept in concepts]
+    finally:
+        nb.close()
+
+
+def _search_task(ctx: Ctx, task_id, course_ids: list[int] | None) -> dict:
+    """The assignment a search is about, its attached files fetched first (a few, reading the aula only)."""
+    try:
+        task = queries.assignment(ctx.conn, ctx.now(), _int(task_id, "tarea_id", hi=10**12), course_ids)
+    except queries.NotFound as exc:
+        raise ToolError(str(exc)) from None
+    for f in [f for f in task["archivos"] if queries.file_state(f, ctx.cfg.core.max_file_mb) == "sin bajar"][:3]:
+        try:
+            _fetch(ctx, f["id"])
+        except ToolError:  # its state says so below
+            pass
+    return queries.assignment(ctx.conn, ctx.now(), task["id"], course_ids)
+
+
 def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int], *, can_fetch: bool) -> dict:
-    """The question, and its translation when given (the material is often in English), merged by relevance."""
+    """The question, and its translation when given (the material is often in English), merged by relevance. With
+    «tarea_id», that assignment's own attachments come first, marked, and the rest is its course's material."""
     n = _int(args.get("n"), "n", 5, 1, 10)
     questions = [str(args["pregunta"]), *([str(args["traduccion"])] if args.get("traduccion") else [])]
-    found: dict[tuple, dict] = {}
-    for question in questions:
-        for hit in search.search(ctx.conn, question, course_ids=course_ids, limit=n, prefer=prefer):
-            key = (normalized_name(hit["archivo"]), hit["pagina"])
-            if key not in found or hit["puntaje"] > found[key]["puntaje"]:
-                found[key] = hit
-    hits = sorted(found.values(), key=lambda h: (h["coincide"] != "todas", -h["puntaje"]))[:n]
+    task = _search_task(ctx, args["tarea_id"], course_ids) if args.get("tarea_id") not in (None, "") else None
+    if task:
+        course_ids = [task["curso_id"]]
+    own = [f["id"] for f in task["archivos"]] if task else []
+
+    def ranked(file_ids: list[int] | None) -> list[dict]:
+        found: dict[tuple, dict] = {}
+        for question in questions:
+            for hit in search.search(ctx.conn, question, course_ids=course_ids, limit=n, prefer=prefer,
+                                     file_ids=file_ids):
+                key = (normalized_name(hit["archivo"]), hit["pagina"])
+                if key not in found or hit["puntaje"] > found[key]["puntaje"]:
+                    found[key] = hit
+        return sorted(found.values(), key=lambda h: (h["coincide"] != "todas", -h["puntaje"]))
+
+    hits = []
+    if task:
+        hits = ranked(own)[:n]
+        for hit in hits:
+            hit["de_la_tarea"] = True
+    seen = {(h["archivo_id"], h["pagina"]) for h in hits}
+    hits += [h for h in ranked(None) if h["archivo_id"] not in own and (h["archivo_id"], h["pagina"]) not in seen
+             ][:n - len(hits)]
     for hit in hits:
         hit["cita"] = citations.cite(hit["archivo"], hit["unidad"], hit["pagina"], url=hit["url"])
         citations.record(ctx.conn, ctx.bot, hit["archivo_id"], [hit["pagina"]], ctx.now())
@@ -329,22 +453,38 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
     marks = ",".join("?" * len(ids)) or "NULL"
     english = ctx.conn.execute(f"SELECT COUNT(*) FROM files WHERE active = 1 AND language = 'en' AND course_id IN ({marks})",
                                ids).fetchone()[0]
-    unread = sum(1 for f in queries.files(ctx.conn, course_ids)
-                 if f["extension"] in _kinds(ctx) and not f["descargado"] and not f["copia_de"])
+    catalog = [f for f in queries.files(ctx.conn, course_ids) if f["extension"] in _kinds(ctx) and not f["copia_de"]]
+    unread = sum(1 for f in catalog if not f["descargado"])
+    # what a «not found» covers: a search finds only words, in the documents already read
+    result["revisado"] = {"documentos_leidos": len(catalog) - unread, "sin_bajar": unread,
+                          "materias": sorted({c["nombre"] for c in queries.courses(ctx.conn)
+                                              if course_ids is None or c["id"] in course_ids})}
     notes = []
+    if task:
+        result["tarea"] = {"id": task["id"], "tarea": task["tarea"], "curso": task["curso"],
+                           "anexos": [{"archivo_id": f["id"], "archivo": f["archivo"],
+                                       "estado": queries.file_state(f, ctx.cfg.core.max_file_mb)}
+                                      for f in task["archivos"]],
+                           "enlaces": [_link_entry(link) for link in task["enlaces"]]}
+        notes.append("Lo marcado «de_la_tarea» sale de los anexos de esa tarea: es lo oficial. Lo demás es material "
+                     "del curso que comparte palabras, quizá de otra tarea o de otro año: si lo usas, dilo así."
+                     + (" Sus enlaces (un Google Doc, un Drive) no entran en esta búsqueda: léelos con "
+                        "leer_archivo(enlace_id) si la pregunta puede estar ahí." if task["enlaces"] else "")
+                     + ("" if task["archivos"] or task["enlaces"] else " La tarea no trae anexos: lo oficial es su "
+                        "consigna (ver_tarea)."))
     if not hits:
         result["en_el_material"] = False
         if not (unread and can_fetch):
-            notes.append("Nada del material leído trata esto: empieza tu respuesta con «No está en el material», sin "
-                         "cita ni página. Después, si le sirve, explícalo con conocimiento general"
-                         + ("" if can_fetch else " (o con la web, dando su enlace)")
-                         + " diciendo que no sale del material.")
+            notes.append("No encontré esas palabras en el material leído («revisado» dice cuánto es). Eso no prueba que "
+                         "no esté: prueba otras palabras o un sinónimo antes de concluir, y si no sale, di qué revisaste "
+                         "(«No lo encontré en el material leído de …»), nunca que no existe. Después, si le sirve, "
+                         "explícalo con conocimiento general" + ("" if can_fetch else " (o con la web, dando su enlace)")
+                         + " diciendo que no sale del material, sin cita ni página.")
     if english and not args.get("traduccion"):
         notes.append(f"{english} documento(s) del material están en inglés: repite la búsqueda con «traduccion» "
                      "(la pregunta en inglés) para no perdértelos.")
     if unread and len(hits) < n:
         fetch = ("si uno de archivos parece tener el tema, bájalo con bajar_archivo y busca otra vez."
-                 + ("" if hits else " Si ninguno lo trae, empieza tu respuesta con «No está en el material», sin cita.")
                  if can_fetch else "si uno de archivos parece tener el tema, léelo con leer_archivo (lo baja del aula).")
         notes.append(f"Solo busco en lo ya leído; {unread} documento(s) del catálogo siguen sin bajar: {fetch}")
     if notes:
@@ -1105,6 +1245,17 @@ def _slides_tool(ctx: Ctx) -> Tool:
     return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
 
 
+def _open_activity(ctx: Ctx, session: str, activity_id) -> dict:
+    """The activity named by its #id, else the newest open one in this conversation."""
+    found = conversation.open_activities(ctx.conn, session, ctx.now())
+    if activity_id not in (None, ""):
+        wanted = _int(activity_id, "activity_id", hi=10**12)
+        found = [a for a in found if a["id"] == wanted]
+    if not found:
+        raise ToolError("No hay una actividad abierta con eso en este chat.")
+    return found[0]
+
+
 def _channel(ctx: Ctx) -> dict:
     """Where this tool call's conversation happens (canal.json, which the vinci-botones plugin writes before it)."""
     if ctx.hermes_home is None:
@@ -1239,6 +1390,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
+        if args.get("buscar"):
+            return _find_tasks(ctx, str(args["buscar"]), _vinci_course_ids(ctx, args.get("materia")))
         pending = queries.pending(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
                                   days=_int(args.get("dias"), "dias"))
         return [_local_dates(ctx, t) for t in pending]
@@ -1276,7 +1429,13 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                     raise ToolError(f"La pregunta {position} no dice de dónde sale: «file_id» y «page» del material "
                                     "que leíste, o «entry_id» del cuaderno de la materia.")
                 questions.append(quiz.question(item, position, source))
-            return quiz.send(chat, nb, str(args["topic"]), questions, ctx.now())
+            sent = quiz.send(chat, nb, str(args["topic"]), questions, ctx.now())
+            session = _channel(ctx).get("sesion", "")
+            if session:
+                conversation.start_activity(ctx.conn, session, "quiz", subject.code, sent["topic"],
+                                            {"code": subject.code, "quiz_id": sent["quiz"]}, ctx.now())
+                conversation.set_focus(ctx.conn, session, subject.code, ctx.now(), "activity")
+            return sent
         except (quiz.QuizError, queries.NotFound) as exc:
             raise ToolError(str(exc)) from None
         finally:
@@ -1308,13 +1467,110 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                            "entrega solo cuando vote Entregar; tú no puedes entregarlo. Dile en una línea que lo revise "
                            "y vote (si estás en un grupo, que se lo mandaste por privado)."}
 
+    def study_activity(args):
+        session = _channel(ctx).get("sesion", "")
+        if not session:
+            raise ToolError("No sé en qué chat estás: una actividad se abre desde una conversación.")
+        action, now = str(args.get("action") or ""), ctx.now()
+        try:
+            if action == "start":
+                kind = str(args.get("kind") or "study")
+                subject = one_subject(args["materia"]) if args.get("materia") else None
+                data = {k: args[k] for k in ("minutes", "goal", "source") if args.get(k) not in (None, "")}
+                if args.get("minutes") not in (None, ""):
+                    data["minutes"] = _int(args["minutes"], "minutes", lo=5, hi=240)
+                if args.get("tarea_id") not in (None, ""):
+                    data["tarea_id"] = _int(args["tarea_id"], "tarea_id", hi=10**12)
+                if kind == "jury" and not (data.get("source") or data.get("tarea_id")):
+                    raise ToolError("El jurado pregunta sobre algo concreto: pásame «source» (el documento y sus "
+                                    "páginas) o «tarea_id» (la tarea con su rúbrica). Si no lo dijo, pregúntale cuál.")
+                plan = _study_plan(ctx, subject, data.get("tarea_id"))
+                data["steps"] = []
+                item = conversation.start_activity(ctx.conn, session, kind, subject.code if subject else None,
+                                                   args.get("topic") or "", data, now)
+                if subject:
+                    conversation.set_focus(ctx.conn, session, subject.code, now, "activity")
+                return {"activity": item, "para_planear": plan,
+                        "message": "Abierta: desde ahora la ves en el contexto de cada mensaje. "
+                                   + (JURY_GUIDE if kind == "jury" else STUDY_GUIDE)}
+            item = _open_activity(ctx, session, args.get("activity_id"))
+            if action == "progress":
+                step = {"at": timefmt.iso(now), "done": " ".join(str(args.get("done") or "").split())[:300]}
+                if not step["done"]:
+                    raise ToolError("Con «progress» va «done»: qué hicieron en este paso, corto.")
+                if args.get("next"):
+                    step["next"] = " ".join(str(args["next"]).split())[:200]
+                data = {**item["data"], "steps": [*item["data"].get("steps", []), step][-12:]}
+                for key in ("practiced", "struggled"):
+                    if args.get(key):
+                        data[key] = sorted({*data.get(key, []), " ".join(str(args[key]).split())[:120]})
+                return {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="active", data=data)}
+            if action == "pause":
+                return {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="paused"),
+                        "message": "En pausa: queda para cuando la pida."}
+            if action == "resume":
+                item = conversation.update_activity(ctx.conn, item["id"], now, state="active")
+                result = {"activity": item}
+                if item["kind"] == "quiz":
+                    chat = _whatsapp_chat(ctx)
+                    if chat is None:
+                        raise ToolError("El quiz se retoma en WhatsApp.")
+                    sent = quiz.resend(chat, ctx.cfg.core, item["data"]["code"], int(item["data"]["quiz_id"]))
+                    result["message"] = (f"Le mandé de nuevo las {sent} pregunta(s) que le faltaban, como encuestas al "
+                                         "final de su chat privado. Díselo en una línea, sin repetirlas."
+                                         if sent else "Ya respondió todas: el quiz terminó.")
+                return result
+            if action == "finish":
+                data = {**item["data"], "summary": " ".join(str(args.get("done") or "").split())[:500]}
+                result = {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="completed",
+                                                                   data=data),
+                          "practicado": data.get("practiced", []), "le_costo": data.get("struggled", []),
+                          "minutos": int((now - timefmt.parse(item["started_at"])).total_seconds() // 60)}
+                if args.get("save_weak") and data.get("struggled"):
+                    result["guardado_en_cuaderno"] = _save_weak(ctx, item, data["struggled"], now)
+                return result
+        except (conversation.NoteError, quiz.QuizError) as exc:
+            raise ToolError(str(exc)) from None
+        raise ToolError("«action» debe ser start, progress, pause, resume o finish.")
+
     def marcar_entregada(args):
         tid = _int(args.get("tarea_id"), "tarea_id", hi=10**12)
         return _press(ctx, f"v1:s:{tid}:{'no' if args.get('entregada') is False else 'ok'}")
 
+    def set_assignment_delivery(args):
+        tid = _int(args.get("tarea_id"), "tarea_id", hi=10**12)
+        kind = str(args.get("delivery") or "")
+        if kind not in (*queries.DELIVERIES, "auto"):
+            raise ToolError(f"«delivery» debe ser uno de: {', '.join(queries.DELIVERIES)} o auto.")
+        try:
+            queries.assignment(ctx.conn, ctx.now(), tid)
+            set_delivery(ctx.conn, tid, None if kind == "auto" else kind, timefmt.iso(ctx.now()))
+            task = queries.assignment(ctx.conn, ctx.now(), tid)
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+        return {"tarea": task["tarea"], "delivery": task["delivery"], "delivery_basis": task["delivery_basis"],
+                "entregada": task["entregada"],
+                "message": f"Guardado: {queries.DELIVERY_LABEL[task['delivery']]}. Díselo en una línea."}
+
     def marcar_hecho(args):
         todo_id = _int(args.get("id"), "id", hi=10**12)
         return _press(ctx, f"v1:t:{todo_id}:{'no' if args.get('hecho') is False else 'ok'}")
+
+    def chat_note(args):
+        chat = _channel(ctx).get("chat")
+        if not chat:
+            raise ToolError("No sé en qué chat estás: las notas de un chat se guardan desde esa conversación.")
+        try:
+            if args.get("action") == "remove":
+                if not conversation.remove_note(ctx.conn, chat, _int(args.get("note_id"), "note_id", hi=10**12)):
+                    raise ToolError("Este chat no tiene una nota con ese «id».")
+                done = "Borrada."
+            else:
+                note = conversation.add_note(ctx.conn, chat, args.get("text") or "", ctx.now())
+                done = f"Guardada como #{note['id']}: desde ahora la ves en cada mensaje de este chat."
+        except conversation.NoteError as exc:
+            raise ToolError(str(exc)) from None
+        return {"chat_notes": conversation.notes(ctx.conn, chat), "message": done}
 
     def anuncios(args):
         ctx.refresh()
@@ -1515,8 +1771,9 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "cada cuaderno (dudas abiertas y temas débiles). "
              "Úsala para «¿qué tengo esta semana?», «¿cómo voy en todo?» y planes de estudio.", semana,
              {"dias": {"type": "integer", "description": "cuántos días hacia adelante (por defecto 7)"}}),
-        Tool("tareas", "Entregas pendientes del aula virtual, por fecha.", tareas,
-             {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("tareas", "Entregas pendientes del aula virtual, por fecha. Con «buscar», encuentra la tarea que nombra "
+             "entre todas las del semestre.", tareas,
+             {**materia, "dias": {"type": "integer", "description": "solo las que vencen en N días"}, "buscar": {"type": "string", "description": "palabras de la tarea que nombra (título, número, tema): la busco entre todas las del semestre, no solo las pendientes"}}),
         Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("send_quiz", "En WhatsApp: manda un quiz corto (/quiz) a su chat privado, una encuesta por pregunta; al "
              "votar cada una le digo si acertó y por qué, y al terminar su puntaje con la fuente de cada pregunta (lo "
@@ -1533,12 +1790,20 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
               "files": {"type": "array", "items": {"type": "string"},
                         "description": "las rutas de las fotos (o de un PDF), en el orden de las páginas"}},
              ["assignment_id", "files"], read_only=False),
+        Tool("study_activity", STUDY_ACTIVITY, study_activity, STUDY_PROPERTIES, ["action"], read_only=False),
         Tool("marcar_entregada", MARK_SUBMITTED, marcar_entregada,
              {**TASK_PROPERTIES, "entregada": {"type": "boolean", "description": "false: vuelve a sus pendientes"}},
              ["tarea_id"], read_only=False),
+        Tool("set_assignment_delivery", SET_DELIVERY, set_assignment_delivery,
+             {**TASK_PROPERTIES, "delivery": {"type": "string", "enum": [*queries.DELIVERIES, "auto"]}},
+             ["tarea_id", "delivery"], read_only=False),
         Tool("marcar_hecho", MARK_DONE, marcar_hecho,
              {"id": {"type": "integer"}, "hecho": {"type": "boolean", "description": "false: lo reabre"}}, ["id"],
              read_only=False),
+        Tool("chat_note", CHAT_NOTE, chat_note,
+             {"action": {"type": "string", "enum": ["add", "remove"], "description": "por defecto add"},
+              "text": {"type": "string", "description": "la nota, corta (add)"},
+              "note_id": {"type": "integer", "description": "el «id» de la nota (remove)"}}, read_only=False),
         Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
              "un SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios,
@@ -1565,10 +1830,10 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              {**materia, "nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
         Tool("buscar_material", "Busca en el texto del material ya leído; devuelve archivo, página, fragmento y la "
              "«cita» lista para copiar, con el libro principal primero. Mucho material está en inglés: pasa también "
-             "«traduccion».",
+             "«traduccion». Si la pregunta es sobre una tarea, pasa «tarea_id»: sus anexos van primero, marcados.",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
-                      **materia, "n": {"type": "integer"}}, ["pregunta"]),
+                      **materia, "n": {"type": "integer"}, "tarea_id": {"type": "integer", "description": "si la pregunta es sobre una tarea: su «id»; busco primero en sus anexos"}}, ["pregunta"]),
         Tool("leer_archivo", "Lee el texto de un archivo del material por páginas, cada una con su «cita»; con "
              "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta del "
              "estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),
@@ -1628,6 +1893,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
 
 RECENT_CLASS = timedelta(hours=1)  # a photo or a voice note this long after a class still belongs to it
 TEAM_TOOLS = ("entregar_a_materia", "proponer_equipo", "archivar_materia", "reactivar_materia")
+FOCUS_TOOLS = ("anotar", "guardar_adjunto", "agregar_material")
 SUBJECT_WORK = ("cuaderno", "anotar", "resolver", "guardar_adjunto", "class_notes", "bajar_archivo",
                 "agregar_material")
 MATERIA_ARG = {"type": "string", "description": "la materia (nombre o código); vacía: la de la clase en curso o "
@@ -1649,16 +1915,24 @@ def _class_subject(ctx: Ctx) -> materias.Subject | None:
 
 
 def _work_subject(ctx: Ctx, materia) -> materias.Subject:
+    """The subject named; else the one this chat is about (conversation.focus); else the one in class. When the chat
+    is about one subject and the class is another, it asks."""
     if materia:
         try:
             return materias.resolve(ctx.subjects(), str(materia))
         except materias.Ambiguous as exc:
             raise ToolError(str(exc)) from None
-    subject = _class_subject(ctx)
+    current = conversation.focus(ctx.conn, _channel(ctx).get("sesion", ""), ctx.now())
+    talked = materias.by_code(ctx.subjects(), current["subject"]) if current else None
+    in_class = _class_subject(ctx)
+    if talked and in_class and talked.code != in_class.code:
+        raise ToolError(f"No sé si es de {talked.name} (de la que venían hablando) o de {in_class.name} (su clase de "
+                        "ahora). Pregúntale en una línea cuál y vuelve a llamarme con «materia».")
+    subject = talked or in_class
     if subject is None:
         names = ", ".join(s.name for s in ctx.subjects())
-        raise ToolError(f"No sé de qué materia es: no está en clase ni salió de una hace poco. Pregúntale en una línea "
-                        f"cuál es ({names}) y vuelve a llamarme con «materia».")
+        raise ToolError(f"No sé de qué materia es: no nombró una en este chat, no está en clase ni salió de una hace "
+                        f"poco. Pregúntale en una línea cuál es ({names}) y vuelve a llamarme con «materia».")
     return subject
 
 
@@ -1668,6 +1942,8 @@ def _subject_work_tools(ctx: Ctx) -> list[Tool]:
     def run(name: str):
         def handler(args):
             subject = _work_subject(ctx, args.get("materia"))
+            if args.get("materia") and name in FOCUS_TOOLS:  # what he saves where he said keeps the chat on it
+                conversation.set_focus(ctx.conn, _channel(ctx).get("sesion", ""), subject.code, ctx.now(), "tool")
             sub = Ctx(ctx.cfg, ctx.hermes_home, subject.code)
             try:
                 tool = next(t for t in subject_tools(sub) if t.name == name)
@@ -1751,6 +2027,8 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def tareas(args):
         ctx.refresh()
+        if args.get("buscar"):
+            return _find_tasks(ctx, str(args["buscar"]), course_ids())
         pending = queries.pending(ctx.conn, ctx.now(), course_ids(), days=_int(args.get("dias"), "dias"))
         return [_local_dates(ctx, t) for t in pending]
 
@@ -1940,8 +2218,9 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     return _noting_stale(ctx, [
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
-        Tool("tareas", "Entregas pendientes de tu materia.", tareas,
-             {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
+        Tool("tareas", "Entregas pendientes de tu materia. Con «buscar», encuentra la tarea que nombra entre todas "
+             "las del semestre.", tareas,
+             {"dias": {"type": "integer", "description": "solo las que vencen en N días"}, "buscar": {"type": "string", "description": "palabras de la tarea que nombra (título, número, tema): la busco entre todas las del semestre, no solo las pendientes"}}),
         Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
              "SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
@@ -1964,10 +2243,11 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              archivos, {"nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
         Tool("buscar_material", "Busca en el texto del material ya leído de tu materia (archivo, página, fragmento y "
              "la «cita» lista para copiar), con tu libro principal primero. Mucho material está en inglés: pasa "
-             "también «traduccion».",
+             "también «traduccion». Si la pregunta es sobre una tarea, pasa «tarea_id»: sus anexos van primero, "
+             "marcados.",
              buscar, {"pregunta": {"type": "string"},
                       "traduccion": {"type": "string", "description": "la misma pregunta en inglés"},
-                      "n": {"type": "integer"}}, ["pregunta"]),
+                      "n": {"type": "integer"}, "tarea_id": {"type": "integer", "description": "si la pregunta es sobre una tarea: su «id»; busco primero en sus anexos"}}, ["pregunta"]),
         Tool("leer_archivo", "Lee un archivo del material de tu materia, por páginas, cada una con su «cita»; con "
              "«enlace_id», el de un enlace de fuera (un Google Doc, un Drive, un SharePoint): lo abre sin la cuenta "
              "del estudiante y lo lee como un PDF del aula, o dice por qué no se abre.", leer, READ_PROPERTIES),

@@ -153,6 +153,30 @@ class Ambiguous(ConfigError):
     pass
 
 
+# Words of a subject's name too common in a student's chat to mean that subject on their own.
+GENERIC_WORDS = {"ciencias", "ciencia", "ingenieria", "sistemas", "sistema", "direccion", "proyectos", "proyecto",
+                 "fundamentos", "introduccion", "computacion", "nube", "variable", "variables", "general", "aplicada",
+                 "aplicadas", "informaticos", "informatica", "programacion", "laboratorio", "taller"}
+
+
+def mentioned(subjects: list[Subject], text: str) -> list[Subject]:
+    """The subjects a message names: its code, its name or the start of it («dirección de proyectos»), or a word of
+    the name no other subject has and a chat rarely uses for something else («estadística», «física»)."""
+    folded = fold(text)
+    words = set(re.findall(r"\w+", folded))
+    named = []
+    for s in subjects:
+        name = [w for w in re.findall(r"\w+", fold(s.name))]
+        others = {w for o in subjects if o is not s for w in re.findall(r"\w+", fold(o.name))}
+        long = [w for w in name if len(w) >= 4 and w not in SMALL_WORDS]
+        lead = " ".join(name[:name.index(long[1]) + 1]) if len(long) >= 2 else None
+        keys = {w for w in long if len(w) >= 5 and w not in GENERIC_WORDS and w not in others}
+        if (s.code.lower() in words or fold(s.name) in folded or (lead and lead in folded)
+                or keys & words):
+            named.append(s)
+    return named
+
+
 def resolve(subjects: list[Subject], text: str) -> Subject:
     """Find the subject a free-text mention refers to ('estadística', 'ESTG1034', 'la de software', its
     bot's name: 'Sistemas Distribuidos'). Raises Ambiguous (listing the candidates) instead of guessing."""

@@ -118,6 +118,7 @@ class FakeCanvas(_Server):
         # Other students' accounts (a friend's Vinci): token → [fixtures folder, state]. A token minted with one
         # belongs to the same account; the captain's are the rest.
         self.accounts: dict[str, list] = {}
+        self.extra: dict[str, list] = {}  # API path → items a test adds to the captain's list there, on any state
         self.lock = threading.Lock()
 
     def add_account(self, token: str, fixtures: str, purpose: str = "Vinci") -> None:
@@ -182,7 +183,9 @@ class FakeCanvas(_Server):
             path = fixtures / state / (api_path.strip("/") + ".json")
             if path.is_file():
                 text = path.read_text(encoding="utf-8").replace("{{BASE}}", self.base).replace("{{WEB}}", self.web)
-                return json.loads(text)
+                data = json.loads(text)
+                extra = self.extra.get(api_path.strip("/")) if account is None else None
+                return data + extra if extra and isinstance(data, list) else data
         return None
 
 

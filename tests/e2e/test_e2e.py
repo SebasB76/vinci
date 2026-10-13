@@ -1386,7 +1386,7 @@ def test_canvas(tmp_path):
                      "✅ Token de Canvas: renovado hace un momento (22:22); la cadena está sana"):
             assert line in healthy, f"falta «{line}»:\n{healthy}"
         stale = doctor("tres horas después, con la PC apagada (nada corrió)", "2026-09-30T01:22:00-05:00", broken=True)
-        for line in ("❌ Sondeo: no corre desde hace 3 h (mar 29 sep, 22:22); debería cada 30 min", "❌ Mantenimiento: no corre desde",
+        for line in ("❌ Sondeo: no corre desde hace 3 h (mar 29 sep, 22:22); debería cada 10 min", "❌ Mantenimiento: no corre desde",
                      "❌ Token de Canvas: se creó hace 3 h", "⚠️ Aula virtual: leída por última vez hace 3 h",
                      "→ hermes gateway status"):
             assert line in stale, f"falta «{line}»:\n{stale}"

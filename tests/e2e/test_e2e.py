@@ -33,7 +33,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names
   and asks which one when nothing says it; `vinci-check say` talks to it.
 
-test_whatsapp_friend: a group the captain turns on, and its notices (a reminder before a class; trusted, a friend's
+test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
+  and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, a quote, a sticker, a group
   that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
@@ -462,6 +463,8 @@ class Script:
                          fecha_clase="2026-09-30")
         if "pon en el cuaderno que no entendí la regla de L'Hôpital" in text and not called:
             return _call("mcp__vinci__anotar", tipo="duda", texto="La regla de L'Hôpital")
+        if "háblanos en plural" in text and not called:
+            return _call("mcp__vinci__chat_note", text="Hablarles en plural, como «nosotros»")
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results))
         if flow is not None:
@@ -604,6 +607,8 @@ class Script:
                     (f"- {t['text']} ({t['due']})" if t["tipo"] == "tu_lista" else f"- {t['tarea']} ({t['curso']})")
                     + (f" · {t['peso']}" if t.get("peso") else "") for t in data["pendientes"])
                              + "\nTu lista:\n" + "\n".join(f"- {t['text']}" for t in data["todos"]))
+            elif isinstance(data, dict) and "chat_notes" in data:
+                parts.append(f"📝 {data['message']}")
             elif isinstance(data, dict) and data.get("confirmacion"):
                 parts.append(data["confirmacion"])
             elif isinstance(data, dict) and data.get("mensaje"):
@@ -1266,10 +1271,11 @@ def test_canvas(tmp_path):
             assert "Aún no lo has respondido" in test[1], test
             sent, reads = quiz_poll("Sondeo · jue 1 oct 12:30 (sin cambios)", "2026-10-01T12:30:00-05:00")
             assert sent == [] and reads == [], "un cuestionario sin cambios no se vuelve a leer"
-            sent, reads = quiz_poll("Sondeo · jue 1 oct 18:35 (el test abre a las 19:00)", "2026-10-01T18:35:00-05:00")
+            # a poll every 10 minutes warns 15 minutes ahead (poller.OPENING_LEAD)
+            sent, reads = quiz_poll("Sondeo · jue 1 oct 18:50 (el test abre a las 19:00)", "2026-10-01T18:50:00-05:00")
             opening = [m["text"] for m in sent if "Abre en" in m["text"]]
             assert len(sent) == 2 and len(opening) == 1, [m["text"] for m in sent]
-            assert "⏳ *Abre en 25 min* — Sistemas Distribuidos" in opening[0], opening
+            assert "⏳ *Abre en 10 min* — Sistemas Distribuidos" in opening[0], opening
             assert "Abre: jue 1 oct, 19:00 · cierra *jue 1 oct, 20:00*" in opening[0], opening
             sent, reads = quiz_poll("Sondeo · jue 1 oct 19:05 (ya abrió)", "2026-10-01T19:05:00-05:00")
             assert sent == [], "el aviso de apertura sale una vez"
@@ -1385,7 +1391,7 @@ def test_canvas(tmp_path):
                      "✅ Token de Canvas: renovado hace un momento (22:22); la cadena está sana"):
             assert line in healthy, f"falta «{line}»:\n{healthy}"
         stale = doctor("tres horas después, con la PC apagada (nada corrió)", "2026-09-30T01:22:00-05:00", broken=True)
-        for line in ("❌ Sondeo: no corre desde hace 3 h (mar 29 sep, 22:22); debería cada 30 min", "❌ Mantenimiento: no corre desde",
+        for line in ("❌ Sondeo: no corre desde hace 3 h (mar 29 sep, 22:22); debería cada 10 min", "❌ Mantenimiento: no corre desde",
                      "❌ Token de Canvas: se creó hace 3 h", "⚠️ Aula virtual: leída por última vez hace 3 h",
                      "→ hermes gateway status"):
             assert line in stale, f"falta «{line}»:\n{stale}"
@@ -1689,6 +1695,23 @@ def test_whatsapp_friend(tmp_path):
             "a quien no tiene su Vinci le contesta el plugin, sin el modelo y sin los datos del capitán"
         report.append("Un grupo apagado no recibe nada; con «@vinci activa este grupo» el capitán lo enciende, y a "
                       "quien no tiene su Vinci le contesta el plugin, sin el modelo ni los datos del capitán")
+
+        # 10b''. What holds in one chat stays there: the group asks to be spoken to in plural (chat_note). Every turn
+        # ends with the clock and that chat's notes; the captain's private chat gets the clock, not the group's note.
+        noted = say(GROUP_WA, captain_jid, "@vinci en este grupo háblanos en plural", "Capitán", group=True)
+        assert "Guardada como #" in text_of(noted), text_of(noted)
+        calls = len(llm.requests)
+        say(GROUP_WA, captain_jid, "@vinci hola", "Capitán", group=True)
+        say(captain_jid, captain_jid, "hola", "Capitán")
+        turns = [flatten([m for m in r["messages"] if m.get("role") == "user"][-1].get("content"))
+                 for r in llm.requests[calls:] if bot_of(r) == "Vinci"]
+        in_group = [t for t in turns if "te escribe en un grupo" in t]
+        in_private = [t for t in turns if "te escribe en un grupo" not in t]
+        assert in_group and in_private, turns
+        assert "Ahora: miércoles 30 sep 2026, 08:30" in in_group[-1] and "en plural" in in_group[-1], in_group[-1]
+        assert "Chat: su chat privado contigo." in in_private[-1] and "en plural" not in in_private[-1], in_private[-1]
+        report.append("Cada turno termina con la hora de ahora y las notas de ese chat: «háblanos en plural» queda como "
+                      "nota del grupo (chat_note) y llega en cada mensaje del grupo, nunca al chat privado del capitán")
 
         # 10b'. «@vinci activa los avisos»: the agenda tick before a class reminds the group, without the model, once
         notices = say(GROUP_WA, captain_jid, "@vinci activa los avisos", "Capitán", group=True)

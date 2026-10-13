@@ -168,7 +168,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la línea del semestre. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
 | `channels.telegram` | `false` | `false`: Vinci te habla solo por WhatsApp (necesita `WHATSAPP_CAPTAIN`) y lleva todas tus materias en un chat; los bots de materia quedan apagados, sin borrarse. `true`: también Telegram, con un bot por materia |
-| `notificaciones.intervalo_minutos` | `30` | Cada cuánto revisa el aula (mínimo 5) |
+| `notificaciones.intervalo_minutos` | `10` | Cada cuánto revisa el aula (mínimo 5) |
 | `notificaciones.recordatorios_horas` | `[24, 3]` | Recordatorios antes de cada entrega no enviada |
 | `notificaciones.resumen_diario` | `"07:00"` | Hora del resumen de la semana |
 | `notificaciones.max_mensajes_por_sondeo` | `8` | Con más avisos que esto en una revisión, llegan en un solo mensaje |

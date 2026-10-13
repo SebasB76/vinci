@@ -397,8 +397,9 @@ resumen lo arma un script, sin el modelo ni tokens.
 
 | | Dónde vive | Quién lo escribe |
 |---|---|---|
-| **La conversación** | En el perfil de Hermes del bot. Al llegar a unos 80 000 tokens, Hermes la resume (por defecto esperaría a 256 000), porque cada mensaje viaja con todo el chat. | Hermes |
-| **La memoria** | En el perfil de Hermes del bot: lo que el bot decide recordar de ti entre conversaciones. | Cada bot, la suya |
+| **La conversación** | En el perfil de Hermes del bot. Al llegar a unos 80 000 tokens, Hermes la resume (por defecto esperaría a 256 000), porque cada mensaje viaja con todo el chat. En WhatsApp, un chat sin mensajes por 4 horas empieza una conversación nueva; la anterior queda guardada. | Hermes |
+| **La memoria** | En el perfil de Hermes del bot: lo que el bot decide recordar de ti entre conversaciones, igual en todos tus chats. La hora y lo que hacen sus herramientas no van ahí: se los dicen ellas cada vez. | Cada bot, la suya |
+| **Las notas de un chat** | `espol.db` (tabla `chat_notes`): lo que vale en un solo chat, como la forma de hablarle a un grupo. Vinci las lee en cada mensaje de ese chat, junto con la hora de ahora. | Vinci, cuando se lo pides |
 | **El cuaderno** | `cuadernos/<CÓDIGO>/` en la carpeta de datos: lo visto en clase, apuntes, dudas, temas débiles, fotos, audios, documentos, lo que Vinci le pasó y los quiz con tus respuestas. | Solo el bot de esa materia (Vinci lo lee) |
 | **El aula** | `espol.db`: tus materias, tareas, anuncios, notas, el catálogo del material y su índice. | El sondeo (y el bot que baja un documento) |
 

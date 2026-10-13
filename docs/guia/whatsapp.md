@@ -108,6 +108,15 @@ notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por 
 stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no
 cambian.
 
+Tu chat privado también empieza de cero después de 4 horas sin mensajes: así Vinci arranca con sus reglas y su
+memoria al día. Tus datos, tu lista, tus cuadernos y las notas de cada chat siguen ahí, y te puede buscar lo que
+hablaron antes si se lo pides.
+
+Lo que pides para un grupo vale solo en ese grupo. Si escribes «@vinci en este grupo háblanos en plural», Vinci lo
+guarda como nota de ese chat y lo tiene presente en cada mensaje de ahí; en tu chat privado te sigue hablando como
+siempre. Para quitarla, pídele que olvide esa nota del grupo. Lo que vale en todos tus chats (cómo prefieres las
+cosas, tus metas) va a su memoria de siempre.
+
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.

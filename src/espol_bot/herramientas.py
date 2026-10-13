@@ -64,8 +64,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_meta
-from espol_bot import (academic_portal, agenda, citations, diapositivas, grades, health, horario, libros, materias,
-                       messages, portal_login, priority, quiz, store, submission)
+from espol_bot import (academic_portal, agenda, citations, conversation, diapositivas, grades, health, horario, libros,
+                       materias, messages, portal_login, priority, quiz, store, submission)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -149,6 +149,10 @@ TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué 
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
                   "pendientes. Con «entregada»: false vuelve a sus pendientes. No cambia nada en el aula.")
+CHAT_NOTE = ("Una nota que vale solo en este chat: cómo quiere un grupo que le hables, algo que acordaron ahí, algo que "
+             "pidió solo para esta conversación. Te llega al final de cada mensaje de este chat y de ningún otro. Lo "
+             "que vale en todos sus chats (sus preferencias, su contexto) va a tu memoria, no aquí. «remove» con el "
+             "«id» borra una que ya no vale.")
 MARK_DONE = ("Cierra un pendiente de su lista personal (el «id» de un «tu_lista» en semana, o de «todos») cuando dice "
              "que ya lo hizo; con «hecho»: false lo reabre.")
 TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
@@ -158,7 +162,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record"})
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record", "chat_note"})
 
 
 @dataclass
@@ -329,22 +333,26 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
     marks = ",".join("?" * len(ids)) or "NULL"
     english = ctx.conn.execute(f"SELECT COUNT(*) FROM files WHERE active = 1 AND language = 'en' AND course_id IN ({marks})",
                                ids).fetchone()[0]
-    unread = sum(1 for f in queries.files(ctx.conn, course_ids)
-                 if f["extension"] in _kinds(ctx) and not f["descargado"] and not f["copia_de"])
+    catalog = [f for f in queries.files(ctx.conn, course_ids) if f["extension"] in _kinds(ctx) and not f["copia_de"]]
+    unread = sum(1 for f in catalog if not f["descargado"])
+    # what a «not found» covers: a search finds only words, in the documents already read
+    result["revisado"] = {"documentos_leidos": len(catalog) - unread, "sin_bajar": unread,
+                          "materias": sorted({c["nombre"] for c in queries.courses(ctx.conn)
+                                              if course_ids is None or c["id"] in course_ids})}
     notes = []
     if not hits:
         result["en_el_material"] = False
         if not (unread and can_fetch):
-            notes.append("Nada del material leído trata esto: empieza tu respuesta con «No está en el material», sin "
-                         "cita ni página. Después, si le sirve, explícalo con conocimiento general"
-                         + ("" if can_fetch else " (o con la web, dando su enlace)")
-                         + " diciendo que no sale del material.")
+            notes.append("No encontré esas palabras en el material leído («revisado» dice cuánto es). Eso no prueba que "
+                         "no esté: prueba otras palabras o un sinónimo antes de concluir, y si no sale, di qué revisaste "
+                         "(«No lo encontré en el material leído de …»), nunca que no existe. Después, si le sirve, "
+                         "explícalo con conocimiento general" + ("" if can_fetch else " (o con la web, dando su enlace)")
+                         + " diciendo que no sale del material, sin cita ni página.")
     if english and not args.get("traduccion"):
         notes.append(f"{english} documento(s) del material están en inglés: repite la búsqueda con «traduccion» "
                      "(la pregunta en inglés) para no perdértelos.")
     if unread and len(hits) < n:
         fetch = ("si uno de archivos parece tener el tema, bájalo con bajar_archivo y busca otra vez."
-                 + ("" if hits else " Si ninguno lo trae, empieza tu respuesta con «No está en el material», sin cita.")
                  if can_fetch else "si uno de archivos parece tener el tema, léelo con leer_archivo (lo baja del aula).")
         notes.append(f"Solo busco en lo ya leído; {unread} documento(s) del catálogo siguen sin bajar: {fetch}")
     if notes:
@@ -1316,6 +1324,22 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         todo_id = _int(args.get("id"), "id", hi=10**12)
         return _press(ctx, f"v1:t:{todo_id}:{'no' if args.get('hecho') is False else 'ok'}")
 
+    def chat_note(args):
+        chat = _channel(ctx).get("chat")
+        if not chat:
+            raise ToolError("No sé en qué chat estás: las notas de un chat se guardan desde esa conversación.")
+        try:
+            if args.get("action") == "remove":
+                if not conversation.remove_note(ctx.conn, chat, _int(args.get("note_id"), "note_id", hi=10**12)):
+                    raise ToolError("Este chat no tiene una nota con ese «id».")
+                done = "Borrada."
+            else:
+                note = conversation.add_note(ctx.conn, chat, args.get("text") or "", ctx.now())
+                done = f"Guardada como #{note['id']}: desde ahora la ves en cada mensaje de este chat."
+        except conversation.NoteError as exc:
+            raise ToolError(str(exc)) from None
+        return {"chat_notes": conversation.notes(ctx.conn, chat), "message": done}
+
     def anuncios(args):
         ctx.refresh()
         return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30),
@@ -1539,6 +1563,10 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("marcar_hecho", MARK_DONE, marcar_hecho,
              {"id": {"type": "integer"}, "hecho": {"type": "boolean", "description": "false: lo reabre"}}, ["id"],
              read_only=False),
+        Tool("chat_note", CHAT_NOTE, chat_note,
+             {"action": {"type": "string", "enum": ["add", "remove"], "description": "por defecto add"},
+              "text": {"type": "string", "description": "la nota, corta (add)"},
+              "note_id": {"type": "integer", "description": "el «id» de la nota (remove)"}}, read_only=False),
         Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
              "un SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios,

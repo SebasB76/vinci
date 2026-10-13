@@ -28,6 +28,8 @@
                        (and how), whether Vinci asked or the captain said it is not from class, and the text
                        last handed to the subject bot for a summary
   note_questions       the «//vinci …» lines of a note, each handed to the subject bot once
+  chat_notes           what holds in one chat only (a group's way of being spoken to), which Vinci reads in
+                       every turn there and nowhere else (conversation.py)
 """
 
 from __future__ import annotations
@@ -171,6 +173,12 @@ CREATE TABLE IF NOT EXISTS shown_pages (
     page INTEGER NOT NULL,
     shown_at TEXT NOT NULL,
     PRIMARY KEY (bot, file_id, page)
+);
+CREATE TABLE IF NOT EXISTS chat_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 """
 

@@ -33,6 +33,8 @@ friend's and in the default one; it acts only on WhatsApp.
   from the same WhatsApp account, so Hermes calls any of their messages «your previous message»: a quote counts as
   this Vinci's own only when its text is in this conversation. After GROUP_IDLE without a message, the conversation
   starts over, as /new would: a group chat that grew for days got too big for Hermes to summarize.
+- A private chat starts over after PRIVATE_IDLE too: Hermes keeps a conversation's rules and memory as they were when
+  it began, and a chat open for days kept old ones. What it was doing survives in each turn's context (vinci-botones).
 
 - The /token page and the dashboard, opened from a button: what they post to Vinci's relay (src/espol_bot/relay.py)
   is fetched here every few seconds while a link is open (`espol-bot whatsapp-rele`), only by the default profile's
@@ -71,6 +73,7 @@ SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are
 NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
 GROUP_IDLE = int("{{GROUP_IDLE}}")  # seconds; the E2E test shortens it
+PRIVATE_IDLE = 4 * 3600
 RELAY = "{{RELAY}}"  # relay.py's mailboxes; set only in the default profile's copy, the one that polls
 RELAY_EVERY = 3
 TURNS = os.path.join(os.path.dirname(RELAY), "turns") if RELAY else ""
@@ -136,9 +139,11 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
             named = _named(text, names)
             if getattr(event, "reply_to_text", None):  # Hermes quotes it after this hook: fixed here, in place
                 event.reply_to_text = _named(str(event.reply_to_text), names)
-            if str(getattr(source, "chat_id", "")).endswith("@g.us") and not _strip_mention(named).startswith("/"):
+            group = str(getattr(source, "chat_id", "")).endswith("@g.us")
+            if not _strip_mention(named).startswith("/"):
                 key = _session_key(gateway, source)
-                await _fresh_start(gateway, session_store, event, key)
+                await _fresh_start(gateway, session_store, event, key, GROUP_IDLE if group else PRIVATE_IDLE)
+            if group and not _strip_mention(named).startswith("/"):
                 _own_quote(event, session_store, key)
                 name = names.get(_bare(getattr(source, "user_id", None))) or getattr(source, "user_name", "") or "Alguien"
                 named = f"{GROUP_HEADER.format(name=name)}\n{named}"
@@ -304,22 +309,22 @@ def _session_key(gateway, source):
         return None
 
 
-async def _fresh_start(gateway, session_store, event, key):
-    """A group conversation idle for GROUP_IDLE starts over, through Hermes' own /new handler, whose notice nobody
+async def _fresh_start(gateway, session_store, event, key, idle):
+    """A conversation idle for `idle` seconds starts over, through Hermes' own /new handler, whose notice nobody
     gets: it returns the notice instead of sending it."""
     try:
         entry = session_store.lookup_by_session_key(key) if key else None
     except Exception:
         entry = None
     updated = getattr(entry, "updated_at", None)
-    if updated is None or (datetime.now(updated.tzinfo) - updated).total_seconds() < GROUP_IDLE:
+    if updated is None or (datetime.now(updated.tzinfo) - updated).total_seconds() < idle:
         return
     try:
         import dataclasses
         await gateway._handle_reset_command(dataclasses.replace(event, text="/new"))
-        logger.info("grupo inactivo: conversación nueva")
+        logger.info("chat inactivo: conversación nueva")
     except Exception:  # the message still goes on, in the old conversation
-        logger.exception("no pude empezar de nuevo la conversación del grupo")
+        logger.exception("no pude empezar de nuevo la conversación")
 
 
 def _own_quote(event, session_store, key):

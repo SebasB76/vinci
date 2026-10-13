@@ -33,7 +33,10 @@
                                      score to send (the plugin calls it)
     espol-bot citas [--curso CÓDIGO] an answer read from stdin with its citations checked against the pages
                                      that bot was shown (the plugin runs it before an answer is sent)
-    espol-bot notes                  read the captain's notes folder: each note's subject, its //vinci
+    espol-bot contexto --chat <canal:id> --tipo dm|group
+                                     what the model reads at the end of each turn: the clock and the notes of
+                                     that chat (conversation.py; the plugin runs it before each turn)
+    espol-bot notes                 read the captain's notes folder: each note's subject, its //vinci
                                      questions and, once its class is over, its summary (Vinci's no-agent
                                      cron, every minute)
     espol-bot foto --curso CÓDIGO <entrada>
@@ -361,6 +364,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("citas", help="comprobar las citas de una respuesta leída por stdin (la usa el plugin "
                                      "vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
+    p = sub.add_parser("contexto", help="el contexto de un turno: la hora y lo que vale en ese chat (lo usa el "
+                                        "plugin vinci-botones)")
+    p.add_argument("--chat", default="", help="canal:id del chat (whatsapp:…@g.us)")
+    p.add_argument("--tipo", default="", help="dm o group")
     p = sub.add_parser("whatsapp-vincular", help="vincular el número de WhatsApp de Vinci con un código y ver sus "
                                                  "grupos (con el gateway detenido)")
     p.add_argument("numero", nargs="?", default=None, help="el número de Vinci (593…), solo si no está vinculado")
@@ -467,6 +474,13 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import quiz
             answer = quiz.record_answer(cfg.core, args.curso, args.poll_id, args.opciones, now_utc())
             print(json.dumps({"respuesta": answer}, ensure_ascii=False))
+            return 0
+        if args.cmd == "contexto":
+            from aula_core import store as core_store
+            from espol_bot import conversation, store
+            conn = store.ensure(core_store.connect(cfg.core.db_path))
+            text = conversation.context(conn, cfg.core, now_utc(), chat=args.chat, chat_type=args.tipo)
+            print(json.dumps({"contexto": text}, ensure_ascii=False))
             return 0
         if args.cmd == "citas":
             from espol_bot import herramientas

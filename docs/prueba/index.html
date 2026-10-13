@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vinci en WhatsApp · guía de prueba</title>
+<style>
+  :root {
+    --bg: var(--background, #f6f7f4);
+    --fg: var(--foreground, #1b1f1c);
+    --mut: var(--muted-foreground, #5f6862);
+    --cardc: var(--card, #ffffff);
+    --line: var(--border, #e2e5e0);
+    --acc: #1fa463;
+    --acc-soft: color-mix(in srgb, #1fa463 14%, transparent);
+    --warn: var(--warning, #b7791f);
+    --warn-soft: color-mix(in srgb, #d69e2e 15%, transparent);
+    --r: var(--radius, 12px);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); color: var(--fg); line-height: 1.45; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { padding: 4px 0 18px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lead { color: var(--mut); margin: 0; font-size: 15px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 99px; background: var(--acc-soft); color: var(--acc); }
+  .steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .steps li { counter-increment: s; background: var(--cardc); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px 12px 50px; position: relative; font-size: 14.5px; }
+  .steps li::before { content: counter(s); position: absolute; left: 14px; top: 11px; width: 24px; height: 24px; border-radius: 50%; background: var(--acc); color: #fff; font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .card { background: var(--cardc); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .card h3 { margin: 0; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+  .card h3 .ic { font-size: 18px; }
+  .card p { margin: 0; font-size: 13.5px; color: var(--mut); }
+  .new { font-size: 10px; font-weight: 700; color: var(--acc); border: 1px solid var(--acc); border-radius: 99px; padding: 0 6px; margin-left: auto; white-space: nowrap; }
+  .msg { margin-top: auto; align-self: flex-start; background: var(--acc-soft); border-radius: 10px 10px 10px 2px; padding: 7px 10px; font-size: 13.5px; }
+  .msg::before { content: "Escríbele: "; color: var(--mut); font-size: 12px; }
+  .msg + .msg::before { content: "Luego: "; }
+  .card .note { font-size: 12.5px; color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 6px 9px; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--cardc); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+  td { padding: 9px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+  tr:first-child td { border-top: 0; }
+  td:first-child { white-space: nowrap; font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; width: 1%; }
+  .report { background: var(--cardc); border: 1px solid var(--line); border-left: 4px solid var(--acc); border-radius: var(--r); padding: 14px 16px; font-size: 14.5px; }
+  .report ul { margin: 6px 0 0; padding-left: 20px; }
+  .report li { margin: 3px 0; }
+  .warns { display: grid; gap: 8px; }
+  .warns p { margin: 0; }
+  footer { color: var(--mut); font-size: 12.5px; margin: 26px 0 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>🤖 Vinci en WhatsApp · guía de prueba</h1>
+  <p class="lead">Vinci es tu asistente de ESPOL. Lee tu aula virtual y te contesta en WhatsApp. Esta guía te dice qué probar y cómo avisarnos cuando algo falla.</p>
+</header>
+
+<h2>Antes de empezar</h2>
+<ol class="steps">
+  <li>Espera el mensaje de Vinci con el botón para conectar tu aula.</li>
+  <li>Crea un token en el aula virtual (Vinci te manda los pasos con una imagen) y pégalo en la página del botón.</li>
+  <li>Pulsa «Enviar cifrado a Vinci». Vinci te confirma tus materias en el chat.</li>
+  <li>Escríbele normal, como a una persona. También puedes mandarle notas de voz.</li>
+</ol>
+
+<h2>Lo nuevo <span class="tag">prueba esto primero</span></h2>
+<div class="grid">
+  <div class="card">
+    <h3><span class="ic">⏱️</span>Sesión de estudio<span class="new">NUEVO</span></h3>
+    <p>Vinci mira lo que vence y lo que te cuesta, y te propone qué estudiar en ese tiempo, paso a paso.</p>
+    <div class="msg">tengo 20 minutos para Cálculo</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🎤</span>Jurado de exposición<span class="new">NUEVO</span></h3>
+    <p>Vinci te pregunta como el profesor, una pregunta a la vez, y te dice qué faltó. Es práctica, no te pone nota.</p>
+    <div class="msg">hazme de jurado para la exposición del proyecto</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🔎</span>Una tarea por su tema<span class="new">NUEVO</span></h3>
+    <p>No hace falta el nombre exacto. Vinci la encuentra y busca primero en los archivos que trae la tarea.</p>
+    <div class="msg">¿qué piden en el taller de integrales?</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🔁</span>Dejar algo y retomarlo<span class="new">NUEVO</span></h3>
+    <p>Deja un quiz o una sesión a medias, pregunta otra cosa y vuelve. Vinci recuerda por dónde iban.</p>
+    <div class="msg">/quiz derivadas</div>
+    <div class="msg">sigamos con el quiz</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🎙️</span>Notas de voz<span class="new">NUEVO</span></h3>
+    <p>Háblale en vez de escribir. Si no te entendió, te lo dice y te pide repetir; no adivina.</p>
+    <div class="msg">(nota de voz) ¿qué tengo esta semana?</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">📬</span>Entregas fuera del aula<span class="new">NUEVO</span></h3>
+    <p>Un lab en otra plataforma o algo por correo sigue pendiente hasta que le dices que ya lo hiciste.</p>
+    <div class="msg">el lab de física ya lo hice</div>
+  </div>
+</div>
+
+<h2>Tu semana y tus notas</h2>
+<div class="grid">
+  <div class="card">
+    <h3><span class="ic">📅</span>Qué tienes pendiente</h3>
+    <p>Lo atrasado y lo urgente primero, con el peso de cada entrega si el aula lo trae.</p>
+    <div class="msg">¿qué tengo esta semana?</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🔔</span>Avisos del aula</h3>
+    <p>Tareas nuevas, anuncios, cambios de fecha y un resumen a las 7:00. Bajo cada recordatorio llega una encuesta «✅ Ya lo entregué».</p>
+    <div class="msg">vota en la encuesta de un recordatorio</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">📝</span>Tu lista de pendientes</h3>
+    <p>Vinci lo anota y te lo recuerda antes. Llega con una encuesta «✅ Hecho».</p>
+    <div class="msg">anota: comprar el libro de estadística para el viernes</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🧮</span>Calculadora de notas</h3>
+    <p>Vinci te dice cómo vas y cuánto necesitas. La primera vez te pide confirmar cómo se evalúa la materia.</p>
+    <div class="msg">¿cuánto necesito en el final de Física para pasar?</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🎓</span>Tu Académico</h3>
+    <p>Promedio, materias aprobadas, horarios de exámenes. La primera vez llega el botón «Conectar Académico».</p>
+    <div class="msg">¿cuál es mi promedio?</div>
+    <p class="note">Escribe tu usuario y tu contraseña solo en la página del botón, nunca en el chat.</p>
+  </div>
+</div>
+
+<h2>Estudiar con tu material</h2>
+<div class="grid">
+  <div class="card">
+    <h3><span class="ic">📄</span>Preguntas con cita</h3>
+    <p>Vinci responde desde los archivos del aula y dice el archivo y la página. Si no está, te lo dice.</p>
+    <div class="msg">explícame la varianza con el material de Estadística</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">✅</span>Quiz con encuestas</h3>
+    <p>De 3 a 5 preguntas de tu material. Al votar te dice si acertaste y por qué.</p>
+    <div class="msg">/quiz límites</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">📚</span>Exámenes anteriores</h3>
+    <p>Vinci busca exámenes viejos en el repositorio de ESPOL y te ayuda a resolverlos.</p>
+    <div class="msg">búscame exámenes anteriores de Cálculo</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">📊</span>Diapositivas</h3>
+    <p>Vinci arma un archivo .pptx corto y te lo manda al chat.</p>
+    <div class="msg">hazme 6 diapositivas sobre redes neuronales</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">📸</span>Entregar trabajo a mano</h3>
+    <p>Mándale las fotos y dile de qué tarea es. Vinci arma el PDF y te manda la encuesta «📤 Entregar».</p>
+    <div class="msg">(fotos) esto es para el deber 3</div>
+    <p class="note">Vota «Entregar» solo si quieres entregar de verdad. El PDF se sube a tu aula.</p>
+  </div>
+</div>
+
+<h2>En un grupo</h2>
+<div class="grid">
+  <div class="card">
+    <h3><span class="ic">👥</span>Preguntas en el grupo</h3>
+    <p>Vinci contesta a quien lo menciona, con su propia aula. Lo demás del grupo no le llega.</p>
+    <div class="msg">@vinci ¿qué tengo esta semana?</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">🤝</span>Quién hace qué<span class="new">NUEVO</span></h3>
+    <p>Vinci guarda el reparto del trabajo para ese grupo y lo recuerda después.</p>
+    <div class="msg">@vinci quedamos en que yo hago la intro</div>
+    <div class="msg">@vinci ¿qué me tocaba?</div>
+  </div>
+  <div class="card">
+    <h3><span class="ic">📢</span>Avisos del grupo<span class="new">NUEVO</span></h3>
+    <p>Un recordatorio antes de cada clase y las novedades del aula. El organizador los enciende por ti.</p>
+    <div class="msg">mira los avisos que llegan antes de clase</div>
+  </div>
+</div>
+
+<h2>Comandos</h2>
+<table>
+  <tr><td>/start</td><td>Saludo y lista de comandos</td></tr>
+  <tr><td>/estado</td><td>Cómo va la lectura de tu aula y tu token</td></tr>
+  <tr><td>/entregas</td><td>Un botón a tu panel de entregas, donde puedes marcarlas</td></tr>
+  <tr><td>/token</td><td>Los pasos y el botón para poner un token nuevo</td></tr>
+  <tr><td>/quiz &lt;tema&gt;</td><td>Un quiz corto con encuestas</td></tr>
+  <tr><td>/new</td><td>Empieza la conversación de cero (tus datos se quedan)</td></tr>
+</table>
+<p class="lead" style="margin-top:8px;font-size:13.5px">Escribe <code>/estado</code>, <code>/token</code> y <code>/entregas</code> por privado, no en un grupo.</p>
+
+<h2>Cuando algo falla, avísanos</h2>
+<div class="report">
+  Manda una captura del chat al organizador de la prueba, con dos frases:
+  <ul>
+    <li>qué le pediste a Vinci;</li>
+    <li>qué esperabas y qué hizo.</li>
+  </ul>
+  <p style="margin:10px 0 0">Nos interesa sobre todo: respuestas inventadas, una tarea entregada que Vinci da como pendiente, una cita a un archivo que no dice eso, y botones o encuestas que no hacen nada.</p>
+</div>
+
+<h2>Cuidado</h2>
+<div class="report warns" style="border-left-color: var(--warn)">
+  <p>🔒 Pega tu token solo en la página del botón, nunca en el chat ni en un grupo. El token da acceso a tu aula.</p>
+  <p>📤 Revisa el PDF antes de votar «Entregar». Vinci lo sube a tu aula en ese momento.</p>
+  <p>🧭 Confirma fechas y notas importantes en el aula. Vinci está en prueba y puede equivocarse.</p>
+</div>
+
+<footer>Vinci · versión de prueba · octubre 2026</footer>
+</div>
+</body>
+</html>

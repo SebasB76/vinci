@@ -1266,10 +1266,11 @@ def test_canvas(tmp_path):
             assert "Aún no lo has respondido" in test[1], test
             sent, reads = quiz_poll("Sondeo · jue 1 oct 12:30 (sin cambios)", "2026-10-01T12:30:00-05:00")
             assert sent == [] and reads == [], "un cuestionario sin cambios no se vuelve a leer"
-            sent, reads = quiz_poll("Sondeo · jue 1 oct 18:35 (el test abre a las 19:00)", "2026-10-01T18:35:00-05:00")
+            # within the 15 min lead: with a poll every 10 minutes, the last poll before 19:00 is at 18:50
+            sent, reads = quiz_poll("Sondeo · jue 1 oct 18:50 (el test abre a las 19:00)", "2026-10-01T18:50:00-05:00")
             opening = [m["text"] for m in sent if "Abre en" in m["text"]]
             assert len(sent) == 2 and len(opening) == 1, [m["text"] for m in sent]
-            assert "⏳ *Abre en 25 min* — Sistemas Distribuidos" in opening[0], opening
+            assert "⏳ *Abre en 10 min* — Sistemas Distribuidos" in opening[0], opening
             assert "Abre: jue 1 oct, 19:00 · cierra *jue 1 oct, 20:00*" in opening[0], opening
             sent, reads = quiz_poll("Sondeo · jue 1 oct 19:05 (ya abrió)", "2026-10-01T19:05:00-05:00")
             assert sent == [], "el aviso de apertura sale una vez"

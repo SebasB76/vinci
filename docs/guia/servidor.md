@@ -1,8 +1,8 @@
 # Vinci en un servidor (Coolify)
 
 Vinci también corre en un servidor, encendido todo el día, con la imagen de Docker de este repo (`Dockerfile`). La
-imagen parte de la imagen oficial de Hermes Agent: un solo contenedor con un solo gateway para Vinci, los bots de
-materia y tus amigos. Todo lo que cambia (datos del aula, memoria, perfiles, sesión de WhatsApp y `secrets.env`) vive
+imagen parte de la imagen oficial de Hermes Agent: un solo contenedor con un solo gateway para tu Vinci y el de
+cada amigo, por WhatsApp. Todo lo que cambia (datos del aula, memoria, perfiles, sesión de WhatsApp y `secrets.env`) vive
 en el volumen `/opt/data`. Necesita unos 1,5 GB de RAM y unos 4 GB de disco al empezar.
 
 Corre una sola copia de Vinci a la vez. Dos copias contestan dos veces por WhatsApp y se rompen la cadena del token de
@@ -22,14 +22,17 @@ Canvas una a la otra.
    | `VINCI_PROVIDER` | `openai-api` |
    | `VINCI_MODEL` | `gpt-6-luna`, u otro modelo del proveedor |
 
-   En una instalación nueva, agrega también `CANVAS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_ID` y, si usas
-   WhatsApp, `WHATSAPP_CAPTAIN`. Estas solo llenan lo que falta en `secrets.env`: Vinci renueva su token de Canvas
-   ahí, así que un reinicio nunca le devuelve uno viejo.
+   En una instalación nueva, agrega también `CANVAS_TOKEN`, `WHATSAPP_CAPTAIN` y, si ya publicaste el relé,
+   `WHATSAPP_RELAY_URL` y `WHATSAPP_RELAY_TOKEN`. Estas solo llenan lo que falta en `secrets.env`: Vinci renueva su
+   token de Canvas ahí, así que un reinicio nunca le devuelve uno viejo. Si pasas tu Vinci desde la PC (abajo), no
+   agregues ninguna: la mudanza trae tu `secrets.env`.
 6. Pulsa **Deploy**. En cada arranque, la imagen hace lo mismo que `./setup.sh`: crea o actualiza los perfiles, los
    cron jobs y los plugins.
 
 Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se transcriben con la misma key de
 OpenAI. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
+El servidor usa el `config.toml` del repo: para cambiar algo, haz commit del cambio y redespliega. Así se enciende
+Telegram también (`[channels] telegram = true`), junto con `TELEGRAM_BOT_TOKEN` y `TELEGRAM_USER_ID`.
 
 ## Pasar tu Vinci de la PC al servidor
 

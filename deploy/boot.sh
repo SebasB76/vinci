@@ -7,12 +7,10 @@ BOT="$VINCI/.venv/bin/espol-bot"
 say() { echo "[vinci] $*"; }
 
 mkdir -p "$(dirname "$AULA_CONFIG")"
-if [ ! -f "$AULA_CONFIG" ]; then
-  # The repo's config.toml, with its data inside the volume and no notes folder (it lives on the captain's PC).
-  sed -e 's|^carpeta_datos = .*|carpeta_datos = "/opt/data/vinci/datos"|' \
-      -e 's|^folder = .*|folder = ""|' "$VINCI/config.toml" > "$AULA_CONFIG"
-  say "created $AULA_CONFIG"
-fi
+# The repo's config.toml on every start, as on the PC (a config change ships with a deploy), with its data inside
+# the volume and no notes folder (it lives on the captain's PC). Nothing writes config.toml at runtime.
+sed -e 's|^carpeta_datos = .*|carpeta_datos = "/opt/data/vinci/datos"|' \
+    -e 's|^folder = .*|folder = ""|' "$VINCI/config.toml" > "$AULA_CONFIG"
 [ -n "${VINCI_PROVIDER:-}" ] && sed -i "s|^proveedor = .*|proveedor = \"$VINCI_PROVIDER\"|" "$AULA_CONFIG"
 [ -n "${VINCI_MODEL:-}" ] && sed -i "s|^modelo = .*|modelo = \"$VINCI_MODEL\"|" "$AULA_CONFIG"
 

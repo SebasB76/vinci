@@ -84,7 +84,8 @@ nadie se lo pida:
 
 - un recordatorio antes de cada clase de tu horario (los mismos `brief_minutos_antes`), con el aula, si es virtual y
   lo que vence esa semana en esa materia;
-- los anuncios nuevos de tus profesores, las tareas nuevas y los cambios de fecha.
+- los anuncios nuevos de tus profesores, las tareas nuevas y los cambios de fecha, todo lo de una lectura del aula
+  en un solo mensaje.
 
 Los avisos nunca llevan notas, entregas hechas ni tu cuaderno. «@vinci desactiva los avisos» los apaga. Solo tú
 puedes encenderlos, y funcionan aunque el grupo esté apagado para las preguntas.

@@ -5,7 +5,8 @@ Model-free, and only what the whole class shares: never a grade, a submission or
     horario.toml, the subject, time, room (marked when it is virtual) and what of that subject is due in 7 days,
     submitted or not, since a classmate may not have. Each class start is claimed in `briefs` as «grupo:<code>»,
     so a restart never sends it twice and the captain's own brief is not affected.
-  - `send_events`, from the poller: the aula's new announcements, new assignments and changed due dates.
+  - `send_events`, from the poller: the aula's new announcements, new assignments and changed due dates, all of
+    one poll in a single message.
 """
 
 from __future__ import annotations
@@ -85,13 +86,22 @@ def class_reminders(cfg: BotConfig, subjects: list, now: datetime) -> None:
             aula.close()
 
 
+def news_text(events: list[dict], tz) -> str:
+    """Every novelty of one poll as one message, so the group gets a single notice, not one per event."""
+    blocks = ["📢 <b>Novedades del aula</b>"]
+    for kind in EVENT_KINDS:
+        lines = []
+        for ev in (ev for ev in events if ev["kind"] == kind):
+            line = messages._digest_line(ev, tz)
+            text = " ".join((ev.get("texto") or "").split()) if kind == "new_announcement" else ""
+            lines.append(line + (f"\n  {messages.e(text[:200].rstrip())}{'…' if len(text) > 200 else ''}" if text else ""))
+        if lines:
+            blocks.append(f"<b>{messages.KIND_TITLE[kind]}</b>\n" + "\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def send_events(cfg: BotConfig, events: list[dict], now: datetime) -> None:
     groups = amigos.notice_groups(cfg)
     shared = [ev for ev in events if ev["kind"] in EVENT_KINDS]
-    if not groups or not shared:
-        return
-    if len(shared) > cfg.max_messages_per_poll:
-        _send(cfg, groups, messages.digest(shared, cfg.core.tz))
-        return
-    for ev in shared:
-        _send(cfg, groups, messages.event_message(ev, cfg.core.tz, now))
+    if groups and shared:
+        _send(cfg, groups, news_text(shared, cfg.core.tz))

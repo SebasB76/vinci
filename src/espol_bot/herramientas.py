@@ -149,11 +149,22 @@ TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué 
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
                   "pendientes. Con «entregada»: false vuelve a sus pendientes. No cambia nada en el aula.")
-STUDY_ACTIVITY = ("Lo que están haciendo en este chat, para dejarlo y retomarlo: un quiz (se abre solo con send_quiz) o "
-                  "una sesión de estudio. start abre una (kind, topic, materia; minutes y goal si las dijo) y deja en "
-                  "pausa la que estaba; progress guarda un paso (done, next, practiced, struggled); pause la deja; "
-                  "resume la retoma (un quiz: le vuelvo a mandar las preguntas que le faltan); finish la cierra con "
-                  "done. Las abiertas te llegan en el contexto de cada mensaje con su «#id».")
+STUDY_ACTIVITY = ("Lo que están haciendo en este chat, para dejarlo y retomarlo: un quiz (se abre solo con send_quiz), "
+                  "una sesión de estudio («tengo 20 minutos») o una práctica de exposición con jurado. start abre una "
+                  "(kind, topic, materia; minutes y goal si las dijo; el jurado, con source o tarea_id) y te trae con "
+                  "qué planearla; deja en pausa la que estaba. progress guarda un paso (done, next, practiced, "
+                  "struggled); pause la deja; resume la retoma (un quiz: le vuelvo a mandar las preguntas que le "
+                  "faltan); finish la cierra con done y, si aceptó, save_weak. Las abiertas te llegan en el contexto "
+                  "de cada mensaje con su «#id».")
+STUDY_GUIDE = ("Con «para_planear» (lo que le cuesta, sus dudas, lo que vence) propón en dos líneas qué cabe en sus "
+               "minutos y arranca el primer paso. Un paso a la vez: explicas corto, le pides que lo intente y corriges. "
+               "Guarda cada paso con progress (practiced o struggled). Cuando se acabe el tiempo, díselo; antes de "
+               "finish, pregúntale si guardas en el cuaderno lo que le costó (save_weak).")
+JURY_GUIDE = ("Eres el jurado: una pregunta a la vez sobre el documento o la rúbrica, como la haría el profesor, y "
+              "esperas su respuesta. Después de cada una: qué estuvo bien, qué faltó y lo que debía decir con su cita; "
+              "guarda progress (practiced o struggled, por criterio). Unas 5 preguntas, o hasta que diga basta. Al "
+              "final, fortalezas, debilidades y qué repasar; pregúntale si guardas lo débil en el cuaderno (finish con "
+              "save_weak). Es práctica: no le pongas una nota como si fuera la real.")
 STUDY_PROPERTIES = {
     "action": {"type": "string", "enum": ["start", "progress", "pause", "resume", "finish"]},
     "activity_id": {"type": "integer", "description": "el #id del contexto; vacío: la última abierta"},
@@ -164,6 +175,8 @@ STUDY_PROPERTIES = {
     "minutes": {"type": "integer", "description": "start: los minutos que tiene"},
     "goal": {"type": "string", "description": "start: la meta que cabe en ese tiempo"},
     "source": {"type": "string", "description": "start: el material (archivo y páginas) o el documento que usan"},
+    "tarea_id": {"type": "integer", "description": "start: la tarea de la que trata (trae su rúbrica)"},
+    "save_weak": {"type": "boolean", "description": "finish: true si aceptó guardar en el cuaderno lo que le costó"},
     "done": {"type": "string", "description": "progress: lo que hicieron en este paso; finish: el cierre"},
     "next": {"type": "string", "description": "progress: lo que sigue"},
     "practiced": {"type": "string", "description": "progress: un concepto que practicó bien"},
@@ -349,6 +362,45 @@ def _find_tasks(ctx: Ctx, words: str, course_ids: list[int] | None) -> dict:
             "encajan y nada dice cuál, pregúntale en una línea con su nombre y su fecha. Si te dijo que una no era, "
             "no la vuelvas a proponer.")
     return {"candidatas": found, "nota": note}
+
+
+def _study_plan(ctx: Ctx, subject: materias.Subject | None, task_id: int | None) -> dict:
+    """What a study session or a jury can build on: what the student finds hard, his open doubts, what is due soon
+    in that subject, and the assignment's rubric when it is about one."""
+    plan: dict = {}
+    if subject:
+        nb = Notebook(ctx.cfg.core, subject.code, read_only=True)
+        try:
+            seen = nb.overview()
+        finally:
+            nb.close()
+        plan["le_cuesta"] = seen["temas_debiles"][:6]
+        plan["dudas_abiertas"] = seen["dudas_abiertas"][:6]
+        plan["vence_pronto"] = [{"id": t["id"], "tarea": t["tarea"], "vence": t["vence"]} for t in
+                                (_local_dates(ctx, t) for t in queries.pending(
+                                    ctx.conn, ctx.now(), agenda.course_ids_for(ctx.conn, subject), days=10)[:3])]
+    if task_id:
+        try:
+            task = _task(ctx, queries.assignment(ctx.conn, ctx.now(), task_id))
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+        plan["tarea"] = {"id": task["id"], "tarea": task["tarea"], "consigna": (task["consigna"] or "")[:1500],
+                         "rubrica": task["rubrica"]}
+    return plan
+
+
+def _save_weak(ctx: Ctx, item: dict, concepts: list[str], now) -> list[str]:
+    """What the student struggled with, as weak topics in the subject's notebook (he said yes): later sessions and
+    quizzes start from there."""
+    if not item["subject"]:
+        raise ToolError("La sesión no tiene materia: no sé en qué cuaderno guardarlo. Pregúntale cuál.")
+    label = "Práctica de exposición" if item["kind"] == "jury" else "Sesión de estudio"
+    nb = Notebook(ctx.cfg.core, item["subject"])
+    try:
+        return [nb.add("tema_debil", f"{label} «{item['topic']}»: {concept}", now, origin="estudio")["texto"]
+                for concept in concepts]
+    finally:
+        nb.close()
 
 
 def _search_task(ctx: Ctx, task_id, course_ids: list[int] | None) -> dict:
@@ -1422,16 +1474,25 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         action, now = str(args.get("action") or ""), ctx.now()
         try:
             if action == "start":
+                kind = str(args.get("kind") or "study")
                 subject = one_subject(args["materia"]) if args.get("materia") else None
                 data = {k: args[k] for k in ("minutes", "goal", "source") if args.get(k) not in (None, "")}
                 if args.get("minutes") not in (None, ""):
                     data["minutes"] = _int(args["minutes"], "minutes", lo=5, hi=240)
+                if args.get("tarea_id") not in (None, ""):
+                    data["tarea_id"] = _int(args["tarea_id"], "tarea_id", hi=10**12)
+                if kind == "jury" and not (data.get("source") or data.get("tarea_id")):
+                    raise ToolError("El jurado pregunta sobre algo concreto: pásame «source» (el documento y sus "
+                                    "páginas) o «tarea_id» (la tarea con su rúbrica). Si no lo dijo, pregúntale cuál.")
+                plan = _study_plan(ctx, subject, data.get("tarea_id"))
                 data["steps"] = []
-                item = conversation.start_activity(ctx.conn, session, str(args.get("kind") or "study"),
-                                                   subject.code if subject else None, args.get("topic") or "", data, now)
+                item = conversation.start_activity(ctx.conn, session, kind, subject.code if subject else None,
+                                                   args.get("topic") or "", data, now)
                 if subject:
                     conversation.set_focus(ctx.conn, session, subject.code, now, "activity")
-                return {"activity": item, "message": "Abierta. Desde ahora la ves en el contexto de cada mensaje."}
+                return {"activity": item, "para_planear": plan,
+                        "message": "Abierta: desde ahora la ves en el contexto de cada mensaje. "
+                                   + (JURY_GUIDE if kind == "jury" else STUDY_GUIDE)}
             item = _open_activity(ctx, session, args.get("activity_id"))
             if action == "progress":
                 step = {"at": timefmt.iso(now), "done": " ".join(str(args.get("done") or "").split())[:300]}
@@ -1461,8 +1522,13 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                 return result
             if action == "finish":
                 data = {**item["data"], "summary": " ".join(str(args.get("done") or "").split())[:500]}
-                return {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="completed",
-                                                                 data=data)}
+                result = {"activity": conversation.update_activity(ctx.conn, item["id"], now, state="completed",
+                                                                   data=data),
+                          "practicado": data.get("practiced", []), "le_costo": data.get("struggled", []),
+                          "minutos": int((now - timefmt.parse(item["started_at"])).total_seconds() // 60)}
+                if args.get("save_weak") and data.get("struggled"):
+                    result["guardado_en_cuaderno"] = _save_weak(ctx, item, data["struggled"], now)
+                return result
         except (conversation.NoteError, quiz.QuizError) as exc:
             raise ToolError(str(exc)) from None
         raise ToolError("«action» debe ser start, progress, pause, resume o finish.")

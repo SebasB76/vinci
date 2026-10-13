@@ -34,7 +34,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names,
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
-  poll; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it.
+  poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
+  first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
@@ -581,6 +582,27 @@ class Script:
             data = _json(results[-1])
             return {"content": f"📝 Te mandé el quiz: {data['questions']} preguntas como encuestas."
                     if isinstance(data, dict) and data.get("quiz") else _problem(results[-1])}
+        if "tengo 20 minutos para Cálculo" in text:
+            if not called:
+                return _call("mcp__vinci__study_activity", action="start", kind="study", materia="cálculo", minutes=20,
+                             topic="Límites")
+            plan = _json(results[-1])["para_planear"]
+            return {"content": "⏱️ 20 minutos. Empecemos por tu duda: " + "; ".join(plan["dudas_abiertas"])}
+        if "me costó el 0/0" in text:
+            if not called:
+                return _call("mcp__vinci__study_activity", action="progress", done="Ejercicio 1 de L'Hôpital",
+                             struggled="límites 0/0")
+            return {"content": "Anotado. Sigamos con otro."}
+        if "guarda lo que me costó" in text:
+            if not called:
+                return _call("mcp__vinci__study_activity", action="finish", done="Repasamos L'Hôpital", save_weak=True)
+            data = _json(results[-1])
+            return {"content": "Listo. En tu cuaderno: " + "; ".join(data.get("guardado_en_cuaderno") or ["nada"])}
+        if "hazme de jurado" in text:
+            if not called:
+                return _call("mcp__vinci__study_activity", action="start", kind="jury", materia="física",
+                             topic="Exposición de vectores")
+            return {"content": _problem(results[-1])}
         if "sigamos con el quiz" in text:
             if not called:
                 return _call("mcp__vinci__study_activity", action="resume")
@@ -1773,6 +1795,20 @@ def test_whatsapp_captain(tmp_path):
         score = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Quiz: Integrales dobles" in m.get("message", "")],
                             60)
         assert score, fail(f"sin puntaje al terminar: {wa.messages_to(captain_jid, mark)}")
+        # 10m3. «Tengo 20 minutos»: a session planned from his open doubts; what he struggled with goes to the
+        # notebook once he says yes. A jury asks first what it judges.
+        planned = text_of(say(captain_jid, captain_jid, "tengo 20 minutos para Cálculo", "Capitán"))
+        assert "La regla de L'Hôpital" in planned, planned
+        say(captain_jid, captain_jid, "me costó el 0/0", "Capitán")
+        calls = len(llm.requests)
+        saved = text_of(say(captain_jid, captain_jid, "listo, guarda lo que me costó", "Capitán"))
+        assert "Sesión de estudio «Límites»: límites 0/0" in saved, saved
+        assert "sesión de estudio «Límites»" in turn_context(llm.requests[calls:]), "la sesión estaba abierta"
+        jury = text_of(say(captain_jid, captain_jid, "hazme de jurado para la exposición", "Capitán"))
+        assert "El jurado pregunta sobre algo concreto" in jury, jury
+        md.append(f"**Capitán**: tengo 20 minutos para Cálculo → Vinci: {normalize(planned)}; «me costó el 0/0»; "
+                  f"«listo, guarda lo que me costó» → {normalize(saved)}\n")
+
         # 10m''. What became of a PDF comes from the table the vote writes, in every private turn
         db = sqlite3.connect(data_dir / "espol.db")
         db.execute("INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, "

@@ -29,7 +29,8 @@ test_canvas, no gateway:
      Canvas or the chat.
 
 test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes his WhatsApp to Vinci (and anyone else
-  to Vinci's guest tools); his week; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
+  to Vinci's guest tools); his week; work handed in outside the aula stays pending and late until he says it is done
+  (and back with «todavía no»), an exam held in class leaves on its own, and the summary lists the same; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names
   and asks which one when nothing says it; `vinci-check say` talks to it.
 
@@ -172,6 +173,16 @@ T_POLL3 = "2026-09-29T01:00:00-05:00"   # sin cambios: no debe enviar nada
 T_SUMMARY = "2026-09-29T07:00:00-05:00"
 T_POLL4 = "2026-09-29T20:30:00-05:00"   # Taller 2 vence en 2.5 h → recordatorio de 3 h
 T_RESILIENCE = [f"2026-09-30T{12 + i // 2}:{i % 2 * 30:02d}:00-05:00" for i in range(9)]  # 12:00 … 16:00
+# Work the aula takes no upload for, in Física, all due before T_VINCI: a lab on another platform, an exam held in
+# class, and one whose instructions do not say how it is handed in.
+ELSEWHERE_TASKS = [
+    (3101, "Práctica 2 en el simulador", ["none"], "2026-09-28T04:59:59Z",
+     "<p>Resuelve la práctica 2 en la plataforma del simulador y sube allí tu captura final: "
+     "<a href=\"https://simulador.example.org/p2\">simulador</a>. En el aula no hay entregable.</p>"),
+    (3102, "Lección 2", ["on_paper"], "2026-09-29T13:00:00Z", ""),
+    (3103, "Trabajo de vectores", ["none"], "2026-09-29T04:59:59Z", "<p>Trabajo grupal sobre vectores. Revisen la guía "
+                                                                    "del capítulo 3.</p>"),
+]
 T_VINCI = "2026-09-30T08:30:00-05:00"   # sesión del gateway: miércoles, 30 min antes de Cálculo (09:00)
 T_NO_TELEGRAM = "2026-10-07T08:30:00-05:00"  # Telegram off: the next Wednesday, 30 min before Cálculo
 T_RENEW_0 = "2026-09-29T21:00:00-05:00"
@@ -454,6 +465,29 @@ class Script:
                                    + "\nLa resolución es mía, no la oficial del profesor."}
         return None
 
+    def pending(self, text: str, called: list[str], results: list[str]) -> dict | None:
+        """Física's pending list with how each is handed in; «ya hice …» marks the lab done, «todavía no» undoes it,
+        and «se entrega por correo» says how the unclear one is handed in."""
+        if "qué tengo pendiente en Física" in text:
+            if not called:
+                return _call("mcp__vinci__tareas", materia="física")
+            return {"content": "Pendiente en Física:\n" + "\n".join(
+                f"- {t['tarea']} [{t['delivery']}{', atrasada' if t['atrasada'] else ''}]" for t in _json(results[-1]))}
+        for ask, name, extra in (("ya hice la práctica del simulador", "Práctica 2", {}),
+                                 ("la práctica del simulador todavía no", "Práctica 2", {"entregada": False}),
+                                 ("el trabajo de vectores se entrega por correo", "Trabajo de vectores", None)):
+            if ask not in text:
+                continue
+            if not called:
+                return _call("mcp__vinci__ver_tarea", tarea_id=next(t[0] for t in ELSEWHERE_TASKS if t[1].startswith(name)))
+            if len(called) == 1 and extra is None:
+                return _call("mcp__vinci__set_assignment_delivery", tarea_id=_json(results[-1])["id"],
+                             delivery="external_submission")
+            if len(called) == 1:
+                return _call("mcp__vinci__marcar_entregada", tarea_id=_json(results[-1])["id"], **extra)
+            return {"content": self.vinci_answer(results[-1:])}
+        return None
+
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
         task = re.search(r"\[Tarea del sistema para (.+?) \(", text)
         if task and "TAREA: brief_de_clase" in text:  # Telegram off: the brief comes to Vinci's chat as a task
@@ -466,7 +500,7 @@ class Script:
         if "háblanos en plural" in text and not called:
             return _call("mcp__vinci__chat_note", text="Hablarles en plural, como «nosotros»")
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
-                or self.vinci_material(text, called, results))
+                or self.vinci_material(text, called, results) or self.pending(text, called, results))
         if flow is not None:
             return flow
         if results:
@@ -609,6 +643,10 @@ class Script:
                              + "\nTu lista:\n" + "\n".join(f"- {t['text']}" for t in data["todos"]))
             elif isinstance(data, dict) and "chat_notes" in data:
                 parts.append(f"📝 {data['message']}")
+            elif isinstance(data, dict) and data.get("hecho"):
+                parts.append(data["hecho"])
+            elif isinstance(data, dict) and data.get("delivery_basis"):
+                parts.append(f"Anotado: «{data['tarea']}» {data['delivery']} ({data['delivery_basis']}).")
             elif isinstance(data, dict) and data.get("confirmacion"):
                 parts.append(data["confirmacion"])
             elif isinstance(data, dict) and data.get("mensaje"):
@@ -1587,6 +1625,30 @@ def test_whatsapp_captain(tmp_path):
         week = say(captain_jid, captain_jid, "qué tengo esta semana", "Capitán")
         assert "Esta semana:" in text_of(week) and not any("⚙️" in m.get("message", "") for m in week), week
 
+        # 10a'. Work handed in outside the aula stays pending, late, until he says it is done (and back with «todavía
+        # no»); an exam held in class leaves on its own; one the aula does not explain stays, as unknown, until he says.
+        template = json.loads((HERE / "fixtures" / "canvas" / "state1" / "courses" / "102" / "assignments.json")
+                              .read_text())[-1]
+        canvas.extra["courses/102/assignments"] = [
+            {**template, "id": tid, "name": name, "submission_types": types, "due_at": due, "lock_at": None,
+             "description": html_text, "html_url": f"{canvas.base}/courses/102/assignments/{tid}"}
+            for tid, name, types, due, html_text in ELSEWHERE_TASKS]
+        run([bot, "sondeo"], T_VINCI)
+        listed = text_of(say(captain_jid, captain_jid, "qué tengo pendiente en Física", "Capitán"))
+        assert "- Práctica 2 en el simulador [external_submission, atrasada]" in listed, listed
+        assert "- Trabajo de vectores [unknown, atrasada]" in listed and "Lección 2" not in listed, listed
+        done = text_of(say(captain_jid, captain_jid, "ya hice la práctica del simulador", "Capitán"))
+        assert "cuenta como entregada" in done, done
+        assert "Práctica 2" not in text_of(say(captain_jid, captain_jid, "qué tengo pendiente en Física", "Capitán"))
+        undone = text_of(say(captain_jid, captain_jid, "me equivoqué, la práctica del simulador todavía no", "Capitán"))
+        assert "vuelve a tus pendientes" in undone, undone
+        said = text_of(say(captain_jid, captain_jid, "el trabajo de vectores se entrega por correo", "Capitán"))
+        assert "external_submission (student)" in said, said
+        report.append("Lo que se entrega fuera del aula sigue pendiente y atrasado aunque Canvas no reciba nada, en el "
+                      "chat y en el resumen; con «ya hice…» sale y con «todavía no» vuelve. Un examen presencial que ya "
+                      "pasó sale solo, y uno que el aula no explica queda como «unknown» hasta que él dice cómo se "
+                      "entrega. El resumen de las 7:00 usa la misma lista")
+
         # 10g. Vinci's commands on WhatsApp, without the model
         calls = len(llm.requests)
         captain_hello = text_of(say(captain_jid, captain_jid, "/start", "Capitán"))
@@ -1607,6 +1669,8 @@ def test_whatsapp_captain(tmp_path):
         run([bot, "resumen"], T_VINCI)
         summary = wa.messages_to(captain_jid, mark)
         assert summary and "Resumen de tu semana" in text_of(summary), summary
+        assert "Práctica 2 en el simulador" in text_of(summary) and "Lección 2" not in text_of(summary), \
+            "the summary lists the late lab handed in elsewhere, as the chat does, and not the exam already held"
         assert "<b>" not in text_of(summary), text_of(summary)
         assert not any("Consultar con" in o for p in wa.polls_to(captain_jid, mark) for o in p["options"]), \
             "sin bots de materia no hay «Consultar con …»"

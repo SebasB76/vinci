@@ -14,6 +14,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Canvas alerts, reminders, 07:00 summary | Vinci's chat, with buttons | captain's DM, a poll instead of buttons; friends get their own | no | `uso.md` «El resumen de las 7:00» |
 | «🎓 Consultar con …» handoff | button under each alert | not needed: reply to the alert, Vinci answers with that subject | yes | `funciones.md` |
 | «✅ Ya lo entregué» | button | poll | no | `funciones.md` |
+| Work handed in outside the aula (`delivery`: external lab, event in class, unknown) | in every pending list | same; «ya lo hice» / «todavía no» / «se entrega por correo» | no (classification is a script) | `uso.md` «El resumen de las 7:00» |
 | Dashboard of deliverables | «📋 Entregas» menu button, Mini App | `/entregas` → link button; ticks come back through the relay | no | `uso.md` «El dashboard de entregas» |
 | To-do list («anota: …») | card with «✅ Hecho» | poll | yes (parsing), no (reminders) | `funciones.md` |
 | Grade calculator | ask Vinci or a subject bot; «✅ Guardar esquema» | ask Vinci; «Guardar esquema» poll | yes, the math is a script | `uso.md` «La calculadora de notas» |
@@ -43,6 +44,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 
 | Feature | Code | Verify |
 |---|---|---|
+| How each assignment is handed in | `src/aula_core/queries.py` (`delivery`, `pending`), `set_assignment_delivery` in `herramientas.py` | `vinci-check say "¿qué tengo pendiente?"` lists an overdue external lab as late (uses the model) |
 | Alerts, reminders, summary | `src/espol_bot/poller.py`, `priority.py`, `messages.py` | `vinci-check status` (poll age); `espol-bot resumen` sends the summary for real |
 | Buttons (all) | `src/espol_bot/botones.py`, `hermes/plugins/vinci-botones/` | `vinci-check vote "<option>"` on a harmless poll (`press` with Telegram on) |
 | Dashboard | `src/espol_bot/dashboard.py`, `docs/dashboard/` | `vinci-check page dashboard` |

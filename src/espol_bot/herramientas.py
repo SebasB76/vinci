@@ -63,7 +63,7 @@ from aula_core.canvas import CanvasError
 from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
-from aula_core.store import get_meta, set_meta
+from aula_core.store import get_meta, set_delivery, set_meta
 from espol_bot import (academic_portal, agenda, citations, conversation, diapositivas, grades, health, horario, libros,
                        materias, messages, portal_login, priority, quiz, store, submission)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
@@ -153,6 +153,11 @@ CHAT_NOTE = ("Una nota que vale solo en este chat: cómo quiere un grupo que le 
              "pidió solo para esta conversación. Te llega al final de cada mensaje de este chat y de ningún otro. Lo "
              "que vale en todos sus chats (sus preferencias, su contexto) va a tu memoria, no aquí. «remove» con el "
              "«id» borra una que ya no vale.")
+SET_DELIVERY = ("Corrige cómo se entrega una tarea cuando te lo dice él («ese lab se entrega en AWS», «eso fue el examen "
+                "en clase»). external_submission: se hace fuera del aula y sigue en sus pendientes aunque venza, hasta "
+                "que la marque entregada o tenga nota. scheduled_event: es presencial y sale de pendientes cuando pasa "
+                "su hora. canvas_submission: se sube al aula. auto: vuelve a lo que dicen el aula y la consigna. No "
+                "marca nada como entregado (eso es marcar_entregada).")
 MARK_DONE = ("Cierra un pendiente de su lista personal (el «id» de un «tu_lista» en semana, o de «todos») cuando dice "
              "que ya lo hizo; con «hecho»: false lo reabre.")
 TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
@@ -162,7 +167,8 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record", "chat_note"})
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record", "chat_note",
+    "set_assignment_delivery"})
 
 
 @dataclass
@@ -1320,6 +1326,21 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         tid = _int(args.get("tarea_id"), "tarea_id", hi=10**12)
         return _press(ctx, f"v1:s:{tid}:{'no' if args.get('entregada') is False else 'ok'}")
 
+    def set_assignment_delivery(args):
+        tid = _int(args.get("tarea_id"), "tarea_id", hi=10**12)
+        kind = str(args.get("delivery") or "")
+        if kind not in (*queries.DELIVERIES, "auto"):
+            raise ToolError(f"«delivery» debe ser uno de: {', '.join(queries.DELIVERIES)} o auto.")
+        try:
+            queries.assignment(ctx.conn, ctx.now(), tid)
+            set_delivery(ctx.conn, tid, None if kind == "auto" else kind, timefmt.iso(ctx.now()))
+            task = queries.assignment(ctx.conn, ctx.now(), tid)
+        except queries.NotFound as exc:
+            raise ToolError(str(exc)) from None
+        return {"tarea": task["tarea"], "delivery": task["delivery"], "delivery_basis": task["delivery_basis"],
+                "entregada": task["entregada"],
+                "message": f"Guardado: {queries.DELIVERY_LABEL[task['delivery']]}. Díselo en una línea."}
+
     def marcar_hecho(args):
         todo_id = _int(args.get("id"), "id", hi=10**12)
         return _press(ctx, f"v1:t:{todo_id}:{'no' if args.get('hecho') is False else 'ok'}")
@@ -1560,6 +1581,9 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("marcar_entregada", MARK_SUBMITTED, marcar_entregada,
              {**TASK_PROPERTIES, "entregada": {"type": "boolean", "description": "false: vuelve a sus pendientes"}},
              ["tarea_id"], read_only=False),
+        Tool("set_assignment_delivery", SET_DELIVERY, set_assignment_delivery,
+             {**TASK_PROPERTIES, "delivery": {"type": "string", "enum": [*queries.DELIVERIES, "auto"]}},
+             ["tarea_id", "delivery"], read_only=False),
         Tool("marcar_hecho", MARK_DONE, marcar_hecho,
              {"id": {"type": "integer"}, "hecho": {"type": "boolean", "description": "false: lo reabre"}}, ["id"],
              read_only=False),

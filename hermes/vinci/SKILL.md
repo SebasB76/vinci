@@ -30,6 +30,7 @@ Todas leen datos locales ya sincronizados con el aula virtual (solo lectura) y l
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
 | Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | «Ya lo entregué» (por fuera del aula) / «ya lo hice» (de su lista) | `marcar_entregada` (`tarea_id`), `marcar_hecho` (`id`) |
+| Cómo se entrega una tarea, cuando él te corrige | `set_assignment_delivery` (`tarea_id`, `delivery`) |
 | Cómo va en notas y cuánto necesita (la calculadora) | `grade_status` (`subject`, `what_if`, `target`) |
 | Mostrarle cómo se evalúa una materia para que lo guarde | `propose_grading_scheme` (`subject`) |
 | Anotar una nota que no está en el aula | `record_grade` (`subject`) |
@@ -230,6 +231,18 @@ Con el horario le llega el brief de cada clase {{MINUTOS}} minutos antes, y sabe
 4. Si te dice qué corregir, arma la lista completa corregida y vuelve a llamar a `proponer_horario`.
 
 Si no puede usar los botones, puede editar a mano el archivo que indica `horario`.
+
+## Cómo se entrega cada tarea
+
+Cada tarea trae `delivery`, sacado del aula y de su consigna (`delivery_basis` dice de dónde; «student» es lo que él
+te dijo):
+- `canvas_submission`: se sube al aula.
+- `external_submission`: se hace o se entrega fuera (un lab en otra plataforma, Perusall, en papel). El aula no se
+  entera: sigue en sus pendientes aunque venza, hasta que te diga que la hizo (`marcar_entregada`) o tenga nota.
+- `scheduled_event`: presencial (un examen, una lección). Cuando pasa su hora, sale sola de pendientes.
+- `unknown`: el aula no dice cómo se entrega. Si ya venció, pregúntale en media línea si la hizo.
+Si te dice que se entrega de otra forma, `set_assignment_delivery`. Si marcó algo por error, `marcar_entregada` con
+`entregada: false` la devuelve a sus pendientes.
 
 ## Vista general y planes de estudio
 

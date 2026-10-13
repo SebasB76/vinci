@@ -146,7 +146,7 @@ def brief_task(cfg: BotConfig, subject: materias.Subject, start: datetime, block
     lines.append("")
     lines.append("Por entregar en los próximos 7 días:" if due else "Por entregar en los próximos 7 días: nada.")
     for t in due:
-        flag = " (sin entrega en línea: examen/lección presencial)" if t["sin_entrega_en_linea"] else ""
+        flag = "" if t["delivery"] == queries.CANVAS_SUBMISSION else f" ({queries.DELIVERY_LABEL[t['delivery']]})"
         lines.append(f"  - {t['tarea']} — vence {timefmt.human(t['vence'], tz)} ({timefmt.until(t['vence'], now)})"
                      f"{flag} · {t['url']}")
     if book and book["titulo"]:

@@ -66,7 +66,8 @@ def snapshot(conn: sqlite3.Connection, cfg: BotConfig, team: list[materias.Subje
 def _task(task: dict, weight: float | None) -> dict:
     return {"id": f"s{task['id']}", "title": task["tarea"], "course": materias.short_name(task["curso"]),
             "due": task["vence"], "weight": round(weight, 1) if weight is not None else None,
-            "quiz": task["quiz"] is not None}
+            "quiz": task["quiz"] is not None,
+            **({"elsewhere": True} if task["delivery"] in (queries.EXTERNAL_SUBMISSION, queries.UNKNOWN) else {})}
 
 
 def _todo(todo: dict) -> dict:

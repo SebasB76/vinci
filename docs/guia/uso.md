@@ -393,6 +393,19 @@ Sin peso conocido, por fecha
 Lo atrasado va aparte, debajo, con su peso. «¿Qué tengo esta semana?» usa el mismo orden y los mismos pesos. El
 resumen lo arma un script, sin el modelo ni tokens.
 
+**Lo que no se sube al aula.** Algunas actividades no tienen dónde subir nada en el aula. Vinci lee su consigna para
+saber de cuál se trata:
+
+- **Se entrega fuera** (un laboratorio en otra plataforma, una lectura en Perusall, un trabajo en papel): sigue en
+  tus pendientes, y atrasada si ya venció, porque el aula nunca se entera. Sale cuando le dices «ya lo hice», votas
+  «✅ Ya lo entregué» o el profesor le pone nota.
+- **Es presencial** (un examen, una lección): cuando pasa su hora, sale sola de tus pendientes.
+- **El aula no lo dice**: queda en tus pendientes. Si ya venció, Vinci te pregunta si la hiciste.
+
+Si Vinci lo entendió mal, díselo («ese lab se entrega en AWS», «eso fue el examen en clase») y lo corrige para esa
+tarea. Si marcaste algo por error, «todavía no lo hago» lo devuelve a tus pendientes. El chat, el resumen y el
+dashboard usan la misma lista.
+
 ## Qué recuerda cada bot
 
 | | Dónde vive | Quién lo escribe |

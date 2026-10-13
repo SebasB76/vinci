@@ -33,7 +33,7 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names
   and asks which one when nothing says it; `vinci-check say` talks to it.
 
-test_whatsapp_friend: a group the captain turns on; his friend Angel invited with a Vinci of his own (his token through
+test_whatsapp_friend: a group the captain turns on, and its notices (a reminder before a class); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, a quote, a sticker, a group
   that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»); his alerts; the block for whoever is not a Vinci's owner; Angel
@@ -1688,6 +1688,26 @@ def test_whatsapp_friend(tmp_path):
             "a quien no tiene su Vinci le contesta el plugin, sin el modelo y sin los datos del capitán"
         report.append("Un grupo apagado no recibe nada; con «@vinci activa este grupo» el capitán lo enciende, y a "
                       "quien no tiene su Vinci le contesta el plugin, sin el modelo ni los datos del capitán")
+
+        # 10b'. «@vinci activa los avisos»: the agenda tick before a class reminds the group, without the model, once
+        notices = say(GROUP_WA, captain_jid, "@vinci activa los avisos", "Capitán", group=True)
+        assert "aviso antes de cada clase" in text_of(notices), text_of(notices)
+        assert json.loads((data_dir / "amigos" / "whatsapp.json").read_text())["avisos"] == [GROUP_WA]
+        mark = len(wa.sent)
+        run([bot, "agenda"], T_NO_TELEGRAM)
+        reminder = wa.wait_for(lambda b: [m for m in b.messages_to(GROUP_WA, mark)
+                                          if "Clase en 30 min: Cálculo" in m.get("message", "")], 30)
+        assert reminder, fail("el recordatorio de Cálculo no llegó al grupo")
+        assert "<b>" not in reminder[0]["message"], reminder[0]["message"]
+        assert wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark)
+                                      if "📚 Brief de Cálculo" in m.get("message", "")], 120), \
+            fail("con los avisos del grupo, el brief del capitán no llegó")
+        run([bot, "agenda"], T_NO_TELEGRAM)
+        time.sleep(2)
+        assert len([m for m in wa.messages_to(GROUP_WA, mark) if "Clase en 30 min" in m.get("message", "")]) == 1
+        md.append(f"→ Vinci (aviso al grupo): {normalize(reminder[0]['message'])}\n")
+        report.append("Con «@vinci activa los avisos», `espol-bot agenda` manda al grupo un recordatorio antes de la "
+                      "clase, una sola vez y sin el modelo, y el brief del capitán sigue llegando a su chat")
 
         # 10c. The captain invites Angel: his own private chat gets the link to the page
         invited = say(captain_jid, captain_jid, "/amigo agregar 099 000 0002 Angel", "Capitán")

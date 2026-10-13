@@ -281,6 +281,12 @@ class Bot:
         result.events = len(events)
         if not events:
             return
+        if not self.cfg.friend:
+            try:
+                from espol_bot import avisos
+                avisos.send_events(self.cfg, events, now)
+            except Exception:
+                log.exception("avisos a los grupos")
         if len(events) > self.cfg.max_messages_per_poll:
             text = messages.digest(events, self.tz)
             self._send(text, [ev["course_id"] for ev in events])

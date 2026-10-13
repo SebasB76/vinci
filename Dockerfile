@@ -22,7 +22,7 @@ RUN python3 -m venv /tmp/uv && \
     UV_PROJECT_ENVIRONMENT=/opt/vinci/.venv UV_PYTHON=/usr/local/bin/python3 UV_PYTHON_DOWNLOADS=never \
         /tmp/uv/bin/uv sync --frozen --no-dev --no-cache && \
     rm -rf /tmp/uv && \
-    chmod 0755 /opt/vinci/deploy/boot.sh && \
+    chmod 0755 /opt/vinci/deploy/boot.sh /opt/vinci/deploy/healthcheck.sh && \
     install -m 0755 /opt/vinci/deploy/cont-init.sh /etc/cont-init.d/019-vinci && \
     install -m 0755 /opt/vinci/deploy/as-hermes.sh /usr/local/bin/espol-bot && \
     ln -s espol-bot /usr/local/bin/vinci-move
@@ -32,6 +32,8 @@ ENV VINCI_HERMES_ROOT=/opt/data \
     AULA_SECRETS=/opt/data/vinci/secrets.env \
     HERMES_BIN=/opt/hermes/.venv/bin/hermes \
     GATEWAY_ALLOW_ALL_USERS=false
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=5m --retries=3 CMD ["/opt/vinci/deploy/healthcheck.sh"]
 
 # Hermes' s6 tree supervises the gateway; `gateway run` marks it to start on a fresh volume.
 CMD ["gateway", "run"]

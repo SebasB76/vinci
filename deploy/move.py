@@ -21,6 +21,7 @@ import struct
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -106,6 +107,9 @@ class Opener:
 
 def _skip(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
     name = Path(info.name).name
+    # An absolute link (a profile's WhatsApp session) fails the import's safe filter; hermes-perfil remakes it there.
+    if info.issym() and os.path.isabs(info.linkname):
+        return None
     return None if name in SKIP_NAMES or name.endswith(".lock") else info
 
 
@@ -150,6 +154,7 @@ def export(target: Path) -> int:
     print(f"Listo: {target} ({target.stat().st_size / 1e6:.0f} MB), con {len(profiles)} perfiles: "
           f"{', '.join(p.name for p in profiles)}.")
     print(f"Clave para importarlo (no la pegues en un chat): {passphrase}")
+    print(f"Para servirlo, solo esa carpeta: python3 -m http.server 8765 --directory {target.parent}")
     return 0
 
 
@@ -211,7 +216,9 @@ def import_(source: str) -> int:
 
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "export":
-        return export(Path(sys.argv[2] if len(sys.argv) > 2 else "vinci-export.bin").resolve())
+        # A folder of its own by default: a server over the repo would also hand out secrets.env.
+        folder = Path(tempfile.mkdtemp(prefix="vinci-move-"))
+        return export(Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else folder / "vinci-export.bin")
     if len(sys.argv) == 3 and sys.argv[1] == "import":
         return import_(sys.argv[2])
     print(__doc__.strip())

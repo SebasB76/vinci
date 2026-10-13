@@ -35,7 +35,9 @@ rm -rf /opt/data/scripts/whatsapp-bridge
 mkdir -p /opt/data/scripts && cp -a /opt/hermes/scripts/whatsapp-bridge /opt/data/scripts/
 
 if "$BOT" hermes-perfil; then
+  rm -f /opt/data/vinci/boot-failed
   say "profiles ready"
 else
+  touch /opt/data/vinci/boot-failed
   say "hermes-perfil failed: Vinci starts without its profiles until the cause is fixed and the container restarts"
 fi

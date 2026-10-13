@@ -29,13 +29,10 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from html import escape
-from pathlib import Path
 
-from aula_core import Aula, feeds, queries, timefmt
+from aula_core import Aula, queries, timefmt
 from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
@@ -72,11 +69,13 @@ class Bot:
         self.aula = aula or Aula(cfg.core, background=True)
         store.ensure(self.conn)
         try:
-            if cfg.friend:  # no subject bots: a friend's subjects are the courses of their aula, kept in step
+            if cfg.friend or not cfg.telegram:  # no subject bots: the subjects are the aula's courses, kept in step
                 from espol_bot import equipo
                 equipo.sync_team(cfg, self.conn)
             self.team = materias.load(cfg.core)  # archived subjects too: their grading schemes still count
-            self.subjects = [s for s in self.team if s.active]
+            # without Telegram, Vinci itself looks after every subject that is not archived
+            serving = cfg.telegram or cfg.friend
+            self.subjects = [s for s in self.team if s.active or (not serving and s.state != "archivada")]
             self.team_error = None
         except ConfigError as exc:
             log.error("%s", exc)
@@ -98,8 +97,9 @@ class Bot:
         return found[:MAX_BUTTONS]
 
     def _send(self, text: str, course_ids=(), extra: list[tuple[str, str]] = ()) -> None:
-        """Send to the captain; offer a handoff button per course that has an active subject bot, then `extra`."""
-        subjects = self._subjects_for(dict.fromkeys(c for c in course_ids if c is not None))
+        """Send to the captain; offer a handoff button per course that has an active subject bot, then `extra`.
+        Without Telegram there are no subject bots to hand off to."""
+        subjects = self._subjects_for(dict.fromkeys(c for c in course_ids if c is not None)) if self.cfg.telegram else []
         buttons = []
         if subjects:
             alert_id = store.new_alert(self.conn, messages.plain(text), [s.code for s in subjects], self.aula.now())
@@ -118,7 +118,7 @@ class Bot:
             return ""
         if not (row["asks_scan"] or subjects[0].code.upper() in self.cfg.handwritten_subjects):
             return ""
-        return "\n" + messages.hand_in_hint(subjects[0].handle())
+        return "\n" + messages.hand_in_hint(subjects[0].handle() if self.cfg.telegram else None)
 
     # -- failure handling ------------------------------------------------------------
 
@@ -139,14 +139,10 @@ class Bot:
     def _token_refused(self) -> str:
         """Sends the /token form on its own once per refused token, and again each ALERT_EVERY while none is
         pending (the polls leave Canvas alone until the token changes)."""
-        command = Path(sys.executable).with_name("espol-bot")
-        floor = (" Los feeds públicos siguen actualizando fechas, eventos y anuncios." if feeds.configured() else
-                 f" Para mantener fechas y anuncios aun sin token, configura sus feeds una vez con "
-                 f"<code>{escape(str(command))} feeds</code>.")
         text = ("⚠️ La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
                 "No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular antes de "
-                "enviarlo (no lo pegues en el chat)." + floor)
-        if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no feeds, no /token, the form is a link (token_form.py)
+                "enviarlo (no lo pegues en el chat).")
+        if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no /token, the form is a link (token_form.py)
             text = ("⚠️ Tu token del aula dejó de funcionar (la PC de Vinci pudo estar apagada más de una hora). "
                     "Para que vuelva a leer tu aula, crea uno nuevo; no lo pegues tal cual en el chat.")
         refused = self.aula.refused_token()
@@ -179,7 +175,7 @@ class Bot:
     # -- poll ------------------------------------------------------------------------
 
     def maintenance(self) -> PollResult:
-        """Fast no-agent background work: renew the token and refresh token-free feeds."""
+        """Fast no-agent background work: renew the token."""
         result = PollResult()
         now = self.aula.now()
         renewal_error = None
@@ -194,16 +190,7 @@ class Bot:
             renewal_error = str(exc)
             result.error = self._fail("renewal", f"No pude renovar el token de Canvas: {exc}. "
                                       "Si la cadena se corta, te mostraré cómo resembrarla.", threshold=1)
-        floor = feeds.sync(self.conn, self.cfg.core, now)
-        if floor.errors:
-            self._fail("feeds", "No pude actualizar el respaldo sin token (" + "; ".join(floor.errors) + ").",
-                       threshold=ALERT_AFTER)
-        else:
-            delete_meta(self.conn, "bot_fail_count_feeds")
-            self.conn.commit()
-        result.events = floor.events
-        health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error,
-                          feed_errors=floor.errors)
+        health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error)
         return result
 
     def poll(self) -> PollResult:
@@ -218,15 +205,11 @@ class Bot:
         except InvalidTokenError:
             result.error = self._token_refused()
             report = core_sync.SyncReport(first_sync=False)
-            floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
-            result.events += floor.events
         except CanvasError as exc:
             problems.append(f"no pude leer el aula virtual ({exc})")
             result.error = self._fail(
                 "red", f"Llevo un rato sin poder leer el aula virtual: {exc}", threshold=ALERT_AFTER)
             report = core_sync.SyncReport(first_sync=False)
-            floor = feeds.sync(self.conn, self.cfg.core, self.aula.now())
-            result.events += floor.events
         else:
             self._ok()
         now = self.aula.now()
@@ -273,9 +256,12 @@ class Bot:
                 book = libros.main_book(self.conn, self.cfg.core, subject, course_ids)
             if not libros.needs_ask(book):
                 continue
-            text = libros.ask_text(self.cfg.core, subject, book)
-            try:  # from the subject bot's own chat; a failure asks again next poll
-                Telegram(load_telegram_secrets(subject.code), api=self.cfg.telegram_api).send(text)
+            text = libros.ask_text(self.cfg.core, subject, book, whatsapp=not self.cfg.telegram)
+            try:  # from the subject bot's own chat, or Vinci's on WhatsApp; a failure asks again next poll
+                if self.cfg.telegram:
+                    Telegram(load_telegram_secrets(subject.code), api=self.cfg.telegram_api).send(text)
+                else:
+                    self.telegram.send(text)
             except (TelegramError, ConfigError) as exc:
                 log.warning("no pude pedir el libro de %s: %s", subject.code, exc)
                 continue
@@ -293,6 +279,12 @@ class Bot:
     def _deliver_events(self, result: PollResult, now: datetime) -> None:
         events = core_sync.pending_events(self.conn)
         result.events = len(events)
+        if not self.cfg.friend:  # also with nothing new here: a trusted group takes the friends' aulas too
+            try:
+                from espol_bot import avisos
+                avisos.send_events(self.cfg, self.conn, events, now)
+            except Exception:
+                log.exception("avisos a los grupos")
         if not events:
             return
         if len(events) > self.cfg.max_messages_per_poll:

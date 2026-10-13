@@ -14,6 +14,7 @@ dependencies = [
     "pypdfium2>=4.30",
     "cryptography>=42",
     "Pillow>=10",
+    "openpyxl>=3.1",
 ]
 
 [project.scripts]
@@ -22,7 +23,10 @@ espol-bot = "espol_bot.cli:main"
 vinci-check = "espol_bot.check:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "pytest-xdist>=3.8.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -33,3 +37,5 @@ packages = ["src/aula_core", "src/aula", "src/espol_bot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# each E2E test builds its own install: one process per test, so the run lasts as long as the slowest
+addopts = "-n 5"

@@ -10,15 +10,17 @@
 - **Archivos de más de 20 MB:** un bot de Telegram no puede descargar lo que le mandas si pesa más de 20 MB, así
   que no le llega. Para el libro principal, pon el PDF en `libros/<CÓDIGO>/` de la carpeta de datos. El material
   del aula no tiene ese límite: se baja directo del aula (hasta `material.tamano_maximo_mb`).
-- **Qué se puede leer:** el texto de PDF, PPTX, DOCX y páginas web. Un PDF escaneado se busca por su texto de OCR
-  (con `tesseract` instalado), que falla en fórmulas, figuras y letra a mano: eso el bot de su materia lo mira
-  como imagen, de una en una. Un libro escaneado de 300 páginas tarda unos 10 a 15 minutos de OCR, repartidos en
+- **Qué se puede leer:** el texto de PDF, PPTX, DOCX, XLSX (Excel) y páginas web. Un PDF escaneado se busca por su texto de OCR
+  (con `tesseract` instalado), que falla en fórmulas, figuras y letra a mano: eso Vinci (o, con Telegram, el bot
+  de su materia) lo mira como imagen, de una en una. Un libro escaneado de 300 páginas tarda unos 10 a 15 minutos de OCR, repartidos en
   los sondeos. Un Google Docs, Drive, SharePoint
   o Dropbox se lee solo si se abre sin iniciar sesión («cualquier persona con el enlace»); si pide tu cuenta de
   ESPOL o de Google, el bot te lo dice y te pide el PDF. Los videos, formularios, carpetas, OneDrive personal y
   Teams solo quedan listados con su enlace, para que los abras tú.
-- **Solo se busca en lo ya leído:** del catálogo, solo el sílabo se baja por su cuenta; el resto lo baja el bot de
-  la materia cuando le hace falta. Para estudiar a fondo, pregúntale a ese bot más que a Vinci.
+- **Solo se busca en lo ya leído:** del catálogo, solo el sílabo se baja por su cuenta; el resto lo baja Vinci (o,
+  con Telegram, el bot de la materia) cuando le hace falta.
+- **La materia de una foto o una nota de voz:** sin nombrarla, Vinci la elige por tu horario solo durante la clase
+  o hasta una hora después. Fuera de eso te pregunta en un mensaje, sin encuesta.
 - **Qué prueba una cita:** que el bot leyó esa página de ese archivo, no que la página diga exactamente lo que el
   bot resume. Ábrela con su enlace si te importa el detalle.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
@@ -50,7 +52,7 @@
 | `Faltan valores en secrets.env: …` | Completa esas claves (pasos 1 a 4) y vuelve a correr `./setup.sh`. |
 | `⚠ Telegram no aceptó el mensaje` | Mándale `/start` a tu bot de Vinci y revisa `TELEGRAM_BOT_TOKEN`. |
 | `⚠ No pude leer el aula virtual; revisa CANVAS_TOKEN` | El token inicial no funcionó durante el setup. Crea otro (paso 3) y mándaselo a Vinci con `/token` (o ejecuta `.venv/bin/espol-bot resembrar`). |
-| Vinci dice que la cadena del token se cortó | Crea un token nuevo en tu perfil del aula y pégalo con el botón «🔑 Pegar token» de ese mismo aviso: [el formulario](uso.md#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. Si configuraste los feeds, fechas y anuncios siguieron funcionando. |
+| Vinci dice que la cadena del token se cortó | Crea un token nuevo en tu perfil del aula y pégalo con el botón «🔑 Pegar token» de ese mismo aviso: [el formulario](uso.md#token-nuevo-desde-telegram-token) lo cifra en tu celular y la renovación se reanuda. |
 | El formulario de `/token` dice que venció o que era de un `/token` anterior | Usa el botón del mensaje más reciente de Vinci, o mándale `/token`: cada formulario sirve una vez, por 15 minutos (o 24 horas si Vinci lo mandó solo). |
 | Vinci te dice «Llevo un rato sin poder leer … de …» | Una parte de una materia falló tres veces seguidas. Lo sigue intentando y el resto funciona normal; te avisa de nuevo si vuelve a fallar después de recuperarse. |
 | `⚠ Agrega ~/.local/bin a tu PATH` | Agrégalo en tu `~/.bashrc` (o el de tu shell) para usar `aula`. |
@@ -68,7 +70,7 @@
 Para ver qué pasa:
 
 ```bash
-.venv/bin/espol-bot doctor                             # sondeo, aula, token y feeds, de un vistazo
+.venv/bin/espol-bot doctor                             # sondeo, aula y token, de un vistazo
 hermes gateway status                                  # ¿está corriendo?
 vinci cron list                                        # sondeo, mantenimiento y resumen de Vinci
 tail -f ~/.hermes/logs/gateway.log                     # registro del gateway de Hermes

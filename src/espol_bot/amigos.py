@@ -16,8 +16,10 @@ semana?» answers each person with their own aula, and one friend's tools never 
     4. «/amigo quitar Angel» deletes the friend's tokens from the aula, the profile and the folder.
 
 `whatsapp.json` (same folder as the registry) lists the groups where Vinci answers whoever mentions it; the
-captain turns one on or off by writing «@vinci activa este grupo» there. Neither file holds a secret, so the
-plugin reads them on every message.
+captain turns one on or off by writing «@vinci activa este grupo» there. Its «avisos» are the groups that also get
+the class reminders and the aula's news (avisos.py), set with «@vinci activa los avisos»; its «confianza», the
+friends' groups where those notices also tag people and say who handed in. Neither file holds a
+secret, so the plugin reads them on every message.
 """
 
 from __future__ import annotations
@@ -116,14 +118,26 @@ def groups(cfg: BotConfig) -> list[str]:
     return [str(g) for g in _read(groups_path(cfg), "grupos")]
 
 
-def set_group(cfg: BotConfig, group: str, on: bool) -> bool:
+def notice_groups(cfg: BotConfig) -> list[str]:
+    return [str(g) for g in _read(groups_path(cfg), "avisos")]
+
+
+def trusted_groups(cfg: BotConfig) -> list[str]:
+    return [str(g) for g in _read(groups_path(cfg), "confianza")]
+
+
+def set_group(cfg: BotConfig, group: str, on: bool, key: str = "grupos") -> bool:
+    """`key` is «grupos» (Vinci answers mentions there), «avisos» (it also gets the notices) or «confianza» (its
+    members share their aula with each other, avisos.py)."""
     if not re.fullmatch(r"[\d-]+@g\.us", group):
         raise ConfigError(f"{group} no es el ID de un grupo de WhatsApp (termina en @g.us)")
-    current = groups(cfg)
+    data = {k: [str(g) for g in _read(groups_path(cfg), k)] for k in ("grupos", "avisos", "confianza")}
+    current = data[key]
     wanted = sorted(set(current) | {group}) if on else [g for g in current if g != group]
     if wanted == current:
         return False
-    _write(groups_path(cfg), {"grupos": wanted})
+    data[key] = wanted
+    _write(groups_path(cfg), {k: v for k, v in data.items() if v or k == "grupos"})
     return True
 
 

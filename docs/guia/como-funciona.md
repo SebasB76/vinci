@@ -15,7 +15,7 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
 - **El mantenimiento** (`espol-bot mantenimiento`) corre cada 10 minutos, sin modelo. Como el Canvas de ESPOL
   invalida en silencio los tokens personales tras una hora, crea y verifica un sucesor a los 40 minutos, lo guarda
   de forma atómica y recién entonces borra el anterior. Si ESPOL corrige esa configuración, lo detecta y deja de
-  renovar. Los feeds iCal y Atom mantienen fechas, eventos y anuncios aunque la cadena se corte.
+  renovar. Si la cadena se corta, Vinci te manda el formulario de `/token` para resembrarla.
 - **La agenda** de cada bot de materia corre cada minuto y casi siempre contesta «nada que hacer», sin llamar al
   modelo. Solo lo despierta cuando una clase empieza dentro de 30 minutos (con todos los datos del brief ya
   armados) o cuando Vinci le pasó algo.
@@ -37,5 +37,5 @@ Así está organizado el repositorio:
 | `hermes/` | Las plantillas de cada bot (su `SOUL.md` y su skill), los plugins `vinci-botones` y `vinci-whatsapp`, el parche del puente de WhatsApp, las fotos de perfil (`avatars/`) y `characters.toml`. |
 | `docs/token/`, `docs/dashboard/`, `docs/academico/` | Las páginas que abren los botones, en GitHub Pages. No guardan nada. |
 | `relay/` | El relé: un Worker de Cloudflare que lleva de vuelta lo que mandan esas páginas desde WhatsApp. |
-| `tests/e2e/` | La prueba de punta a punta, con su Canvas, su Telegram y su Académico falsos. |
+| `tests/e2e/` | La prueba de punta a punta, con su Canvas, su puente de WhatsApp y su Académico falsos. |
 | `claude/skills/aula/` | La skill para Claude Code. |

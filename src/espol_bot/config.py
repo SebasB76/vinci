@@ -61,6 +61,7 @@ class BotConfig:
     subject_toolsets_by_code: dict[str, tuple[str, ...]] = field(default_factory=dict)
     handwritten_subjects: tuple[str, ...] = ()  # codes whose assignments the captain does by hand and hands in as a PDF
     friend: str | None = None  # a friend's Vinci (amigos.py): its slug; None for the captain's own
+    telegram: bool = True  # False: Vinci talks only on WhatsApp ([channels] telegram; a friend's Vinci always)
     whatsapp_bridge: str = DEFAULT_WHATSAPP_BRIDGE  # Hermes' WhatsApp bridge, where a friend's alerts go out
     portal_url: str = DEFAULT_PORTAL_URL  # ESPOL's Académico (academic_portal.py)
     portal_form_url: str = DEFAULT_PORTAL_FORM_URL
@@ -151,6 +152,10 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         raise ConfigError("[academic_portal] login_minutes debe estar entre 5 y 60")
 
     friend = os.environ.get("ESPOL_AMIGO") or None
+    telegram = section(core.raw, "channels").get("telegram", True)
+    if not isinstance(telegram, bool):
+        raise ConfigError("[channels] telegram debe ser true o false")
+    telegram = telegram and not friend
     bridge = str(section(core.raw, "test").get("whatsapp_puente") or DEFAULT_WHATSAPP_BRIDGE).rstrip("/")
 
     return BotConfig(
@@ -165,8 +170,8 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
         telegram_api=api.rstrip("/"),
         token_form_url=form_url,
-        # A friend's Vinci answers on WhatsApp: no Telegram dashboard, and the class notes are the captain's.
-        dashboard_url="" if friend else dashboard_url,
+        # On WhatsApp only (a friend's Vinci too) there is no Telegram dashboard button; class notes are the captain's.
+        dashboard_url=dashboard_url if telegram else "",
         dashboard_page=dashboard_url,
         semester_end=semester_end,
         notes_folder=Path(folder).expanduser() if folder and not friend else None,
@@ -176,6 +181,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         subject_toolsets_by_code={code.upper(): _names(names, f"por_materia.{code}") for code, names in by_code.items()},
         handwritten_subjects=tuple(c.strip().upper() for c in handwritten),
         friend=friend,
+        telegram=telegram,
         whatsapp_bridge=bridge,
         portal_url=portal_url,
         portal_form_url=portal_form_url,

@@ -3,15 +3,16 @@
     espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes), then OCR
                                      of the scanned pages still waiting, for a few minutes
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
-    espol-bot mantenimiento          renew Canvas access and refresh token-free feeds (no model)
+    espol-bot mantenimiento          renew Canvas access (no model)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
-    espol-bot feeds                  securely save the iCal and announcement feed URLs
     espol-bot probar                 send a test message from Vinci to your Telegram
-    espol-bot doctor                 system health: last poll and sync, token chain, feeds (read-only;
+    espol-bot doctor                 system health: last poll and sync, token chain (read-only;
                                      exits 1 when something is broken)
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
     espol-bot agenda --curso CÓDIGO  a subject bot's cron gate: prints {"wakeAgent": false} unless a
                                      class brief is due or Vinci handed something over
+    espol-bot agenda                 without Telegram, Vinci's own: a brief or class notes of any subject
+                                     go into the captain's WhatsApp chat with Vinci (prints nothing)
     espol-bot mcp vinci|materia      the tools of Vinci or of one subject bot (stdio MCP server)
     espol-bot boton <datos>          what one of Vinci's inline buttons does (the plugin calls it)
     espol-bot bot-creado <id>        a bot the captain created for Vinci to manage: fetch its token,
@@ -45,6 +46,10 @@
                                      list them, or take their encrypted token from stdin (the plugin vinci-whatsapp)
     espol-bot whatsapp-grupo activar|desactivar <ID>
                                      a WhatsApp group where Vinci answers whoever mentions it (the plugin)
+    espol-bot whatsapp-grupo avisos|sin-avisos <ID>
+                                     the class reminders and the aula's news in that group (avisos.py)
+    espol-bot whatsapp-grupo confianza|sin-confianza <ID>
+                                     a friends' group: those notices also tag people and say who handed in
     espol-bot whatsapp-comando start|estado|token|token-cifrado <número>
                                      /start, /estado and /token on WhatsApp, for the captain or a friend over
                                      their own aula (the plugin vinci-whatsapp)
@@ -78,15 +83,19 @@ from espol_bot.telegram import Telegram, TelegramError, prefer_ipv4
 
 
 def _sender(cfg):
-    """Where this Vinci's own messages go: the captain's Telegram chat (and his WhatsApp chat, when Vinci is on
-    WhatsApp), or a friend's WhatsApp chat (amigos.py)."""
+    """Where this Vinci's own messages go: a friend's WhatsApp chat (amigos.py), the captain's WhatsApp chat when
+    Telegram is off, or his Telegram chat (and a copy to his WhatsApp chat, when Vinci is on WhatsApp)."""
     from espol_bot.config import whatsapp_settings
     from espol_bot.whatsapp import Mirror, WhatsApp
     if cfg.friend:
         from aula_core.config import load_secret_values
         return WhatsApp(load_secret_values().get("WHATSAPP_OWNER", ""), cfg.whatsapp_bridge, polls=cfg.core.data_dir)
-    telegram = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
     wa = whatsapp_settings()
+    if not cfg.telegram:
+        if wa is None:
+            raise ConfigError("[channels] telegram = false necesita WHATSAPP_CAPTAIN en secrets.env")
+        return WhatsApp(wa.captain, cfg.whatsapp_bridge, polls=cfg.core.data_dir)
+    telegram = Telegram(load_telegram_secrets(), api=cfg.telegram_api)
     if wa is None:
         return telegram
     return Mirror(telegram, WhatsApp(wa.captain, cfg.whatsapp_bridge, polls=cfg.core.data_dir))
@@ -100,8 +109,16 @@ def _logging(cfg) -> None:
     )
 
 
-def _agenda(cfg, code: str) -> int:
+def _agenda(cfg, code: str | None) -> int:
     from espol_bot import agenda
+    if code is None:
+        if cfg.telegram:
+            raise ConfigError("agenda sin --curso es la de Vinci sin Telegram ([channels] telegram = false)")
+        try:
+            agenda.run_vinci(cfg, now_utc())
+        except Exception:
+            logging.exception("agenda de Vinci")
+        return 0
     try:
         print(agenda.run(cfg, code.upper(), now_utc()))
     except Exception:  # a broken gate must never wake the model or spam the chat
@@ -161,7 +178,25 @@ def _friend_outcome(cfg, args):
     if args.cmd == "whatsapp-comando":
         data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
-    if args.cmd == "whatsapp-grupo":
+    if args.cmd == "whatsapp-grupo" and args.accion in ("confianza", "sin-confianza"):
+        on = args.accion == "confianza"
+        changed = amigos.set_group(cfg, args.grupo, on, key="confianza")
+        if on:
+            amigos.set_group(cfg, args.grupo, True, key="avisos")
+        text = (("🤝 Listo: este grupo es de confianza. En los avisos de clase y del aula menciono a quien tiene esa "
+                 "materia y digo quién ya entregó; las clases virtuales llevan su enlace." if changed else
+                 "Este grupo ya era de confianza.")
+                if on else ("Listo: este grupo ya no es de confianza; los avisos siguen, sin menciones ni entregas."
+                            if changed else "Este grupo no era de confianza."))
+        outcome = amigos.Outcome(text)
+    elif args.cmd == "whatsapp-grupo" and args.accion in ("avisos", "sin-avisos"):
+        on = args.accion == "avisos"
+        changed = amigos.set_group(cfg, args.grupo, on, key="avisos")
+        text = (("✅ Listo: aquí aviso antes de cada clase, con lo que vence en la semana, y paso los anuncios y las "
+                 "tareas nuevas del aula." if changed else "Ya mandaba los avisos aquí.")
+                if on else ("Listo: ya no mando avisos a este grupo." if changed else "No mandaba avisos aquí."))
+        outcome = amigos.Outcome(text)
+    elif args.cmd == "whatsapp-grupo":
         on = args.accion == "activar"
         changed = amigos.set_group(cfg, args.grupo, on)
         text = (("✅ Listo: en este grupo le contesto a quien me mencione con @vinci, a cada uno con lo suyo. Quien "
@@ -279,35 +314,21 @@ def _portal(cfg, args) -> int:
     return 0
 
 
-def _configure_feeds(cfg) -> int:
-    from aula_core import feeds
-    calendar = getpass.getpass("URL de Fuente del calendario (iCal; no se mostrará): ").strip()
-    raw = getpass.getpass("URLs RSS/Atom de Anuncios, separadas por espacios (no se mostrarán): ").strip()
-    try:
-        feeds.configure(calendar, raw.split(), cfg.core)
-    except feeds.FeedError as exc:
-        print(f"Vinci: {exc}", file=sys.stderr)
-        return 1
-    print(f"Feeds guardados de forma privada: calendario y {len(raw.split())} feed(s) de anuncios.")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
     sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
     sub.add_parser("resumen", help="enviar el resumen de la semana")
-    sub.add_parser("mantenimiento", help="renovar el token y actualizar los feeds, sin usar el modelo")
+    sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
     p = sub.add_parser("resembrar", help="guardar un token nuevo desde una entrada oculta y reactivar la renovación")
     p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
-    sub.add_parser("feeds", help="guardar de forma privada los feeds iCal y RSS/Atom")
-    sub.add_parser("probar", help="enviar un mensaje de prueba a tu Telegram")
+    sub.add_parser("probar", help="enviar un mensaje de prueba a tu chat (WhatsApp o Telegram)")
     sub.add_parser("dashboard", help="poner ya el dashboard al día en el botón de menú del chat de Vinci")
-    sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización, token y feeds (solo lectura)")
+    sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización y token (solo lectura)")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
-    p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia")
-    p.add_argument("--curso", required=True, help="código de la materia, ej. ESTG1034")
+    p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia (sin --curso: la de Vinci, sin Telegram)")
+    p.add_argument("--curso", default=None, help="código de la materia, ej. ESTG1034")
     p = sub.add_parser("mcp", help="servidor MCP con las herramientas de Vinci, de un bot de materia o del Vinci "
                                    "de un amigo")
     p.add_argument("bot", choices=["vinci", "materia", "amigo"])
@@ -325,12 +346,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("canvas-submit", help="el token cifrado por el formulario de /token, leído por stdin (lo usa el "
                                          "plugin vinci-botones)")
     p = sub.add_parser("pagina", help="una página de un PDF como imagen (la usa ver_pagina, del plugin vinci-botones)")
-    p.add_argument("--curso", required=True, help="código de la materia")
+    p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci, cualquier materia)")
     p.add_argument("archivo_id", type=int)
     p.add_argument("pagina", type=int)
     sub.add_parser("notes", help="leer tu carpeta de apuntes y pasárselos a los bots de materia (cron de Vinci)")
     p = sub.add_parser("foto", help="una foto del cuaderno como imagen (la usa ver_foto, del plugin vinci-botones)")
-    p.add_argument("--curso", required=True, help="código de la materia")
+    p.add_argument("--curso", default=None, help="código de la materia")
+    p.add_argument("--materia", default=None, help="la materia como la nombra Vinci (sin --curso)")
     p.add_argument("entrada", type=int)
     p = sub.add_parser("quiz-respuesta", help="una respuesta a un quiz (la usa el plugin vinci-botones)")
     p.add_argument("--curso", required=True, help="código de la materia")
@@ -349,7 +371,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-grupo", help="activar o desactivar un grupo de WhatsApp donde Vinci contesta (lo "
                                               "usa el plugin vinci-whatsapp)")
-    p.add_argument("accion", choices=["activar", "desactivar"])
+    p.add_argument("accion", choices=["activar", "desactivar", "avisos", "sin-avisos", "confianza", "sin-confianza"],
+                   help="avisos / sin-avisos: los recordatorios de clase y las novedades del aula en ese grupo; "
+                        "confianza: además menciona a quien tiene la materia y dice quién entregó")
     p.add_argument("grupo", help="el ID del grupo (…@g.us)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-comando", help="/start, /estado y /token por WhatsApp, del capitán o de un amigo "
@@ -399,8 +423,6 @@ def main(argv: list[str] | None = None) -> int:
         _logging(cfg)
         if args.cmd == "resembrar":
             return _reseed(cfg, from_stdin=args.stdin)
-        if args.cmd == "feeds":
-            return _configure_feeds(cfg)
         if args.cmd == "agenda":
             return _agenda(cfg, args.curso)
         if args.cmd == "mcp":
@@ -435,7 +457,8 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import herramientas
             from espol_bot.mcp_server import ToolError
             try:
-                result = herramientas.entry_image(cfg, args.curso, args.entrada)
+                code = args.curso or herramientas.subject_code(cfg, args.materia or "")
+                result = herramientas.entry_image(cfg, code, args.entrada)
             except ToolError as exc:
                 result = {"error": str(exc)}
             print(json.dumps(result, ensure_ascii=False))
@@ -464,7 +487,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         from espol_bot.poller import Bot
         telegram = _sender(cfg)
-        if args.cmd == "probar" and cfg.friend:
+        if args.cmd == "probar" and not cfg.telegram:  # a friend's Vinci, or the captain's with Telegram off
             telegram.send("✅ <b>Prueba</b>: Vinci puede escribirte por WhatsApp.")
             print("Mensaje de prueba enviado.")
             return 0

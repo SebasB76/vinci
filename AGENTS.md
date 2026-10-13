@@ -7,18 +7,17 @@ the university's Canvas (aulavirtual). It has one maintainer, called "the captai
 and docs, and a few friends who each get their own Vinci on WhatsApp. It is a side project:
 shipping speed beats ceremony, and a bug found later is fixed in a new session.
 
-## Status (2026-10-11)
+## Status (2026-10-12)
 
 - Live: one Hermes gateway on the captain's laptop, as the systemd user service
-  `hermes-gateway`. It serves `vinci`, one `vinci-<code>` profile per subject bot and one
-  `amigo-<name>` profile per friend.
-- Live: Telegram has Vinci (`vinci_espol_bot`) plus one bot per subject. WhatsApp has only
-  Vinci, on a separate number, through Hermes's unofficial bridge.
+  `hermes-gateway`. It serves `vinci` and one `amigo-<name>` profile per friend.
+- Live: WhatsApp is the only channel (`[channels] telegram = false`): Vinci, on a separate number through
+  Hermes's unofficial bridge, keeps every subject in one chat, with its notebook and the brief before each class.
+  Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
+  `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
 - Ready, not live yet: the Docker image (`Dockerfile`, `deploy/`) for the Taws club's Coolify, with an OpenAI
   key; `deploy/move.py` moves the laptop's data there (`docs/guia/servidor.md`).
-  WhatsApp will probably become the main channel, which questions the one-bot-per-subject
-  design that only Telegram has.
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).
 
 ## Where to start
@@ -50,7 +49,7 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 3. `gh pr merge <n> --merge --delete-branch` (the repo keeps merge commits).
 4. In `~/Projects/espol-academic-bot`: `git pull && ./setup.sh`.
 5. `hermes gateway restart`, then `.venv/bin/espol-bot doctor`.
-6. `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check chat` or `press` that
+6. `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check say` or `vote` that
    exercises the change itself.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
 
@@ -59,8 +58,9 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 - `~/Projects/espol-academic-bot` is the live install: `setup.sh` writes its own path into
   the Hermes profiles and the `.venv` is an editable install. Work in a git worktree, never
   switch branches there, and never run `setup.sh` from a worktree.
-- E2E (one test, 7 to 17 minutes): never run it at the start of a session or to "check the
-  baseline". Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
+- E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to
+  "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
+  WhatsApp messages and model turns, the gateway log): read it before rerunning anything. Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
   behavior change, run it once at the end, and never rerun it for a one-line fix. The captain
   asked for this 12 times; `docs/guia/contribuir.md` is for outside contributors.
 - No unit tests and no extra review rounds.
@@ -68,8 +68,8 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 - For a new feature idea, restate the goal and the user flow in 3 to 5 lines, then build it.
   When the captain already gave the flow, build it directly.
 - Test with the real bots through `vinci-check`. The captain allows test messages to his own
-  Vinci and subject bots; `vinci-check` refuses any other chat. When he sends a screenshot of
-  a bot chat, also read that chat (`vinci-check chat`/`whatsapp`) for the full thread.
+  chat with Vinci; `vinci-check` refuses any other chat. When he sends a screenshot of
+  a bot chat, also read that chat (`vinci-check whatsapp`) for the full thread.
 - Never print or copy `secrets.env`, `~/.local/share/tg-user/credentials.env` or
   `captain.session`. To get a new secret, use a hidden prompt (`read -s`), never the chat.
 - No real data in fixtures, screenshots or issues: no tokens, grades, schedules or names.
@@ -108,13 +108,14 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 
 ```bash
 uv sync                                   # dependencies, dev included
-uv run pytest                             # the E2E (fake Canvas, fake Telegram, real Hermes)
+uv run pytest                             # the E2E: 4 tests in parallel (fake Canvas and WhatsApp, real Hermes)
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
-.venv/bin/espol-bot doctor                # poller, Canvas sync, token chain and feeds (read-only)
+.venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins
-.venv/bin/vinci-check smoke               # status, /estado, /start to each subject bot, both pages
+.venv/bin/vinci-check smoke               # status, /estado, both pages (and /start to each subject bot with Telegram)
+.venv/bin/vinci-check say "<text>"        # a message to Vinci in the captain's WhatsApp chat, and its reply
 .venv/bin/vinci-check --help              # chat, press, whatsapp, page… (see the control-vinci skill)
 python3 scripts/docs_check.py             # code changed without its docs, before a PR
 hermes gateway status                     # also: start, stop, restart

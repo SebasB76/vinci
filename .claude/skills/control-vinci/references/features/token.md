@@ -25,5 +25,5 @@ Verify without a real token:
 - `vinci-check page token` → the page loads and shows its form.
 - `vinci-check chat vinci_espol_bot /token` → a message with a web_app button. This issues a real
   one-time form; it expires on its own.
-The full submit with a real token is covered by the E2E (`tests/e2e/test_e2e.py`, step 6-7).
+The full submit through the relay is covered by the E2E (`test_canvas`, step 6e, and `test_whatsapp_captain`).
 Phone only: the page inside WhatsApp on the iPhone.

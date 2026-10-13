@@ -1,6 +1,9 @@
 # Vinci en WhatsApp
 
-Vinci también contesta por WhatsApp, a través del puente de WhatsApp de Hermes. Usa un número aparte (un chip
+WhatsApp es el canal principal de Vinci, a través del puente de WhatsApp de Hermes. Con `[channels] telegram = false`
+en `config.toml` (lo normal), Vinci te habla solo por aquí: lleva todas tus materias en un solo chat, y los bots de
+materia de Telegram quedan apagados sin borrarse. Con `telegram = true` vuelven, y WhatsApp recibe una copia de cada
+aviso. Usa un número aparte (un chip
 prepago basta): el puente es un cliente no oficial, y WhatsApp puede bloquear el número que lo usa. No pongas tu
 número personal.
 
@@ -36,12 +39,29 @@ Para publicar tu relé:
 7. En `secrets.env`, pon `WHATSAPP_RELAY_URL=<la dirección>` y `WHATSAPP_RELAY_TOKEN=<la clave>`.
 8. Corre `./setup.sh` y reinicia el gateway: `hermes gateway restart`.
 
-**Tu chat.** Escríbele a Vinci por privado: es el mismo Vinci de Telegram, con tu aula y tu memoria. WhatsApp no
-tiene botones, así que cada tarjeta te llega a tu chat privado como mensaje con una **encuesta**: votar «✅ Hecho»,
-«✅ Ya lo entregué», «✅ Guardar horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram,
-sin pasar por el modelo. Cambiar el voto lo deshace. Solo crear o archivar bots de materia sigue en Telegram.
+**Tu chat.** Escríbele a Vinci por privado: tu aula, tu memoria y todas tus materias. WhatsApp no tiene botones, así
+que cada tarjeta te llega como mensaje con una **encuesta**: votar «✅ Hecho», «✅ Ya lo entregué», «✅ Guardar
+horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram, sin pasar por el modelo. Cambiar
+el voto lo deshace.
 
-**Tus avisos, también aquí.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a Telegram y a tu chat de WhatsApp, con su encuesta en vez de botones. «🎓 Consultar con …» queda solo en Telegram, porque los bots de materia viven ahí. Si el puente de WhatsApp falla, Telegram recibe el aviso igual.
+**Tus materias, en un solo chat.** No hay un bot por materia: Vinci sabe de qué materia hablas en cada mensaje.
+1. Si nombras la materia («en Estadística: no entendí la varianza»), usa esa.
+2. Si respondes a un aviso, a un brief o a un resumen de apuntes, usa la materia de ese mensaje.
+3. Si mandas una foto o una nota de voz durante tu clase, o hasta una hora después, usa la materia de esa clase
+   según tu horario.
+4. Si nada de eso alcanza, te pregunta cuál es.
+
+Cada materia tiene su cuaderno: lo que se vio en clase, tus dudas, los temas que te cuestan, las fotos de la pizarra y
+tus notas de voz. Vinci te confirma dónde guardó cada cosa («📘 Estadística · guardé la foto»); si se equivocó, dile
+«era de Cálculo».
+
+**El brief antes de cada clase.** 30 minutos antes de cada clase de tu horario (`brief_minutos_antes`), Vinci te
+manda el brief a este chat: repaso de la clase anterior, lo que vence, material nuevo, conceptos clave y una pregunta
+para el profesor. Si le respondes, Vinci sabe que hablas de esa materia. Los apuntes de tu computadora (`[notes]
+folder`) también llegan aquí: las preguntas `//vinci` y el resumen con feedback al terminar la clase.
+
+**Tus avisos.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a tu chat de WhatsApp, con
+su encuesta en vez de botones.
 
 - **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
   archivos que trae.
@@ -58,6 +78,35 @@ contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la c
 no puede mencionar a nadie: Vinci contesta la tuya o la de un amigo con su Vinci si dice «Vinci» o responde a un
 mensaje suyo. Las notas de voz de quien no tiene su Vinci ni se transcriben. «@vinci desactiva este grupo» lo
 apaga. Solo tú puedes encender o apagar un grupo.
+
+**Avisos en un grupo.** Escribe en el grupo «@vinci activa los avisos». Desde entonces Vinci manda ahí, sin que
+nadie se lo pida:
+
+- un recordatorio antes de cada clase de tu horario (los mismos `brief_minutos_antes`), con el aula, si es virtual y
+  lo que vence esa semana en esa materia;
+- los anuncios nuevos de tus profesores, las tareas nuevas y los cambios de fecha, todo lo de una lectura del aula
+  en un solo mensaje.
+
+Los avisos nunca llevan notas, entregas hechas ni tu cuaderno. «@vinci desactiva los avisos» los apaga. Solo tú
+puedes encenderlos, y funcionan aunque el grupo esté apagado para las preguntas.
+
+**Grupo de confianza.** En un grupo de amigos que comparten su aula entre sí, escribe «@vinci este grupo es de
+confianza» (también enciende los avisos). Ahí los avisos usan el aula de cada amigo con su Vinci que está en el
+grupo:
+
+- el recordatorio de clase menciona a quienes están en tu mismo paralelo de esa materia, y en una clase virtual
+  trae el enlace de Zoom, Teams o Meet si está en el aula;
+- en «Vence esta semana», cada tarea dice quién ya la entregó y menciona a quien le falta;
+- las novedades también salen del aula de tus amigos, una sola vez aunque varios tengan la materia, y mencionan a
+  quien la ve.
+
+Una nota sale en el grupo solo si alguien la pide. «@vinci este grupo ya no es de confianza» vuelve a los avisos
+simples.
+
+En un grupo, Vinci sabe quién le escribe y empieza con su nombre cuando habla de su aula. Da entregas, plazos y
+notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por privado. Vinci no contesta los
+stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no
+cambian.
 
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 

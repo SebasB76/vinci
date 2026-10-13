@@ -79,7 +79,7 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
 
 | Dónde | Qué guarda |
 |---|---|
-| `secrets.env` (en esta carpeta, permisos 600, fuera de git) | Tokens de Canvas y Telegram, las URLs secretas de los feeds iCal/Atom y, mientras un `/token` espera, su llave privada de un uso |
+| `secrets.env` (en esta carpeta, permisos 600, fuera de git) | Tokens de Canvas y Telegram y, mientras un `/token` espera, su llave privada de un uso |
 | `~/.hermes/profiles/<perfil>/.env` | El token del bot de ese perfil y tu ID como único usuario permitido |
 | `amigos/<nombre>/secrets.env` (en la carpeta de datos, permisos 600) | El token del aula de ese amigo y su número de WhatsApp |
 | `~/.hermes/platforms/whatsapp/session/` | La sesión de WhatsApp del número de Vinci: quien la tenga escribe como Vinci |

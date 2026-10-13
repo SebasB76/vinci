@@ -17,7 +17,7 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 - The captain's vote in a subject bot's quiz poll (`poll_answer`): run `espol-bot quiz-respuesta`,
   which records it and, after the quiz's last question, answers the score to send.
 - /estado, in Vinci's chat: the system health from `espol-bot estado` (last poll and sync, token
-  chain, feeds), without waking the model.
+  chain), without waking the model.
 - /token, in Vinci's chat: `espol-bot canvas-form` answers with a Mini App keyboard button whose page
   encrypts a new Canvas token on the phone; the button's web_app_data (only ciphertext) goes to
   `espol-bot canvas-submit` on stdin, which decrypts it and reseeds the token chain.
@@ -87,7 +87,7 @@ FAILED = {"respuesta": "⚠️ Algo falló de mi lado; inténtalo otra vez en un
 # Hermes's menu covers every private chat and lists only its own commands (and the default profile's skills).
 # A menu scoped to the captain's chat wins over it, so this one lists the project's commands before Hermes's.
 MENU = ([("quiz", "Quiz corto de un tema con el material: /quiz derivadas")] if SUBJECT else
-        [("estado", "Salud del sistema: sondeo, aula, token de Canvas y feeds"),
+        [("estado", "Salud del sistema: sondeo, aula y token de Canvas"),
          ("token", "Token nuevo de Canvas, cifrado en tu celular"),
          ("quiz", "Quiz corto de un tema, del bot de la materia: /quiz derivadas")])
 _TASKS = set()  # asyncio keeps only a weak reference to a task
@@ -319,11 +319,12 @@ def register(ctx):
     ctx.register_platform_handler("telegram", _wire)
     ctx.register_hook("transform_llm_output", _check_citations)
     ctx.register_hook("pre_tool_call", _guard_guests)
-    if SUBJECT:
-        ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
-                          is_async=True, description=PAGE_TOOL["description"])
-        ctx.register_tool(name="ver_foto", toolset="vinci-paginas", schema=PHOTO_TOOL, handler=_see_photo,
-                          is_async=True, description=PHOTO_TOOL["description"])
+    # Vinci (no SUBJECT) gets them too: without Telegram it reads every subject's pages and notebooks itself
+    photo = PHOTO_TOOL if SUBJECT else VINCI_PHOTO_TOOL
+    ctx.register_tool(name="ver_pagina", toolset="vinci-paginas", schema=PAGE_TOOL, handler=_see_page,
+                      is_async=True, description=PAGE_TOOL["description"])
+    ctx.register_tool(name="ver_foto", toolset="vinci-paginas", schema=photo, handler=_see_photo,
+                      is_async=True, description=photo["description"])
 
 
 def _whatsapp_number(user_id):
@@ -400,7 +401,7 @@ async def _see_page(args, **_):
     except (KeyError, TypeError, ValueError):
         return json.dumps({"error": "Dime «archivo_id» y «pagina» como números."}, ensure_ascii=False)
     try:
-        result = await _run("pagina", "--curso", SUBJECT, str(file_id), str(page))
+        result = await _run("pagina", *(["--curso", SUBJECT] if SUBJECT else []), str(file_id), str(page))
     except Exception as exc:
         logger.error("ver_pagina: %s", exc)
         return json.dumps({"error": "No pude mostrar la página; intenta de nuevo."}, ensure_ascii=False)
@@ -423,13 +424,22 @@ PHOTO_TOOL = {
 }
 
 
+VINCI_PHOTO_TOOL = {**PHOTO_TOOL, "description": PHOTO_TOOL["description"].replace("de tu cuaderno",
+                                                                                   "del cuaderno de una materia"),
+                    "parameters": {"type": "object", "properties": {
+                        **PHOTO_TOOL["parameters"]["properties"],
+                        "materia": {"type": "string", "description": "la materia de ese cuaderno"}},
+                        "required": ["entrada", "materia"]}}
+
+
 async def _see_photo(args, **_):
     try:
         entry = int(args["entrada"])
     except (KeyError, TypeError, ValueError):
         return json.dumps({"error": "Dime «entrada» como número."}, ensure_ascii=False)
+    where = ["--curso", SUBJECT] if SUBJECT else ["--materia", str(args.get("materia") or "")]
     try:
-        result = await _run("foto", "--curso", SUBJECT, str(entry))
+        result = await _run("foto", *where, str(entry))
     except Exception as exc:
         logger.error("ver_foto: %s", exc)
         return json.dumps({"error": "No pude mostrar la foto; intenta de nuevo."}, ensure_ascii=False)

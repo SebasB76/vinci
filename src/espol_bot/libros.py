@@ -213,7 +213,7 @@ def add_sent(conn: sqlite3.Connection, cfg: CoreConfig, subject: materias.Subjec
 # -- the one ask ------------------------------------------------------------------------------------------
 
 
-def ask_text(cfg: CoreConfig, subject: materias.Subject, book: dict) -> str:
+def ask_text(cfg: CoreConfig, subject: materias.Subject, book: dict, *, whatsapp: bool = False) -> str:
     e = messages.e
     where = "No está en el aula virtual."
     if book["archivos"]:
@@ -225,6 +225,12 @@ def ask_text(cfg: CoreConfig, subject: materias.Subject, book: dict) -> str:
                  + (f": {e(link['motivo'])}" if link["motivo"] else "")
                  + f". {messages.link(link['url'], link['titulo'] or 'Abrir enlace')}.")
     said = "Según el sílabo es" if (book["origen"] or "").startswith("sílabo") else "Me dijiste que es"
+    if whatsapp:  # Vinci's chat, where any subject's book arrives; WhatsApp takes files far bigger than a book
+        return (f"📘 <b>El libro principal de {e(subject.name)}</b>\n"
+                f"{said}: <i>{e(book['titulo'])}</i>\n{where}\n\n"
+                f"Si lo tienes en PDF, mándamelo aquí diciendo que es el libro de {e(subject.name)}, y lo uso primero "
+                f"al explicarte y en los briefs. También puedes ponerlo en la carpeta "
+                f"<code>{e(folder(cfg, subject.code))}</code> de tu computadora. No te lo vuelvo a pedir.")
     return (f"📘 <b>El libro principal de {e(subject.name)}</b>\n"
             f"{said}: <i>{e(book['titulo'])}</i>\n{where}\n\n"
             "Si lo tienes en PDF, pásamelo una vez y lo uso primero al explicarte y en los briefs:\n"

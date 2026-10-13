@@ -4,6 +4,7 @@
   avisos               every alert Vinci sent that offers a handoff (plain text + subjects)
   entregas             handoffs queued for a subject bot (from an alert button or routed by
                        Vinci); the subject bot's agenda claims each one exactly once
+  group_news           what each notice group already got of the aula's news (avisos.py), so it goes once
   briefs               pre-class briefs already claimed, one per subject and class start,
                        so a restart never sends a brief twice
   horario_propuestas   schedules Vinci extracted from a screenshot, waiting for the
@@ -62,6 +63,13 @@ CREATE TABLE IF NOT EXISTS entregas (
     reclamado TEXT,
     UNIQUE (aviso_id, materia)
 );
+CREATE TABLE IF NOT EXISTS group_news (
+    grupo TEXT NOT NULL,
+    clave TEXT NOT NULL,
+    enviado TEXT NOT NULL,
+    PRIMARY KEY (grupo, clave)
+);
+
 CREATE TABLE IF NOT EXISTS briefs (
     materia TEXT NOT NULL,
     inicio TEXT NOT NULL,

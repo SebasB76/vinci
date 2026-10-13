@@ -42,9 +42,15 @@ login_minutes = 15
 # Zona horaria para fechas, recordatorios y el resumen.
 zona_horaria = "America/Guayaquil"
 
+[channels]
+# false: Vinci te habla solo por WhatsApp (necesita WHATSAPP_CAPTAIN en secrets.env). Los bots de materia de
+# Telegram quedan apagados, sin borrarse: Vinci lleva tus materias, sus cuadernos y los briefs antes de clase.
+# true: también Telegram, con un bot por materia.
+telegram = false
+
 [notificaciones]
-# Cada cuántos minutos el bot revisa el aula virtual.
-intervalo_minutos = 30
+# Cada cuántos minutos el bot revisa el aula virtual (mínimo 5).
+intervalo_minutos = 10
 # Recordatorios antes de cada entrega que aún no has enviado (en horas).
 recordatorios_horas = [24, 3]
 # Hora del resumen diario de la semana (formato 24 h, HH:MM).
@@ -75,7 +81,7 @@ idle_minutes = 15
 # Tipos de archivo del aula que los bots leen (además de las páginas web que abren desde un enlace).
 # Solo el sílabo de cada curso se baja solo; lo demás queda en el catálogo y el bot de la materia
 # lo baja cuando lo necesita.
-extensiones = ["pdf", "pptx", "docx", "doc"]
+extensiones = ["pdf", "pptx", "docx", "doc", "xlsx"]
 # Nada más grande que esto se baja (un libro escaneado puede pesar más de 100 MB).
 tamano_maximo_mb = 200
 # Cuántos sílabos baja como máximo cada sondeo (MB); los demás, en los siguientes.

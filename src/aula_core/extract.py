@@ -8,6 +8,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ log = logging.getLogger(__name__)
 logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # What a "page" means for each format, used when citing.
-UNIT = {"pdf": "página", "pptx": "diapositiva", "docx": "sección", "doc": "sección", "html": "sección"}
+UNIT = {"pdf": "página", "pptx": "diapositiva", "docx": "sección", "doc": "sección", "html": "sección", "xlsx": "hoja"}
 
 DOCX_SECTION_CHARS = 1800
 PAGE_IMAGE_EDGE = 1600  # pixels on the long side: readable, and still well under the model's image limits
@@ -34,6 +35,8 @@ def extract(path: Path) -> list[tuple[int, str]]:
         return _doc(path)
     if ext in ("html", "htm"):
         return _html(path)
+    if ext == "xlsx":
+        return _xlsx(path)
     raise ValueError(f"Formato no soportado: {path.suffix}")
 
 
@@ -150,3 +153,30 @@ def _html(path: Path) -> list[tuple[int, str]]:
     if current:
         sections.append((len(sections) + 1, "\n\n".join(current)))
     return sections
+
+
+def _xlsx(path: Path) -> list[tuple[int, str]]:
+    """One page per sheet, a row per line: a course schedule («Cronograma») is usually a spreadsheet."""
+    from openpyxl import load_workbook
+
+    book = load_workbook(str(path), read_only=True, data_only=True)
+    sheets = []
+    for number, sheet in enumerate(book.worksheets, 1):
+        rows = []
+        for row in sheet.iter_rows(values_only=True):
+            cells = [_cell(v) for v in row]
+            while cells and not cells[-1]:
+                cells.pop()
+            if any(cells):
+                rows.append(" | ".join(cells))
+        sheets.append((number, f"Hoja «{sheet.title}»\n" + "\n".join(rows) if rows else ""))
+    book.close()
+    return sheets
+
+
+def _cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):  # a schedule's date cell: no 00:00:00 after it
+        return value.strftime("%Y-%m-%d %H:%M" if value.hour or value.minute else "%Y-%m-%d")
+    return str(value).strip()

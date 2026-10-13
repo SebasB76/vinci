@@ -228,9 +228,9 @@ def send_link(bridge: str, chat_id: str, text: str, link: dict, reply_to: str | 
         raise WhatsAppError(f"el puente de WhatsApp respondió {response.status_code}: {response.text[:200]}")
 
 
-def send_text(bridge: str, chat_id: str, text: str) -> None:
-    """One plain message to any chat (a person's JID or a group's), as is."""
-    WhatsApp("", bridge)._post("send", {"chatId": chat_id, "message": text})
+def send_text(bridge: str, chat_id: str, text: str, mentions: list[str] | None = None) -> None:
+    """One plain message to any chat (a person's JID or a group's), as is; `mentions` are the JIDs its «@…» tag."""
+    WhatsApp("", bridge)._post("send", {"chatId": chat_id, "message": text, **({"mentions": mentions} if mentions else {})})
 
 
 def own_number() -> str:

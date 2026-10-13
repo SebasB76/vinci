@@ -1,5 +1,10 @@
 # Instalación
 
+> **Solo WhatsApp (lo normal).** El `config.toml` trae `[channels] telegram = false`: Vinci te habla solo por
+> WhatsApp. En ese caso no necesitas Telegram: salta los pasos 1, 2 y 7, y en `secrets.env` pon `CANVAS_TOKEN` y
+> `WHATSAPP_CAPTAIN` en vez de los dos de Telegram. Después sigue [whatsapp.md](whatsapp.md) para vincular el
+> número de Vinci. Esta guía describe también la instalación con Telegram (`telegram = true`).
+
 ## Requisitos
 
 - **Una PC con Linux** que quede encendida mientras quieras que los bots funcionen (se usa en Arch / Omarchy).
@@ -73,17 +78,13 @@ nano secrets.env
 
 ```ini
 CANVAS_TOKEN=…            # paso 3
-TELEGRAM_BOT_TOKEN=…      # paso 1, el bot de Vinci
-TELEGRAM_USER_ID=…        # paso 2
+TELEGRAM_BOT_TOKEN=…      # paso 1, el bot de Vinci (solo con telegram = true)
+TELEGRAM_USER_ID=…        # paso 2 (solo con telegram = true)
+WHATSAPP_CAPTAIN=…        # tu número de WhatsApp (con telegram = false; ver whatsapp.md)
 ```
 
 `secrets.env` está en `.gitignore`: nunca se sube a GitHub. Los tokens de los bots de materia
 (`TELEGRAM_BOT_TOKEN_<CÓDIGO>`) no los escribes tú: Vinci los agrega cuando crea cada bot.
-
-**Respaldo recomendado sin token (una sola vez):** copia en Canvas la **Fuente del calendario** y el enlace
-**RSS** de Anuncios de cada materia, y ejecuta `.venv/bin/espol-bot feeds`. Las entradas se piden de forma oculta
-y quedan en `secrets.env`; no las pegues en Telegram. Así las fechas, eventos y anuncios siguen llegando incluso
-si la PC estuvo apagada más de una hora y se rompió la cadena de renovación.
 
 ### 5. Corre el setup
 
@@ -166,12 +167,13 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `dashboard.url` | `https://sebasb76.github.io/vinci/dashboard/` | La página del botón «📋 Entregas». Vacío (`""`): sin dashboard, y el chat vuelve a su botón de menú de siempre |
 | `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la línea del semestre. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
-| `notificaciones.intervalo_minutos` | `30` | Cada cuánto revisa el aula (mínimo 5) |
+| `channels.telegram` | `false` | `false`: Vinci te habla solo por WhatsApp (necesita `WHATSAPP_CAPTAIN`) y lleva todas tus materias en un chat; los bots de materia quedan apagados, sin borrarse. `true`: también Telegram, con un bot por materia |
+| `notificaciones.intervalo_minutos` | `10` | Cada cuánto revisa el aula (mínimo 5) |
 | `notificaciones.recordatorios_horas` | `[24, 3]` | Recordatorios antes de cada entrega no enviada |
 | `notificaciones.resumen_diario` | `"07:00"` | Hora del resumen de la semana |
 | `notificaciones.max_mensajes_por_sondeo` | `8` | Con más avisos que esto en una revisión, llegan en un solo mensaje |
 | `clases.brief_minutos_antes` | `30` | Minutos antes de cada clase en que llega el brief (entre 5 y 180) |
-| `material.extensiones` | `["pdf", "pptx", "docx", "doc"]` | Qué archivos del aula leen los bots (además de las páginas web de un enlace) |
+| `material.extensiones` | `["pdf", "pptx", "docx", "doc", "xlsx"]` | Qué archivos del aula leen los bots (además de las páginas web de un enlace) |
 | `material.tamano_maximo_mb` | `200` | Nada más grande que esto se baja |
 | `material.max_mb_per_sync` | `50` | Cuántos MB de sílabos baja como máximo cada sondeo; los demás, en los siguientes |
 | `notes.folder` | `~/Notes` | Tu carpeta de apuntes en Markdown ([cómo](uso.md#tus-apuntes-de-clase)); vacía, no la lee |
@@ -237,6 +239,9 @@ git pull
 ```
 
 Si venías del bot académico anterior (el perfil `espol`), el setup lo convierte en Vinci conservando su memoria.
+
+Con `channels.telegram = false`, el setup apaga cada perfil `vinci-<código>` con un archivo `gateway.parked` y saca
+el token de Telegram del perfil de Vinci; no borra nada. Con `true` y otro `./setup.sh`, vuelven los bots.
 
 Para desinstalar:
 

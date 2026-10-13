@@ -28,7 +28,7 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 ## Qué hace
 
 **Te mantiene al día**
-- **Avisos del aula.** Revisa el aula cada 30 minutos: tareas nuevas, cambios de fecha, anuncios, notas y material. Si es un cuestionario, te dice cuántas preguntas tiene y cuánto tiempo dura.
+- **Avisos del aula.** Revisa el aula cada 10 minutos: tareas nuevas, cambios de fecha, anuncios, notas y material. Si es un cuestionario, te dice cuántas preguntas tiene y cuánto tiempo dura.
 - **Recordatorios.** Cada entrega pendiente, 24 h y 3 h antes. Si la entregaste en papel, pulsas «Ya lo entregué» y no insiste más.
 - **Resumen de las 7:00.** Tu semana en orden: primero lo que vence, después lo que más pesa en tu nota.
 - **Dashboard de entregas.** Una página dentro del chat con lo atrasado, lo de hoy y lo de la semana. Marcas una entrega con un toque.

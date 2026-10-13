@@ -49,8 +49,8 @@ zona_horaria = "America/Guayaquil"
 telegram = false
 
 [notificaciones]
-# Cada cuántos minutos el bot revisa el aula virtual.
-intervalo_minutos = 30
+# Cada cuántos minutos el bot revisa el aula virtual (mínimo 5).
+intervalo_minutos = 10
 # Recordatorios antes de cada entrega que aún no has enviado (en horas).
 recordatorios_horas = [24, 3]
 # Hora del resumen diario de la semana (formato 24 h, HH:MM).

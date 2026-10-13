@@ -211,6 +211,8 @@ def _describe(core: CoreConfig, conn: sqlite3.Connection, item: dict, names: dic
     if data.get("goal"):
         line += f"; meta: {data['goal']}"
     steps = data.get("steps") or []
+    if item["kind"] == "jury":
+        line += f"; lleva {len(steps)} pregunta(s)"
     if steps:
         line += f"; último paso: {steps[-1].get('done')}" + (f"; sigue: {steps[-1]['next']}" if steps[-1].get("next")
                                                             else "")

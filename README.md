@@ -38,6 +38,8 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 - **Todas tus materias en un chat.** Vinci sabe de qué materia hablas y te manda un repaso 30 minutos antes de cada clase. Con Telegram encendido, hay además un bot por materia.
 - **Preguntas sobre el material.** Explica, resume y te hace preguntas tipo examen, citando archivo, página y el enlace del aula. Cada cita se comprueba antes de enviarse.
 - **`/quiz`.** Un quiz corto en encuestas, con tu puntaje al final. Lo que fallas queda como tema débil.
+- **Tengo 20 minutos.** Una sesión corta con lo que te cuesta y lo que vence, paso a paso.
+- **Jurado de exposición.** Te pregunta como el profesor sobre tu documento o la rúbrica, una pregunta a la vez, y te dice tus fortalezas y debilidades.
 - **Exámenes anteriores.** Busca en DSpace los parciales de tu materia y te resuelve uno pregunta por pregunta.
 - **Cuaderno de cada materia.** Le cuentas lo que vieron, o le mandas una foto de la pizarra o una nota de voz, y lo guarda con un resumen.
 - **Tus apuntes de clase.** Escribe `//vinci <pregunta>` en tus notas y Vinci te contesta en el chat.

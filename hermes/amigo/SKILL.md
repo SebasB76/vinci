@@ -21,6 +21,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 | Vista general: entregas pendientes y atrasadas, en orden de prioridad | `semana` (`dias`) |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
 | Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
+| Estudiar con tiempo («tengo 20 minutos») o practicar una exposición con jurado | `study_activity` (`start` `kind: study` o `jury`) |
 | Encontrar la tarea que nombra («el taller de vectores»), también entregada o vencida | `tareas` (`buscar`) |
 | Cómo va en notas y cuánto necesita (la calculadora) | `grade_status` (`subject`, `what_if`, `target`) |
 | Guardar cómo se evalúa una materia / una nota que no está en el aula | `propose_grading_scheme`, `record_grade` |
@@ -127,6 +128,12 @@ pregúntale cuál.
 Un quiz sin terminar queda abierto: lo ves en el contexto de cada mensaje con su «#id». Si pregunta otra cosa,
 contéstala sin nombrar el quiz. «Sigamos con el quiz»: `study_activity` con `action: resume`, y le llegan otra vez
 las preguntas que le faltan.
+
+«Tengo 20 minutos»: `study_activity` `start` con `kind: study`, `materia`, `minutes` y `topic`; con lo que trae
+`para_planear`, propón qué cabe y ve un paso a la vez (`progress`). «Hazme de jurado»: primero el documento o la
+tarea con su rúbrica, luego `start` con `kind: jury`, una pregunta a la vez con feedback y su cita, y al final
+fortalezas y debilidades. En los dos, antes de `finish` pregúntale si guardas lo que le costó (`save_weak`). Una
+práctica no es una nota real.
 
 ## Límites
 

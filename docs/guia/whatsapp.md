@@ -77,6 +77,12 @@ su encuesta en vez de botones.
   te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
   contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al
   final del chat.
+- **Tengo 20 minutos.** «Tengo 20 minutos para Física»: Vinci mira lo que te cuesta, tus dudas abiertas y lo que
+  vence pronto, te propone qué cabe en ese tiempo y lo hacen paso a paso, con ejercicios de tu material. Al final te
+  pregunta si guarda en el cuaderno lo que te costó; el próximo quiz o la próxima sesión empiezan por ahí.
+- **Jurado de exposición.** «Hazme de jurado para la exposición del proyecto»: dile el documento o la tarea con su
+  rúbrica. Vinci te hace una pregunta a la vez, como el profesor, y después de cada respuesta te dice qué estuvo
+  bien, qué faltó y dónde está. Al final, tus fortalezas y debilidades. Es práctica: no te pone una nota.
 - **Dejar algo y retomarlo.** Lo mismo vale para una sesión de estudio: «tengo 20 minutos, repasemos derivadas»,
   luego otra pregunta, luego «sigamos». Vinci guarda por dónde iban, aunque el chat empiece de cero o se reinicie.
   Lo que dejas más de 3 días ya no te lo recuerda.

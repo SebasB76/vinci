@@ -453,9 +453,33 @@ def _link_entry(link: dict) -> dict:
     return entry
 
 
+MONTH_NAMES = {name: n for n, names in enumerate((
+    ("enero",), ("febrero",), ("marzo",), ("abril",), ("mayo",), ("junio",), ("julio",), ("agosto",),
+    ("septiembre", "setiembre"), ("octubre",), ("noviembre",), ("diciembre",)), 1) for name in names}
+DATE_IN_TEXT = re.compile(r"\b(\d{1,2})\s+de\s+(" + "|".join(MONTH_NAMES) + r")\b", re.I)
+
+
+def _dates_in(text: str | None, posted: str | None) -> dict[str, str]:
+    """«13 de Octubre» → «martes 13 oct 2026»: the model got the weekday of an announcement's dates wrong."""
+    base = timefmt.parse(posted) or datetime.now()
+    found = {}
+    for m in DATE_IN_TEXT.finditer(text or ""):
+        year = base.year
+        try:
+            day = datetime(year, MONTH_NAMES[m[2].lower()], int(m[1]))
+            if day.date() < base.date() - timedelta(days=120):  # «5 de enero» written in December
+                day = day.replace(year=year + 1)
+        except ValueError:
+            continue
+        found[m[0]] = f"{timefmt.DAYS_LONG[day.weekday()]} {day.day} {timefmt.MONTHS[day.month - 1]} {day.year}"
+    return found
+
+
 def _announcements(conn, course_ids: list[int] | None, n: int) -> list[dict]:
     items = queries.announcements(conn, course_ids, limit=n)
     for item in items:
+        if dates := _dates_in(item.get("texto"), item.get("publicado")):
+            item["fechas_del_texto"] = dates  # the weekday of each date in it: copy these, never work one out
         item["enlaces"] = [_link_entry(link) for link in item["enlaces"]]
         for key in ("archivos", "enlaces"):
             if not item[key]:
@@ -1513,7 +1537,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              {"id": {"type": "integer"}, "hecho": {"type": "boolean", "description": "false: lo reabre"}}, ["id"],
              read_only=False),
         Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
-             "un SharePoint): léelos con leer_archivo.", anuncios,
+             "un SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
+             "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
         Tool("notas", "Notas publicadas por materia.", notas, dict(materia)),
         Tool("grade_status", "La calculadora de notas: aplica el esquema de evaluación guardado de una materia (sus "
@@ -1916,7 +1941,8 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              {"dias": {"type": "integer", "description": "solo las que vencen en N días"}}),
         Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
-             "SharePoint): léelos con leer_archivo.", anuncios, {"n": {"type": "integer"}}),
+             "SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
+             "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia.", notas),
         Tool("grade_status", "La calculadora de notas de tu materia: aplica su esquema de evaluación guardado (los "
              "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "

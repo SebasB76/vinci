@@ -41,7 +41,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Chat context in every turn (clock, chat kind, notes that hold in one chat: `chat_note`) | the same, per chat | the same; a group's note never reaches the DM; a DM or group idle 4 h starts a new conversation | no (a script adds it) | `whatsapp.md` «Vinci en WhatsApp» |
 | Subject in focus and open activities (a quiz or study session left and taken up again: `study_activity`) | the same, per Hermes session | the same; «sigamos con el quiz» re-sends only the unanswered polls; a photo or «anota…» without a subject goes to the one named in the last 3 h | no (a script adds it) | `whatsapp.md` «Tus materias, en un solo chat» |
 | Study session («tengo 20 minutos») and presentation jury | no (WhatsApp only) | `study_activity` `kind: study` / `jury`: start brings weak topics, doubts, what is due and the rubric; finish with `save_weak` writes weak topics to the notebook | yes | `whatsapp.md` «Tengo 20 minutos», «Jurado de exposición» |
-| Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci | no (transcription, local Whisper) | `whatsapp.md` «Vinci en WhatsApp» |
+| Voice notes and audio files | transcribed when Hermes can | DM: voice notes and audio files (.m4a); groups: voice notes that say «Vinci» or reply to Vinci, from the captain or a friend with a Vinci; every voice turn's context warns a word may be misheard, and a silent or filler one («Gracias por ver el video») is called unheard (`conversation.voice`) | no (transcription, local Whisper) | `whatsapp.md` «Vinci en WhatsApp» |
 
 ## Code and verification
 

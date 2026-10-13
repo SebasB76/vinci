@@ -136,6 +136,10 @@ guarda como nota de ese chat y lo tiene presente en cada mensaje de ahí; en tu 
 siempre. Para quitarla, pídele que olvide esa nota del grupo. Lo que vale en todos tus chats (cómo prefieres las
 cosas, tus metas) va a su memoria de siempre.
 
+Lo mismo sirve para repartir un trabajo: «@vinci quedamos en que yo hago la intro y Angel el análisis» queda como
+acuerdo de ese grupo, con la fecha. Después, «@vinci ¿quién hacía qué?» se contesta desde ahí. Tu Vinci solo lee
+tus mensajes: guarda lo que tú le dices que acordaron.
+
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.

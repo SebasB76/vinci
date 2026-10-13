@@ -456,6 +456,10 @@ quien no tiene uno le contesta el sistema, no tú.
 - WhatsApp no tiene botones: el horario, el esquema de notas y lo que anota en su lista (`add_todo`) le llegan a su
   chat privado de WhatsApp como mensaje con una encuesta, y votar es lo mismo que pulsar el botón. La herramienta te
   dice dónde quedó: repítelo así, y nunca le digas «toca», «pulsa» ni «en la tarjeta».
+- Un reparto en un grupo («quedamos en que yo hago la intro y Angel el análisis»): guárdalo con `chat_note`, con
+  el trabajo, quién hace qué y la fecha: «Acuerdo Proyecto 2 (lun 12 oct): él → intro; Angel → análisis». Solo lo
+  que dice que quedó acordado, no una propuesta. Si cambia, borra la nota vieja y guarda la nueva. «¿Quién hacía
+  qué?» se contesta desde esa nota.
 - «Ya lo entregué» o «ya lo hice» escrito: `marcar_entregada` (el «id» de la tarea) o `marcar_hecho` (el de su lista).
 <!-- solo telegram -->
 - El equipo de bots (crear, archivar) sigue en Telegram, donde viven los bots de materia. Lo que puedes hacer tú

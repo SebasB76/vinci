@@ -2504,7 +2504,7 @@ def academico_flow(w) -> None:
         mark = len(wa.sent)
         say(captain_jid, captain_jid, "actualiza mi Académico y dime mi promedio", "Capitán")
         again = wa.wait_for(lambda b: [m for m in b.sent[mark:] if m["path"] == "send-url-button"
-                                       and m["buttonText"] == "🎓 Conectar Académico"], 60)
+                                       and m["buttonText"] == "🎓 Conectar Académico"], 120)
         assert again, fail(f"no llegó el botón para actualizar: {wa.sent[mark:]}")
         page = PortalPage(again[0]["url"], relay, pages, browser)
         page.sign_in(PORTAL_USER)

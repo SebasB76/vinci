@@ -41,7 +41,7 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
-  its words and searched in its own attachments first, a quote, a sticker, a group
+  its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
   that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; the block for whoever is not a Vinci's owner; Angel
   removed with his tokens.
@@ -80,6 +80,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
+import pypdf
 import pytest
 import requests
 import yaml
@@ -165,6 +166,9 @@ SLIDES = {"titulo": "Integrales dobles", "subtitulo": "Cálculo de varias variab
                                                                                 "Se integra en una región R"]},
                            {"titulo": "Cómo se calcula", "puntos": ["Teorema de Fubini", "Orden dx dy o dy dx"],
                             "notas": "Mostrar un ejemplo en el pizarrón."}]}
+SUMMARY = {"titulo": "Taller 2: Integrales dobles", "subtitulo": "Cálculo de varias variables",
+           "introduccion": "Lo que pide el taller, para repasar antes de resolverlo."}
+SUMMARY_FAKE_CITE = "📄 [Capítulo 9 - Inventado.pdf, página 99](https://aulavirtual.espol.edu.ec/courses/1/files/9)"
 VENV_BIN = Path(sys.executable).parent
 FILES = HERE / "fixtures" / "files"
 MARKER = "Generado por setup.sh de espol-academic-bot"
@@ -442,6 +446,22 @@ class Script:
             official = [h for h in _json(results[-1])["resultados"] if h.get("de_la_tarea")]
             return {"content": "\n".join(f"La tarea dice: {h['fragmento']} {h['cita']}" for h in official)
                     or _problem(results[-1])}
+        if "resumen en pdf del taller de integrales" in text:
+            if not called:
+                return _call("mcp__vinci__tareas", buscar="taller integrales")
+            if called == ["mcp__vinci__tareas"]:
+                first = _json(results[-1])["candidatas"][0]
+                return _call("mcp__vinci__buscar_material", pregunta="ejercicio hoja enunciado", tarea_id=first["id"])
+            last = _json(results[-1])
+            if isinstance(last, dict) and last.get("ruta"):
+                return {"content": f"Tu resumen tiene {last['paginas']} página(s):\n{last['ruta']}"}
+            hit = next(d["resultados"][0] for d in map(_json, results) if isinstance(d, dict) and d.get("resultados"))
+            # The first try also cites a page it never read: the tool refuses it, and the model drops it.
+            sources = [hit["cita"]] + ([] if called.count("mcp__vinci__crear_resumen") else [SUMMARY_FAKE_CITE])
+            return _call("mcp__vinci__crear_resumen", **SUMMARY, secciones=[
+                {"titulo": "Qué pide el taller", "texto": f"El enunciado dice: **{hit['fragmento'][:200]}**",
+                 "puntos": ["Cada ejercicio va aparte", "Se entrega un solo PDF"], "fuentes": sources}],
+                para_recordar=["Un ejercicio por hoja", "Un solo PDF"])
         if results:
             last = _json(results[-1])
             if isinstance(last, dict) and last.get("ruta"):
@@ -2110,6 +2130,23 @@ def test_whatsapp_friend(tmp_path):
         md.append(f"**Angel**: en el taller de integrales, cómo va cada ejercicio? → Vinci: {normalize(how)}\n")
         report.append("«En el taller de integrales…»: `tareas` con `buscar` encuentra el Taller 2 por sus palabras, y "
                       "`buscar_material` con su `tarea_id` trae primero sus anexos, marcados «de_la_tarea», con su cita")
+
+        # 10f2d. A PDF summary: a citation of a page Vinci never read is refused, and the PDF links the real one
+        mark, calls = len(wa.sent), len(llm.requests)
+        say(angel_jid, angel_jid, "hazme un resumen en pdf del taller de integrales", "Angel")
+        media = wa.wait_for(lambda b: [m for m in b.sent[mark:] if m["path"] == "send-media"], 60)
+        assert media and media[0]["filePath"].endswith(".pdf"), fail(f"no llegó el PDF: {wa.sent[mark:]}")
+        tool_text = [flatten(m.get("content")) for req in llm.requests[calls:] for m in req.get("messages") or []
+                     if m.get("role") == "tool"]
+        assert any("no salen de páginas que leíste" in t and "Inventado.pdf" in t for t in tool_text), tool_text
+        summary = pypdf.PdfReader(media[0]["filePath"])
+        summary_text = " ".join(page.extract_text() for page in summary.pages)
+        links = [a.get_object()["/A"]["/URI"] for page in summary.pages for a in page.get("/Annots") or []]
+        assert all(t in summary_text for t in ("Taller 2: Integrales dobles", "Qué pide el taller", "Un ejercicio por hoja")), \
+            summary_text
+        assert "Inventado" not in summary_text and links and all("/files/9" not in u for u in links), links
+        report.append("«hazme un resumen en pdf»: crear_resumen rechaza una cita de una página que Vinci no leyó, y "
+                      "el PDF (portada, índice, secciones con ejemplo, fuentes con su enlace del aula y «Para recordar») llega al chat de WhatsApp")
 
         # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
         mark = len(wa.sent)

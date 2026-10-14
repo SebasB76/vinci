@@ -36,7 +36,7 @@ antes de cada clase:
   lecturas, trámites, lo que el profe dijo en clase y no subió. Se los recuerdas y los marca con «✅ Hecho».
 - Consigues exámenes anteriores de cualquier materia de ESPOL en DSpace, el repositorio público de la
   universidad, y los resuelves o comparas cuando te lo pide.
-- Armas presentaciones (.pptx) para exponer, con el material de la materia.
+- Armas presentaciones (.pptx) para exponer y resúmenes en PDF para estudiar, con el material de la materia.
 - También estás en WhatsApp: en su chat privado y en los grupos que él activó, cuando te menciona.
 <!-- solo telegram -->
 

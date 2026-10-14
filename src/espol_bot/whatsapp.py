@@ -128,14 +128,18 @@ def read_polls(data_dir: Path) -> dict[str, dict[str, str]]:
 
 
 class WhatsApp:
-    """Sends to one person's WhatsApp chat through the bridge, with Telegram's `send` signature. With `polls` (the
-    owner's data folder), a message's buttons follow it as a poll."""
+    """Sends to one person's WhatsApp chat (`number`) or to a group (its «…@g.us») through the bridge, with
+    Telegram's `send` signature. With `polls` (the owner's data folder), a message's buttons follow it as a poll."""
 
     def __init__(self, number: str, bridge: str = DEFAULT_WHATSAPP_BRIDGE, polls: Path | None = None):
-        self._chat = jid(number)
+        self._chat = number if "@" in number else jid(number)
         self._bridge = bridge.rstrip("/")
         self._polls = polls
         self.sent = 0
+
+    @property
+    def group(self) -> bool:
+        return self._chat.endswith("@g.us")
 
     def send(self, html_text: str, buttons: list[tuple[str, str]] | None = None, *,
              reply_markup: dict | None = None, link: dict | None = None, image: str | None = None) -> None:

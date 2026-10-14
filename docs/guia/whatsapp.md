@@ -76,7 +76,9 @@ su encuesta en vez de botones.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
   te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
   contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al
-  final del chat.
+  final del chat. En un grupo activo, «@vinci /quiz scrum» manda las encuestas al grupo, con opciones 🇦 🇧 🇨 🇩:
+  vota quien quiera, cuenta el primer voto de cada uno, y quien responde todas recibe ahí su puntaje con una mención.
+  Esas preguntas salen solo del material del curso, nunca de tu cuaderno.
 - **Tengo 20 minutos.** «Tengo 20 minutos para Física»: Vinci mira lo que te cuesta, tus dudas abiertas y lo que
   vence pronto, te propone qué cabe en ese tiempo y lo hacen paso a paso, con ejercicios de tu material. Al final te
   pregunta si guarda en el cuaderno lo que te costó; el próximo quiz o la próxima sesión empiezan por ahí.
@@ -161,16 +163,16 @@ y Vinci los contesta sin gastar tokens:
 | `/estado` | La salud del sistema, como en Telegram |
 | `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: pegas el token nuevo y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
 | `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
-| `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste |
+| `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo y cada uno recibe ahí su puntaje |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
-En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas siempre van a tu
-chat privado (WhatsApp no deja votar a Vinci en un grupo).
+En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas de tus tarjetas
+(«Ya lo entregué», el horario, una entrega) van a tu chat privado. Las de un quiz sí salen en el grupo.
 
 El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con sus recordatorios), su calculadora de
 notas con el esquema que guarda con su voto, y los recordatorios del aula con la encuesta «✅ Ya lo entregué».
 
 En un grupo activo, Vinci también le contesta a quien todavía no tiene su Vinci, como invitado: charla, explica,
-busca en la web, el material de los cursos, exámenes anteriores, diapositivas y resúmenes en PDF. No ve su aula ni le muestra nada
+busca en la web, el material de los cursos, exámenes anteriores, diapositivas, resúmenes en PDF y un quiz en el grupo. No ve su aula ni le muestra nada
 tuyo, y si pide sus tareas o sus notas, le dice que te pida que lo agregues. Esas respuestas usan tu modelo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
 `secrets.env`.

@@ -24,7 +24,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Questions on course material, with citations | Vinci or subject bot | Vinci | yes; citations checked by a script | `uso.md` «El material de cada materia» |
 | Questions about one assignment: found by its words (`tareas` `buscar`), its annexes searched first (`tarea_id`), official vs suggestion | the same | the same; the DM context also says which PDF waits for the vote and what was handed in | yes | `whatsapp.md` «Lo que pide una tarea» |
 | Hand in handwritten work | photos to the subject bot → «📤 Entregar» | photos to Vinci → «📤 Entregar» poll | yes (PDF built by a script) | `uso.md` «Entregar una actividad hecha a mano» |
-| `/quiz <tema>` | subject bot (Vinci hands it over), quiz polls | Vinci, polls in the captain's DM | yes (questions), no (scoring) | `funciones.md` «Quiz con `/quiz`» |
+| `/quiz <tema>` | subject bot (Vinci hands it over), quiz polls | Vinci, polls in the captain's DM; asked in a group, polls in that group and each voter's score there (`whatsapp-grupo voto`) | yes (questions), no (scoring) | `funciones.md` «Quiz con `/quiz`» |
 | Académico (GPA, history, grades, timetables) | ask Vinci; «🎓 Conectar Académico» Mini App the first time | ask Vinci in the DM; the same button as a link | yes (answers), no (sign-in) | `uso.md` «Tu Académico de ESPOL» |
 | Assignment detail (annexes, aula rubric, local dates) | ask Vinci or a subject bot | ask Vinci | yes | `uso.md` «El material de cada materia» |
 | DSpace past exams | ask Vinci or a subject bot | ask Vinci | yes | `uso.md` «Exámenes anteriores (DSpace)» |

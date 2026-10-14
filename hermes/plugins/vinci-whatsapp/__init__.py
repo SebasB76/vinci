@@ -20,8 +20,10 @@ friend's and in the default one; it acts only on WhatsApp.
 - A friend's private chat: the ciphertext the token page gave them goes to `espol-bot amigo token` on stdin, so
   the token reaches no model and no session log; a raw token pasted by mistake is not passed on either.
 - A vote on one of Vinci's polls (WhatsApp's stand-in for a card's buttons, whatsapp.py) runs that button for
-  whoever voted, over their own aula (`espol-bot whatsapp-comando voto`), without the model. Hermes only lets a
-  vote through in private, which is where Vinci sends its polls.
+  whoever voted, over their own aula (`espol-bot whatsapp-comando voto`), without the model. In a group Hermes only
+  lets through a vote on a quiz (its options start with 🇦 🇧…, a mention pattern in setup): anyone's vote there is
+  scored (`espol-bot whatsapp-grupo voto`), and whoever answered every question gets their score, tagged. A vote
+  skips Hermes' sessions altogether (_wire_votes): one cast while Vinci's turn still runs is not queued for the model.
 - A voice note or an audio file: Hermes transcribes a voice note on its own, not an audio file (a recording someone
   forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
   Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
@@ -113,11 +115,13 @@ AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an a
 CALLS_VINCI_RE = re.compile(r"\b[bv]in(?:ch|c|s)h?i\b")  # «Vinci» as Whisper may spell it, over _plain text
 _HEARD = {}  # the last audio heard: a group's audio file is heard to place it, then again for the model
 _TASKS = set()  # asyncio keeps only a weak reference to a task
+_VOTES = asyncio.Lock()
 _GATEWAY = []  # the gateway, as the hook last saw it: a relay answer may need it to restart
 
 
 def register(ctx):
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
+    ctx.register_platform_handler("whatsapp", _wire_votes)
     if RELAY:
         threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
 
@@ -130,6 +134,8 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
     if source is None or platform != "whatsapp":
         return None
     try:
+        if _kind(event) == "poll_update":  # the bridge names a voter by their number: not a name to keep
+            return await _sort(event, source, gateway)
         names = _remember(source)  # anyone who mentions Vinci, even without their own Vinci yet
         result = await _sort(event, source, gateway)
         if result is None:
@@ -158,6 +164,45 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
         return {"action": "skip", "reason": "vinci-whatsapp: error"}
 
 
+def _wire_votes(_native, adapter):
+    """A vote never needs the model, but Hermes would get in its way: it joins texts one person sends in a row into a
+    single message (two quick votes become text no poll has), and queues whatever reaches a chat whose turn still runs
+    (Vinci's polls go out mid-turn) past the pre_gateway_dispatch hook, for the model. Here a vote goes straight to
+    _sort, before either."""
+    if getattr(adapter, "_vinci_votes", False):  # every profile's copy of this plugin registers it
+        return
+    enqueue, handle = adapter._enqueue_text_event, adapter.handle_message
+
+    def enqueue_text(event):  # a vote is a text
+        if _kind(event) == "poll_update":
+            _spawn_vote(event)
+        else:
+            enqueue(event)
+
+    async def handle_message(event):
+        if _kind(event) == "poll_update":
+            _spawn_vote(event)
+        else:
+            await handle(event)
+
+    adapter._enqueue_text_event, adapter.handle_message = enqueue_text, handle_message
+    adapter._vinci_votes = True
+
+
+def _spawn_vote(event):
+    task = asyncio.ensure_future(_count_vote(event))
+    _TASKS.add(task)
+    task.add_done_callback(_TASKS.discard)
+
+
+async def _count_vote(event):
+    try:
+        async with _VOTES:  # in the order they came: of two votes on one question, the first counts
+            await _sort(event, event.source, _GATEWAY[0] if _GATEWAY else None)
+    except Exception:
+        logger.exception("no pude contar un voto de WhatsApp")
+
+
 def _skip(reason):
     return {"action": "skip", "reason": f"vinci-whatsapp: {reason}"}
 
@@ -178,12 +223,19 @@ async def _sort(event, source, gateway):
     captain = CAPTAIN in senders
     reply_to = getattr(event, "message_id", None)
 
-    if (getattr(event, "raw_message", None) or {}).get("mediaType") == "sticker":
+    if _kind(event) == "sticker":
         return _skip("sticker")
 
-    if (getattr(event, "raw_message", None) or {}).get("mediaType") == "poll_update":
+    if _kind(event) == "poll_update":
         who = CAPTAIN if captain else (friend or {}).get("numero") if (friend or {}).get("estado") == "activo" else None
         poll = getattr(event, "reply_to_message_id", None)
+        if chat.endswith("@g.us"):
+            voter = str(getattr(source, "user_id", "") or "")
+            if poll and voter and chat in _read(GROUPS, "grupos"):
+                vote = json.dumps({"encuesta": poll, "opcion": text, "numeros": sorted(senders),
+                                   "votante": voter if "@" in voter else f"{voter}@s.whatsapp.net"})
+                await _answer(chat, await _run("whatsapp-grupo", "voto", chat, stdin=vote), None, gateway)
+            return _skip("voto en un quiz de grupo")
         if who and poll:
             vote = json.dumps({"encuesta": poll, "opcion": text})
             await _answer(chat, await _run("whatsapp-comando", "voto", who, stdin=vote), None, gateway)
@@ -282,6 +334,10 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
                                    stdin=rest if name == "marca" else None), reply_to, gateway)
     return _skip(f"/{name}")
+
+
+def _kind(event):
+    return (getattr(event, "raw_message", None) or {}).get("mediaType")
 
 
 def _audio(event):
@@ -476,7 +532,8 @@ def _deliver(chat, result, reply_to):
             if exc.code != 404:
                 raise
         text = f"{text}\n\n{button['url']}"
-    _post("send", {"chatId": chat, "message": text, **reply})
+    mentions = {"mentions": result["menciones"]} if (result or {}).get("menciones") else {}
+    _post("send", {"chatId": chat, "message": text, **reply, **mentions})
 
 
 def _post(path, payload):

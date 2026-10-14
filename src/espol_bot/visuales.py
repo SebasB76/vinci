@@ -295,8 +295,10 @@ def _screen(pdf, v: dict):
             elif kind == "pestanas":
                 tabs = [t.strip() for t in text.split(";") if t.strip()][:5] or ["—"]
                 tw = inner / len(tabs)
-                for k, tab in enumerate(tabs):
-                    _centered(pdf, x + k * tw, at, tw, h - 1, tab, 8.5, 4.1, "B" if k == 0 else "",
+                pdf.style(8.5, "B")
+                fits = max(pdf.get_string_width(pdf.clean(t)) for t in tabs) <= tw - 2
+                for k, tab in enumerate(tabs):  # a smaller font rather than a tab broken mid-word
+                    _centered(pdf, x + k * tw, at, tw, h - 1, tab, 8.5 if fits else 6.5, 4.1, "B" if k == 0 else "",
                               NAVY if k == 0 else MUTED)
                 pdf.set_fill_color(*RULE)
                 pdf.rect(x, at + h - 0.4, inner, 0.4, "F")

@@ -39,7 +39,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
-  and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
+  and that chat's notes), reminders he asks for there that the agenda sends to the group at their time, once (one
+  missed by days never goes out), and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
@@ -105,6 +106,7 @@ ARTIFACT = Path(os.environ.get("E2E_ARTIFACT_DIR") or REPO / "artifacts" / "e2e"
 TRACE: dict = {}  # this test's world, for the trace page tests/conftest.py writes when it fails
 GROUP_IDLE = 25  # seconds a WhatsApp group stays one conversation here (4 h live)
 BOOK_ASK = "📘 *El libro principal de "
+GROUP_REMINDER = "Historias de usuario en formato requerimiento: se entregan el vie 2 oct"
 
 
 @pytest.fixture(autouse=True)
@@ -542,6 +544,8 @@ class Script:
             return _call("mcp__vinci__anotar", tipo="duda", texto="La regla de L'Hôpital")
         if "háblanos en plural" in text and not called:
             return _call("mcp__vinci__chat_note", text="Hablarles en plural, como «nosotros»")
+        if "recuérdanos" in text and not called:
+            return _call("mcp__vinci__group_reminder", text=GROUP_REMINDER, at=["2026-10-01 09:00", "2026-10-02 12:00"])
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results) or self.pending(text, called, results)
                 or self.vinci_study(text, called, results) or self.group_quiz(text, called, results))
@@ -754,6 +758,8 @@ class Script:
                              + "\nTu lista:\n" + "\n".join(f"- {t['text']}" for t in data["todos"]))
             elif isinstance(data, dict) and "chat_notes" in data:
                 parts.append(f"📝 {data['message']}")
+            elif isinstance(data, dict) and "group_reminders" in data:
+                parts.append(f"⏰ {data['message']}")
             elif isinstance(data, dict) and data.get("hecho"):
                 parts.append(data["hecho"])
             elif isinstance(data, dict) and data.get("delivery_basis"):
@@ -1973,6 +1979,9 @@ def test_whatsapp_friend(tmp_path):
 
         # 10b''. What holds in one chat stays there: the group asks to be spoken to in plural (chat_note). Every turn
         # ends with the clock and that chat's notes; the captain's private chat gets the clock, not the group's note.
+        planned = say(GROUP_WA, captain_jid, "@vinci recuérdanos mañana a las 9 y el viernes a mediodía que hay que "
+                      "entregar las historias de usuario", "Capitán", group=True)
+        assert "sale en este grupo el jue 1 oct, 09:00 y el vie 2 oct, 12:00" in text_of(planned), text_of(planned)
         noted = say(GROUP_WA, captain_jid, "@vinci en este grupo háblanos en plural", "Capitán", group=True)
         assert "Guardada como #" in text_of(noted), text_of(noted)
         calls = len(llm.requests)
@@ -1985,8 +1994,21 @@ def test_whatsapp_friend(tmp_path):
         assert in_group and in_private, turns
         assert "Ahora: miércoles 30 sep 2026, 08:30" in in_group[-1] and "en plural" in in_group[-1], in_group[-1]
         assert "Chat: su chat privado contigo." in in_private[-1] and "en plural" not in in_private[-1], in_private[-1]
+        assert "Recordatorios que el sistema mandará a este grupo: #" in in_group[-1], in_group[-1]
+        assert "Recordatorios que" not in in_private[-1], in_private[-1]
+        mark = len(wa.sent)
+        for _ in range(2):  # the second tick must not repeat it
+            run([bot, "agenda"], "2026-10-01T09:00:20-05:00")
+        time.sleep(2)
+        reminded = [m for m in wa.messages_to(GROUP_WA, mark) if "Recordatorio" in m.get("message", "")]
+        assert len(reminded) == 1 and GROUP_REMINDER in reminded[0]["message"], reminded
+        assert "<b>" not in reminded[0]["message"], reminded[0]["message"]
+        md.append(f"→ Vinci (recordatorio al grupo, jue 09:00): {normalize(reminded[0]['message'])}\n")
         report.append("Cada turno termina con la hora de ahora y las notas de ese chat: «háblanos en plural» queda como "
                       "nota del grupo (chat_note) y llega en cada mensaje del grupo, nunca al chat privado del capitán")
+        report.append("«@vinci recuérdanos mañana a las 9 y el viernes a mediodía…» programa dos recordatorios del grupo "
+                      "(group_reminder) que Vinci ve en el contexto del grupo; `espol-bot agenda` manda el del jueves "
+                      "al grupo a su hora, una sola vez y sin el modelo")
 
         # 10b'. «@vinci activa los avisos»: the agenda tick before a class reminds the group, without the model, once
         notices = say(GROUP_WA, captain_jid, "@vinci activa los avisos", "Capitán", group=True)
@@ -2004,6 +2026,8 @@ def test_whatsapp_friend(tmp_path):
         run([bot, "agenda"], T_NO_TELEGRAM)
         time.sleep(2)
         assert len([m for m in wa.messages_to(GROUP_WA, mark) if "Clase en 30 min" in m.get("message", "")]) == 1
+        assert not [m for m in wa.messages_to(GROUP_WA, mark) if "Recordatorio" in m.get("message", "")], \
+            "el recordatorio del viernes, días tarde, no debe salir"
         md.append(f"→ Vinci (aviso al grupo): {normalize(reminder[0]['message'])}\n")
         report.append("Con «@vinci activa los avisos», `espol-bot agenda` manda al grupo un recordatorio antes de la "
                       "clase, una sola vez y sin el modelo, y el brief del capitán sigue llegando a su chat")

@@ -142,6 +142,12 @@ Lo mismo sirve para repartir un trabajo: «@vinci quedamos en que yo hago la int
 acuerdo de ese grupo, con la fecha. Después, «@vinci ¿quién hacía qué?» se contesta desde ahí. Tu Vinci solo lee
 tus mensajes: guarda lo que tú le dices que acordaron.
 
+**Recordatorios para el grupo.** Escribe en el grupo «@vinci recuérdanos mañana a las 9 y el viernes a mediodía que
+entregamos las historias de usuario». Vinci te confirma el día y la hora de cada uno, y a esa hora el recordatorio
+sale en el grupo, para todos. Si no dices la hora, Vinci usa las 9:00 y te lo dice. «@vinci borra el recordatorio
+del viernes» quita uno. Si el servidor estuvo apagado y un recordatorio se atrasa más de 6 horas, no sale. Solo tu
+Vinci los programa: el Vinci de un amigo no puede escribir en el grupo por su cuenta.
+
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.

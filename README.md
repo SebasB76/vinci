@@ -104,6 +104,7 @@ La [instalación paso a paso](docs/guia/instalacion.md#paso-a-paso) explica de d
 | [Todas las funciones](docs/guia/funciones.md) | Cada función en detalle |
 | [Cómo funciona](docs/guia/como-funciona.md) | Hermes, el sondeo, la renovación del token y el repositorio |
 | [Terminal y Claude Code](docs/guia/terminal.md) | El comando `aula` y `espol-bot` |
+| [Panel de administración](docs/guia/panel.md) | Una página privada con la salud, el gasto y las conversaciones de tus bots |
 | [Privacidad](docs/guia/privacidad.md) | Qué guarda, qué sale de tu PC y qué puede hacer cada bot |
 | [Límites y problemas](docs/guia/problemas.md) | Lo que todavía no hace y cómo arreglar lo común |
 | [Contribuir](docs/guia/contribuir.md) | Hoja de ruta, la prueba E2E y `vinci-check` |

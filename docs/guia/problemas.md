@@ -61,6 +61,7 @@
 | Vinci te responde «No sé de qué materia es ese bot» | Pulsa primero «➕ Crear» en la materia que es, y revoca en @BotFather (`/revoke`) el token que mandaste. |
 | No te llega el brief | Revisa que guardaste el horario y que la clase está en él, que el bot está activo y que el gateway corre. Mándale `/start` al bot: te dice cuándo es tu próxima clase y a qué hora llega el brief. |
 | No ves el botón «📋 Entregas» en el chat de Vinci | Corre `.venv/bin/espol-bot dashboard`, que lo pone al día ya, y después cierra y abre el chat. Si dice que está apagado, revisa `dashboard.url` en `config.toml`. |
+| Un bot no contesta o tarda mucho | Abre el [panel](panel.md): la fila de esa conversación dice cuánto tardó o si quedó sin respuesta, y al tocarla ves en qué paso se quedó. «Errores y avisos» muestra qué falló en Hermes. |
 | No te llegan avisos del aula | Mándale `/estado` a Vinci o corre `.venv/bin/espol-bot doctor`: te dice si el sondeo dejó de correr, si la cadena del token se cortó o si un feed falla, y qué hacer. |
 | Ningún bot responde | `hermes gateway status`; si está apagado, `hermes gateway start`. Si se apaga al cerrar sesión: `sudo loginctl enable-linger "$USER"`. |
 | El modelo no responde o falta la credencial | Configura el modelo en Hermes (`hermes model`). Si usas una `ANTHROPIC_API_KEY` y no el login de Anthropic, cada perfil lee su propio `.env`: agrégala al `.env` de `~/.hermes/profiles/vinci/` y de cada `vinci-<código>` (el setup conserva esa línea). |

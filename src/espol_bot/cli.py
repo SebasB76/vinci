@@ -333,6 +333,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu chat (WhatsApp o Telegram)")
     sub.add_parser("dashboard", help="poner ya el dashboard al día en el botón de menú del chat de Vinci")
     sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización y token (solo lectura)")
+    p = sub.add_parser("panel", help="el panel de administración en el navegador: gateway, tareas, gasto y turnos "
+                                     "(solo lectura)")
+    p.add_argument("--puerto", type=int, default=8787)
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
     p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia (sin --curso: la de Vinci, sin Telegram)")
@@ -415,6 +418,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "hermes-perfil":
             from espol_bot import hermes_setup
             return hermes_setup.provision(cfg, hermes_bin=args.hermes)
+        if args.cmd == "panel":
+            from espol_bot import panel
+            panel.serve(cfg, args.puerto)
+            return 0
         if args.cmd in ("doctor", "estado"):
             return _health(cfg, telegram=args.cmd == "estado")
         if args.cmd == "whatsapp-vincular":

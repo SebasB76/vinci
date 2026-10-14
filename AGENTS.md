@@ -19,6 +19,8 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
+- Live: the admin panel (`espol-bot panel`, the user service `vinci-panel`) on `vinci-server`, published to the
+  captain's tailnet only with Tailscale Serve (`docs/guia/panel.md`).
 - Ready, not live yet: the Docker image (`Dockerfile`, `deploy/`) for the Taws club's Coolify, with an OpenAI
   key; `deploy/move.py` moves the laptop's data there (`docs/guia/servidor.md`).
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).
@@ -118,6 +120,7 @@ uv run pytest                             # the E2E: 4 tests in parallel (fake C
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
 .venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
+systemctl --user status vinci-panel      # the admin panel on 127.0.0.1:8787 (`tailscale serve status`)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins
 .venv/bin/vinci-check smoke               # status, /estado, both pages (and /start to each subject bot with Telegram)
 .venv/bin/vinci-check say "<text>"        # a message to Vinci in the captain's WhatsApp chat, and its reply

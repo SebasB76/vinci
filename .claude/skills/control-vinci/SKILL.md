@@ -5,12 +5,19 @@ description: Verify a change to Vinci or the subject bots on the live system, th
 
 # Control Vinci
 
-`vinci-check` drives the live bots. It is installed in `.venv/bin/` of the live checkout
-(`~/Projects/espol-academic-bot`). From a worktree, run the worktree's code against the live data:
+`vinci-check` drives the live bots. They run on the home laptop, so `vinci-check` runs there too, from the
+live checkout's `.venv/bin/`:
 
 ```bash
-AULA_CONFIG=~/Projects/espol-academic-bot/config.toml AULA_SECRETS=~/Projects/espol-academic-bot/secrets.env \
-  PYTHONPATH=src ~/Projects/espol-academic-bot/.venv/bin/python -m espol_bot.check <command>
+ssh vinci-server 'cd ~/espol-academic-bot && .venv/bin/vinci-check <command>'
+```
+
+To try a branch's `vinci-check` before merging, run that branch's code there against the live data, from a
+worktree on the laptop (`git worktree add`), never by switching branches in `~/espol-academic-bot`:
+
+```bash
+ssh vinci-server 'cd <worktree> && AULA_CONFIG=~/espol-academic-bot/config.toml AULA_SECRETS=~/espol-academic-bot/secrets.env \
+  PYTHONPATH=src ~/espol-academic-bot/.venv/bin/python -m espol_bot.check <command>'
 ```
 
 The bots run the live checkout's code, not the worktree's: a behavior change is only live after

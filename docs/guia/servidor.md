@@ -79,3 +79,24 @@ contenedor:
 
 Desde la Terminal de Coolify usa siempre `espol-bot`, `vinci-move` y `hermes` tal cual: los tres corren como el
 usuario de Hermes, y así no dejan archivos que el gateway no pueda leer.
+
+## En una laptop vieja en casa, sin Docker
+
+Una laptop con Omarchy sirve de servidor con la misma instalación que una PC: Hermes, `setup.sh` y el gateway
+como servicio. Vinci no abre puertos, así que el router no cambia. Para entrar desde fuera de casa, usa Tailscale
+(una red privada entre tus equipos).
+
+1. En la laptop, desde el menú de Omarchy: **Setup → Security → SSHD** (con tu llave de GitHub) e
+   **Install → Service → Tailscale**. Instala Tailscale también en tu PC, con la misma cuenta.
+2. Haz que la tapa cerrada no la suspenda: `HandleLidSwitch=ignore` y `HandleLidSwitchExternalPower=ignore` en
+   `/etc/systemd/logind.conf.d/`, y reinicia.
+3. En la laptop, inicia sesión en Claude Code (`claude`, luego `/login`). Hermes usa esa sesión para Claude.
+4. Instala Hermes con su instalador oficial, en la misma versión que tu PC (`--commit`), clona este repo y
+   corre `./setup.sh`.
+5. Pasa los datos, los perfiles `vinci*` y `amigo-*`, la sesión de WhatsApp y `secrets.env`. Si el usuario cambia,
+   corrige las rutas viejas en los archivos y en las bases (`_rewrite_paths` de `deploy/move.py`).
+6. Corre `./setup.sh` otra vez, ya con el puente de WhatsApp instalado, y luego `hermes gateway install`.
+7. En tu PC, aparta los perfiles de Vinci y la sesión de WhatsApp, y apaga `WHATSAPP_ENABLED` en `~/.hermes/.env`.
+
+Si el disco de la laptop está cifrado, pide su clave en cada arranque: después de un corte de luz, Vinci espera
+a que alguien la escriba en la laptop.

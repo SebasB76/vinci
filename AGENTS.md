@@ -7,10 +7,13 @@ the university's Canvas (aulavirtual). It has one maintainer, called "the captai
 and docs, and a few friends who each get their own Vinci on WhatsApp. It is a side project:
 shipping speed beats ceremony, and a bug found later is fixed in a new session.
 
-## Status (2026-10-12)
+## Status (2026-10-14)
 
-- Live: one Hermes gateway on the captain's laptop, as the systemd user service
-  `hermes-gateway`. It serves `vinci` and one `amigo-<name>` profile per friend.
+- Live: one Hermes gateway on an old laptop at the captain's home (Omarchy, no Docker), as the systemd
+  user service `hermes-gateway`. It serves `vinci` and one `amigo-<name>` profile per friend. Reach it with
+  `ssh vinci-server` (an alias in the captain's `~/.ssh/config`, over Tailscale); the live install is
+  `~/espol-academic-bot` there. The captain's PC only keeps a dev checkout: its Vinci profiles are parked in
+  `~/.hermes/vinci-en-laptop/`, so never start a gateway with them there.
 - Live: WhatsApp is the only channel (`[channels] telegram = false`): Vinci, on a separate number through
   Hermes's unofficial bridge, keeps every subject in one chat, with its notebook and the brief before each class.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
@@ -47,17 +50,17 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 2. If behavior changed, extend `tests/e2e/test_e2e.py` and run `uv run pytest` once, after
    all changes.
 3. `gh pr merge <n> --merge --delete-branch` (the repo keeps merge commits).
-4. In `~/Projects/espol-academic-bot`: `git pull && ./setup.sh`.
-5. `hermes gateway restart`, then `.venv/bin/espol-bot doctor`.
-6. `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check say` or `vote` that
+4. `ssh vinci-server`, then in `~/espol-academic-bot`: `git pull && ./setup.sh`.
+5. There: `hermes gateway restart`, then `.venv/bin/espol-bot doctor`.
+6. There: `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check say` or `vote` that
    exercises the change itself.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
 
 ## Working rules
 
-- `~/Projects/espol-academic-bot` is the live install: `setup.sh` writes its own path into
-  the Hermes profiles and the `.venv` is an editable install. Work in a git worktree, never
-  switch branches there, and never run `setup.sh` from a worktree.
+- `~/espol-academic-bot` on `vinci-server` is the live install: `setup.sh` writes its own path into
+  the Hermes profiles and the `.venv` is an editable install. Never switch branches there. On the PC, work in a
+  git worktree of `~/Projects/espol-academic-bot`, and never run `setup.sh` on the PC.
 - E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to
   "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
   WhatsApp messages and model turns, the gateway log): read it before rerunning anything. Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
@@ -105,6 +108,8 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 - A test profile or test bots instead of the real ones.
 
 ## Commands
+
+The commands from `./setup.sh` down to `tail -f` run on `vinci-server`, in `~/espol-academic-bot`.
 
 ```bash
 uv sync                                   # dependencies, dev included

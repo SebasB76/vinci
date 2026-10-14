@@ -3,6 +3,7 @@ conversation, a restart and a long chat's summary:
 
 - the clock and what kind of chat it is;
 - notes that hold in that chat only (`chat_note`: how a group wants to be spoken to, something agreed there);
+- in a group, the reminders still to go out there (`group_reminder`; avisos.group_reminders sends them);
 - the subject in focus: the one the student last named here, for what comes in without one (a photo, a voice note,
   «anota…»), while it lasts;
 - the activity open here (a quiz, a study session), active or paused, with where it got to: Vinci answers whatever
@@ -30,6 +31,7 @@ from espol_bot import materias
 
 MAX_NOTES = 10
 NOTE_CHARS = 300
+MAX_REMINDERS = 10  # still to go out, per group
 FOCUS_TTL = timedelta(hours=3)
 ACTIVITY_IDLE = timedelta(hours=4)  # an activity left this long is paused: it waits to be asked for again
 ACTIVITY_KEEP = timedelta(days=3)  # one paused longer is not brought up any more (it stays in the table)
@@ -82,6 +84,47 @@ def add_note(conn: sqlite3.Connection, chat: str, text: str, now: datetime) -> d
 
 def remove_note(conn: sqlite3.Connection, chat: str, note_id: int) -> bool:
     removed = conn.execute("DELETE FROM chat_notes WHERE chat = ? AND id = ?", (chat, note_id)).rowcount == 1
+    conn.commit()
+    return removed
+
+
+# -- a group's reminders ------------------------------------------------------------------
+
+
+def reminders(conn: sqlite3.Connection, chat: str) -> list[dict]:
+    """The reminders of this chat that have not gone out yet, soonest first."""
+    rows = conn.execute("SELECT id, text, remind_at FROM group_reminders WHERE chat = ? AND sent_at IS NULL "
+                        "ORDER BY remind_at, id", (chat,)).fetchall()
+    return [{"id": r["id"], "text": r["text"], "remind_at": r["remind_at"]} for r in rows]
+
+
+def add_reminders(conn: sqlite3.Connection, chat: str, text: str, moments: list[datetime], now: datetime) -> list[dict]:
+    text = " ".join(str(text or "").split())
+    if not text or len(text) > NOTE_CHARS:
+        raise NoteError(f"El recordatorio debe tener entre 1 y {NOTE_CHARS} caracteres.")
+    if not moments:
+        raise NoteError("Falta cuándo («at»: una o más horas AAAA-MM-DD HH:MM).")
+    present = reminders(conn, chat)
+    added = []
+    for moment in sorted(set(moments)):
+        at = timefmt.iso(moment)
+        same = next((r for r in present if r["remind_at"] == at and r["text"].casefold() == text.casefold()), None)
+        if same:
+            added.append(same)
+            continue
+        if len(present) >= MAX_REMINDERS:
+            raise NoteError(f"Este grupo ya tiene {MAX_REMINDERS} recordatorios pendientes: borra uno (action: remove).")
+        reminder_id = conn.execute("INSERT INTO group_reminders(chat, text, remind_at, created_at) VALUES (?, ?, ?, ?)",
+                                   (chat, text, at, timefmt.iso(now))).lastrowid
+        present.append({"id": reminder_id, "text": text, "remind_at": at})
+        added.append(present[-1])
+    conn.commit()
+    return added
+
+
+def remove_reminder(conn: sqlite3.Connection, chat: str, reminder_id: int) -> bool:
+    removed = conn.execute("DELETE FROM group_reminders WHERE chat = ? AND id = ? AND sent_at IS NULL",
+                           (chat, reminder_id)).rowcount == 1
     conn.commit()
     return removed
 
@@ -278,6 +321,10 @@ def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: 
     here = notes(conn, chat) if chat else []
     if here:
         lines.append("Notas de este chat (valen solo aquí): " + " · ".join(f"#{n['id']} {n['text']}" for n in here))
+    planned = reminders(conn, chat) if chat and chat_type == "group" else []
+    if planned:
+        lines.append("Recordatorios que el sistema mandará a este grupo: " + " · ".join(
+            f"#{r['id']} {timefmt.human(r['remind_at'], core.tz)} «{r['text']}»" for r in planned))
     names = {s.code: s.name for s in subjects or []}
     current = focus(conn, session, now)
     if current:

@@ -242,6 +242,11 @@ CHAT_NOTE = ("Una nota que vale solo en este chat: cómo quiere un grupo que le 
              "pidió solo para esta conversación. Te llega al final de cada mensaje de este chat y de ningún otro. Lo "
              "que vale en todos sus chats (sus preferencias, su contexto) va a tu memoria, no aquí. «remove» con el "
              "«id» borra una que ya no vale.")
+GROUP_REMINDER = ("Un recordatorio que el sistema manda a este grupo de WhatsApp a la hora que pidieron («recuérdanos "
+                  "mañana a las 9 y el viernes a mediodía que…»): sale a esa hora, sin el modelo, y lo lee todo el "
+                  "grupo. «text» es el aviso tal como lo van a leer (qué hay que hacer y para cuándo); «at», cada hora "
+                  "en que sale. Solo desde un grupo; un recordatorio para él solo es add_todo. Los que faltan te llegan "
+                  "en el contexto de cada mensaje del grupo con su «#id»: «remove» con ese «id» borra uno.")
 SET_DELIVERY = ("Corrige cómo se entrega una tarea cuando te lo dice él («ese lab se entrega en AWS», «eso fue el examen "
                 "en clase»). external_submission: se hace fuera del aula y sigue en sus pendientes aunque venza, hasta "
                 "que la marque entregada o tenga nota. scheduled_event: es presencial y sale de pendientes cuando pasa "
@@ -1388,6 +1393,17 @@ def _channel(ctx: Ctx) -> dict:
     return note if time.time() - float(note.get("en") or 0) < CHANNEL_FRESH else {}
 
 
+def _reminder_at(ctx: Ctx, value, now: datetime) -> datetime:
+    try:
+        moment = datetime.strptime(str(value or "").strip(), "%Y-%m-%d %H:%M").replace(tzinfo=ctx.cfg.core.tz)
+    except ValueError:
+        raise ToolError("Cada «at» debe ser AAAA-MM-DD HH:MM (con la hora; si no la dijeron, elige una y díselo).") from None
+    if moment <= now:
+        raise ToolError(f"{timefmt.human(moment, ctx.cfg.core.tz)} ya pasó (ahora es "
+                        f"{timefmt.human(now, ctx.cfg.core.tz)}): revisa el día.")
+    return moment
+
+
 def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
     sections, now = copy["sections"], ctx.now()
     saved = timefmt.parse(copy.get("saved_at"))
@@ -1699,6 +1715,28 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
             raise ToolError(str(exc)) from None
         return {"chat_notes": conversation.notes(ctx.conn, chat), "message": done}
 
+    def group_reminder(args):
+        where = _channel(ctx)
+        chat = str(where.get("chat") or "")
+        if where.get("tipo") != "group" or not chat.startswith("whatsapp:"):
+            raise ToolError("Un recordatorio de grupo se programa desde ese grupo de WhatsApp; para él solo, add_todo.")
+        tz, now = ctx.cfg.core.tz, ctx.now()
+        try:
+            if args.get("action") == "remove":
+                if not conversation.remove_reminder(ctx.conn, chat, _int(args.get("reminder_id"), "reminder_id",
+                                                                         hi=10**12)):
+                    raise ToolError("Este grupo no tiene un recordatorio pendiente con ese «id».")
+                done = "Borrado."
+            else:
+                added = conversation.add_reminders(ctx.conn, chat, args.get("text") or "",
+                                                   [_reminder_at(ctx, v, now) for v in args.get("at") or []], now)
+                done = ("Programado: sale en este grupo el " + " y el ".join(timefmt.human(r["remind_at"], tz)
+                                                                          for r in added) + ". Díselo así.")
+        except conversation.NoteError as exc:
+            raise ToolError(str(exc)) from None
+        return {"group_reminders": [{**r, "remind_at": timefmt.human(r["remind_at"], tz)}
+                                    for r in conversation.reminders(ctx.conn, chat)], "message": done}
+
     def anuncios(args):
         ctx.refresh()
         return _announcements(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30),
@@ -1932,6 +1970,12 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              {"action": {"type": "string", "enum": ["add", "remove"], "description": "por defecto add"},
               "text": {"type": "string", "description": "la nota, corta (add)"},
               "note_id": {"type": "integer", "description": "el «id» de la nota (remove)"}}, read_only=False),
+        Tool("group_reminder", GROUP_REMINDER, group_reminder,
+             {"action": {"type": "string", "enum": ["add", "remove"], "description": "por defecto add"},
+              "text": {"type": "string", "description": "el aviso, corto (add)"},
+              "at": {"type": "array", "items": {"type": "string"},
+                     "description": "cuándo sale cada uno: AAAA-MM-DD HH:MM, hora de Ecuador (add)"},
+              "reminder_id": {"type": "integer", "description": "el «id» del recordatorio (remove)"}}, read_only=False),
         Tool("anuncios", "Anuncios recientes de los profesores, con los archivos y enlaces que traen (un Google Doc, "
              "un SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios,

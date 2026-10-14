@@ -263,11 +263,13 @@ def run_vinci(cfg: BotConfig, now: datetime) -> None:
         subjects = equipo.serving(cfg, store.ensure(aula.conn))
     finally:
         aula.close()
-    try:
-        from espol_bot import avisos
-        avisos.class_reminders(cfg, subjects, now)
-    except Exception:  # the groups must never hold back the captain's own brief
-        log.exception("avisos de clase")
+    from espol_bot import avisos
+    for notice, what in ((lambda: avisos.class_reminders(cfg, subjects, now), "avisos de clase"),
+                         (lambda: avisos.group_reminders(cfg, now), "recordatorios de grupo")):
+        try:
+            notice()
+        except Exception:  # the groups must never hold back the captain's own brief
+            log.exception(what)
     for subject in subjects:
         task = _next_task(cfg, subject, now)
         if task:

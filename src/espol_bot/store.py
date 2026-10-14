@@ -30,6 +30,8 @@
   note_questions       the «//vinci …» lines of a note, each handed to the subject bot once
   chat_notes           what holds in one chat only (a group's way of being spoken to), which Vinci reads in
                        every turn there and nowhere else (conversation.py)
+  group_reminders      a message Vinci's agenda sends to a WhatsApp group at the time the captain asked for there
+                       («recuérdanos el viernes a mediodía…»), once (conversation.py, avisos.py)
   chat_focus           per conversation (Hermes' session key: a chat, and in a group one person): the subject it is
                        about, while it lasts, for what comes in without one (a photo, a voice note)
   activities           per conversation: a quiz or a study session open, paused or done, with where it got to, so
@@ -183,6 +185,14 @@ CREATE TABLE IF NOT EXISTS chat_notes (
     chat TEXT NOT NULL,
     text TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS group_reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat TEXT NOT NULL,
+    text TEXT NOT NULL,
+    remind_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    sent_at TEXT
 );
 CREATE TABLE IF NOT EXISTS chat_focus (
     session TEXT PRIMARY KEY,

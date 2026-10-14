@@ -7,6 +7,8 @@ Model-free. In a plain notice group, only what the whole class shares: never a g
     so a restart never sends it twice and the captain's own brief is not affected.
   - `send_events`, from the captain's poller: the aula's new announcements, new assignments and changed due dates,
     all of one poll in a single message.
+  - `group_reminders`, from the same agenda tick: what the captain asked Vinci to remind a group of, at the time he
+    gave (`group_reminder`), in any group that is on, with or without notices.
 
 A trusted group («@vinci este grupo es de confianza», amigos.trusted_groups) is friends who agreed to share their
 aula with each other. Its members are the captain and every friend with a Vinci who is in it (the bridge's
@@ -41,6 +43,7 @@ EVENT_KINDS = ("new_announcement", "new_assignment", "due_changed")
 DUE_DAYS = 7
 MEETING = re.compile(r"https://[\w.-]*(?:zoom\.us/j/|teams\.microsoft\.com/l/(?:meetup-join|team)/|meet\.google\.com/)\S+")
 PARALELO = re.compile(r"paralelo\s*(\d+)", re.I)
+LATE = timedelta(hours=6)  # a reminder missed by more (the laptop was off) is dropped, not sent out of time
 
 
 @dataclass
@@ -294,3 +297,28 @@ def send_events(cfg: BotConfig, conn, events: list[dict], now: datetime) -> None
         conn.executemany("INSERT OR IGNORE INTO group_news(grupo, clave, enviado) VALUES (?, ?, ?)",
                          [(group, _key(ev), timefmt.iso(now)) for ev in fresh])
         conn.commit()
+
+
+def group_reminders(cfg: BotConfig, now: datetime) -> None:
+    aula = Aula(cfg.core)
+    try:
+        conn = store.ensure(aula.conn)
+        due = conn.execute("SELECT * FROM group_reminders WHERE sent_at IS NULL AND remind_at <= ? ORDER BY remind_at, id",
+                           (timefmt.iso(now),)).fetchall()
+        for r in due:
+            # claimed before it goes out, so a second tick or a restart never sends it twice
+            if conn.execute("UPDATE group_reminders SET sent_at = ? WHERE id = ? AND sent_at IS NULL",
+                            (timefmt.iso(now), r["id"])).rowcount != 1:
+                continue
+            conn.commit()
+            if now - timefmt.parse(r["remind_at"]) > LATE:
+                log.warning("avisos: recordatorio #%d de %s no salió a tiempo; lo descarto", r["id"], r["remind_at"])
+                continue
+            group = r["chat"].removeprefix("whatsapp:")
+            if group not in amigos.groups(cfg):
+                log.info("avisos: recordatorio #%d de un grupo apagado; no sale", r["id"])
+                continue
+            log.info("avisos: recordatorio #%d al grupo", r["id"])
+            _send(cfg, [group], f"⏰ <b>Recordatorio</b>\n{messages.e(r['text'])}")
+    finally:
+        aula.close()

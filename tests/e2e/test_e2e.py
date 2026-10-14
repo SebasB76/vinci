@@ -36,7 +36,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
   poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
   first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
-  `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step.
+  `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
+  without PANEL_KEY, and its link shows no chat text.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), reminders he asks for there that the agenda sends to the group at their time, once (one
@@ -1919,11 +1920,40 @@ def test_whatsapp_captain(tmp_path):
             assert any("qué tengo esta semana" in (st["text"] or "") for st in detail["steps"]), detail["steps"][-6:]
             assert requests.get(f"{base}/api/sesion", params={"perfil": "vinci", "id": "nada"}, timeout=10
                                 ).status_code == 404
+
+            # Tailscale Funnel: a stranger has no identity headers; the captain's tailnet does
+            funnel = {"X-Forwarded-For": "203.0.113.7", "Tailscale-Funnel-Request": "?1"}
+            tailnet = {"X-Forwarded-For": "100.64.0.2", "Tailscale-User-Login": "captain@example.com"}
+            assert requests.get(f"{base}/api/estado", headers=funnel, timeout=10).status_code == 404, \
+                "sin PANEL_KEY, desde internet no hay panel"
+            minted = run([bot, "panel", "--nueva-clave"], T_VINCI)
+            key = re.search(r"/\?k=([\w-]+)", minted.stdout).group(1)
+            assert parse_env_file(secrets)["PANEL_KEY"] == key
+            for wrong in ({}, {"k": "no-es-la-clave"}):
+                assert requests.get(base, params=wrong, headers=funnel, timeout=10).status_code == 404
+            visit = requests.get(base, params={"k": key}, headers=funnel, timeout=10, allow_redirects=False)
+            assert visit.status_code == 303 and visit.headers["Location"] == "/", "la clave sale de la barra"
+            assert "HttpOnly" in visit.headers["Set-Cookie"] and "Secure" in visit.headers["Set-Cookie"]
+            cookie = {"vinci_panel": key}
+            guest = requests.get(f"{base}/api/estado", headers=funnel, cookies=cookie, timeout=30).json()
+            assert guest["viewer"] == "guest" and not any(s["readable"] for s in guest["sessions"])
+            assert all(e["sample"] is None for e in guest["errors"])
+            seen = requests.get(f"{base}/api/sesion", params={"perfil": "vinci", "id": chat["id"]}, headers=funnel,
+                                cookies=cookie, timeout=10).json()
+            assert seen["steps"] and all(st["text"] is None for st in seen["steps"]), "con el enlace, ningún texto"
+            spoofed = {**funnel, "Tailscale-User-Login": "captain@example.com"}
+            assert requests.get(f"{base}/api/estado", headers=spoofed, timeout=10).status_code == 404
+            assert requests.get(f"{base}/api/estado", headers=tailnet, timeout=10).json()["viewer"] == "owner"
+            run([bot, "panel", "--nueva-clave"], T_VINCI)
+            assert requests.get(f"{base}/api/estado", headers=funnel, cookies=cookie, timeout=10).status_code == 404, \
+                "una clave nueva corta el enlace anterior"
         finally:
             panel.terminate()
             panel.wait(10)
         report.append("`espol-bot panel` muestra el gateway vivo, la salud de Vinci, sus tareas automáticas, su gasto "
-                      "y la conversación del capitán con sus pasos, sin tocar el modelo ni el aula")
+                      "y la conversación del capitán con sus pasos, sin tocar el modelo ni el aula. Desde internet "
+                      "responde «no existe» sin la clave; con el enlace de `--nueva-clave` muestra el panel sin ningún "
+                      "texto de chat, y una clave nueva corta el enlace anterior")
         (ARTIFACT / "whatsapp-capitan.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "capitán")
     write_part("test_whatsapp_captain", "WhatsApp: el chat del capitán", w.report, started)

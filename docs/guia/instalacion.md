@@ -84,7 +84,8 @@ WHATSAPP_CAPTAIN=…        # tu número de WhatsApp (con telegram = false; ver 
 ```
 
 `secrets.env` está en `.gitignore`: nunca se sube a GitHub. Los tokens de los bots de materia
-(`TELEGRAM_BOT_TOKEN_<CÓDIGO>`) no los escribes tú: Vinci los agrega cuando crea cada bot.
+(`TELEGRAM_BOT_TOKEN_<CÓDIGO>`) no los escribes tú: Vinci los agrega cuando crea cada bot. `PANEL_KEY`, la clave del
+enlace al [panel](panel.md), la crea `espol-bot panel --nueva-clave`.
 
 ### 5. Corre el setup
 

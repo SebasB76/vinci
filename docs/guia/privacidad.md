@@ -41,8 +41,9 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   nada tuyo, ni lo que Vinci recuerda de ti. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
   aula pegado tal cual en WhatsApp no se usa: Vinci le pide que lo borre.
 - **El panel no lee los chats de otros.** El [panel de administración](panel.md) muestra el texto solo de tus chats
-  privados. De un amigo o de un grupo, muestra solo tiempos, herramientas y gasto. Escucha solo en tu máquina, y
-  Tailscale Serve lo publica solo dentro de tu red privada.
+  privados, y solo a ti, desde tu red de Tailscale. De un amigo o de un grupo, muestra solo tiempos, herramientas y
+  gasto. Desde internet, sin el enlace con la clave, responde «no existe»; con el enlace, no muestra el texto de
+  ningún chat.
 - **Herramientas cerradas de fábrica.** Ningún bot trae terminal, acceso a archivos, ejecución de código ni
   navegador: solo sus herramientas fijas, su memoria y las skills de Hermes. Vinci además busca en la web; un bot
   de materia ve solo su materia y no busca en la web: solo abre los enlaces que muestra el aula de su materia,

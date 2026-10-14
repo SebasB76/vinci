@@ -1,23 +1,28 @@
 """The captain's admin panel: one page with the gateway, the scheduled jobs, model spend and recent turns of every
-Hermes profile. Read-only, no model, no Canvas call. It listens on 127.0.0.1 only; Tailscale Serve publishes it
-to the captain's own devices (docs/guia/panel.md).
+Hermes profile. Read-only, no model, no Canvas call. It listens on 127.0.0.1 only; Tailscale Funnel publishes it
+(docs/guia/panel.md).
 
-Friends' chats and WhatsApp groups show only timings and tool names: their text stays out of the panel."""
+Two viewers. The captain, on his tailnet (Tailscale's identity headers) or on the machine itself, sees everything.
+Anyone else reaches it through Funnel and gets a 404 unless they bring PANEL_KEY from secrets.env (the link
+`--nueva-clave` prints); with it they see the same panel without any chat text. Friends' chats and WhatsApp groups
+never show their text, not even to the captain."""
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import secrets
 import re
 import sqlite3
 import subprocess
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from aula_core import timefmt
+from aula_core.config import ConfigError, load_secret_values, update_secret_values
 from espol_bot import health
 from espol_bot.config import BotConfig, hermes_root
 
@@ -26,6 +31,9 @@ STUCK = timedelta(minutes=5)       # a turn still holding its lease after this i
 DAYS = 14
 ERROR_WINDOW = timedelta(hours=24)
 LOG_TAIL = 2_000_000               # bytes of each errors.log read; Hermes rotates it, but not often
+KEY_SECRET = "PANEL_KEY"
+COOKIE = "vinci_panel"
+COOKIE_DAYS = 30
 LOG_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ (WARNING|ERROR|CRITICAL) ([\w.]+): (.*)")
 
 
@@ -186,7 +194,7 @@ def _errors(logs: list[tuple[str, Path]], since: datetime) -> list[dict]:
     return found[:40]
 
 
-def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None) -> dict:
+def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None, *, guest: bool = False) -> dict:
     root = root or hermes_root()
     tz = cfg.core.tz
     stamp = now.timestamp()
@@ -207,6 +215,9 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None) -> dict:
         finally:
             conn.close()
     sessions.sort(key=lambda s: s["last_ts"] or 0, reverse=True)
+    if guest:
+        for session in sessions:
+            session["readable"] = False
     conn = health.open_readonly(cfg.core.db_path)
     try:
         checks = [{"name": c.name, "level": c.level, "detail": c.detail, "fix": c.chat_fix or c.fix}
@@ -217,15 +228,21 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None) -> dict:
     logs = [("gateway", root / "logs" / "errors.log"),
             *((p["name"], p["path"] / "logs" / "errors.log") for p in profiles)]
     local_now = now.astimezone().replace(tzinfo=None)  # Hermes logs in the machine's local time
-    return {"now": timefmt.iso(now), "today": now.astimezone(tz).date().isoformat(), "days": DAYS,
+    errors = _errors(logs, local_now - ERROR_WINDOW)
+    if guest:  # a log line may quote a message
+        for group in errors:
+            group["sample"] = None
+    return {"viewer": "guest" if guest else "owner", "now": timefmt.iso(now),
+            "today": now.astimezone(tz).date().isoformat(), "days": DAYS,
             "gateway": _gateway(root), "checks": checks, "jobs": jobs, "usage": usage,
             "sessions": sessions[:30], "leases": leases,
-            "errors": _errors(logs, local_now - ERROR_WINDOW),
+            "errors": errors,
             "profiles": [{k: p[k] for k in ("name", "kind", "parked")} for p in profiles],
             "model": f"{cfg.hermes_provider}/{cfg.hermes_model}"}
 
 
-def session_detail(cfg: BotConfig, profile_name: str, session_id: str, root: Path | None = None) -> dict | None:
+def session_detail(cfg: BotConfig, profile_name: str, session_id: str, root: Path | None = None, *,
+                   guest: bool = False) -> dict | None:
     root = root or hermes_root()
     profile = next((p for p in _profiles(cfg, root) if p["name"] == profile_name), None)
     conn = _db(profile["path"] / "state.db") if profile else None
@@ -235,7 +252,7 @@ def session_detail(cfg: BotConfig, profile_name: str, session_id: str, root: Pat
         row = conn.execute("SELECT chat_type FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if row is None:
             return None
-        readable = _private(profile, row[0])
+        readable = not guest and _private(profile, row[0])
         rows = conn.execute("SELECT role, content, tool_calls, tool_name, timestamp, finish_reason FROM messages "
                             "WHERE session_id = ? AND active = 1 ORDER BY id DESC LIMIT 80", (session_id,)).fetchall()
     finally:
@@ -251,12 +268,53 @@ def session_detail(cfg: BotConfig, profile_name: str, session_id: str, root: Pat
     return {"profile": profile_name, "id": session_id, "readable": readable, "steps": steps}
 
 
+def new_key() -> str:
+    """A fresh PANEL_KEY in secrets.env; the link with the old one stops working at once."""
+    key = secrets.token_urlsafe(32)
+    update_secret_values({KEY_SECRET: key})
+    return key
+
+
+def public_url() -> str | None:
+    """This machine's https://<name>.<tailnet>.ts.net, where Funnel serves the panel."""
+    try:
+        out = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10).stdout
+        name = (json.loads(out).get("Self") or {}).get("DNSName", "").rstrip(".")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return f"https://{name}" if name else None
+
+
+def _current_key() -> str:
+    try:
+        return load_secret_values().get(KEY_SECRET, "")
+    except ConfigError:
+        return ""
+
+
+def viewer(headers, cookies: dict[str, str], query_key: str | None) -> str | None:
+    """"owner", "guest" or None (not allowed). Tailscale Serve sets the identity headers on tailnet requests and drops
+    any a Funnel client sends; a request with no proxy headers at all came from this machine (or an SSH tunnel)."""
+    if headers.get("Tailscale-Funnel-Request") is None:
+        if headers.get("Tailscale-User-Login") or headers.get("X-Forwarded-For") is None:
+            return "owner"
+    key = _current_key()
+    if not key:
+        return None
+    for given in (query_key, cookies.get(COOKIE)):
+        if given and hmac.compare_digest(given.encode(), key.encode()):
+            return "guest"
+    return None
+
+
 def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: bytes, kind: str) -> None:
             self.send_response(status)
             self.send_header("Content-Type", kind)
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Robots-Tag", "noindex")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -267,13 +325,27 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
 
         def do_GET(self) -> None:  # noqa: N802 (http.server's name)
             url = urlparse(self.path)
-            if url.path == "/":
+            query = parse_qs(url.query)
+            cookies = dict(part.strip().split("=", 1) for part in (self.headers.get("Cookie") or "").split(";")
+                           if "=" in part)
+            who = viewer(self.headers, cookies, (query.get("k") or [None])[0])
+            if who is None:  # the same answer as a missing page: nothing says a panel lives here
+                self._json({"error": "no existe"}, 404)
+            elif "k" in query:  # keep the key out of the address bar and the history
+                self.send_response(303)
+                if who == "guest":
+                    self.send_header("Set-Cookie", f"{COOKIE}={query['k'][0]}; Max-Age={COOKIE_DAYS * 86400}; "
+                                                   "Path=/; HttpOnly; Secure; SameSite=Strict")
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif url.path == "/":
                 self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             elif url.path == "/api/estado":
-                self._json(snapshot(cfg, datetime.now(timezone.utc)))
+                self._json(snapshot(cfg, datetime.now(timezone.utc), guest=who == "guest"))
             elif url.path == "/api/sesion":
-                query = parse_qs(url.query)
-                found = session_detail(cfg, (query.get("perfil") or [""])[0], (query.get("id") or [""])[0])
+                found = session_detail(cfg, (query.get("perfil") or [""])[0], (query.get("id") or [""])[0],
+                                       guest=who == "guest")
                 self._json(found if found else {"error": "no existe"}, 200 if found else 404)
             else:
                 self._json({"error": "no existe"}, 404)

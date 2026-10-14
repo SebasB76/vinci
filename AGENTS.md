@@ -19,8 +19,9 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
-- Live: the admin panel (`espol-bot panel`, the user service `vinci-panel`) on `vinci-server`, published to the
-  captain's tailnet only with Tailscale Serve (`docs/guia/panel.md`).
+- Live: the admin panel (`espol-bot panel`, the user service `vinci-panel`) on `vinci-server`, published with
+  Tailscale Funnel: the captain's tailnet sees everything; from the internet it needs the `PANEL_KEY` link
+  (`espol-bot panel --nueva-clave`) and shows no chat text (`docs/guia/panel.md`).
 - Ready, not live yet: the Docker image (`Dockerfile`, `deploy/`) for the Taws club's Coolify, with an OpenAI
   key; `deploy/move.py` moves the laptop's data there (`docs/guia/servidor.md`).
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).

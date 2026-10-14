@@ -68,7 +68,7 @@ from aula_core.config import (
     secrets_path,
     update_secret_values,
 )
-from espol_bot import characters, herramientas, materias, skill_check
+from espol_bot import characters, herramientas, materias, quiz, skill_check
 from espol_bot.config import (
     BLOCKED_TOOLSETS,
     DEFAULT_TELEGRAM_API,
@@ -574,8 +574,10 @@ class Setup:
             "reply_prefix": "",
             "unauthorized_dm_behavior": "ignore",
             # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list. A voice
-            # note cannot mention anyone: the bridge's text for one lets it through, and the plugin hears it.
-            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b", r"^\[(?:ptt|audio) received\]$"],
+            # note cannot mention anyone: the bridge's text for one lets it through, and the plugin hears it. A vote
+            # on a group quiz reaches Hermes as the option's text, which starts with 🇦 🇧 🇨 🇩.
+            "mention_patterns": [r"(?<![\w@])@?vinci\w*\b", r"^\[(?:ptt|audio) received\]$",
+                                 f"^[{quiz.GROUP_LETTERS}] "],
         })
         test = self.cfg.core.raw.get("test") or {}
         if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port

@@ -135,11 +135,13 @@ SLIDES_PROPERTIES = {
         "required": ["titulo", "puntos"]}},
 }
 # What someone who is not this Vinci's owner may still run, should they reach it (the plugin's pre_tool_call hook
-# blocks the rest), each with the arguments they may not pass: course material, past exams and slides. Nothing of
-# the owner's own: deliverables, announcements, grades, lists, schedule, notebooks or Vinci's memory.
+# blocks the rest), each with the arguments they may not pass: course material, past exams, slides and a quiz in
+# their group (only from the material there). Nothing of the owner's own: deliverables, announcements, grades, lists,
+# schedule, notebooks or Vinci's memory.
 GUEST_TOOLS: dict[str, frozenset[str]] = {
     name: frozenset() for name in (
-        "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas")
+        "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas",
+        "send_quiz")
 } | {"libro_principal": frozenset({"titulo"})}
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
         "entrega, puntos, la rúbrica con la que la califican, las fechas ya en hora de Ecuador («vence»; «cierra»: "
@@ -1084,6 +1086,13 @@ def _whatsapp_chat(ctx: Ctx) -> WhatsApp | None:
     return WhatsApp(owner, ctx.cfg.whatsapp_bridge, polls=ctx.cfg.core.data_dir) if owner else None
 
 
+def _group_chat(ctx: Ctx) -> str | None:
+    """The WhatsApp group («…@g.us») this tool call's conversation happens in; None in a private chat."""
+    note = _channel(ctx)
+    chat = str(note.get("chat") or "").removeprefix("whatsapp:")
+    return chat if note.get("canal") == "whatsapp" and chat.endswith("@g.us") else None
+
+
 def _show_card(ctx: Ctx, text: str, buttons: list[tuple[str, str]], sender: str | None = None) -> tuple[str, str]:
     """Shows a card with buttons where the conversation is: Telegram's buttons (in `sender`'s chat, a subject code;
     None: Vinci's), or on WhatsApp a message and a poll in the owner's private chat. Returns (where it went, the verb
@@ -1408,6 +1417,9 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         chat = _whatsapp_chat(ctx)
         if chat is None:
             raise ToolError("En Telegram el quiz lo hace el bot de la materia: pásale el pedido con entregar_a_materia.")
+        group = _group_chat(ctx)
+        if group:
+            chat = WhatsApp(group, ctx.cfg.whatsapp_bridge, polls=ctx.cfg.core.data_dir)
         subject = one_subject(args.get("materia") or "")
         course_ids = set(agenda.course_ids_for(ctx.conn, subject))
         items = args.get("questions")
@@ -1423,6 +1435,9 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                     if queries.file_by_id(ctx.conn, fid)["curso_id"] not in course_ids:
                         raise ToolError(f"El archivo de la pregunta {position} no es de {subject.name}.")
                     source = quiz.file_source(ctx.conn, fid, item.get("page"))
+                elif item.get("entry_id") not in (None, "") and group:
+                    raise ToolError(f"La pregunta {position} cita el cuaderno, que es privado: en un grupo cada "
+                                    "pregunta sale del material del curso («file_id» y «page»).")
                 elif item.get("entry_id") not in (None, ""):
                     source = quiz.entry_source(nb, item["entry_id"])
                 else:
@@ -1431,7 +1446,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                 questions.append(quiz.question(item, position, source))
             sent = quiz.send(chat, nb, str(args["topic"]), questions, ctx.now())
             session = _channel(ctx).get("sesion", "")
-            if session:
+            if session and not group:  # a group's quiz is everyone's: nothing to take up later
                 conversation.start_activity(ctx.conn, session, "quiz", subject.code, sent["topic"],
                                             {"code": subject.code, "quiz_id": sent["quiz"]}, ctx.now())
                 conversation.set_focus(ctx.conn, session, subject.code, ctx.now(), "activity")
@@ -1777,9 +1792,10 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("ver_tarea", TASK, ver_tarea, TASK_PROPERTIES, ["tarea_id"]),
         Tool("send_quiz", "En WhatsApp: manda un quiz corto (/quiz) a su chat privado, una encuesta por pregunta; al "
              "votar cada una le digo si acertó y por qué, y al terminar su puntaje con la fuente de cada pregunta (lo "
-             "que falló queda como tema débil en el cuaderno de la materia). Cada pregunta sale del material que "
-             "leíste (file_id y page) o de una entrada del cuaderno (entry_id); la cita la pongo yo. En Telegram, "
-             "el quiz lo hace el bot de la materia.", send_quiz,
+             "que falló queda como tema débil en el cuaderno de la materia). Pedido en un grupo, las encuestas van a "
+             "ese grupo: vota quien quiera y cada uno recibe ahí su puntaje al responder todas. Cada pregunta sale "
+             "del material que leíste (file_id y page) o, en su chat privado, de una entrada del cuaderno "
+             "(entry_id); la cita la pongo yo. En Telegram, el quiz lo hace el bot de la materia.", send_quiz,
              {"materia": {"type": "string"}, "topic": {"type": "string", "description": "el tema, corto"},
               "questions": QUIZ_QUESTIONS}, ["materia", "topic", "questions"], read_only=False),
         Tool("prepare_submission", "En WhatsApp: arma el PDF de una actividad hecha a mano con las fotos que te mandó "

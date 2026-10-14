@@ -12,7 +12,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 | `tessdata/` | Los modelos de OCR de español e inglés que bajó `setup.sh` |
 | `materias.toml` | Tu equipo de bots, con los cursos del aula de cada materia |
 | `horario.toml` | Tu horario (y sus copias anteriores, `horario.anterior-*.toml`) |
-| `cuadernos/<CÓDIGO>/` | El cuaderno de cada materia (`cuaderno.db`, con sus quiz y tus respuestas) y sus adjuntos |
+| `cuadernos/<CÓDIGO>/` | El cuaderno de cada materia (`cuaderno.db`, con sus quiz y tus respuestas; en un quiz de grupo, el voto de cada persona con su id de WhatsApp) y sus adjuntos |
 | `entregas/<CÓDIGO>/` | Lo que Vinci le pasó a un bot y todavía no llegó a su cuaderno |
 | `submissions/<CÓDIGO>/` | Los PDF que un bot de materia armó con tus fotos para entregar |
 | `bot.log` | Registro del sondeo, la agenda y los botones |

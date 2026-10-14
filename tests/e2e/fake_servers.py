@@ -287,10 +287,12 @@ class FakeWhatsApp(_Server):
         return message_id
 
     def vote(self, chat: str, sender: str, poll_id: str, option: str) -> None:
-        """A vote on one of Vinci's polls, as bridge.js reports it: the chosen option's text, quoting the poll."""
+        """A vote on one of Vinci's polls, in private or in a group, as bridge.js reports it: the chosen option's text,
+        quoting the poll, with no mention of Vinci."""
         with self.lock:
             self.inbox.append({"messageId": f"{poll_id}:update:{next(self._ids)}", "chatId": chat, "senderId": sender,
-                               "senderName": sender.split("@")[0], "chatName": chat.split("@")[0], "isGroup": False,
+                               "senderName": sender.split("@")[0], "chatName": chat.split("@")[0],
+                               "isGroup": chat.endswith("@g.us"),
                                "body": option, "hasMedia": False, "mediaType": "poll_update",
                                "nativeType": "pollUpdateMessage", "mediaUrls": [], "mentionedIds": [],
                                "quotedMessageId": poll_id, "quotedParticipant": "", "quotedRemoteJid": chat,

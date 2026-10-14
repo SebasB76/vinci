@@ -42,7 +42,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a quote, a sticker, a group
-  that goes idle, a poll for a button, his dashboard, his commands); voice notes and audio files heard by the real local
+  that goes idle, a poll for a button, a quiz a guest asks for in the group that the guest and Angel answer there,
+  each scored with a mention, his dashboard, his commands); voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; the block for whoever is not a Vinci's owner; Angel
   removed with his tokens.
 
@@ -85,6 +86,7 @@ import requests
 import yaml
 
 from aula_core.config import parse_env_file
+from espol_bot import quiz as quiz_module
 from espol_bot.config import DEFAULT_TOKEN_FORM_URL
 
 HERE = Path(__file__).parent
@@ -514,7 +516,7 @@ class Script:
             return _call("mcp__vinci__chat_note", text="Hablarles en plural, como «nosotros»")
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results) or self.pending(text, called, results)
-                or self.vinci_study(text, called, results))
+                or self.vinci_study(text, called, results) or self.group_quiz(text, called, results))
         if flow is not None:
             return flow
         if results:
@@ -610,6 +612,28 @@ class Script:
             return {"content": data.get("message") if isinstance(data, dict) and data.get("message")
                     else _problem(results[-1])}
         return None
+
+    @staticmethod
+    def group_quiz(text: str, called: list[str], results: list[str]) -> dict | None:
+        """A guest asks for a quiz in the group: two questions from the syllabus page buscar_material finds."""
+        if "quiz del sílabo de cálculo" not in text:
+            return None
+        if not called:
+            return _call("mcp__vinci__buscar_material", pregunta="unidades del curso: la integral definida",
+                         materia="cálculo")
+        if called == ["mcp__vinci__buscar_material"]:
+            hits = (_json(results[-1]) or {}).get("resultados") if isinstance(_json(results[-1]), dict) else None
+            if not hits:
+                return {"content": _problem(results[-1])}
+            source = {"file_id": hits[0]["archivo_id"], "page": hits[0]["pagina"]}
+            return _call("mcp__vinci__send_quiz", materia="cálculo", topic="Sílabo de Cálculo", questions=[
+                {"question": "¿Qué unidad trata la integral definida?", "options": ["Unidad 4", "Unidad 1", "Unidad 2"],
+                 "answer": "Unidad 4", "explanation": "Lo dice el sílabo en Contenidos.", **source},
+                {"question": "¿Cuántos créditos tiene la materia?", "options": ["4", "2", "6"], "answer": "4",
+                 "explanation": "Lo dice el sílabo en Información general.", **source}])
+        data = _json(results[-1])
+        return {"content": "📝 Ahí va el quiz en el grupo." if isinstance(data, dict) and data.get("quiz")
+                else _problem(results[-1])}
 
     def portal(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """The Académico: asked with no copy, the tool sends the sign-in button; the question comes back on its own
@@ -2133,6 +2157,48 @@ def test_whatsapp_friend(tmp_path):
         report.append("WhatsApp no tiene botones: «anota: repasar integrales dobles» le llega a Angel como mensaje y "
                       "una encuesta «✅ Hecho / ⏳ Todavía no» en su chat privado; su voto cierra el pendiente como "
                       "lo haría un botón, sin el modelo")
+
+        # 10f3b. A quiz asked for in the group goes to the group: anyone there votes (a guest, Angel through his own
+        # Vinci's profile), the first vote counts, and whoever answers every question gets their score, tagged
+        mark = len(wa.sent)
+        asked = say(GROUP_WA, stranger_jid, "@vinci hazme un quiz del sílabo de cálculo aquí", "Alguien", group=True)
+        polls = wa.wait_for(lambda b: (lambda p: p if len(p) == 2 else None)(b.polls_to(GROUP_WA, mark)), 30)
+        assert polls, fail(f"el quiz no llegó al grupo: {text_of(asked)} {wa.sent[mark:]}")
+        assert not wa.polls_to(captain_jid, mark), "un quiz pedido en el grupo no va al chat privado del capitán"
+        assert all(o[0] in quiz_module.GROUP_LETTERS and o[1] == " " for p in polls for o in p["options"]), polls
+        units, credits = polls
+
+        def option(poll: dict, answer: str) -> str:
+            return next(o for o in poll["options"] if o[2:] == answer)
+
+        def score_for(jid: str, since: int) -> list[dict]:
+            return [m for m in wa.messages_to(GROUP_WA, since) if "Quiz: Sílabo de Cálculo" in m.get("message", "")
+                    and m.get("mentions") == [jid]]
+
+        calls, mark = len(llm.requests), len(wa.sent)
+        wa.vote(GROUP_WA, stranger_jid, units["messageId"], option(units, "Unidad 4"))
+        wa.vote(GROUP_WA, stranger_jid, units["messageId"], option(units, "Unidad 1"))  # a changed vote: not counted
+        wa.vote(GROUP_WA, stranger_jid, credits["messageId"], option(credits, "2"))
+        stranger_score = wa.wait_for(lambda b: score_for(stranger_jid, mark), 60)
+        assert stranger_score, fail(f"sin puntaje para el invitado: {wa.messages_to(GROUP_WA, mark)}")
+        scored = stranger_score[0]["message"]
+        assert scored.startswith(f"🧠 @{STRANGER_WA} · *Quiz: Sílabo de Cálculo* — 1 de 2."), scored
+        assert "✅ 1." in scored and "❌ 2." in scored and "era «4»" in scored and "📄" in scored, scored
+        wa.vote(GROUP_WA, angel_jid, units["messageId"], option(units, "Unidad 4"))
+        wa.vote(GROUP_WA, angel_jid, credits["messageId"], option(credits, "4"))
+        angel_score = wa.wait_for(lambda b: score_for(angel_jid, mark), 60)
+        assert angel_score and "2 de 2, ¡perfecto!" in angel_score[0]["message"], \
+            fail(f"sin puntaje para Angel: {wa.messages_to(GROUP_WA, mark)}")
+        assert len([m for m in wa.messages_to(GROUP_WA, mark) if "Quiz:" in m.get("message", "")]) == 2, \
+            "cada uno recibe un solo puntaje, y nada antes de responder todas"
+        assert len(llm.requests) == calls, "los votos del grupo se cuentan sin el modelo"
+        md.append(f"→ al grupo: [2 encuestas: {' / '.join(units['options'])}]\n"
+                  f"**Alguien** vota la 1 bien, cambia su voto y falla la 2 → Vinci: {normalize(scored)}\n"
+                  f"**Angel** vota las dos bien → Vinci: {normalize(angel_score[0]['message'])}\n")
+        report.append("Un quiz pedido en el grupo (aquí por un invitado) sale como encuestas en el grupo, con opciones "
+                      "🇦 🇧 🇨: el patrón de mención de Hermes deja pasar esos votos sin mencionar a Vinci. Cuenta el "
+                      "primer voto de cada uno, y quien responde todas recibe en el grupo su puntaje con una mención, "
+                      "sin el modelo; Angel vota desde el perfil de su propio Vinci y el quiz del capitán lo cuenta")
 
         # 10f4. /entregas: a button to the dashboard on WhatsApp; a tick on it comes back through the relay, and
         # typed as /marca still works (what the page does when the relay fails)

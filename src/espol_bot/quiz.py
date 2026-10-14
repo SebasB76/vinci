@@ -11,7 +11,8 @@ weak topic (so the briefs and Vinci see it).
 
 On WhatsApp a poll has no right answer: each option's callback is «q:<CÓDIGO>:<n>» (whatsapp.py), the vinci-whatsapp
 plugin hands the vote to `espol-bot whatsapp-comando voto`, and `answer` says right away whether it was right and why,
-then the score after the last question.
+then the score after the last question. A quiz asked for in a WhatsApp group goes to that group: anyone there may
+vote, the first vote on each question counts, and whoever answers them all gets their score there (`group_answer`).
 
 Quizzes live in the subject's notebook (cuaderno.db), next to the entries they may cite.
 """
@@ -49,8 +50,19 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
     chosen INTEGER,
     answered_at TEXT
 );
+CREATE TABLE IF NOT EXISTS quiz_votes (
+    quiz_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    voter TEXT NOT NULL,
+    chosen INTEGER NOT NULL,
+    answered_at TEXT NOT NULL,
+    PRIMARY KEY (quiz_id, position, voter)
+);
 """
 LETTERS = "ABCD"
+# A group's options start with 🇦 🇧 🇨 🇩: Hermes only lets a group message through when it calls Vinci, and its mention
+# pattern for these (hermes_setup.py) is what lets a vote on a group quiz reach the vinci-whatsapp plugin.
+GROUP_LETTERS = "\U0001F1E6\U0001F1E7\U0001F1E8\U0001F1E9"
 MAX_QUESTIONS = 5
 MIN_OPTIONS, MAX_OPTIONS = 2, 4
 # Telegram's limits for a quiz poll; the question also carries its «2/4.» prefix.
@@ -150,13 +162,14 @@ def _db(notebook: Notebook):
 
 def _post(channel: Telegram | WhatsApp, code: str, text: str, q: Question) -> str:
     if isinstance(channel, WhatsApp):
-        return channel.poll([(f"{LETTERS[i]}) {option}", f"q:{code}:{i}") for i, option in enumerate(q.options)], text)
+        label = (lambda i: f"{GROUP_LETTERS[i]} ") if channel.group else (lambda i: f"{LETTERS[i]}) ")
+        return channel.poll([(label(i) + option, f"q:{code}:{i}") for i, option in enumerate(q.options)], text)
     return str(channel.send_poll(text, q.options, q.correct, q.explanation)["poll"]["id"])
 
 
 def send(channel: Telegram | WhatsApp, notebook: Notebook, topic: str, questions: list[Question], now: datetime) -> dict:
-    """One quiz poll per question in the owner's chat (Telegram's quiz polls, or WhatsApp polls), recorded so the
-    plugin can score the answers."""
+    """One quiz poll per question in the owner's chat or a WhatsApp group (Telegram's quiz polls, or WhatsApp
+    polls), recorded so the plugin can score the answers."""
     topic = _clean(topic, "el tema del quiz («topic»)", 100)
     if not 1 <= len(questions) <= MAX_QUESTIONS:
         raise QuizError(f"Un quiz corto lleva de 1 a {MAX_QUESTIONS} preguntas.")
@@ -181,6 +194,11 @@ def send(channel: Telegram | WhatsApp, notebook: Notebook, topic: str, questions
                      (poll_id, quiz_id, position, q.text, json.dumps(q.options, ensure_ascii=False), q.correct,
                       q.source, q.source_url, q.explanation))
         conn.commit()
+    if isinstance(channel, WhatsApp) and channel.group:
+        return {"quiz": quiz_id, "topic": topic, "questions": total, "sources": sorted({q.source for q in questions}),
+                "message": f"Mandé {total} pregunta(s) como encuestas en este grupo. Cualquiera del grupo puede "
+                           "votar, cuenta su primer voto, y quien responde todas recibe aquí su puntaje con la fuente "
+                           "de cada pregunta. Dilo en una línea, sin repetir las preguntas ni revelar las respuestas."}
     how = ("como encuestas en su chat privado de WhatsApp: al votar cada una le digo si acertó y por qué"
            if isinstance(channel, WhatsApp) else
            "como quiz de Telegram: ve la respuesta correcta y la explicación recién al responder cada una")
@@ -276,7 +294,37 @@ def record_answer(core: CoreConfig, code: str, poll_id: str, option_ids: list[in
         notebook.close()
 
 
-def _score(notebook: Notebook, conn, quiz_id: int, now: datetime) -> str:
+def group_answer(core: CoreConfig, code: str, poll_id: str, voter: str, chosen: int, now: datetime,
+                 owner: bool = False) -> str:
+    """A vote in a group quiz poll by `voter` (their JID): empty until they have answered every question, then their
+    score (HTML) for the group. The owner's own misses still go to the notebook."""
+    notebook = Notebook(core, code)
+    try:
+        if not notebook.db_path.exists():
+            return ""
+        conn = _db(notebook)
+        row = conn.execute("SELECT quiz_id, position FROM quiz_questions WHERE poll_id = ?", (poll_id,)).fetchone()
+        if row is None:
+            return ""
+        # WhatsApp lets a voter change their vote: only the first one counts
+        if conn.execute("INSERT OR IGNORE INTO quiz_votes(quiz_id, position, voter, chosen, answered_at) "
+                        "VALUES (?, ?, ?, ?, ?)", (row["quiz_id"], row["position"], voter, chosen,
+                                                   timefmt.iso(now))).rowcount != 1:
+            return ""
+        conn.commit()
+        votes = {r["position"]: r["chosen"] for r in conn.execute(
+            "SELECT position, chosen FROM quiz_votes WHERE quiz_id = ? AND voter = ?", (row["quiz_id"], voter))}
+        total = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = ?", (row["quiz_id"],)).fetchone()[0]
+        if len(votes) < total:
+            return ""
+        return _score(notebook, conn, row["quiz_id"], now, votes=votes, who=f"@{voter.split('@')[0]}", weak=owner)
+    finally:
+        notebook.close()
+
+
+def _score(notebook: Notebook, conn, quiz_id: int, now: datetime, votes: dict[int, int] | None = None,
+           who: str = "", weak: bool = True) -> str:
+    """The score with each question's source; `votes` (position → option) and `who` for one voter in a group."""
     topic = conn.execute("SELECT topic FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()["topic"]
     rows = conn.execute("SELECT * FROM quiz_questions WHERE quiz_id = ? ORDER BY position", (quiz_id,)).fetchall()
     lines, missed = [], []
@@ -284,15 +332,17 @@ def _score(notebook: Notebook, conn, quiz_id: int, now: datetime) -> str:
         options = json.loads(r["options"])
         source = link(r["source_url"], r["source"]) if r["source_url"] else e(r["source"])
         stem = r["question"] if len(r["question"]) <= 90 else r["question"][:89].rstrip() + "…"
-        if r["chosen"] == r["correct"]:
+        chosen = r["chosen"] if votes is None else votes.get(r["position"])
+        if chosen == r["correct"]:
             lines.append(f"✅ {r['position']}. {e(stem)} · 📄 {source}")
         else:
             lines.append(f"❌ {r['position']}. {e(stem)} → era «{e(options[r['correct']])}» · 📄 {source}")
             missed.append(f"«{stem}» (era «{options[r['correct']]}»; {r['source']})")
     right = len(rows) - len(missed)
-    head = f"🧠 <b>Quiz: {e(topic)}</b> — {right} de {len(rows)}" + (", ¡perfecto!" if not missed else ".")
+    head = (f"🧠 {e(who)} · " if who else "🧠 ") + f"<b>Quiz: {e(topic)}</b> — {right} de {len(rows)}" + \
+        (", ¡perfecto!" if not missed else ".")
     tail = []
-    if missed:
+    if missed and weak:
         notebook.add("tema_debil", f"Quiz «{topic}»: fallé " + "; ".join(missed), now, origin="quiz")
         tail = ["Anoté lo que fallaste como tema débil en tu cuaderno."]
     return "\n".join([head, *lines, *tail])

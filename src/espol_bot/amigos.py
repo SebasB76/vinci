@@ -31,7 +31,7 @@ import re
 import shutil
 import tempfile
 import unicodedata
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -66,6 +66,7 @@ class Outcome:
     reiniciar: bool = False   # the routes changed: the gateway must restart to serve them
     button: dict | None = None  # {"text", "url"}: the answer ends in a button that opens that page
     image: str | None = None  # a picture sent before the answer (the token guide)
+    menciones: list[str] | None = None  # the JIDs its «@…» tag
 
     def json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -393,6 +394,28 @@ def _vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
                                                       int(quiz_vote[2]), now)))
     answer = botones.handle(cfg, callback, now)
     return Outcome(whatsapp.from_html(answer.get("respuesta") or answer.get("aviso") or ""))
+
+
+def group_vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
+    """A vote on a quiz poll in a WhatsApp group, by anyone there (`data`: {"encuesta", "opcion", "votante": their JID,
+    "numeros": their numbers}). The quiz is the captain's Vinci's or a friend's; the voter gets their score, tagged,
+    once they answered every question."""
+    from espol_bot import quiz
+    vote = json.loads(data or "{}")
+    poll, voter = str(vote.get("encuesta") or ""), str(vote.get("votante") or "")
+    numbers = {str(n) for n in vote.get("numeros") or []}
+    for number, friend in [(captain_number(cfg), None), *((f.numero, f) for f in active(cfg))]:
+        with nullcontext(cfg) if friend is None else scope(cfg, friend) as owner_cfg:
+            options = whatsapp.read_polls(owner_cfg.core.data_dir).get(poll)
+            if options is None:
+                continue
+            match = re.fullmatch(r"q:([A-Z0-9]{2,12}):(\d)", options.get(str(vote.get("opcion") or "").strip(), ""))
+            if not match or not voter:
+                return Outcome("")
+            score = quiz.group_answer(owner_cfg.core, match[1], poll, voter, int(match[2]), now,
+                                      owner=number in numbers)
+            return Outcome(whatsapp.from_html(score), menciones=[voter] if score else None)
+    return Outcome("")
 
 
 def _command(cfg: BotConfig, name: str, data: str, now: datetime) -> Outcome:

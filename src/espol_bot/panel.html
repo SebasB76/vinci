@@ -33,6 +33,13 @@ tr.click{cursor:pointer}tr.click:hover td{background:rgba(127,127,127,.08)}
 .bars{display:flex;align-items:flex-end;gap:4px;height:150px;border-bottom:1px solid var(--border)}
 .day{flex:1;display:flex;flex-direction:column-reverse;height:100%;min-width:0}
 .day div{min-height:0}.day.today{outline:1px dashed var(--border);outline-offset:2px}
+.chart{position:relative}.day{cursor:default;transition:opacity .12s}
+.bars.hovering .day{opacity:.45}.bars.hovering .day.on{opacity:1}
+.tip{position:absolute;z-index:5;min-width:210px;max-width:280px;pointer-events:none;background:var(--card);
+  border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.tip[hidden]{display:none}.tip b{font-size:13px}.tip .row{display:flex;justify-content:space-between;gap:12px;margin-top:3px}
+.tip .row span:last-child{font-family:var(--mono)}.tip hr{border:0;border-top:1px solid var(--border);margin:7px 0}
+.tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
 .labels{display:flex;gap:4px;margin-top:4px}.labels span{flex:1;text-align:center;font-size:10px;color:var(--muted)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
@@ -56,8 +63,9 @@ button{background:transparent;color:var(--fg);border:1px solid var(--border);bor
 <div class="card checks" id="checks"></div>
 
 <h2>Gasto por día · estimado por Hermes</h2>
-<div class="card">
+<div class="card chart" id="chart">
   <div class="bars" id="bars"></div>
+  <div class="tip" id="tip" hidden></div>
   <div class="labels" id="labels"></div>
   <div class="legend" id="legend"></div>
 </div>
@@ -83,7 +91,7 @@ button{background:transparent;color:var(--fg);border:1px solid var(--border);bor
 const KINDS = {vinci: ["Vinci", "var(--c1)"], materia: ["Bots de materia", "var(--c2)"],
                amigo: ["Amigos", "var(--c3)"], otro: ["Otros", "var(--c4)"]};
 const $ = id => document.getElementById(id);
-const usd = v => "$" + (v >= 10 ? v.toFixed(1) : v.toFixed(2));
+const usd = v => v > 0 && v < 0.005 ? "<$0.01" : "$" + (v >= 10 ? v.toFixed(1) : v.toFixed(2));
 const kTok = v => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(v);
 const ago = iso => {
   if (!iso) return "—";
@@ -147,17 +155,25 @@ function render(d) {
   const byDay = {};
   for (const u of d.usage) {
     const kind = (d.profiles.find(p => p.name === u.profile) || {kind: "otro"}).kind;
-    ((byDay[u.day] ||= {})[kind] = (byDay[u.day][kind] || 0) + u.usd);
+    const day = byDay[u.day] ||= {kinds: {}, bots: {}, usd: 0, calls: 0, tokens: 0};
+    const bot = day.bots[u.profile] ||= {usd: 0, models: new Set()};
+    day.kinds[kind] = (day.kinds[kind] || 0) + u.usd;
+    bot.usd += u.usd; bot.models.add(shortModel(u.model));
+    day.usd += u.usd; day.calls += u.calls; day.tokens += u.input + u.output + u.cache_read + u.cache_write;
   }
-  const top = Math.max(0.01, ...days.map(day => Object.values(byDay[day] || {}).reduce((a, b) => a + b, 0)));
-  const kinds = Object.keys(KINDS).filter(k => days.some(day => byDay[day]?.[k]));
+  const top = Math.max(0.01, ...days.map(day => byDay[day]?.usd || 0));
+  const kinds = Object.keys(KINDS).filter(k => days.some(day => byDay[day]?.kinds[k]));
+  const average = days.reduce((a, day) => a + (byDay[day]?.usd || 0), 0) / days.length;
+  chart = {...chart, byDay, kinds, average};
   $("bars").replaceChildren(...days.map(day => {
-    const parts = byDay[day] || {};
-    const total = Object.values(parts).reduce((a, b) => a + b, 0);
-    return el("div", {class: "day" + (day === d.today ? " today" : ""), title: `${day}: ${usd(total)}\n` +
-                       kinds.map(k => `${KINDS[k][0]}: ${usd(parts[k] || 0)}`).join("\n")},
+    const parts = byDay[day]?.kinds || {};
+    return el("div", {class: "day" + (day === d.today ? " today" : "") + (day === chart.on ? " on" : ""),
+                      "data-day": day, onmouseenter: e => showTip(e.currentTarget),
+                      onclick: e => showTip(e.currentTarget)},
               kinds.map(k => el("div", {style: `height:${(parts[k] || 0) / top * 100}%;background:${KINDS[k][1]}`})));
   }));
+  const shown = chart.on && document.querySelector(`.day[data-day="${chart.on}"]`);
+  if (shown) showTip(shown); else hideTip();
   $("labels").replaceChildren(...days.map((day, i) => el("span", {}, i % 2 === (d.days - 1) % 2 ?
     new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric"}) : "")));
   $("legend").replaceChildren(...kinds.map(k => el("span", {}, el("i", {style: `background:${KINDS[k][1]}`}), KINDS[k][0])));
@@ -196,6 +212,49 @@ function render(d) {
           el("td", {class: "n"}, e.count), el("td", {}, e.last.slice(11, 16)), el("td", {class: "small muted"}, e.sources.join(", ")))));
 }
 
+let chart = {};
+
+function showTip(bar) {
+  const day = bar.dataset.day, data = chart.byDay[day];
+  chart.on = day;
+  document.querySelectorAll(".day.on").forEach(b => b.classList.remove("on"));
+  bar.classList.add("on");
+  $("bars").classList.add("hovering");
+  const row = (label, value, color) => el("div", {class: "row"},
+    el("span", {}, color ? el("i", {style: `background:${color}`}) : null, label), el("span", {}, value));
+  const title = new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "long", day: "numeric", month: "short"});
+  const tip = $("tip");
+  if (!data || !data.usd) {
+    tip.replaceChildren(el("b", {}, title), el("div", {class: "muted", style: "margin-top:4px"}, "Sin gasto este día."));
+  } else {
+    const diff = chart.average ? (data.usd / chart.average - 1) * 100 : 0;
+    const bots = Object.entries(data.bots).sort((a, b) => b[1].usd - a[1].usd);
+    tip.replaceChildren(
+      el("div", {class: "row"}, el("b", {}, title), el("b", {}, usd(data.usd))),
+      el("div", {class: "muted small"}, `${diff >= 0 ? "+" : ""}${Math.round(diff)} % frente al promedio de ${usd(chart.average)}`),
+      el("hr"),
+      ...chart.kinds.filter(k => data.kinds[k]).map(k => row(KINDS[k][0], usd(data.kinds[k]), KINDS[k][1])),
+      el("hr"),
+      ...bots.slice(0, 5).map(([name, b]) => row(`${name} · ${[...b.models].join("/")}`, usd(b.usd))),
+      ...(bots.length > 5 ? [el("div", {class: "muted small"}, `y ${bots.length - 5} más`)] : []),
+      el("hr"),
+      row("Llamadas al modelo", data.calls), row("Tokens", kTok(data.tokens)),
+      row("Costo por llamada", usd(data.usd / Math.max(1, data.calls))));
+  }
+  tip.hidden = false;
+  const box = $("chart").getBoundingClientRect(), at = bar.getBoundingClientRect();
+  const left = at.left - box.left + at.width / 2 + 10;
+  tip.style.left = Math.max(8, left + tip.offsetWidth > box.width ? left - tip.offsetWidth - 20 : left) + "px";
+  tip.style.top = "12px";
+}
+
+function hideTip() {
+  chart.on = null;
+  $("tip").hidden = true;
+  $("bars").classList.remove("hovering");
+  document.querySelectorAll(".day.on").forEach(b => b.classList.remove("on"));
+}
+
 function shift(day, n) {
   const t = new Date(day + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10);
 }
@@ -232,6 +291,8 @@ async function refresh() {
     $("stamp").className = "fail small";
   }
 }
+$("bars").addEventListener("mouseleave", hideTip);
+document.addEventListener("click", e => { if (!e.target.closest(".day")) hideTip(); });  // a tap elsewhere, on a phone
 refresh();
 setInterval(refresh, 30000);
 </script>

@@ -36,8 +36,9 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
 - **En WhatsApp, cada uno con lo suyo.** Hermes manda cada mensaje al Vinci de quien lo escribe: el tuyo o el de
   un amigo que agregaste. Un amigo nunca llega a tu Vinci, y si alguien llegara al Vinci de otro, el plugin le
-  niega las herramientas con datos del dueño (su aula, sus notas, sus listas). A quien no tiene su Vinci le
-  contesta el plugin, sin el modelo. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
+  niega las herramientas con datos del dueño (su aula, sus notas, sus listas). En un grupo activo, a quien no tiene
+  su Vinci le contesta tu Vinci como invitado: con esas mismas herramientas cerradas, y con la regla de no contarle
+  nada tuyo, ni lo que Vinci recuerda de ti. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
   aula pegado tal cual en WhatsApp no se usa: Vinci le pide que lo borre.
 - **Herramientas cerradas de fábrica.** Ningún bot trae terminal, acceso a archivos, ejecución de código ni
   navegador: solo sus herramientas fijas, su memoria y las skills de Hermes. Vinci además busca en la web; un bot

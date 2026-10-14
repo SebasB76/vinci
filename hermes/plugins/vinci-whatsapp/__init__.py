@@ -15,7 +15,8 @@ friend's and in the default one; it acts only on WhatsApp.
   avisos» do the same for the class reminders and the aula's news there (avisos.py); «este grupo es de confianza»
   makes it a friends' group, where those notices tag people and say who handed in. In a group that is on, the captain and
   every friend with their own Vinci go on to it (Hermes routes each sender to their profile); a friend still
-  without one, or anyone else, gets a fixed answer. A group that is off gets nothing.
+  without one, or anyone else, reaches Vinci as a guest (GUEST_HEADER): only its guest tools, never the captain's
+  data. A group that is off gets nothing.
 - A friend's private chat: the ciphertext the token page gave them goes to `espol-bot amigo token` on stdin, so
   the token reaches no model and no session log; a raw token pasted by mistake is not passed on either.
 - A vote on one of Vinci's polls (WhatsApp's stand-in for a card's buttons, whatsapp.py) runs that button for
@@ -94,9 +95,6 @@ TRUST_OFF_RE = re.compile(r"\b(?:este|el) grupo (?:ya )?no es de confianza\b")
 TRUST_ON_RE = re.compile(r"\b(?:este|el) grupo es de confianza\b")
 NOTICES_ON_RE = re.compile(r"\b(?:activa(?:r)?|manda(?:r)?) (?:los )?avisos\b")
 NOTICES_OFF_RE = re.compile(r"\b(?:desactiva(?:r)?|quita(?:r)?) (?:los )?avisos\b|\bno mandes (?:los )?avisos\b")
-NO_VINCI = ("Todavía no tengo tu aula, así que no puedo contestarte con lo tuyo. Pídele a quien maneja Vinci que te "
-            "agregue: te escribo por privado para conectarla.")
-PENDING_GROUP = "Te escribí por privado con el enlace para tu token: termina ahí y te contesto con lo tuyo."
 PENDING_DM = ("Para empezar, abre el enlace que te mandé, pega tu token del aula y pégame aquí el texto cifrado que "
               "te da (empieza con v1.).")
 RAW_TOKEN = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y usa "
@@ -105,6 +103,10 @@ RAW_TOKEN_ACTIVE = ("⚠️ Eso parece tu token del aula tal cual: bórralo de e
                     "escríbeme /token: te mando un enlace que lo cifra en tu celular.")
 FAILED = "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."
 GROUP_HEADER = "[{name} te escribe en un grupo de WhatsApp]"
+# Someone in a group with no Vinci of their own: Vinci answers with only its guest tools (vinci-botones' pre_tool_call).
+GUEST_HEADER = "[{name}, invitado sin su propio Vinci, te escribe en un grupo de WhatsApp]"
+PENDING_HEADER = ("[{name}, invitado: ya lo agregaron y le falta conectar su aula con el enlace que le llegó por "
+                  "privado, te escribe en un grupo de WhatsApp]")
 NOT_YOURS = ("(un mensaje de Vinci que no está en tu conversación: es del Vinci de otra persona del grupo, o de hace "
              "rato) ")
 AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an audio file
@@ -146,7 +148,8 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
             if group and not _strip_mention(named).startswith("/"):
                 _own_quote(event, session_store, key)
                 name = names.get(_bare(getattr(source, "user_id", None))) or getattr(source, "user_name", "") or "Alguien"
-                named = f"{GROUP_HEADER.format(name=name)}\n{named}"
+                header = {"activo": GROUP_HEADER, "pendiente": PENDING_HEADER}.get(_vinci_state(source), GUEST_HEADER)
+                named = f"{header.format(name=name)}\n{named}"
             if named != original:
                 return {"action": "rewrite", "text": named}
         return result
@@ -157,6 +160,14 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
 
 def _skip(reason):
     return {"action": "skip", "reason": f"vinci-whatsapp: {reason}"}
+
+
+def _vinci_state(source) -> str | None:
+    """«activo» for the captain or a friend with their Vinci, «pendiente» for a friend still without a token."""
+    senders = _aliases(getattr(source, "user_id", None)) | _aliases(getattr(source, "user_id_alt", None))
+    if CAPTAIN in senders:
+        return "activo"
+    return next((f.get("estado") for f in _read(REGISTRY, "amigos") if f.get("numero") in senders), None)
 
 
 async def _sort(event, source, gateway):
@@ -211,8 +222,7 @@ async def _sort(event, source, gateway):
             return await _command(text, senders, chat, reply_to, gateway, group=True)
         if text.startswith("/"):  # a command reaches Hermes without a mention: not necessarily for Vinci
             return _skip("comando de alguien sin Vinci")
-        await _answer(chat, {"respuesta": PENDING_GROUP if friend else NO_VINCI}, reply_to, gateway)
-        return _skip("sin Vinci")
+        return None  # a guest
 
     if captain:
         sealed = SEALED_RE.search(text)

@@ -1878,11 +1878,14 @@ def test_whatsapp_friend(tmp_path):
         assert "le contesto a quien me mencione" in text_of(on)
         assert json.loads((data_dir / "amigos" / "whatsapp.json").read_text())["grupos"] == [GROUP_WA]
         calls = len(llm.requests)
-        nobody = say(GROUP_WA, stranger_jid, "@vinci qué tengo esta semana", "Alguien", group=True)
-        assert "Todavía no tengo tu aula" in text_of(nobody) and len(llm.requests) == calls, \
-            "a quien no tiene su Vinci le contesta el plugin, sin el modelo y sin los datos del capitán"
+        nobody = text_of(say(GROUP_WA, stranger_jid, "@vinci qué tengo esta semana", "Alguien", group=True))
+        assert "Eso es del dueño" in nobody and "Esta semana:" not in nobody, nobody
+        guest_turns = [flatten([m for m in r["messages"] if m.get("role") == "user"][-1].get("content"))
+                       for r in llm.requests[calls:] if bot_of(r) == "Vinci"]
+        assert guest_turns and "[Alguien, invitado sin su propio Vinci, te escribe" in guest_turns[0], guest_turns
         report.append("Un grupo apagado no recibe nada; con «@vinci activa este grupo» el capitán lo enciende, y a "
-                      "quien no tiene su Vinci le contesta el plugin, sin el modelo ni los datos del capitán")
+                      "quien no tiene su Vinci le contesta Vinci como invitado: el modelo sabe que es un invitado y el "
+                      "gancho pre_tool_call le niega los datos del capitán")
 
         # 10b''. What holds in one chat stays there: the group asks to be spoken to in plural (chat_note). Every turn
         # ends with the clock and that chat's notes; the captain's private chat gets the clock, not the group's note.
@@ -1938,8 +1941,11 @@ def test_whatsapp_friend(tmp_path):
         md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])} [botón «{letter[0]['buttonText']}»]\n")
         friends = json.loads((data_dir / "amigos" / "amigos.json").read_text())["amigos"]
         assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Angel", ANGEL_WA, "pendiente")]
-        waiting = say(GROUP_WA, angel_jid, "@vinci hola", "Angel", group=True)
-        assert "por privado" in text_of(waiting)
+        calls = len(llm.requests)
+        say(GROUP_WA, angel_jid, "@vinci hola", "Angel", group=True)
+        waiting = [flatten([m for m in r["messages"] if m.get("role") == "user"][-1].get("content"))
+                   for r in llm.requests[calls:] if bot_of(r) == "Vinci"]
+        assert waiting and "[Angel, invitado: ya lo agregaron y le falta conectar su aula" in waiting[0], waiting
         raw = say(angel_jid, angel_jid, f"este es mi token {ANGEL_TOKEN}", "Angel")
         assert "bórralo de este chat" in text_of(raw)
 

@@ -56,6 +56,8 @@
                                      a friends' group: those notices also tag people and say who handed in
     espol-bot whatsapp-grupo voto <ID>
                                      a vote on a quiz poll in that group, by anyone there (stdin: the vote)
+    espol-bot whatsapp-grupo cierre <ID>
+                                     the results of that group's quizzes whose 15 minutes are over
     espol-bot whatsapp-comando start|estado|token|token-cifrado <número>
                                      /start, /estado and /token on WhatsApp, for the captain or a friend over
                                      their own aula (the plugin vinci-whatsapp)
@@ -185,7 +187,9 @@ def _friend_outcome(cfg, args):
         data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
     if args.cmd == "whatsapp-grupo" and args.accion == "voto":
-        return amigos.group_vote(cfg, sys.stdin.read(), now)
+        return amigos.group_vote(cfg, args.grupo, sys.stdin.read(), now)
+    if args.cmd == "whatsapp-grupo" and args.accion == "cierre":
+        return amigos.group_close(cfg, args.grupo, now)
     if args.cmd == "whatsapp-grupo" and args.accion in ("confianza", "sin-confianza"):
         on = args.accion == "confianza"
         changed = amigos.set_group(cfg, args.grupo, on, key="confianza")
@@ -389,10 +393,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("whatsapp-grupo", help="activar o desactivar un grupo de WhatsApp donde Vinci contesta (lo "
                                               "usa el plugin vinci-whatsapp)")
     p.add_argument("accion", choices=["activar", "desactivar", "avisos", "sin-avisos", "confianza", "sin-confianza",
-                                      "voto"],
+                                      "voto", "cierre"],
                    help="avisos / sin-avisos: los recordatorios de clase y las novedades del aula en ese grupo; "
                         "confianza: además menciona a quien tiene la materia y dice quién entregó; voto: un voto en "
-                        "un quiz de ese grupo, leído por stdin")
+                        "un quiz de ese grupo, leído por stdin; cierre: los resultados de sus quiz que ya vencieron")
     p.add_argument("grupo", help="el ID del grupo (…@g.us)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-comando", help="/start, /estado y /token por WhatsApp, del capitán o de un amigo "

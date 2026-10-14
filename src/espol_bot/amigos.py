@@ -396,10 +396,13 @@ def _vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
     return Outcome(whatsapp.from_html(answer.get("respuesta") or answer.get("aviso") or ""))
 
 
-def group_vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
+QUIZ_CLOSES = "quiz-cierres.json"  # group quizzes still open: when each one's results go out (the vinci-whatsapp loop)
+
+
+def group_vote(cfg: BotConfig, group: str, data: str, now: datetime) -> Outcome:
     """A vote on a quiz poll in a WhatsApp group, by anyone there (`data`: {"encuesta", "opcion", "votante": their JID,
-    "numeros": their numbers}). The quiz is the captain's Vinci's or a friend's; the voter gets their score, tagged,
-    once they answered every question."""
+    "numeros": their numbers}). The quiz is the captain's Vinci's or a friend's. Once every member answered it all,
+    the results; until then the quiz waits in QUIZ_CLOSES for its deadline."""
     from espol_bot import quiz
     vote = json.loads(data or "{}")
     poll, voter = str(vote.get("encuesta") or ""), str(vote.get("votante") or "")
@@ -412,10 +415,46 @@ def group_vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:
             match = re.fullmatch(r"q:([A-Z0-9]{2,12}):(\d)", options.get(str(vote.get("opcion") or "").strip(), ""))
             if not match or not voter:
                 return Outcome("")
-            score = quiz.group_answer(owner_cfg.core, match[1], poll, voter, int(match[2]), now,
-                                      owner=number in numbers)
-            return Outcome(whatsapp.from_html(score), menciones=[voter] if score else None)
-    return Outcome("")
+            found = quiz.group_vote(owner_cfg.core, match[1], poll, voter, int(match[2]), now, owner=number in numbers,
+                                    members=whatsapp.group_members(cfg.whatsapp_bridge, group))
+            break
+    else:
+        return Outcome("")
+    if found is None:
+        return Outcome("")
+    key = f"{number}:{match[1]}:{found['quiz']}"
+    with file_lock(root(cfg), f"{QUIZ_CLOSES}.lock"):
+        closes = _read(root(cfg) / QUIZ_CLOSES, "quizzes") or {}
+        if found["closed"]:
+            closes.pop(key, None)
+        else:
+            closes[key] = {"grupo": group, "a": timefmt.iso(timefmt.parse(found["created_at"]) + quiz.GRACE)}
+        _write(root(cfg) / QUIZ_CLOSES, {"quizzes": closes})
+    if not found["results"]:
+        return Outcome("")
+    text, tagged = found["results"]
+    return Outcome(whatsapp.from_html(text), menciones=tagged)
+
+
+def group_close(cfg: BotConfig, group: str, now: datetime) -> Outcome:
+    """The results of every quiz in that group whose deadline passed (QUIZ_CLOSES), for whoever answered."""
+    from espol_bot import quiz
+    with file_lock(root(cfg), f"{QUIZ_CLOSES}.lock"):
+        closes = _read(root(cfg) / QUIZ_CLOSES, "quizzes") or {}
+        due = [k for k, c in closes.items() if c.get("grupo") == group and timefmt.parse(c.get("a")) <= now]
+        _write(root(cfg) / QUIZ_CLOSES, {"quizzes": {k: c for k, c in closes.items() if k not in due}})
+    owners = {captain_number(cfg): None, **{f.numero: f for f in active(cfg)}}
+    texts, tagged = [], []
+    for key in due:
+        number, code, quiz_id = key.split(":")
+        if number not in owners:  # a friend removed since
+            continue
+        with nullcontext(cfg) if owners[number] is None else scope(cfg, owners[number]) as owner_cfg:
+            results = quiz.close(owner_cfg.core, code, int(quiz_id), now)
+        if results:
+            texts.append(whatsapp.from_html(results[0]))
+            tagged += results[1]
+    return Outcome("\n\n".join(texts), menciones=tagged or None)
 
 
 def _command(cfg: BotConfig, name: str, data: str, now: datetime) -> Outcome:

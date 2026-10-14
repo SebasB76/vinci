@@ -288,13 +288,18 @@ class FakeWhatsApp(_Server):
 
     def vote(self, chat: str, sender: str, poll_id: str, option: str) -> None:
         """A vote on one of Vinci's polls, in private or in a group, as bridge.js reports it: the chosen option's text,
-        quoting the poll, with no mention of Vinci."""
+        quoting the poll, with no mention of Vinci. In a group its sender is the poll's author (Vinci, from the poll's
+        key) and only the tally names the voter."""
+        group = chat.endswith("@g.us")
         with self.lock:
-            self.inbox.append({"messageId": f"{poll_id}:update:{next(self._ids)}", "chatId": chat, "senderId": sender,
-                               "senderName": sender.split("@")[0], "chatName": chat.split("@")[0],
-                               "isGroup": chat.endswith("@g.us"),
+            self.inbox.append({"messageId": f"{poll_id}:update:{next(self._ids)}", "chatId": chat,
+                               "senderId": self.BOT if group else sender, "senderName": sender.split("@")[0],
+                               "chatName": chat.split("@")[0], "isGroup": group,
                                "body": option, "hasMedia": False, "mediaType": "poll_update",
-                               "nativeType": "pollUpdateMessage", "mediaUrls": [], "mentionedIds": [],
+                               "nativeType": "pollUpdateMessage",
+                               "nativeMetadata": {"pollUpdate": {"pollId": poll_id, "selectedOptions": [option],
+                                                                 "aggregation": [{"name": option, "voters": [sender]}]}},
+                               "mediaUrls": [], "mentionedIds": [],
                                "quotedMessageId": poll_id, "quotedParticipant": "", "quotedRemoteJid": chat,
                                "quotedText": "", "hasQuotedMessage": True, "botIds": [],
                                "timestamp": int(time.time()), "fromMe": False})
@@ -337,7 +342,7 @@ class _WhatsAppHandler(_Quiet):
         if path.startswith("/chat/"):
             chat = unquote(path[len("/chat/"):])
             with bridge.lock:
-                inside = sorted(bridge.members.get(chat, ()))
+                inside = sorted(bridge.members.get(chat, set()) | {bridge.BOT})  # Vinci is a member too
             return self._json(200, {"name": chat.split("@")[0], "isGroup": chat.endswith("@g.us"), "participants": inside})
         return self._json(404, {"error": "not found"})
 

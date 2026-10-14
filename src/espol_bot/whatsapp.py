@@ -246,6 +246,19 @@ def own_number() -> str:
     return number_of(me.get("id"))
 
 
+def group_members(bridge: str, group: str) -> int:
+    """How many people are in a group besides Vinci (the bridge's /chat/<id>); 0 when the bridge cannot tell."""
+    try:
+        me = json.loads((session_dir() / "creds.json").read_text(encoding="utf-8")).get("me") or {}
+        resp = requests.get(f"{bridge.rstrip('/')}/chat/{group}", timeout=10)
+        resp.raise_for_status()
+        inside = {re.sub(r"[:@].*$", "", p) for p in resp.json().get("participants") or []}
+    except (OSError, ValueError, requests.RequestException) as exc:
+        log.warning("no supe quién está en el grupo %s: %s", group, exc)
+        return 0
+    return len(inside - {re.sub(r"[:@].*$", "", str(me.get(k) or "")) for k in ("id", "lid")})
+
+
 # -- linking the number ---------------------------------------------------------------------------
 
 def session_dir() -> Path:

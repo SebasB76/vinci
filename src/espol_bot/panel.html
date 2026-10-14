@@ -47,6 +47,7 @@ tr.click{cursor:pointer}tr.click:hover td{background:rgba(127,127,127,.08)}
 #detail{margin-top:12px}
 .step{display:grid;grid-template-columns:70px 90px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
 .step pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.4 var(--mono)}
+.nowrap{white-space:nowrap}
 .err{font-family:var(--mono);font-size:12px;word-break:break-word}
 button{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer}
 </style>
@@ -101,7 +102,11 @@ const ago = iso => {
   if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
   return `hace ${Math.round(s / 86400)} d`;
 };
-const clock = iso => iso ? new Date(iso).toLocaleString("es-EC", {weekday: "short", hour: "2-digit", minute: "2-digit"}) : "—";
+const clock = iso => iso ? new Date(iso).toLocaleString("es-EC", {weekday: "short", day: "numeric", month: "short",
+                                                                  hour: "2-digit", minute: "2-digit",
+                                                                  hour12: false}).replace(/\.?,/g, "") : "—";
+const dayLabel = day => new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric", month: "short"});
+const stamped = iso => iso ? [clock(iso), el("div", {class: "muted small"}, ago(iso))] : "—";
 const dur = s => s == null ? "—" : s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} m ${Math.round(s % 60)} s`;
 const shortModel = m => (m || "").replace(/^claude-/, "").replace(/-\d+(-\d+)*$/, "");
 const level = l => ({ok: "ok", warn: "warn", fail: "fail"})[l] || "";
@@ -181,25 +186,28 @@ function render(d) {
   const bot = {};
   for (const u of d.usage) {
     const key = u.profile + "|" + u.model;
-    const row = bot[key] ||= {profile: u.profile, model: u.model, calls: 0, tokens: 0, usd: 0};
+    const row = bot[key] ||= {profile: u.profile, model: u.model, calls: 0, tokens: 0, usd: 0, last: u.day};
+    if (u.day > row.last) row.last = u.day;
     row.calls += u.calls; row.tokens += u.input + u.output + u.cache_read + u.cache_write; row.usd += u.usd;
   }
   $("byBotTitle").textContent = `Gasto por bot · ${d.days} días`;
-  table($("byBot"), [["Bot"], ["Modelo"], ["Llamadas", 1], ["Tokens", 1], ["Costo", 1]],
+  table($("byBot"), [["Bot"], ["Modelo"], ["Último uso"], ["Llamadas", 1], ["Tokens", 1], ["Costo", 1]],
         Object.values(bot).sort((a, b) => b.usd - a.usd).map(r => el("tr", {},
-          el("td", {}, r.profile), el("td", {}, shortModel(r.model)), el("td", {class: "n"}, r.calls),
+          el("td", {}, r.profile), el("td", {}, shortModel(r.model)), el("td", {class: "nowrap"}, dayLabel(r.last)),
+          el("td", {class: "n"}, r.calls),
           el("td", {class: "n"}, kTok(r.tokens)), el("td", {class: "n"}, usd(r.usd)))));
 
-  table($("jobs"), [["Bot"], ["Tarea"], ["Última"], ["Estado"]],
+  table($("jobs"), [["Bot"], ["Tarea"], ["Última"], ["Próxima"], ["Estado"]],
         d.jobs.map(j => el("tr", {title: j.error || j.schedule || ""},
-          el("td", {}, j.profile), el("td", {}, j.name), el("td", {}, ago(j.last_run)),
+          el("td", {}, j.profile), el("td", {}, j.name), el("td", {class: "nowrap"}, stamped(j.last_run)),
+          el("td", {class: "nowrap"}, j.paused ? "—" : clock(j.next_run)),
           el("td", {class: j.paused ? "muted" : j.status === "ok" ? "ok" : "fail"},
              j.paused ? "pausada" : j.status === "ok" ? "✓" : `✗ ${j.status || "sin correr"}${j.streak ? ` ×${j.streak}` : ""}`))));
 
   table($("sessions"), [["Última"], ["Bot"], ["Chat"], ["Mensajes", 1], ["Herram.", 1], ["Tokens", 1],
                         ["Respuesta", 1], ["Costo", 1]],
         d.sessions.map(s => el("tr", {class: "click", onclick: () => openSession(s)},
-          el("td", {}, clock(s.last)), el("td", {}, s.profile),
+          el("td", {class: "nowrap"}, clock(s.last)), el("td", {}, s.profile),
           el("td", {}, el("span", {class: "pill"}, [s.source, s.chat_type].filter(Boolean).join(" · "))),
           el("td", {class: "n"}, s.messages), el("td", {class: "n"}, s.tools), el("td", {class: "n"}, kTok(s.tokens)),
           el("td", {class: "n " + (s.unanswered ? "fail" : s.reply_seconds > 90 ? "warn" : "")},

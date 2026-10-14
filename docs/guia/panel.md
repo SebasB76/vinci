@@ -10,8 +10,8 @@ cada conversación. Solo lee: no usa el modelo, no llama al aula y no cambia nad
 | Arriba | Si el gateway de Hermes está vivo y cuántas veces se reinició, si WhatsApp está conectado, los turnos en curso o trabados (más de 5 min), el gasto de hoy y de 7 días, y los errores de las últimas 24 h. |
 | Salud de Vinci | Lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas. |
 | Gasto por día | Los últimos 14 días, por grupo: Vinci, bots de materia y amigos. Al pasar el mouse sobre un día (o tocarlo en el celular) ves su total frente al promedio, el gasto por grupo y por bot, las llamadas al modelo, los tokens y el costo por llamada. |
-| Gasto por bot | Llamadas al modelo, tokens y costo de cada perfil y modelo en esos 14 días. |
-| Tareas automáticas | Cada tarea de Hermes (sondeo, mantenimiento, resumen…), cuándo corrió y si falló. |
+| Gasto por bot | Llamadas al modelo, tokens, costo y el último día de uso de cada perfil y modelo en esos 14 días. |
+| Tareas automáticas | Cada tarea de Hermes (sondeo, mantenimiento, resumen…), el día y la hora en que corrió, cuándo corre de nuevo y si falló. |
 | Conversaciones recientes | Cada chat con sus mensajes, herramientas, tokens, costo y cuánto tardó la última respuesta. Al tocar una fila ves sus pasos con el tiempo entre cada uno: ahí ves dónde se trabó. |
 | Errores y avisos | Las líneas de `errors.log` de Hermes, agrupadas por tipo, con cuántas veces salieron. |
 

@@ -340,6 +340,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("panel", help="el panel de administración en el navegador: gateway, tareas, gasto y turnos "
                                      "(solo lectura)")
     p.add_argument("--puerto", type=int, default=8787)
+    p.add_argument("--nueva-clave", action="store_true",
+                   help="crear la clave del enlace para quien no está en tu red de Tailscale e imprimir el enlace; "
+                        "el enlace anterior deja de servir")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
     p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia (sin --curso: la de Vinci, sin Telegram)")
@@ -424,6 +427,12 @@ def main(argv: list[str] | None = None) -> int:
             return hermes_setup.provision(cfg, hermes_bin=args.hermes)
         if args.cmd == "panel":
             from espol_bot import panel
+            if args.nueva_clave:
+                key = panel.new_key()
+                print(f"Enlace del panel (el anterior ya no sirve): {panel.public_url() or 'https://<esta máquina>'}"
+                      f"/?k={key}\nQuien lo tenga ve el panel sin el texto de los chats. Para cortarle el acceso, "
+                      "corre esto otra vez.")
+                return 0
             panel.serve(cfg, args.puerto)
             return 0
         if args.cmd in ("doctor", "estado"):

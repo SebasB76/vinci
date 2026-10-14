@@ -129,7 +129,8 @@ function tile(k, v, s, cls = "") {
 }
 
 function render(d) {
-  $("stamp").textContent = `Actualizado ${new Date(d.now).toLocaleTimeString("es-EC")} · se actualiza cada 30 s · modelo ${d.model}`;
+  $("stamp").className = "muted small";
+  $("stamp").textContent = (d.viewer === "guest" ? "Vista con enlace: sin el texto de los chats · " : "") + `Actualizado ${new Date(d.now).toLocaleTimeString("es-EC")} · se actualiza cada 30 s · modelo ${d.model}`;
   const g = d.gateway;
   const gwOk = g.alive && g.state === "running";
   const wa = g.platforms.whatsapp;
@@ -215,12 +216,13 @@ function render(d) {
           el("td", {class: "n"}, usd(s.usd)))));
 
   table($("errors"), [["Error"], ["Veces", 1], ["Última"], ["Dónde"]],
-        d.errors.map(e => el("tr", {title: e.sample},
+        d.errors.map(e => el("tr", {title: e.sample || ""},
           el("td", {class: "err " + (e.level === "WARNING" ? "" : "fail")}, e.signature),
           el("td", {class: "n"}, e.count), el("td", {}, e.last.slice(11, 16)), el("td", {class: "small muted"}, e.sources.join(", ")))));
 }
 
 let chart = {};
+let latest = {};
 
 function showTip(bar) {
   const day = bar.dataset.day, data = chart.byDay[day];
@@ -276,7 +278,8 @@ async function openSession(s) {
   let prev = null;
   box.replaceChildren(
     el("p", {}, el("b", {}, `${s.profile} · ${[s.source, s.chat_type].filter(Boolean).join(" · ")}`), " ",
-       d.readable ? "" : el("span", {class: "muted"}, "(chat de un amigo o un grupo: solo tiempos y herramientas)"), " ",
+       d.readable ? "" : el("span", {class: "muted"}, latest.viewer === "guest"
+         ? "(vista con enlace: solo tiempos y herramientas)" : "(chat de un amigo o un grupo: solo tiempos y herramientas)"), " ",
        el("button", {onclick: () => box.replaceChildren()}, "cerrar")),
     ...d.steps.map(st => {
       const gap = prev && st.ts ? st.ts - prev : null; prev = st.ts || prev;
@@ -293,7 +296,9 @@ async function openSession(s) {
 async function refresh() {
   try {
     const res = await fetch("/api/estado", {cache: "no-store"});
-    render(await res.json());
+    if (!res.ok) throw new Error("el enlace ya no sirve o venció; pide uno nuevo");
+    latest = await res.json();
+    render(latest);
   } catch (e) {
     $("stamp").textContent = "No pude leer el estado: " + e;
     $("stamp").className = "fail small";

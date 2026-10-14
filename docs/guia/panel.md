@@ -31,19 +31,31 @@ Sin systemd (por ejemplo, en Docker), enciéndelo a mano:
 .venv/bin/espol-bot panel                 # --puerto 8787 por defecto
 ```
 
-## Verlo desde tu PC o tu celular, en privado
+## Verlo desde cualquier dispositivo
 
-[Tailscale](https://tailscale.com) arma una red privada entre tus dispositivos. Con Tailscale Serve, el panel se ve
-solo dentro de esa red, con HTTPS y sin abrir puertos a internet.
+[Tailscale](https://tailscale.com) arma una red privada entre tus dispositivos, y Tailscale Funnel publica una
+página de esa red en internet, con HTTPS, sin abrir puertos del router. El panel distingue dos visitas:
 
-1. En la máquina de Vinci, corre `tailscale serve --bg 8787`.
-2. Si Tailscale te pide activar HTTPS, abre el enlace que muestra, actívalo y repite el paso 1.
-3. Corre `tailscale serve status` y copia la dirección `https://<máquina>.<tu-red>.ts.net`.
-4. En tu celular, instala la app de Tailscale y entra con la misma cuenta.
-5. Abre esa dirección en el navegador de cualquier dispositivo de tu red.
+- **Tú, desde tu red de Tailscale** (o desde la misma máquina): ves todo, sin contraseña.
+- **Cualquier otra persona**: la página responde «no existe», salvo que traiga el enlace con la clave. Con el enlace
+  ve el mismo panel, pero sin el texto de ningún chat ni de los errores.
 
-No uses `tailscale funnel`: Funnel publica la página en internet, y el panel no tiene contraseña. Tailscale Serve
-recuerda la configuración tras un reinicio. Para quitarla, corre `tailscale serve --https=443 off`.
+Para publicarlo:
+
+1. En la máquina de Vinci, corre `tailscale funnel --bg 8787`.
+2. Si Tailscale te pide activar HTTPS o Funnel, abre el enlace que muestra, actívalo y repite el paso 1.
+3. Corre `.venv/bin/espol-bot panel --nueva-clave`. Imprime el enlace `https://<máquina>.<tu-red>.ts.net/?k=…`.
+4. Comparte ese enlace solo con quien quieras.
+
+Pásalo por un chat privado, no en un grupo ni en un lugar público. Quien tenga el enlace ve tu gasto, tus tareas y a
+qué hora conversaste con Vinci.
+
+El enlace funciona 30 días en cada navegador, y después hay que abrirlo otra vez. Para cortar el acceso a todos los
+que tienen el enlace, corre de nuevo `--nueva-clave`: el enlace anterior deja de servir al instante. La clave queda
+en `secrets.env` como `PANEL_KEY`.
+
+Para volver a dejarlo solo en tu red, corre `tailscale serve --bg 8787`. Para quitarlo del todo, corre
+`tailscale serve --https=443 off`.
 
 ## Apagarlo
 

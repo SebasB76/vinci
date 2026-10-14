@@ -1,5 +1,5 @@
 """A study summary (.pdf) a bot writes from the material: a cover band, an intro, a clickable index, one section per
-topic (explanation, key points, an example, its sources linked to the aula) and a closing «Para recordar».
+topic (explanation, key points, a visual, an example, its sources linked to the aula) and a closing «Para recordar».
 
 Like the slides, the file goes to the profile's `cache/documents/`: a reply that mentions its path reaches the chat
 as a file (Telegram or WhatsApp). The fonts come from the system (Noto on Arch, DejaVu in the Docker image), with
@@ -15,7 +15,8 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from espol_bot import citations
+from espol_bot import citations, visuales
+from espol_bot.visuales import AMBER, AMBER_SOFT, INK, MUTED, NAVY, NAVY_SOFT, RULE, SKY
 
 MAX_SECTIONS = 20
 MAX_POINTS = 12
@@ -25,11 +26,8 @@ FONT_DIRS = ("/usr/share/fonts/noto", "/usr/share/fonts/truetype/noto", "/usr/sh
 FAMILIES = (("NotoSans-Regular", "NotoSans-Bold", "NotoSans-Italic", "NotoSans-BoldItalic"),
             ("DejaVuSans", "DejaVuSans-Bold", "DejaVuSans-Oblique", "DejaVuSans-BoldOblique"))
 FALLBACKS = ("NotoSansMath-Regular", "NotoSansSymbols2-Regular", "NotoSansSymbols-Regular", "DejaVuSans")
-NAVY, NAVY_SOFT, SKY = (27, 54, 93), (236, 242, 250), (165, 196, 235)
-AMBER, AMBER_SOFT = (214, 137, 16), (254, 246, 228)
-INK, MUTED, RULE = (38, 42, 48), (110, 118, 128), (214, 220, 228)
 MONTHS = "ene feb mar abr may jun jul ago sep oct nov dic".split()
-MARGIN, LINE = 20, 6.2
+MARGIN, BOTTOM, LINE = 20, 22, 6.2
 
 
 class SummaryError(ValueError):
@@ -58,7 +56,7 @@ class _Pdf(FPDF):
                 self.glyphs |= set(self.fonts[f"fallback{n}"].cmap)
             self.set_fallback_fonts(extra, exact_match=False)
         self.set_margins(MARGIN, MARGIN, MARGIN)
-        self.set_auto_page_break(True, margin=22)
+        self.set_auto_page_break(True, margin=BOTTOM)
 
     def clean(self, text: str) -> str:
         # A glyph no font has (an emoji) prints as an empty box: drop it.
@@ -132,6 +130,31 @@ def _markdown(text: str) -> str:
     return re.sub(r"(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])", r"__\1__", text)
 
 
+def _sources(sources: list[str]) -> str:
+    """The section's citations, one per file: «03bScrum.pdf, páginas 4, 9-10» linked once to the file."""
+    singular = {plural: unit for unit, plural in citations.PLURAL.items()}
+    files: dict[tuple, list] = {}
+    loose = []
+    for source in sources:
+        match = citations.LINKED.fullmatch(source.strip()) or citations.PLAIN.fullmatch(source.strip())
+        if not match:
+            loose.append(source)
+            continue
+        name = match["name"].strip()
+        word = match["label"].strip()[len(name):].lstrip(" ,").split()[0].lower()
+        unit = singular.get(word, word if word in citations.PLURAL else "página")
+        pages = match["first"] + (f"-{match['last']}" if match["last"] and match["last"] != match["first"] else "")
+        found = files.setdefault((name, match.groupdict().get("url")), [unit, []])
+        if pages not in found[1]:
+            found[1].append(pages)
+    parts = []
+    for (name, url), (unit, pages) in files.items():
+        where = f"{unit} {pages[0]}" if len(pages) == 1 and "-" not in pages[0] else \
+            f"{citations.PLURAL.get(unit, unit + 's')} {', '.join(pages)}"
+        parts.append(f"[{name}, {where}]({citations._url(url)})" if url else f"{name}, {where}")
+    return "  ·  ".join(parts + loose)
+
+
 def _text(value, name: str, limit: int) -> str:
     text = str(value or "").strip()
     if not text:
@@ -184,8 +207,19 @@ def _index(pdf: _Pdf, headings: list[str]) -> list[int]:
     return links
 
 
-def _heading(pdf: _Pdf, n: int, heading: str) -> None:
-    pdf.room(32)  # a heading never sits alone at the foot of a page
+def _opening(pdf: _Pdf, body: str, points: list[str], visual: dict | None) -> float:
+    """The height of a section up to its visual: what stays on one page with the heading."""
+    pdf.style(11)
+    height = 18 + sum(pdf.multi_cell(0, LINE, pdf.md(p.strip()), markdown=True, dry_run=True, output="HEIGHT") + 2.5
+                      for p in re.split(r"\n\s*\n", body) if p.strip())
+    height += sum(pdf.multi_cell(pdf.epw - 7, LINE, pdf.md(p), markdown=True, dry_run=True, output="HEIGHT") + 1.2
+                  for p in points)
+    return height + (visuales.height(pdf, visual) if visual else 0)
+
+
+def _heading(pdf: _Pdf, n: int, heading: str, keep: float) -> None:
+    # The heading, its text and its visual go on one page when they fit on one; at least the heading and some text.
+    pdf.room(keep if keep <= pdf.page_break_trigger - pdf.t_margin else 32)
     pdf.ln(3)
     y = pdf.get_y()
     pdf.set_fill_color(*NAVY)
@@ -212,12 +246,16 @@ def build(folder: Path, title: str, sections: list[dict], subtitle: str = "", in
     for n, section in enumerate(sections, 1):
         if not isinstance(section, dict):
             raise SummaryError(f"la sección {n} no es un objeto con «titulo» y «texto» o «puntos»")
-        heading = _text(section.get("titulo"), f"titulo de la sección {n}", 120)
+        # The PDF numbers the sections itself: a «3. Cuestionarios» from the model would read «9  3. Cuestionarios».
+        heading = re.sub(r"^\s*\d+\s*[.)\-:]\s*", "", _text(section.get("titulo"), f"titulo de la sección {n}", 120))
         body = str(section.get("texto") or "").strip()[:4000]
         points = _items(section.get("puntos"), MAX_POINTS, 600)
         if not body and not points:
             raise SummaryError(f"la sección {n} («{heading}») no trae «texto» ni «puntos»")
-        parsed.append((heading, body, points, str(section.get("ejemplo") or "").strip()[:1500],
+        visual = section.get("visual") or None
+        if visual is not None and (not isinstance(visual, dict) or visual.get("tipo") not in visuales.KINDS):
+            raise SummaryError(f"el «visual» de la sección {n} lleva «tipo»: uno de {', '.join(visuales.KINDS)}")
+        parsed.append((heading, body, points, visual, str(section.get("ejemplo") or "").strip()[:1500],
                        _items(section.get("fuentes"), 12, 400)))
 
     pdf = _Pdf(title)
@@ -228,8 +266,12 @@ def build(folder: Path, title: str, sections: list[dict], subtitle: str = "", in
         pdf.box("De qué trata", intro, NAVY_SOFT, NAVY)
     links = _index(pdf, [p[0] for p in parsed]) if len(parsed) >= 3 else []
 
-    for n, (heading, body, points, example, sources) in enumerate(parsed, 1):
-        _heading(pdf, n, heading)
+    figures = 0
+    for n, (heading, body, points, visual, example, sources) in enumerate(parsed, 1):
+        try:
+            _heading(pdf, n, heading, _opening(pdf, body, points, visual))
+        except visuales.VisualError as exc:
+            raise SummaryError(f"el visual de la sección {n} («{heading}»): {exc}") from None
         if links:
             pdf.set_link(links[n - 1], page=pdf.page_no(), y=pdf.get_y() - 18)
         for paragraph in (p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()):
@@ -240,12 +282,24 @@ def build(folder: Path, title: str, sections: list[dict], subtitle: str = "", in
             pdf.bullet(point)
         if points:
             pdf.ln(1.5)
+        if visual:
+            figures += 1
+            try:
+                visuales.draw(pdf, visual, figures)
+            except visuales.VisualError as exc:
+                raise SummaryError(f"el visual de la sección {n} («{heading}»): {exc}") from None
         if example:
             pdf.box("Ejemplo", example, AMBER_SOFT, AMBER)
         if sources:
+            line = pdf.md("**Fuente:** " + _sources(sources))
             pdf.style(8.5, color=MUTED)
-            pdf.multi_cell(0, 4.8, pdf.md("**Fuente:** " + "  ·  ".join(sources)), markdown=True,
-                           new_x="LMARGIN", new_y="NEXT")
+            # Kept with its section: a source alone atop the next page reads as the next section's. A short one
+            # may use the space above the footer.
+            end = pdf.get_y() + pdf.multi_cell(0, 4.8, line, markdown=True, dry_run=True, output="HEIGHT")
+            keep = pdf.page_break_trigger < end <= pdf.h - 15
+            pdf.set_auto_page_break(not keep, margin=BOTTOM)
+            pdf.multi_cell(0, 4.8, line, markdown=True, align="L", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_auto_page_break(True, margin=BOTTOM)
         pdf.ln(6)
 
     takeaways = _items(takeaways, MAX_TAKEAWAYS, 300)

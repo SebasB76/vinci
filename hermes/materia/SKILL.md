@@ -216,6 +216,10 @@ entienda alguien que faltó a la clase:
   término la primera vez; nunca copies las diapositivas tal cual. Los «puntos» son definiciones o pasos, uno por
   punto, con el término en **negrita** al inicio. Un «ejemplo» concreto cuando la idea es abstracta.
 - En «fuentes», la `cita` de cada página de donde sale la sección, copiada tal cual.
+- Un «visual» en cada sección que lo pida, nunca de adorno: `flujo` para un proceso, `ciclo` para lo que se
+  repite (un sprint), `comparacion` para dos o más conceptos lado a lado, `jerarquia` para roles o tipos,
+  `pantalla` para un prototipo o una interfaz (una maqueta de celular o web), y `pagina` para mostrar un diagrama
+  o figura del profe (el `archivo_id` y la página de un PDF del material). Textos cortos dentro: de 2 a 6 palabras.
 - «para_recordar»: de 3 a 5 ideas, una frase cada una.
 
 Si ya le explicaste los temas en el chat, el resumen trae esos mismos temas. La herramienta te da la «ruta»:

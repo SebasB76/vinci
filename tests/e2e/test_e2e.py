@@ -168,6 +168,7 @@ SLIDES = {"titulo": "Integrales dobles", "subtitulo": "Cálculo de varias variab
                             "notas": "Mostrar un ejemplo en el pizarrón."}]}
 SUMMARY = {"titulo": "Taller 2: Integrales dobles", "subtitulo": "Cálculo de varias variables",
            "introduccion": "Lo que pide el taller, para repasar antes de resolverlo."}
+SUMMARY_STEPS = ["Copia el enunciado", "Resuelve en su hoja", "Junta todo en un PDF"]
 SUMMARY_FAKE_CITE = "📄 [Capítulo 9 - Inventado.pdf, página 99](https://aulavirtual.espol.edu.ec/courses/1/files/9)"
 VENV_BIN = Path(sys.executable).parent
 FILES = HERE / "fixtures" / "files"
@@ -455,12 +456,17 @@ class Script:
             last = _json(results[-1])
             if isinstance(last, dict) and last.get("ruta"):
                 return {"content": f"Tu resumen tiene {last['paginas']} página(s):\n{last['ruta']}"}
-            hit = next(d["resultados"][0] for d in map(_json, results) if isinstance(d, dict) and d.get("resultados"))
+            hits = next(d["resultados"] for d in map(_json, results) if isinstance(d, dict) and d.get("resultados"))
+            hit, pdf_hit = hits[0], next(h for h in hits if h["archivo"].endswith(".pdf"))
             # The first try also cites a page it never read: the tool refuses it, and the model drops it.
             sources = [hit["cita"]] + ([] if called.count("mcp__vinci__crear_resumen") else [SUMMARY_FAKE_CITE])
             return _call("mcp__vinci__crear_resumen", **SUMMARY, secciones=[
-                {"titulo": "Qué pide el taller", "texto": f"El enunciado dice: **{hit['fragmento'][:200]}**",
-                 "puntos": ["Cada ejercicio va aparte", "Se entrega un solo PDF"], "fuentes": sources}],
+                {"titulo": "1. Qué pide el taller", "texto": f"El enunciado dice: **{hit['fragmento'][:200]}**",
+                 "puntos": ["Cada ejercicio va aparte", "Se entrega un solo PDF"], "fuentes": sources,
+                 "visual": {"tipo": "flujo", "titulo": "Cómo entregarlo", "pasos": SUMMARY_STEPS}},
+                {"titulo": "La hoja del profe", "texto": "Así se ve la especificación.",
+                 "visual": {"tipo": "pagina", "titulo": "La especificación", "archivo_id": pdf_hit["archivo_id"],
+                            "pagina": pdf_hit["pagina"]}}],
                 para_recordar=["Un ejercicio por hoja", "Un solo PDF"])
         if results:
             last = _json(results[-1])
@@ -2142,11 +2148,13 @@ def test_whatsapp_friend(tmp_path):
         summary = pypdf.PdfReader(media[0]["filePath"])
         summary_text = " ".join(page.extract_text() for page in summary.pages)
         links = [a.get_object()["/A"]["/URI"] for page in summary.pages for a in page.get("/Annots") or []]
-        assert all(t in summary_text for t in ("Taller 2: Integrales dobles", "Qué pide el taller", "Un ejercicio por hoja")), \
-            summary_text
+        assert all(t in summary_text for t in ("Taller 2: Integrales dobles", "Qué pide el taller", "Un ejercicio por hoja",
+                                               "Figura 1", *SUMMARY_STEPS, "Figura 2")), summary_text
+        assert "1. Qué pide" not in summary_text, "el PDF numera las secciones, sin el número del modelo"
+        assert any(page.images for page in summary.pages), "la página del material va como imagen"
         assert "Inventado" not in summary_text and links and all("/files/9" not in u for u in links), links
         report.append("«hazme un resumen en pdf»: crear_resumen rechaza una cita de una página que Vinci no leyó, y "
-                      "el PDF (portada, índice, secciones con ejemplo, fuentes con su enlace del aula y «Para recordar») llega al chat de WhatsApp")
+                      "el PDF (portada, índice, secciones con un flujo dibujado y la página del material como imagen, fuentes con su enlace del aula y «Para recordar») llega al chat de WhatsApp")
 
         # 10f3. WhatsApp has no buttons: a card arrives as a message and a poll, and a vote is the button
         mark = len(wa.sent)

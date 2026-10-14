@@ -21,6 +21,9 @@ aula ocr                               # leer ya con OCR las páginas escaneadas
 tienen menos de 10 minutos; si no, vuelve a leer el aula (y si no puede, te muestra lo guardado). Con
 `--actualizar` la lee siempre y falla si no puede; con `--sin-actualizar` usa solo lo guardado.
 
+Para ver la salud, el gasto y las conversaciones de tus bots en el navegador, `.venv/bin/espol-bot panel` sirve
+el [panel de administración](panel.md) en `http://127.0.0.1:8787`.
+
 Para el Académico:
 
 ```bash

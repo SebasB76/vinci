@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Vinci · panel</title>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--fg:#e7e9ee;--muted:#8b93a3;--border:#272b35;--ok:#3fb97f;--warn:#e0a63a;
+  --fail:#ef5b5b;--c1:#6c8cff;--c2:#2cc5b3;--c3:#f0b429;--c4:#b07cf2;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f27;--muted:#646c7a;--border:#e2e5ea;
+  --ok:#1f8f5a;--warn:#b07a12;--fail:#cf3434}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{font-size:20px;margin:0}
+.muted{color:var(--muted)}.small{font-size:12px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.fail{color:var(--fail)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile,.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.tile .k{font-size:12px;color:var(--muted)}.tile .v{font-size:20px;font-weight:600;margin:4px 0 2px}
+.tile .s{font-size:12px;color:var(--muted)}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:12px}
+td.n,th.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+tr.click{cursor:pointer}tr.click:hover td{background:rgba(127,127,127,.08)}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--border);color:var(--muted)}
+.checks div{padding:6px 0;border-bottom:1px solid var(--border)}.checks div:last-child{border:0}
+.bars{display:flex;align-items:flex-end;gap:4px;height:150px;border-bottom:1px solid var(--border)}
+.day{flex:1;display:flex;flex-direction:column-reverse;height:100%;min-width:0}
+.day div{min-height:0}.day.today{outline:1px dashed var(--border);outline-offset:2px}
+.labels{display:flex;gap:4px;margin-top:4px}.labels span{flex:1;text-align:center;font-size:10px;color:var(--muted)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.scroll{overflow-x:auto}
+#detail{margin-top:12px}
+.step{display:grid;grid-template-columns:70px 90px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.step pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.4 var(--mono)}
+.err{font-family:var(--mono);font-size:12px;word-break:break-word}
+button{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Vinci · panel</h1>
+  <span class="muted small" id="stamp">cargando…</span>
+</header>
+<section class="tiles" id="tiles"></section>
+
+<h2>Salud de Vinci</h2>
+<div class="card checks" id="checks"></div>
+
+<h2>Gasto por día · estimado por Hermes</h2>
+<div class="card">
+  <div class="bars" id="bars"></div>
+  <div class="labels" id="labels"></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div class="grid2">
+  <div>
+    <h2 id="byBotTitle">Gasto por bot</h2>
+    <div class="card scroll"><table id="byBot"></table></div>
+  </div>
+  <div>
+    <h2>Tareas automáticas</h2>
+    <div class="card scroll"><table id="jobs"></table></div>
+  </div>
+</div>
+
+<h2>Conversaciones recientes</h2>
+<div class="card scroll"><table id="sessions"></table><div id="detail"></div></div>
+
+<h2>Errores y avisos · últimas 24 h</h2>
+<div class="card scroll"><table id="errors"></table></div>
+</main>
+<script>
+const KINDS = {vinci: ["Vinci", "var(--c1)"], materia: ["Bots de materia", "var(--c2)"],
+               amigo: ["Amigos", "var(--c3)"], otro: ["Otros", "var(--c4)"]};
+const $ = id => document.getElementById(id);
+const usd = v => "$" + (v >= 10 ? v.toFixed(1) : v.toFixed(2));
+const kTok = v => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(v);
+const ago = iso => {
+  if (!iso) return "—";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "hace un momento";
+  if (s < 3600) return `hace ${Math.round(s / 60)} min`;
+  if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
+  return `hace ${Math.round(s / 86400)} d`;
+};
+const clock = iso => iso ? new Date(iso).toLocaleString("es-EC", {weekday: "short", hour: "2-digit", minute: "2-digit"}) : "—";
+const dur = s => s == null ? "—" : s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} m ${Math.round(s % 60)} s`;
+const shortModel = m => (m || "").replace(/^claude-/, "").replace(/-\d+(-\d+)*$/, "");
+const level = l => ({ok: "ok", warn: "warn", fail: "fail"})[l] || "";
+const ICON = {ok: "✅", warn: "⚠️", fail: "❌"};
+
+function el(tag, attrs = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v; else if (k === "style") node.style.cssText = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) node.append(kid instanceof Node ? kid : String(kid));
+  return node;
+}
+function table(node, head, rows) {
+  node.replaceChildren(el("tr", {}, head.map(([t, n]) => el("th", n ? {class: "n"} : {}, t))), ...rows);
+}
+function tile(k, v, s, cls = "") {
+  return el("div", {class: "tile"}, el("div", {class: "k"}, k), el("div", {class: "v " + cls}, v), el("div", {class: "s"}, s));
+}
+
+function render(d) {
+  $("stamp").textContent = `Actualizado ${new Date(d.now).toLocaleTimeString("es-EC")} · se actualiza cada 30 s · modelo ${d.model}`;
+  const g = d.gateway;
+  const gwOk = g.alive && g.state === "running";
+  const wa = g.platforms.whatsapp;
+  const stuck = d.leases.filter(l => l.stuck);
+  const unanswered = d.sessions.filter(s => s.unanswered);
+  const spend = days => d.usage.filter(u => u.day > shift(d.today, -days)).reduce((a, u) => a + u.usd, 0);
+  const errs = d.errors.filter(e => e.level !== "WARNING").reduce((a, e) => a + e.count, 0);
+  $("tiles").replaceChildren(
+    tile("Gateway", gwOk ? "● vivo" : "● " + (g.alive ? g.state : "caído"),
+         [g.restarts != null ? `${g.restarts} reinicios` : null, g.version ? `v${g.version}` : null].filter(Boolean).join(" · ") || "—",
+         gwOk ? "ok" : "fail"),
+    wa ? tile("WhatsApp", "● " + ({connected: "conectado"}[wa.state] || wa.state),
+              wa.error_message || (wa.retrying_since ? "reintentando desde " + clock(wa.retrying_since) : ago(wa.updated_at)),
+              wa.state === "connected" ? "ok" : wa.needs_attention ? "fail" : "warn") : null,
+    tile("Turnos", stuck.length ? `${stuck.length} trabado${stuck.length > 1 ? "s" : ""}` : String(d.leases.length) + " en curso",
+         unanswered.length ? `${unanswered.length} sin respuesta` : `${g.active_agents} agentes activos`,
+         stuck.length || unanswered.length ? "fail" : "ok"),
+    tile("Gasto hoy", usd(spend(1)), "estimado"),
+    tile("Gasto 7 días", usd(spend(7)), `${d.days} días: ${usd(spend(d.days))}`),
+    tile("Errores 24 h", String(errs), `${d.errors.length} tipos con avisos`, errs ? "warn" : "ok"),
+  );
+
+  $("checks").replaceChildren(...d.checks.map(c =>
+    el("div", {}, `${ICON[c.level] || ""} `, el("b", {}, c.name), ": ", c.detail,
+       c.fix && c.level !== "ok" ? el("span", {class: "muted"}, ` → ${c.fix}`) : null)));
+
+  const days = [...Array(d.days).keys()].map(i => shift(d.today, i - d.days + 1));
+  const byDay = {};
+  for (const u of d.usage) {
+    const kind = (d.profiles.find(p => p.name === u.profile) || {kind: "otro"}).kind;
+    ((byDay[u.day] ||= {})[kind] = (byDay[u.day][kind] || 0) + u.usd);
+  }
+  const top = Math.max(0.01, ...days.map(day => Object.values(byDay[day] || {}).reduce((a, b) => a + b, 0)));
+  const kinds = Object.keys(KINDS).filter(k => days.some(day => byDay[day]?.[k]));
+  $("bars").replaceChildren(...days.map(day => {
+    const parts = byDay[day] || {};
+    const total = Object.values(parts).reduce((a, b) => a + b, 0);
+    return el("div", {class: "day" + (day === d.today ? " today" : ""), title: `${day}: ${usd(total)}\n` +
+                       kinds.map(k => `${KINDS[k][0]}: ${usd(parts[k] || 0)}`).join("\n")},
+              kinds.map(k => el("div", {style: `height:${(parts[k] || 0) / top * 100}%;background:${KINDS[k][1]}`})));
+  }));
+  $("labels").replaceChildren(...days.map((day, i) => el("span", {}, i % 2 === (d.days - 1) % 2 ?
+    new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric"}) : "")));
+  $("legend").replaceChildren(...kinds.map(k => el("span", {}, el("i", {style: `background:${KINDS[k][1]}`}), KINDS[k][0])));
+
+  const bot = {};
+  for (const u of d.usage) {
+    const key = u.profile + "|" + u.model;
+    const row = bot[key] ||= {profile: u.profile, model: u.model, calls: 0, tokens: 0, usd: 0};
+    row.calls += u.calls; row.tokens += u.input + u.output + u.cache_read + u.cache_write; row.usd += u.usd;
+  }
+  $("byBotTitle").textContent = `Gasto por bot · ${d.days} días`;
+  table($("byBot"), [["Bot"], ["Modelo"], ["Llamadas", 1], ["Tokens", 1], ["Costo", 1]],
+        Object.values(bot).sort((a, b) => b.usd - a.usd).map(r => el("tr", {},
+          el("td", {}, r.profile), el("td", {}, shortModel(r.model)), el("td", {class: "n"}, r.calls),
+          el("td", {class: "n"}, kTok(r.tokens)), el("td", {class: "n"}, usd(r.usd)))));
+
+  table($("jobs"), [["Bot"], ["Tarea"], ["Última"], ["Estado"]],
+        d.jobs.map(j => el("tr", {title: j.error || j.schedule || ""},
+          el("td", {}, j.profile), el("td", {}, j.name), el("td", {}, ago(j.last_run)),
+          el("td", {class: j.paused ? "muted" : j.status === "ok" ? "ok" : "fail"},
+             j.paused ? "pausada" : j.status === "ok" ? "✓" : `✗ ${j.status || "sin correr"}${j.streak ? ` ×${j.streak}` : ""}`))));
+
+  table($("sessions"), [["Última"], ["Bot"], ["Chat"], ["Mensajes", 1], ["Herram.", 1], ["Tokens", 1],
+                        ["Respuesta", 1], ["Costo", 1]],
+        d.sessions.map(s => el("tr", {class: "click", onclick: () => openSession(s)},
+          el("td", {}, clock(s.last)), el("td", {}, s.profile),
+          el("td", {}, el("span", {class: "pill"}, [s.source, s.chat_type].filter(Boolean).join(" · "))),
+          el("td", {class: "n"}, s.messages), el("td", {class: "n"}, s.tools), el("td", {class: "n"}, kTok(s.tokens)),
+          el("td", {class: "n " + (s.unanswered ? "fail" : s.reply_seconds > 90 ? "warn" : "")},
+             s.unanswered ? "sin respuesta" : dur(s.reply_seconds)),
+          el("td", {class: "n"}, usd(s.usd)))));
+
+  table($("errors"), [["Error"], ["Veces", 1], ["Última"], ["Dónde"]],
+        d.errors.map(e => el("tr", {title: e.sample},
+          el("td", {class: "err " + (e.level === "WARNING" ? "" : "fail")}, e.signature),
+          el("td", {class: "n"}, e.count), el("td", {}, e.last.slice(11, 16)), el("td", {class: "small muted"}, e.sources.join(", ")))));
+}
+
+function shift(day, n) {
+  const t = new Date(day + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10);
+}
+
+async function openSession(s) {
+  const box = $("detail");
+  box.replaceChildren(el("p", {class: "muted"}, "cargando la conversación…"));
+  const res = await fetch(`/api/sesion?perfil=${encodeURIComponent(s.profile)}&id=${encodeURIComponent(s.id)}`);
+  const d = await res.json();
+  if (!res.ok) { box.replaceChildren(el("p", {class: "fail"}, d.error || "error")); return; }
+  let prev = null;
+  box.replaceChildren(
+    el("p", {}, el("b", {}, `${s.profile} · ${[s.source, s.chat_type].filter(Boolean).join(" · ")}`), " ",
+       d.readable ? "" : el("span", {class: "muted"}, "(chat de un amigo o un grupo: solo tiempos y herramientas)"), " ",
+       el("button", {onclick: () => box.replaceChildren()}, "cerrar")),
+    ...d.steps.map(st => {
+      const gap = prev && st.ts ? st.ts - prev : null; prev = st.ts || prev;
+      const what = st.role === "tool" ? `🔧 ${st.tool || "herramienta"}` : st.role === "user" ? "👤 mensaje" :
+                   st.role === "assistant" ? (st.calls.length ? `🤖 llama ${st.calls.join(", ")}` : "🤖 responde") : st.role;
+      return el("div", {class: "step"},
+        el("span", {class: "muted small"}, st.at ? new Date(st.at).toLocaleTimeString("es-EC") : ""),
+        el("span", {class: "small " + (gap > 60 ? "warn" : "muted")}, gap != null ? `+${dur(gap)}` : ""),
+        el("div", {}, el("div", {}, what, st.text == null && st.chars ? el("span", {class: "muted small"}, ` · ${st.chars} caracteres`) : null),
+           st.text ? el("pre", {}, st.text) : null));
+    }));
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/estado", {cache: "no-store"});
+    render(await res.json());
+  } catch (e) {
+    $("stamp").textContent = "No pude leer el estado: " + e;
+    $("stamp").className = "fail small";
+  }
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

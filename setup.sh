@@ -13,6 +13,7 @@
 #   ~/.local/bin/vinci                 el alias que Hermes crea para el perfil de Vinci
 #   ~/.local/bin/aula                  el comando `aula`
 #   ~/.claude/skills/aula/             la skill para Claude Code
+#   ~/.config/systemd/user/vinci-panel.service  el panel de administración (solo con systemd de usuario)
 # Y, solo si le falta, el conector de Telegram de Hermes (`hermes pm install --extra telegram`).
 set -euo pipefail
 
@@ -189,6 +190,31 @@ if [ "$RUN_CHECKS" = 1 ]; then
   say "Vinci te manda un mensaje de prueba"
   AULA_SECRETS="$SECRETS" "$VENV/bin/espol-bot" probar \
     || echo "⚠ No llegó el mensaje de prueba; revisa TELEGRAM_BOT_TOKEN (y el /start a Vinci) o, sin Telegram, el puente de WhatsApp" >&2
+fi
+
+say "Encendiendo el panel de administración (http://127.0.0.1:8787)"
+if systemctl --user show-environment >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/systemd/user"
+  cat > "$HOME/.config/systemd/user/vinci-panel.service" <<UNIT
+# $MARKER
+[Unit]
+Description=Panel de administración de Vinci (solo lectura)
+
+[Service]
+Environment=AULA_SECRETS=$SECRETS
+ExecStart=$VENV/bin/espol-bot panel
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+UNIT
+  systemctl --user daemon-reload
+  systemctl --user enable --quiet vinci-panel.service
+  systemctl --user restart vinci-panel.service  # takes the panel code this run installed
+  echo "✓ Panel encendido. Para verlo desde tus dispositivos: docs/guia/panel.md"
+else
+  echo "Sin systemd de usuario: enciéndelo con '$VENV/bin/espol-bot panel' (docs/guia/panel.md)"
 fi
 
 PROFILE="$("$VENV/bin/python" -c 'from espol_bot.config import load_bot_config; print(load_bot_config().hermes_profile)')"

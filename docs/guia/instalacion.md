@@ -243,6 +243,9 @@ Si venías del bot académico anterior (el perfil `espol`), el setup lo conviert
 Con `channels.telegram = false`, el setup apaga cada perfil `vinci-<código>` con un archivo `gateway.parked` y saca
 el token de Telegram del perfil de Vinci; no borra nada. Con `true` y otro `./setup.sh`, vuelven los bots.
 
+Con systemd de usuario, el setup también instala y reinicia el servicio `vinci-panel`, el
+[panel de administración](panel.md), para que tome el código nuevo.
+
 Para desinstalar:
 
 ```bash
@@ -250,6 +253,7 @@ hermes gateway stop                              # si solo lo usabas para Vinci:
 hermes profile list                              # vinci y un vinci-<código> por materia
 hermes profile delete vinci                      # y lo mismo con cada vinci-<código>
 rm ~/.local/bin/aula && rm -r ~/.claude/skills/aula
+systemctl --user disable --now vinci-panel && rm ~/.config/systemd/user/vinci-panel.service   # el panel
 rm -r ~/.local/share/espol-academic-bot          # borra también el material y los cuadernos
 ```
 

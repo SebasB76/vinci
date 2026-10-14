@@ -35,7 +35,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
   poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
-  first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it.
+  first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
+  `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), and its notices (a reminder before a class; trusted, a friend's
@@ -70,6 +71,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import sqlite3
 import stat
 import subprocess
@@ -1859,6 +1861,38 @@ def test_whatsapp_captain(tmp_path):
                       "quiz que deja a medias para preguntar otra cosa sigue abierto en el contexto («respondió 1 de "
                       "2»); «sigamos con el quiz» le vuelve a mandar solo la pregunta que faltaba, y al votarla llega "
                       "el puntaje. `vinci-check say` le escribe por WhatsApp y lee su respuesta")
+
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        panel = subprocess.Popen([bot, "panel", "--puerto", str(port)], env={**w.base_env, "AULA_NOW": T_VINCI},
+                                 cwd=REPO, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            base = f"http://127.0.0.1:{port}"
+            for _ in range(50):
+                with contextlib.suppress(requests.ConnectionError):
+                    page = requests.get(base, timeout=5)
+                    break
+                time.sleep(0.2)
+            assert page.status_code == 200 and "Vinci · panel" in page.text
+            state = requests.get(f"{base}/api/estado", timeout=30).json()
+            assert state["gateway"]["alive"] and state["gateway"]["state"] == "running", state["gateway"]
+            assert {c["name"] for c in state["checks"]} == {"Sondeo", "Aula virtual", "Mantenimiento",
+                                                            "Token de Canvas"}, state["checks"]
+            assert {"vinci-sondeo", "vinci-mantenimiento", "vinci-resumen"} <= {j["name"] for j in state["jobs"]}
+            assert any(u["profile"] == "vinci" and u["calls"] for u in state["usage"]), "el gasto de Vinci sale"
+            chat = next(s for s in state["sessions"] if s["profile"] == "vinci" and s["source"] == "whatsapp"
+                        and s["chat_type"] == "dm")
+            assert chat["readable"] and chat["reply_seconds"] is not None, chat
+            detail = requests.get(f"{base}/api/sesion", params={"perfil": "vinci", "id": chat["id"]}, timeout=10).json()
+            assert any("qué tengo esta semana" in (st["text"] or "") for st in detail["steps"]), detail["steps"][-6:]
+            assert requests.get(f"{base}/api/sesion", params={"perfil": "vinci", "id": "nada"}, timeout=10
+                                ).status_code == 404
+        finally:
+            panel.terminate()
+            panel.wait(10)
+        report.append("`espol-bot panel` muestra el gateway vivo, la salud de Vinci, sus tareas automáticas, su gasto "
+                      "y la conversación del capitán con sus pasos, sin tocar el modelo ni el aula")
         (ARTIFACT / "whatsapp-capitan.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "capitán")
     write_part("test_whatsapp_captain", "WhatsApp: el chat del capitán", w.report, started)

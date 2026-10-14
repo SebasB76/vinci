@@ -208,12 +208,15 @@ def _index(pdf: _Pdf, headings: list[str]) -> list[int]:
 
 
 def _opening(pdf: _Pdf, body: str, points: list[str], visual: dict | None) -> float:
-    """The height of a section up to its visual: what stays on one page with the heading."""
+    """What stays on one page with the heading: a short text with its visual, or a long text's start (the visual then
+    goes where it fits, instead of leaving most of a page blank)."""
     pdf.style(11)
     height = 18 + sum(pdf.multi_cell(0, LINE, pdf.md(p.strip()), markdown=True, dry_run=True, output="HEIGHT") + 2.5
                       for p in re.split(r"\n\s*\n", body) if p.strip())
     height += sum(pdf.multi_cell(pdf.epw - 7, LINE, pdf.md(p), markdown=True, dry_run=True, output="HEIGHT") + 1.2
                   for p in points)
+    if height > 70:
+        return 32
     return height + (visuales.height(pdf, visual) if visual else 0)
 
 

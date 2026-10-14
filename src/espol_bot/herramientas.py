@@ -65,7 +65,7 @@ from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
 from espol_bot import (academic_portal, agenda, citations, conversation, diapositivas, grades, health, horario, libros,
-                       materias, messages, portal_login, priority, quiz, resumen, store, submission)
+                       materias, messages, portal_login, priority, quiz, resumen, store, submission, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -135,11 +135,39 @@ SLIDES_PROPERTIES = {
         "required": ["titulo", "puntos"]}},
 }
 SUMMARY = ("Arma un resumen en PDF con lo que escribiste: una portada con el título, una introducción corta, un "
-           "índice, una sección por tema (su explicación, sus puntos, un ejemplo y sus fuentes) y al final «Para "
-           "recordar». Usa **negrita** para los términos clave. Cada "
+           "índice, una sección por tema (su explicación, sus puntos, un visual, un ejemplo y sus fuentes) y al final "
+           "«Para recordar». Usa **negrita** para los términos clave. Cada "
            "fuente es una «cita» que te dio buscar_material o leer_archivo, copiada tal cual; reviso que hayas leído "
            "esa página. Devuelve la «ruta»: escríbela tal cual en tu respuesta, en una línea aparte y fuera de un "
            "bloque de código, y el archivo le llega al chat.")
+VISUAL = {
+    "type": "object", "description": "un esquema dibujado, solo si ayuda a entender (opcional). Según «tipo»: "
+    "flujo (pasos en orden) y ciclo (pasos que se repiten, con «centro») llevan «pasos»; comparacion lleva «columnas»; "
+    "jerarquia lleva «raiz» y «ramas»; pantalla (maqueta de una app o web) lleva «elementos» y «formato»; pagina "
+    "muestra una página de un PDF del material (su «archivo_id» y «pagina») con un diagrama o figura del profe",
+    "properties": {
+        "tipo": {"type": "string", "enum": list(visuales.KINDS)},
+        "titulo": {"type": "string", "description": "el pie de la figura"},
+        "pasos": {"type": "array", "items": {"type": "string"}, "maxItems": visuales.MAX_STEPS,
+                  "description": "frases cortas, de 2 a 6 palabras"},
+        "centro": {"type": "string", "description": "ciclo: lo que se repite (ej. «Sprint»)"},
+        "columnas": {"type": "array", "maxItems": visuales.MAX_COLUMNS, "items": {
+            "type": "object", "properties": {"titulo": {"type": "string"},
+                                             "puntos": {"type": "array", "items": {"type": "string"}}}}},
+        "raiz": {"type": "string"},
+        "ramas": {"type": "array", "maxItems": visuales.MAX_BRANCHES, "items": {
+            "type": "object", "properties": {"titulo": {"type": "string"},
+                                             "hijos": {"type": "array", "items": {"type": "string"}}}}},
+        "formato": {"type": "string", "enum": ["celular", "web"]},
+        "elementos": {"type": "array", "maxItems": visuales.MAX_PARTS, "items": {
+            "type": "object", "properties": {
+                "tipo": {"type": "string", "enum": list(visuales.PARTS)},
+                "texto": {"type": "string", "description": "lista y pestanas: sus partes separadas por «;»"}}}},
+        "archivo_id": {"type": "integer"},
+        "pagina": {"type": "integer"},
+    },
+    "required": ["tipo"],
+}
 SUMMARY_PROPERTIES = {
     "titulo": {"type": "string", "description": "el título del resumen"},
     "subtitulo": {"type": "string", "description": "la materia, o de qué clase o capítulo sale"},
@@ -151,6 +179,7 @@ SUMMARY_PROPERTIES = {
                                                                   "en blanco"},
                        "puntos": {"type": "array", "items": {"type": "string"}, "maxItems": resumen.MAX_POINTS,
                                   "description": "definiciones, pasos o ejemplos, uno por punto"},
+                       "visual": VISUAL,
                        "ejemplo": {"type": "string", "description": "un caso concreto que aterriza la idea "
                                                                     "(opcional)"},
                        "fuentes": {"type": "array", "items": {"type": "string"},
@@ -1271,6 +1300,27 @@ def _slides_tool(ctx: Ctx) -> Tool:
     return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
 
 
+def _page_for_summary(ctx: Ctx, course_ids, visual: dict) -> dict:
+    """A page of the material for a summary's visual: its image and its citation."""
+    try:
+        file_id, page = int(visual.get("archivo_id")), int(visual.get("pagina"))
+        info = queries.file_by_id(ctx.conn, file_id)
+    except (TypeError, ValueError):
+        raise ToolError("Un visual «pagina» lleva el «archivo_id» y la «pagina» de un PDF del material.") from None
+    except queries.NotFound as exc:
+        raise ToolError(str(exc)) from None
+    if course_ids is not None and info["curso_id"] not in course_ids:
+        raise ToolError("Ese archivo es de otra materia; solo puedes usar el material de la tuya.")
+    if info["extension"] != "pdf" or not info["descargado"]:
+        raise ToolError(f"No puedo mostrar páginas de «{info['archivo']}»: solo de un PDF ya bajado del aula.")
+    try:
+        image = extract.render_page(Path(info["descargado"]), page)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from None
+    citations.record(ctx.conn, ctx.bot, file_id, [page], ctx.now())
+    return {"imagen": image, "cita": citations.cite(info["archivo"], "página", page, url=info["url"])}
+
+
 def _summary_tool(ctx: Ctx) -> Tool:
     def crear(args):
         if ctx.hermes_home is None:
@@ -1291,6 +1341,9 @@ def _summary_tool(ctx: Ctx) -> Tool:
                     if checked:
                         section[key] = checked if isinstance(values, list) else checked[0]
             sections.append(section)
+            visual = section.get("visual") if isinstance(section, dict) else None
+            if isinstance(visual, dict) and visual.get("tipo") == "pagina":
+                section["visual"] = {**visual, **_page_for_summary(ctx, course_ids, visual)}
         if wrong:
             raise ToolError("Estas citas no salen de páginas que leíste: " + "; ".join(f"«{c}»" for c in wrong)
                             + ". Léelas con leer_archivo o buscar_material y copia su «cita», o quítalas.")

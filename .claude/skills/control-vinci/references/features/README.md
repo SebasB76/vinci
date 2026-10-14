@@ -71,7 +71,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Focus and activities | `conversation.py` (`note_turn`, `open_activities`), `materias.mentioned`, `study_activity` and `send_quiz` in `herramientas.py`, `quiz.resend` | `vinci-check say "estamos en <materia>"`, then `vinci-check whatsapp --chat dm`: «Materia en foco» in the next turn |
 | Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder (the E2E no longer covers it) |
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
-| PDF summaries | `src/espol_bot/resumen.py`, `crear_resumen` in `herramientas.py` | `vinci-check say "hazme un resumen en pdf de <tema>"`; the PDF reaches the captain's chat (uses the model) |
+| PDF summaries | `src/espol_bot/resumen.py`, `visuales.py` (diagrams and mockups), `crear_resumen` in `herramientas.py` | `vinci-check say "hazme un resumen en pdf de <tema>"`; the PDF reaches the captain's chat (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/` | `vinci-check page token`; `vinci-check status` (chain age) |
 | WhatsApp, groups, polls, voice | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group`; voice: the turn starts with «🎙️» and the transcript |

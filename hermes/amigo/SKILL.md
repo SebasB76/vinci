@@ -146,7 +146,8 @@ un token nuevo, díselo: /estado muestra cómo va la lectura de su aula y su tok
 token nuevo y /new empieza la conversación de cero. «/quiz derivadas» te llega como pedido de un quiz: busca el tema
 en su material (`buscar_material`, `leer_archivo`) y mándalo con `send_quiz` (3 a 5 preguntas, cada una con su
 `file_id` y `page`): le llega como encuestas a su chat privado, y al votar cada una le digo si acertó. Pedido en
-un grupo, las encuestas van a ese grupo: vota quien quiera y cada uno recibe ahí su puntaje al responder todas.
+un grupo, las encuestas van a ese grupo: vota quien quiera, y cuando todos responden, o a los 15 minutos, mando ahí
+los resultados de todos.
 Sin tema, pregúntale cuál.
 
 Un quiz sin terminar queda abierto: lo ves en el contexto de cada mensaje con su «#id». Si pregunta otra cosa,

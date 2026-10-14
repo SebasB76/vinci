@@ -21,9 +21,10 @@ friend's and in the default one; it acts only on WhatsApp.
   the token reaches no model and no session log; a raw token pasted by mistake is not passed on either.
 - A vote on one of Vinci's polls (WhatsApp's stand-in for a card's buttons, whatsapp.py) runs that button for
   whoever voted, over their own aula (`espol-bot whatsapp-comando voto`), without the model. In a group Hermes only
-  lets through a vote on a quiz (its options start with 🇦 🇧…, a mention pattern in setup): anyone's vote there is
-  scored (`espol-bot whatsapp-grupo voto`), and whoever answered every question gets their score, tagged. A vote
-  skips Hermes' sessions altogether (_wire_votes): one cast while Vinci's turn still runs is not queued for the model.
+  lets through a vote on a quiz (its options start with 🇦 🇧…, a mention pattern in setup): anyone's vote there
+  counts (`espol-bot whatsapp-grupo voto`). Once every member answered it all, or 15 minutes after the quiz went out
+  (QUIZ_CLOSES, checked by the relay loop), the group gets everyone's results, tagged. A vote skips Hermes' sessions
+  altogether (_wire_votes): one cast while Vinci's turn still runs is not queued for the model.
 - A voice note or an audio file: Hermes transcribes a voice note on its own, not an audio file (a recording someone
   forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
   Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
@@ -74,6 +75,7 @@ GROUPS = "{{GROUPS}}"
 BRIDGE = "{{BRIDGE}}"
 SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are Vinci's own
 NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
+QUIZ_CLOSES = os.path.join(os.path.dirname(GROUPS), "quiz-cierres.json")
 RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
 GROUP_IDLE = int("{{GROUP_IDLE}}")  # seconds; the E2E test shortens it
 PRIVATE_IDLE = 4 * 3600
@@ -230,10 +232,10 @@ async def _sort(event, source, gateway):
         who = CAPTAIN if captain else (friend or {}).get("numero") if (friend or {}).get("estado") == "activo" else None
         poll = getattr(event, "reply_to_message_id", None)
         if chat.endswith("@g.us"):
-            voter = str(getattr(source, "user_id", "") or "")
+            voter = _voter(event)
             if poll and voter and chat in _read(GROUPS, "grupos"):
-                vote = json.dumps({"encuesta": poll, "opcion": text, "numeros": sorted(senders),
-                                   "votante": voter if "@" in voter else f"{voter}@s.whatsapp.net"})
+                vote = json.dumps({"encuesta": poll, "opcion": text, "numeros": sorted(_aliases(voter)),
+                                   "votante": voter})
                 await _answer(chat, await _run("whatsapp-grupo", "voto", chat, stdin=vote), None, gateway)
             return _skip("voto en un quiz de grupo")
         if who and poll:
@@ -334,6 +336,14 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
                                    stdin=rest if name == "marca" else None), reply_to, gateway)
     return _skip(f"/{name}")
+
+
+def _voter(event):
+    """Who cast a group vote. The bridge names the poll's author (Vinci) as its sender there; its tally of this one
+    update names the voter."""
+    native = (getattr(event, "metadata", None) or {}).get("whatsapp_native") or {}
+    tally = (native.get("pollUpdate") or {}).get("aggregation") or []
+    return next((str(v) for option in tally for v in option.get("voters") or []), None)
 
 
 def _kind(event):
@@ -556,6 +566,10 @@ def _relay_loop(ctx):
         except Exception:
             logger.exception("no pude retomar una pregunta del Académico")
         try:
+            _close_quizzes()
+        except Exception:
+            logger.exception("no pude cerrar un quiz de grupo")
+        try:
             if not _relay_waiting():
                 continue
             proc = subprocess.run([BOT, "whatsapp-rele", "--json"], capture_output=True, timeout=600, env=_env())
@@ -590,11 +604,29 @@ def _inject_turns(ctx):
             logger.info("pregunta del Académico devuelta a su chat")
 
 
+def _close_quizzes():
+    """The results of each group quiz not everyone finished, once its time is up (amigos.QUIZ_CLOSES)."""
+    closes = _read_dict(QUIZ_CLOSES).get("quizzes") or {}
+    now = _now()
+    for group in sorted({c["grupo"] for c in closes.values() if datetime.fromisoformat(c["a"]) <= now}):
+        proc = subprocess.run([BOT, "whatsapp-grupo", "cierre", group, "--json"], capture_output=True, timeout=120,
+                              env=_env())
+        if proc.returncode != 0:
+            message = proc.stderr.decode(errors="replace").strip().splitlines()
+            logger.warning("whatsapp-grupo cierre: %s", message[-1] if message else proc.returncode)
+            continue
+        _deliver(group, json.loads(proc.stdout.decode() or "{}"), None)
+
+
+def _now():
+    # AULA_NOW: the clock espol-bot keeps (aula_core.config.now_utc), which wrote the expiries these files hold
+    return datetime.fromisoformat(os.environ["AULA_NOW"]) if os.environ.get("AULA_NOW") else datetime.now(timezone.utc)
+
+
 def _relay_waiting():
     """Whether some link sent on WhatsApp may still post to the relay (relay.py's registry)."""
     data = _read_dict(RELAY)
-    # AULA_NOW: the clock espol-bot keeps (aula_core.config.now_utc), which wrote these expiries
-    now = datetime.fromisoformat(os.environ["AULA_NOW"]) if os.environ.get("AULA_NOW") else datetime.now(timezone.utc)
+    now = _now()
     if not data.get("url"):
         return False
     for box in (data.get("mailboxes") or {}).values():

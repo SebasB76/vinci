@@ -1943,7 +1943,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("send_quiz", "En WhatsApp: manda un quiz corto (/quiz) a su chat privado, una encuesta por pregunta; al "
              "votar cada una le digo si acertó y por qué, y al terminar su puntaje con la fuente de cada pregunta (lo "
              "que falló queda como tema débil en el cuaderno de la materia). Pedido en un grupo, las encuestas van a "
-             "ese grupo: vota quien quiera y cada uno recibe ahí su puntaje al responder todas. Cada pregunta sale "
+             "ese grupo: vota quien quiera, y cuando todos responden, o a los 15 minutos, mando ahí los resultados "
+             "de todos. Cada pregunta sale "
              "del material que leíste (file_id y page) o, en su chat privado, de una entrada del cuaderno "
              "(entry_id); la cita la pongo yo. En Telegram, el quiz lo hace el bot de la materia.", send_quiz,
              {"materia": {"type": "string"}, "topic": {"type": "string", "description": "el tema, corto"},

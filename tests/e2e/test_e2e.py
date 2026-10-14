@@ -44,8 +44,9 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
-  that goes idle, a poll for a button, a quiz a guest asks for in the group that the guest and Angel answer there,
-  each scored with a mention, his dashboard, his commands); voice notes and audio files heard by the real local
+  that goes idle, a poll for a button, a quiz a guest asks for in the group: one results message once the guest, Angel
+  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands);
+  voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; the block for whoever is not a Vinci's owner; Angel
   removed with his tokens.
 
@@ -2261,47 +2262,74 @@ def test_whatsapp_friend(tmp_path):
                       "una encuesta «✅ Hecho / ⏳ Todavía no» en su chat privado; su voto cierra el pendiente como "
                       "lo haría un botón, sin el modelo")
 
-        # 10f3b. A quiz asked for in the group goes to the group: anyone there votes (a guest, Angel through his own
-        # Vinci's profile), the first vote counts, and whoever answers every question gets their score, tagged
-        mark = len(wa.sent)
-        asked = say(GROUP_WA, stranger_jid, "@vinci hazme un quiz del sílabo de cálculo aquí", "Alguien", group=True)
-        polls = wa.wait_for(lambda b: (lambda p: p if len(p) == 2 else None)(b.polls_to(GROUP_WA, mark)), 30)
-        assert polls, fail(f"el quiz no llegó al grupo: {text_of(asked)} {wa.sent[mark:]}")
-        assert not wa.polls_to(captain_jid, mark), "un quiz pedido en el grupo no va al chat privado del capitán"
-        assert all(o[0] in quiz_module.GROUP_LETTERS and o[1] == " " for p in polls for o in p["options"]), polls
-        units, credits = polls
+        # 10f3b. A quiz asked for in the group goes to the group: anyone there votes (a guest, Angel, the captain), the
+        # first vote counts, and the group gets everyone's results once all three answered it all; a second quiz only
+        # Angel finishes closes when its 15 minutes are up, with his results alone
+        def group_quiz() -> list[dict]:
+            mark = len(wa.sent)
+            asked = say(GROUP_WA, stranger_jid, "@vinci hazme un quiz del sílabo de cálculo aquí", "Alguien", group=True)
+            polls = wa.wait_for(lambda b: (lambda p: p if len(p) == 2 else None)(b.polls_to(GROUP_WA, mark)), 30)
+            assert polls, fail(f"el quiz no llegó al grupo: {text_of(asked)} {wa.sent[mark:]}")
+            assert not wa.polls_to(captain_jid, mark), "un quiz pedido en el grupo no va al chat privado del capitán"
+            assert all(o[0] in quiz_module.GROUP_LETTERS and o[1] == " " for p in polls for o in p["options"]), polls
+            return polls
 
         def option(poll: dict, answer: str) -> str:
             return next(o for o in poll["options"] if o[2:] == answer)
 
-        def score_for(jid: str, since: int) -> list[dict]:
-            return [m for m in wa.messages_to(GROUP_WA, since) if "Quiz: Sílabo de Cálculo" in m.get("message", "")
-                    and m.get("mentions") == [jid]]
+        def results(since: int) -> list[dict]:
+            return [m for m in wa.messages_to(GROUP_WA, since) if "Quiz: Sílabo de Cálculo" in m.get("message", "")]
 
+        units, credits = group_quiz()
         calls, mark = len(llm.requests), len(wa.sent)
         wa.vote(GROUP_WA, stranger_jid, units["messageId"], option(units, "Unidad 4"))
         wa.vote(GROUP_WA, stranger_jid, units["messageId"], option(units, "Unidad 1"))  # a changed vote: not counted
         wa.vote(GROUP_WA, stranger_jid, credits["messageId"], option(credits, "2"))
-        stranger_score = wa.wait_for(lambda b: score_for(stranger_jid, mark), 60)
-        assert stranger_score, fail(f"sin puntaje para el invitado: {wa.messages_to(GROUP_WA, mark)}")
-        scored = stranger_score[0]["message"]
-        assert scored.startswith(f"🧠 @{STRANGER_WA} · *Quiz: Sílabo de Cálculo* — 1 de 2."), scored
-        assert "✅ 1." in scored and "❌ 2." in scored and "era «4»" in scored and "📄" in scored, scored
         wa.vote(GROUP_WA, angel_jid, units["messageId"], option(units, "Unidad 4"))
         wa.vote(GROUP_WA, angel_jid, credits["messageId"], option(credits, "4"))
-        angel_score = wa.wait_for(lambda b: score_for(angel_jid, mark), 60)
-        assert angel_score and "2 de 2, ¡perfecto!" in angel_score[0]["message"], \
-            fail(f"sin puntaje para Angel: {wa.messages_to(GROUP_WA, mark)}")
-        assert len([m for m in wa.messages_to(GROUP_WA, mark) if "Quiz:" in m.get("message", "")]) == 2, \
-            "cada uno recibe un solo puntaje, y nada antes de responder todas"
-        assert len(llm.requests) == calls, "los votos del grupo se cuentan sin el modelo"
+        wa.vote(GROUP_WA, captain_jid, units["messageId"], option(units, "Unidad 1"))
+        time.sleep(6)
+        assert not results(mark), f"nada antes de que respondan todos: {wa.messages_to(GROUP_WA, mark)}"
+        wa.vote(GROUP_WA, captain_jid, credits["messageId"], option(credits, "4"))
+        everyone = wa.wait_for(lambda b: results(mark), 60)
+        assert everyone, fail(f"sin resultados con todos respondidos: {wa.messages_to(GROUP_WA, mark)}")
+        board = everyone[0]["message"]
+        assert board.startswith("🧠 *Quiz: Sílabo de Cálculo* — resultados\n"
+                                f"🥇 @{ANGEL_WA} · 2 de 2\n"), board
+        assert f"🥈 @{STRANGER_WA} · 1 de 2" in board and f"🥈 @{CAPTAIN_WA} · 1 de 2" in board, board
+        assert "→ «Unidad 4»" in board and "→ «4»" in board and "📄" in board, board
+        assert sorted(everyone[0]["mentions"]) == sorted([angel_jid, stranger_jid, captain_jid]), everyone[0]
+        weak = [e["texto"] for e in entries(data_dir, "MATG1049") if e["tipo"] == "tema_debil"]
+        assert any(t.startswith("Quiz «Sílabo de Cálculo»: fallé «¿Qué unidad") for t in weak), \
+            f"lo que falló el capitán queda como tema débil en su cuaderno: {weak}"
+        time.sleep(3)
+        assert len(results(mark)) == 1 and len(llm.requests) == calls, "un solo mensaje de resultados, sin el modelo"
         md.append(f"→ al grupo: [2 encuestas: {' / '.join(units['options'])}]\n"
-                  f"**Alguien** vota la 1 bien, cambia su voto y falla la 2 → Vinci: {normalize(scored)}\n"
-                  f"**Angel** vota las dos bien → Vinci: {normalize(angel_score[0]['message'])}\n")
+                  "**Alguien** vota la 1 bien, cambia su voto y falla la 2; **Angel** vota las dos bien; **Capitán** "
+                  f"falla la 1 y acierta la 2 → Vinci: {normalize(board)}\n")
+
+        units, credits = group_quiz()
+        mark = len(wa.sent)
+        wa.vote(GROUP_WA, angel_jid, units["messageId"], option(units, "Unidad 4"))
+        wa.vote(GROUP_WA, angel_jid, credits["messageId"], option(credits, "4"))
+        closes = data_dir / "amigos" / "quiz-cierres.json"
+        waiting = wa.wait_for(lambda b: (lambda c: c if c else None)(
+            json.loads(closes.read_text())["quizzes"] if closes.exists() else {}), 30)
+        assert waiting and [c["grupo"] for c in waiting.values()] == [GROUP_WA], waiting
+        time.sleep(4)
+        assert not results(mark), "con uno solo que respondió, el quiz espera sus 15 minutos"
+        closes.write_text(json.dumps({"quizzes": {k: {**c, "a": "2026-09-30T13:00:00Z"} for k, c in waiting.items()}}))
+        late = wa.wait_for(lambda b: results(mark), 30)
+        assert late, fail(f"a los 15 minutos no llegaron los resultados: {wa.messages_to(GROUP_WA, mark)}")
+        assert f"🥇 @{ANGEL_WA} · 2 de 2" in late[0]["message"] and late[0]["mentions"] == [angel_jid], late[0]
+        assert json.loads(closes.read_text())["quizzes"] == {}, "el quiz cerrado sale de la lista"
+        md.append(f"Otro quiz que solo Angel termina, pasados sus 15 minutos → Vinci: {normalize(late[0]['message'])}\n")
         report.append("Un quiz pedido en el grupo (aquí por un invitado) sale como encuestas en el grupo, con opciones "
-                      "🇦 🇧 🇨: el patrón de mención de Hermes deja pasar esos votos sin mencionar a Vinci. Cuenta el "
-                      "primer voto de cada uno, y quien responde todas recibe en el grupo su puntaje con una mención, "
-                      "sin el modelo; Angel vota desde el perfil de su propio Vinci y el quiz del capitán lo cuenta")
+                      "🇦 🇧 🇨: el patrón de mención de Hermes deja pasar esos votos sin mencionar a Vinci, y el "
+                      "votante sale del recuento del puente, que da a Vinci como remitente. Cuenta el primer voto de "
+                      "cada uno; cuando los tres del grupo responden todo, llega un solo mensaje con los resultados "
+                      "de todos, medallas, menciones y las respuestas, sin el modelo, y lo que falló el capitán va a "
+                      "su cuaderno. Un quiz que no todos terminan cierra a los 15 minutos con quien respondió")
 
         # 10f4. /entregas: a button to the dashboard on WhatsApp; a tick on it comes back through the relay, and
         # typed as /marca still works (what the page does when the relay fails)

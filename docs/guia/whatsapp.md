@@ -77,7 +77,8 @@ su encuesta en vez de botones.
   te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
   contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al
   final del chat. En un grupo activo, «@vinci /quiz scrum» manda las encuestas al grupo, con opciones 🇦 🇧 🇨 🇩:
-  vota quien quiera, cuenta el primer voto de cada uno, y quien responde todas recibe ahí su puntaje con una mención.
+  vota quien quiera y cuenta el primer voto de cada uno. Cuando todos los del grupo responden, o a los 15 minutos,
+  Vinci manda un solo mensaje con los resultados de todos (con medallas y una mención a cada uno) y las respuestas.
   Esas preguntas salen solo del material del curso, nunca de tu cuaderno.
 - **Tengo 20 minutos.** «Tengo 20 minutos para Física»: Vinci mira lo que te cuesta, tus dudas abiertas y lo que
   vence pronto, te propone qué cabe en ese tiempo y lo hacen paso a paso, con ejercicios de tu material. Al final te
@@ -169,7 +170,7 @@ y Vinci los contesta sin gastar tokens:
 | `/estado` | La salud del sistema, como en Telegram |
 | `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: pegas el token nuevo y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
 | `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
-| `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo y cada uno recibe ahí su puntaje |
+| `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo, y los resultados de todos llegan cuando todos responden o a los 15 minutos |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
 En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas de tus tarjetas

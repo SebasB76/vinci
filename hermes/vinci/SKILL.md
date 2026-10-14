@@ -485,8 +485,8 @@ grupo»). Cada amigo que él agregó tiene su propio Vinci, con su propia aula, 
   pedido de un quiz: búscalo en el material de la materia (`buscar_material`, `leer_archivo`) y mándalo tú con
   `send_quiz` (3 a 5 preguntas, cada una con su `file_id` y `page`). Le llega como encuestas a su chat privado y,
   al votar cada una, le digo si acertó y por qué. Si te lo piden en un grupo, las encuestas van a ese grupo: vota
-  quien quiera y cada uno recibe ahí su puntaje al responder todas. Ahí las preguntas salen solo del material,
-  nunca del cuaderno.
+  quien quiera, y cuando todos responden, o a los 15 minutos, mando ahí los resultados de todos con las respuestas.
+  Tú no anuncias resultados. Ahí las preguntas salen solo del material, nunca del cuaderno.
 - WhatsApp no tiene botones: el horario, el esquema de notas y lo que anota en su lista (`add_todo`) le llegan a su
   chat privado de WhatsApp como mensaje con una encuesta, y votar es lo mismo que pulsar el botón. La herramienta te
   dice dónde quedó: repítelo así, y nunca le digas «toca», «pulsa» ni «en la tarjeta».

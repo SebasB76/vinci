@@ -65,7 +65,7 @@ from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
 from espol_bot import (academic_portal, agenda, citations, conversation, diapositivas, grades, health, horario, libros,
-                       materias, messages, portal_login, priority, quiz, store, submission)
+                       materias, messages, portal_login, priority, quiz, resumen, store, submission, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -134,6 +134,60 @@ SLIDES_PROPERTIES = {
                        "notas": {"type": "string", "description": "lo que dice el que expone (opcional)"}},
         "required": ["titulo", "puntos"]}},
 }
+SUMMARY = ("Arma un resumen en PDF con lo que escribiste: una portada con el título, una introducción corta, un "
+           "índice, una sección por tema (su explicación, sus puntos, un visual, un ejemplo y sus fuentes) y al final "
+           "«Para recordar». Usa **negrita** para los términos clave. Cada "
+           "fuente es una «cita» que te dio buscar_material o leer_archivo, copiada tal cual; reviso que hayas leído "
+           "esa página. Devuelve la «ruta»: escríbela tal cual en tu respuesta, en una línea aparte y fuera de un "
+           "bloque de código, y el archivo le llega al chat.")
+VISUAL = {
+    "type": "object", "description": "un esquema dibujado, solo si ayuda a entender (opcional). Según «tipo»: "
+    "flujo (pasos en orden) y ciclo (pasos que se repiten, con «centro») llevan «pasos»; comparacion lleva «columnas»; "
+    "jerarquia lleva «raiz» y «ramas»; pantalla (maqueta de una app o web) lleva «elementos» y «formato»; pagina "
+    "muestra una página de un PDF del material (su «archivo_id» y «pagina») con un diagrama o figura del profe",
+    "properties": {
+        "tipo": {"type": "string", "enum": list(visuales.KINDS)},
+        "titulo": {"type": "string", "description": "el pie de la figura"},
+        "pasos": {"type": "array", "items": {"type": "string"}, "maxItems": visuales.MAX_STEPS,
+                  "description": "frases cortas, de 2 a 6 palabras"},
+        "centro": {"type": "string", "description": "ciclo: lo que se repite (ej. «Sprint»)"},
+        "columnas": {"type": "array", "maxItems": visuales.MAX_COLUMNS, "items": {
+            "type": "object", "properties": {"titulo": {"type": "string"},
+                                             "puntos": {"type": "array", "items": {"type": "string"}}}}},
+        "raiz": {"type": "string"},
+        "ramas": {"type": "array", "maxItems": visuales.MAX_BRANCHES, "items": {
+            "type": "object", "properties": {"titulo": {"type": "string"},
+                                             "hijos": {"type": "array", "items": {"type": "string"}}}}},
+        "formato": {"type": "string", "enum": ["celular", "web"]},
+        "elementos": {"type": "array", "maxItems": visuales.MAX_PARTS, "items": {
+            "type": "object", "properties": {
+                "tipo": {"type": "string", "enum": list(visuales.PARTS)},
+                "texto": {"type": "string", "description": "lista y pestanas: sus partes separadas por «;»"}}}},
+        "archivo_id": {"type": "integer"},
+        "pagina": {"type": "integer"},
+    },
+    "required": ["tipo"],
+}
+SUMMARY_PROPERTIES = {
+    "titulo": {"type": "string", "description": "el título del resumen"},
+    "subtitulo": {"type": "string", "description": "la materia, o de qué clase o capítulo sale"},
+    "introduccion": {"type": "string", "description": "dos o tres frases: qué cubre y para qué sirve"},
+    "secciones": {"type": "array", "maxItems": resumen.MAX_SECTIONS, "items": {
+        "type": "object",
+        "properties": {"titulo": {"type": "string"},
+                       "texto": {"type": "string", "description": "la explicación, en párrafos separados por una línea "
+                                                                  "en blanco"},
+                       "puntos": {"type": "array", "items": {"type": "string"}, "maxItems": resumen.MAX_POINTS,
+                                  "description": "definiciones, pasos o ejemplos, uno por punto"},
+                       "visual": VISUAL,
+                       "ejemplo": {"type": "string", "description": "un caso concreto que aterriza la idea "
+                                                                    "(opcional)"},
+                       "fuentes": {"type": "array", "items": {"type": "string"},
+                                   "description": "las «cita» de las páginas de donde sale la sección"}},
+        "required": ["titulo"]}},
+    "para_recordar": {"type": "array", "items": {"type": "string"}, "maxItems": resumen.MAX_TAKEAWAYS,
+                      "description": "de 3 a 5 ideas, una frase cada una, lo que tiene que saber sí o sí"},
+}
 # What someone who is not this Vinci's owner may still run, should they reach it (the plugin's pre_tool_call hook
 # blocks the rest), each with the arguments they may not pass: course material, past exams, slides and a quiz in
 # their group (only from the material there). Nothing of the owner's own: deliverables, announcements, grades, lists,
@@ -141,7 +195,7 @@ SLIDES_PROPERTIES = {
 GUEST_TOOLS: dict[str, frozenset[str]] = {
     name: frozenset() for name in (
         "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas",
-        "send_quiz")
+        "crear_resumen", "send_quiz")
 } | {"libro_principal": frozenset({"titulo"})}
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
         "entrega, puntos, la rúbrica con la que la califican, las fechas ya en hora de Ecuador («vence»; «cierra»: "
@@ -202,7 +256,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "academic_record", "chat_note",
+    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
     "set_assignment_delivery", "study_activity"})
 
 
@@ -1254,6 +1308,64 @@ def _slides_tool(ctx: Ctx) -> Tool:
     return Tool("crear_diapositivas", SLIDES, crear, SLIDES_PROPERTIES, ["titulo", "diapositivas"], read_only=False)
 
 
+def _page_for_summary(ctx: Ctx, course_ids, visual: dict) -> dict:
+    """A page of the material for a summary's visual: its image and its citation."""
+    try:
+        file_id, page = int(visual.get("archivo_id")), int(visual.get("pagina"))
+        info = queries.file_by_id(ctx.conn, file_id)
+    except (TypeError, ValueError):
+        raise ToolError("Un visual «pagina» lleva el «archivo_id» y la «pagina» de un PDF del material.") from None
+    except queries.NotFound as exc:
+        raise ToolError(str(exc)) from None
+    if course_ids is not None and info["curso_id"] not in course_ids:
+        raise ToolError("Ese archivo es de otra materia; solo puedes usar el material de la tuya.")
+    if info["extension"] != "pdf" or not info["descargado"]:
+        raise ToolError(f"No puedo mostrar páginas de «{info['archivo']}»: solo de un PDF ya bajado del aula.")
+    try:
+        image = extract.render_page(Path(info["descargado"]), page)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from None
+    citations.record(ctx.conn, ctx.bot, file_id, [page], ctx.now())
+    return {"imagen": image, "cita": citations.cite(info["archivo"], "página", page, url=info["url"])}
+
+
+def _summary_tool(ctx: Ctx) -> Tool:
+    def crear(args):
+        if ctx.hermes_home is None:
+            raise ToolError("No sé dónde guardar el archivo: este servidor corre sin --hermes-home.")
+        course_ids = agenda.course_ids_for(ctx.conn, ctx.subject()) if ctx.code else None
+        sections, wrong = [], []
+        for section in args.get("secciones") or []:
+            if isinstance(section, dict):
+                section = dict(section)
+                # The PDF skips the plugin's citation check on replies, so each citation is checked here.
+                for key in ("texto", "puntos", "ejemplo", "fuentes"):
+                    values = section.get(key)
+                    checked = []
+                    for value in values if isinstance(values, list) else [values] if values else []:
+                        text, changes = citations.check(ctx.conn, ctx.bot, course_ids, str(value))
+                        wrong += [c["cita"] for c in changes if not c["cambio"].startswith("enlace")]
+                        checked.append(text)
+                    if checked:
+                        section[key] = checked if isinstance(values, list) else checked[0]
+            sections.append(section)
+            visual = section.get("visual") if isinstance(section, dict) else None
+            if isinstance(visual, dict) and visual.get("tipo") == "pagina":
+                section["visual"] = {**visual, **_page_for_summary(ctx, course_ids, visual)}
+        if wrong:
+            raise ToolError("Estas citas no salen de páginas que leíste: " + "; ".join(f"«{c}»" for c in wrong)
+                            + ". Léelas con leer_archivo o buscar_material y copia su «cita», o quítalas.")
+        try:
+            path, pages = resumen.build(ctx.hermes_home / "cache" / "documents", args.get("titulo"), sections,
+                                        args.get("subtitulo") or "", args.get("introduccion") or "",
+                                        args.get("para_recordar") or [], ctx.now())
+        except resumen.SummaryError as exc:
+            raise ToolError(f"No pude armar el resumen: {exc}.") from None
+        return {"ruta": str(path), "paginas": pages}
+
+    return Tool("crear_resumen", SUMMARY, crear, SUMMARY_PROPERTIES, ["titulo", "secciones"], read_only=False)
+
+
 def _open_activity(ctx: Ctx, session: str, activity_id) -> dict:
     """The activity named by its #id, else the newest open one in this conversation."""
     found = conversation.open_activities(ctx.conn, session, ctx.now())
@@ -1902,6 +2014,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("reactivar_materia", "Le muestra un botón para reactivar el bot archivado de una materia.", reactivar,
              {"materia": {"type": "string"}}, ["materia"], read_only=False),
         _slides_tool(ctx),
+        _summary_tool(ctx),
         Tool("academic_record", PORTAL, lambda args: _academic_record(ctx, args), PORTAL_PROPERTIES, ["topic", "question"],
              read_only=False),
     ])
@@ -2323,6 +2436,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
               "questions": QUIZ_QUESTIONS},
              ["topic", "questions"], read_only=False),
         _slides_tool(ctx),
+        _summary_tool(ctx),
     ])
 
 

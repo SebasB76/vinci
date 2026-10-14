@@ -31,6 +31,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Schedule from a screenshot | screenshot to Vinci → «Guardar» | screenshot to Vinci → «✅ Guardar horario» poll | yes (reading), no (saving) | `instalacion.md` «8. Mándale tu horario a Vinci» |
 | Class notes folder (`//vinci`) | answers and summaries in the subject bot chat | answers and summaries in Vinci's DM | yes | `uso.md` «Tus apuntes de clase» |
 | Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
+| PDF summaries | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
 | `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
 | `/token` new Canvas token | Mini App form | guide image + link button, back through the relay | no | `uso.md` «Token nuevo desde Telegram (`/token`)» |
 | `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
@@ -70,6 +71,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Focus and activities | `conversation.py` (`note_turn`, `open_activities`), `materias.mentioned`, `study_activity` and `send_quiz` in `herramientas.py`, `quiz.resend` | `vinci-check say "estamos en <materia>"`, then `vinci-check whatsapp --chat dm`: «Materia en foco» in the next turn |
 | Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder (the E2E no longer covers it) |
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
+| PDF summaries | `src/espol_bot/resumen.py`, `visuales.py` (diagrams and mockups), `crear_resumen` in `herramientas.py` | `vinci-check say "hazme un resumen en pdf de <tema>"`; the PDF reaches the captain's chat (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/` | `vinci-check page token`; `vinci-check status` (chain age) |
 | WhatsApp, groups, polls, voice | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group`; voice: the turn starts with «🎙️» and the transcript |

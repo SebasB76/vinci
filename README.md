@@ -44,6 +44,7 @@ y te ayuda a estudiar por Telegram y WhatsApp.
 - **Cuaderno de cada materia.** Le cuentas lo que vieron, o le mandas una foto de la pizarra o una nota de voz, y lo guarda con un resumen.
 - **Tus apuntes de clase.** Escribe `//vinci <pregunta>` en tus notas y Vinci te contesta en el chat.
 - **Diapositivas.** «Hazme unas diapositivas de integrales dobles» y te manda el `.pptx`.
+- **Resúmenes en PDF.** «Hazme un resumen en PDF de estos temas» y te manda un PDF con cada tema, sus puntos, diagramas o maquetas cuando ayudan, y el enlace del aula de cada fuente.
 - **PDFs escaneados.** Lee con OCR las fotocopias, para que la búsqueda también las encuentre.
 
 **Saca tus cuentas**

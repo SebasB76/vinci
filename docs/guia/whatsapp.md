@@ -173,6 +173,6 @@ El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con
 notas con el esquema que guarda con su voto, y los recordatorios del aula con la encuesta «✅ Ya lo entregué».
 
 En un grupo activo, Vinci también le contesta a quien todavía no tiene su Vinci, como invitado: charla, explica,
-busca en la web, el material de los cursos, exámenes anteriores, diapositivas y un quiz en el grupo. No ve su aula ni le muestra nada
+busca en la web, el material de los cursos, exámenes anteriores, diapositivas, resúmenes en PDF y un quiz en el grupo. No ve su aula ni le muestra nada
 tuyo, y si pide sus tareas o sus notas, le dice que te pida que lo agregues. Esas respuestas usan tu modelo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
 `secrets.env`.

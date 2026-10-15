@@ -17,6 +17,8 @@ Tables:
                  limit, attempts, when it opens and closes, whether it shows results); its questions never
                  (Canvas refuses them to a student before an attempt)
   pages          the course Pages already read, with the files and links they point to
+  module_items   every item of the course's Modules in the order the student sees them (titles, files,
+                 videos, pages, assignments, outside tools like Perusall, links), each with its aula link
   unreachable    files linked somewhere that this student cannot open (retried weekly)
   bibliography   the main and complementary books parsed from each syllabus
   events         changes detected by a sync (new assignment, grade posted, ...);
@@ -155,6 +157,19 @@ CREATE TABLE IF NOT EXISTS pages (
     refs TEXT NOT NULL DEFAULT '{}',
     fetched_at TEXT,
     PRIMARY KEY (course_id, slug)
+);
+
+CREATE TABLE IF NOT EXISTS module_items (
+    course_id INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    module TEXT NOT NULL,
+    section TEXT,
+    kind TEXT NOT NULL,
+    title TEXT,
+    content_id INTEGER,
+    html_url TEXT,
+    external_url TEXT,
+    PRIMARY KEY (course_id, seq)
 );
 
 CREATE TABLE IF NOT EXISTS unreachable (

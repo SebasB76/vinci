@@ -265,7 +265,7 @@ def run_vinci(cfg: BotConfig, now: datetime) -> None:
         aula.close()
     from espol_bot import avisos
     for notice, what in ((lambda: avisos.class_reminders(cfg, subjects, now), "avisos de clase"),
-                         (lambda: avisos.group_reminders(cfg, now), "recordatorios de grupo")):
+                         (lambda: avisos.chat_reminders(cfg, now), "recordatorios")):
         try:
             notice()
         except Exception:  # the groups must never hold back the captain's own brief

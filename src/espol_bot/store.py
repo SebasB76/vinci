@@ -30,8 +30,8 @@
   note_questions       the «//vinci …» lines of a note, each handed to the subject bot once
   chat_notes           what holds in one chat only (a group's way of being spoken to), which Vinci reads in
                        every turn there and nowhere else (conversation.py)
-  group_reminders      a message Vinci's agenda sends to a WhatsApp group at the time the captain asked for there
-                       («recuérdanos el viernes a mediodía…»), once (conversation.py, avisos.py)
+  group_reminders      a message Vinci's agenda sends to a WhatsApp chat (a group, or the captain's own) at the time
+                       the captain asked for there («recuérdanos el viernes a mediodía…»), once (conversation.py, avisos.py)
   chat_focus           per conversation (Hermes' session key: a chat, and in a group one person): the subject it is
                        about, while it lasts, for what comes in without one (a photo, a voice note)
   activities           per conversation: a quiz or a study session open, paused or done, with where it got to, so

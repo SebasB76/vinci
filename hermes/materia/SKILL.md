@@ -27,6 +27,7 @@ misma materia.
 | Mostrarle cómo se evalúa la materia para que lo guarde | `propose_grading_scheme` |
 | Anotar una nota que no está en el aula | `record_grade` |
 | Material: catálogo, buscar, leer (también un enlace de fuera), bajar | `archivos`, `buscar_material`, `leer_archivo`, `bajar_archivo` |
+| Lo que muestran los Módulos del aula: grabaciones, links, Perusall, Zoom, lo de cada semana | `modulos` (`nombre`) |
 | Ver una página de un PDF como imagen (escaneos, fórmulas, figuras) | `ver_pagina` |
 | Tu libro principal: cuál es, su PDF, cómo pasártelo | `libro_principal` |
 | Agregar al material un documento que te mandó | `agregar_material` |

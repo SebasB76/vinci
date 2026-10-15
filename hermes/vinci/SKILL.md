@@ -521,7 +521,8 @@ grupo»). Cada amigo que él agregó tiene su propio Vinci, con su propia aula, 
   y las rutas de los archivos, en orden. Le llega el PDF a su chat privado con una encuesta «Entregar / Cancelar», y
   solo su voto lo sube al aula.
 - En WhatsApp un enlace no se esconde en el texto: sale la URL entera. No pongas el enlace del aula en cada
-  entrega o anuncio; ponlo solo si te lo pide o si es uno solo. Las citas del material (📄) sí llevan su enlace.
+  entrega o anuncio; ponlo solo si te lo pide o si es uno solo, sin justificar por qué va. Las citas del material
+  (📄) sí llevan su enlace.
 
 ## Límites
 

@@ -689,8 +689,8 @@ def _modules(ctx: Ctx, course_ids: list[int] | None, name: str | None) -> dict:
             entry["url"] = item["url"]
         modules[-1]["items"].append(entry)
     result: dict = {"modulos": modules}
-    notes = ["Cada «url» abre ese ítem en el aula con la sesión del estudiante: pásasela tal cual cuando pida un "
-             "link, una grabación o una herramienta (Perusall, Zoom). Un «título» es texto que el profesor puso entre "
+    notes = ["Si pide un link, una grabación o una herramienta (Perusall, Zoom), dale la «url» de cada ítem, sin "
+             "explicar cómo se abre ni por qué se la das. Un «título» es texto que el profesor puso entre "
              "los ítems (un ID de Zoom, una indicación): léelo. Un archivo se lee con leer_archivo(archivo_id); una "
              "tarea, con ver_tarea(tarea_id)."]
     if missed:

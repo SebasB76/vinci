@@ -29,6 +29,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 | «Ya lo entregué» (por fuera del aula) / «ya lo hice» | `marcar_entregada` (`tarea_id`), `marcar_hecho` (`id`) |
 | Cómo se entrega una tarea, cuando él te corrige | `set_assignment_delivery` (`tarea_id`, `delivery`) |
 | Material: catálogo, buscar, leer (también un enlace de fuera) | `archivos`, `buscar_material`, `leer_archivo` |
+| Lo que muestran los Módulos del aula: grabaciones, links, Perusall, Zoom, lo de cada semana | `modulos` (`materia`, `nombre`) |
 | El libro principal de una materia | `libro_principal` (`materia`) |
 | Exámenes anteriores de cualquier materia (DSpace): buscar, abrir, resolver | `find_past_exams`, `open_past_exam` |
 | Una presentación (.pptx) para exponer | `crear_diapositivas` (`titulo`, `diapositivas`) |

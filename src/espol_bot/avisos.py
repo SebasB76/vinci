@@ -7,8 +7,9 @@ Model-free. In a plain notice group, only what the whole class shares: never a g
     so a restart never sends it twice and the captain's own brief is not affected.
   - `send_events`, from the captain's poller: the aula's new announcements, new assignments and changed due dates,
     all of one poll in a single message.
-  - `group_reminders`, from the same agenda tick: what the captain asked Vinci to remind a group of, at the time he
-    gave (`group_reminder`), in any group that is on, with or without notices.
+  - `chat_reminders`, from the same agenda tick: what the captain asked Vinci to remind a group of, at the time he
+    gave (`chat_reminder`), in any group that is on, with or without notices; and the ones he asked for himself, in
+    his private chat.
 
 A trusted group («@vinci este grupo es de confianza», amigos.trusted_groups) is friends who agreed to share their
 aula with each other. Its members are the captain and every friend with a Vinci who is in it (the bridge's
@@ -299,7 +300,7 @@ def send_events(cfg: BotConfig, conn, events: list[dict], now: datetime) -> None
         conn.commit()
 
 
-def group_reminders(cfg: BotConfig, now: datetime) -> None:
+def chat_reminders(cfg: BotConfig, now: datetime) -> None:
     aula = Aula(cfg.core)
     try:
         conn = store.ensure(aula.conn)
@@ -314,11 +315,12 @@ def group_reminders(cfg: BotConfig, now: datetime) -> None:
             if now - timefmt.parse(r["remind_at"]) > LATE:
                 log.warning("avisos: recordatorio #%d de %s no salió a tiempo; lo descarto", r["id"], r["remind_at"])
                 continue
-            group = r["chat"].removeprefix("whatsapp:")
-            if group not in amigos.groups(cfg):
+            chat = r["chat"].removeprefix("whatsapp:")
+            # only the captain's own Vinci has chat_reminder, so a private chat here is his
+            if chat.endswith("@g.us") and chat not in amigos.groups(cfg):
                 log.info("avisos: recordatorio #%d de un grupo apagado; no sale", r["id"])
                 continue
-            log.info("avisos: recordatorio #%d al grupo", r["id"])
-            _send(cfg, [group], f"⏰ <b>Recordatorio</b>\n{messages.e(r['text'])}")
+            log.info("avisos: recordatorio #%d", r["id"])
+            _send(cfg, [chat], f"⏰ <b>Recordatorio</b>\n{messages.e(r['text'])}")
     finally:
         aula.close()

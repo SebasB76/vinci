@@ -90,6 +90,7 @@ RECENT_MEDIA = timedelta(minutes=30)
 CATALOG_LIMIT = 60   # documents listed without a name filter; the rest is one `nombre` away
 FILTERED_LIMIT = 100
 LINK_LIMIT = 25
+MODULE_ITEM_LIMIT = 150
 HIT_CHARS = 1500
 NOTICE_GAP = 20  # seconds between the end of one search and the next that says nothing
 MAX_EXAM_NAMES = 6
@@ -194,7 +195,7 @@ SUMMARY_PROPERTIES = {
 # schedule, notebooks or Vinci's memory.
 GUEST_TOOLS: dict[str, frozenset[str]] = {
     name: frozenset() for name in (
-        "archivos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas",
+        "archivos", "modulos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas",
         "crear_resumen", "send_quiz")
 } | {"libro_principal": frozenset({"titulo"})}
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
@@ -242,11 +243,12 @@ CHAT_NOTE = ("Una nota que vale solo en este chat: cómo quiere un grupo que le 
              "pidió solo para esta conversación. Te llega al final de cada mensaje de este chat y de ningún otro. Lo "
              "que vale en todos sus chats (sus preferencias, su contexto) va a tu memoria, no aquí. «remove» con el "
              "«id» borra una que ya no vale.")
-GROUP_REMINDER = ("Un recordatorio que el sistema manda a este grupo de WhatsApp a la hora que pidieron («recuérdanos "
-                  "mañana a las 9 y el viernes a mediodía que…»): sale a esa hora, sin el modelo, y lo lee todo el "
-                  "grupo. «text» es el aviso tal como lo van a leer (qué hay que hacer y para cuándo); «at», cada hora "
-                  "en que sale. Solo desde un grupo; un recordatorio para él solo es add_todo. Los que faltan te llegan "
-                  "en el contexto de cada mensaje del grupo con su «#id»: «remove» con ese «id» borra uno.")
+CHAT_REMINDER = ("Un recordatorio que el sistema manda a este chat a la hora exacta que pidió, sin el modelo: en un grupo "
+                 "(«recuérdanos mañana a las 9 y el viernes a mediodía que…») lo lee todo el grupo; en su chat privado "
+                 "(«avísame a las 6», «recuérdame cada hora hasta las 7») le llega solo a él. «text» es el aviso tal "
+                 "como lo van a leer (qué hay que hacer y para cuándo); «at», cada hora en que sale (para «cada hora», "
+                 "una por hora). Los que faltan te llegan en el contexto de cada mensaje de ese chat con su «#id»: "
+                 "«remove» con ese «id» borra uno.")
 SET_DELIVERY = ("Corrige cómo se entrega una tarea cuando te lo dice él («ese lab se entrega en AWS», «eso fue el examen "
                 "en clase»). external_submission: se hace fuera del aula y sigue en sus pendientes aunque venza, hasta "
                 "que la marque entregada o tenga nota. scheduled_event: es presencial y sale de pendientes cuando pasa "
@@ -254,14 +256,21 @@ SET_DELIVERY = ("Corrige cómo se entrega una tarea cuando te lo dice él («ese
                 "marca nada como entregado (eso es marcar_entregada).")
 MARK_DONE = ("Cierra un pendiente de su lista personal (el «id» de un «tu_lista» en semana, o de «todos») cuando dice "
              "que ya lo hizo; con «hecho»: false lo reabre.")
+MODULES = ("La página Módulos del aula tal como la ve el estudiante, en orden: cada ítem (archivo, video o grabación, "
+           "página, tarea, quiz, foro, enlace, herramienta externa como Perusall o Zoom) con su «url» del aula, y los "
+           "títulos que el profesor pone entre ellos (un ID de Zoom, «ANTES de clase»). Úsala cuando pida un link, una "
+           "grabación, una lectura de una semana o algo que no está en archivos; antes de decir que algo no está en el "
+           "aula, mira aquí, en tareas (con «buscar») y en anuncios.")
+MODULE_NAME = {"type": "string", "description": "una palabra del ítem, del módulo o del título que lo encabeza "
+                                                "(«grabación», «perusall», «semana 3»)"}
 TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
 
 # A friend's own Vinci (amigos.py): Vinci's tools over the friend's aula, its list and its grading schemes (their cards
 # are WhatsApp polls). No subject bots, notebooks or schedule: those are the captain's team.
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
-    "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "buscar_material", "leer_archivo",
-    "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
+    "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "modulos", "buscar_material",
+    "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
     "set_assignment_delivery", "study_activity"})
 
 
@@ -637,6 +646,56 @@ def _catalog_entry(ctx: Ctx, f: dict, main: set[int], copies: Counter, several_c
     return entry
 
 
+def _media_entry(f: dict, several_courses: bool) -> dict:
+    entry = {"archivo": f["archivo"]}
+    if several_courses:
+        entry["curso"] = f["curso"]
+    for key in ("modulo", "seccion", "carpeta"):
+        if f[key]:
+            entry[key] = f[key]
+    if f["subido"]:
+        entry["subido"] = f["subido"][:10]
+    entry["url"] = f["url"]
+    return entry
+
+
+def _modules(ctx: Ctx, course_ids: list[int] | None, name: str | None) -> dict:
+    """The Modules page of each course, in its order: a subheader («título») heads the items under it."""
+    items = queries.module_items(ctx.conn, course_ids, name)
+    if not items:
+        return {"modulos": [], "nota": (
+            "Ningún ítem de los Módulos tiene ese nombre: prueba con otra palabra, o busca en tareas (con «buscar») y "
+            "en anuncios." if name else "No tengo los Módulos de esa materia: el aula no los muestra o todavía no "
+            "los leo. Busca en archivos, tareas y anuncios.")}
+    tz, several = ctx.cfg.core.tz, len({i["curso_id"] for i in items}) > 1
+    modules: list[dict] = []
+    last = None
+    for item in items[:MODULE_ITEM_LIMIT]:
+        if (item["curso_id"], item["modulo"]) != last:
+            last = (item["curso_id"], item["modulo"])
+            modules.append({**({"curso": item["curso"]} if several else {}), "modulo": item["modulo"], "items": []})
+        entry = {"tipo": item["tipo"], "titulo": item["titulo"]}
+        if name and item["seccion"] and item["tipo"] != "título":
+            entry["seccion"] = item["seccion"]
+        for key in ("archivo_id", "tarea_id", "enlace_id"):
+            if item.get(key) is not None:
+                entry[key] = item[key]
+        if item.get("vence"):
+            entry["vence"] = timefmt.human(item["vence"], tz)
+        if item["url"]:
+            entry["url"] = item["url"]
+        modules[-1]["items"].append(entry)
+    result: dict = {"modulos": modules}
+    notes = ["Cada «url» abre ese ítem en el aula con la sesión del estudiante: pásasela tal cual cuando pida un "
+             "link, una grabación o una herramienta (Perusall, Zoom). Un «título» es texto que el profesor puso entre "
+             "los ítems (un ID de Zoom, una indicación): léelo. Un archivo se lee con leer_archivo(archivo_id); una "
+             "tarea, con ver_tarea(tarea_id)."]
+    if len(items) > MODULE_ITEM_LIMIT:
+        notes.append(f"Muestro {MODULE_ITEM_LIMIT} de {len(items)} ítems: filtra con «materia» o «nombre».")
+    result["nota"] = " ".join(notes)
+    return result
+
+
 def _link_entry(link: dict) -> dict:
     """«se puede abrir» (leer_archivo with its enlace_id tries it without a login), «abierto» (its document is
     archivo_id), «no se abre» (it asked for a login, or is gone) or «solo enlace» (a video, a form); `motivo` says why."""
@@ -815,6 +874,7 @@ def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: di
     kinds = _kinds(ctx)
     found = queries.files(ctx.conn, course_ids, name)
     readable = [f for f in found if f["extension"] in kinds]
+    media = [f for f in found if queries.is_media(f) and not f["copia_de"]]
     main = libros.file_ids(book) if book else set()
     copies = Counter(f["copia_de"] for f in readable if f["copia_de"])
     kept = sorted((f for f in readable if not f["copia_de"]), key=lambda f: (f["id"] not in main, f["anterior"]))
@@ -828,13 +888,20 @@ def _material(ctx: Ctx, course_ids: list[int] | None, name: str | None, book: di
     if not readable:
         notes.append(f"No hay material del curso que puedas leer ({', '.join(k.upper() for k in sorted(kinds))})"
                      + (" con ese nombre." if name else " en el aula virtual todavía."))
+    if any(e["estado"] == "sin bajar" for e in result["material"]):
+        notes.append("«sin bajar» no es un límite: leer_archivo lo baja y lo lee en el momento. Si lo que pide puede "
+                     "estar ahí, léelo ya, sin ofrecerlo ni preguntar.")
+    if media:
+        result["videos"] = [_media_entry(f, several) for f in media[:LINK_LIMIT]]
+        notes.append("«videos» son grabaciones de clase, videos y audios subidos al aula: no los ves ni los oyes, pero "
+                     "existen. Si piden una grabación o un video, pásale su «url» (abre en el aula con su sesión).")
     if len(kept) > limit:
         notes.append(f"Muestro {limit} de {len(kept)} documentos (primero el libro principal y lo de este semestre): "
                      "pide con «nombre» (parte del nombre, módulo, sección o carpeta) para ver otros.")
     if copies:
         notes.append(f"{sum(copies.values())} copia(s) del mismo archivo en otra carpeta o año no se listan "
                      "(«copias» dice cuántas tiene cada uno).")
-    others = len(found) - len(readable)
+    others = len(found) - len(readable) - sum(1 for f in found if queries.is_media(f))
     if others:
         result["otros_archivos"] = others
         notes.append(f"Hay {others} archivo(s) más que no son material que puedas leer (imágenes u otros formatos, casi "
@@ -1715,26 +1782,27 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
             raise ToolError(str(exc)) from None
         return {"chat_notes": conversation.notes(ctx.conn, chat), "message": done}
 
-    def group_reminder(args):
+    def chat_reminder(args):
         where = _channel(ctx)
         chat = str(where.get("chat") or "")
-        if where.get("tipo") != "group" or not chat.startswith("whatsapp:"):
-            raise ToolError("Un recordatorio de grupo se programa desde ese grupo de WhatsApp; para él solo, add_todo.")
+        if not chat.startswith("whatsapp:"):
+            raise ToolError("Un recordatorio a una hora se programa desde un chat de WhatsApp; aquí usa add_todo.")
+        group = where.get("tipo") == "group"
         tz, now = ctx.cfg.core.tz, ctx.now()
         try:
             if args.get("action") == "remove":
                 if not conversation.remove_reminder(ctx.conn, chat, _int(args.get("reminder_id"), "reminder_id",
                                                                          hi=10**12)):
-                    raise ToolError("Este grupo no tiene un recordatorio pendiente con ese «id».")
+                    raise ToolError("Este chat no tiene un recordatorio pendiente con ese «id».")
                 done = "Borrado."
             else:
                 added = conversation.add_reminders(ctx.conn, chat, args.get("text") or "",
                                                    [_reminder_at(ctx, v, now) for v in args.get("at") or []], now)
-                done = ("Programado: sale en este grupo el " + " y el ".join(timefmt.human(r["remind_at"], tz)
-                                                                          for r in added) + ". Díselo así.")
+                done = (f"Programado: sale en {'este grupo' if group else 'su chat'} el "
+                        + " y el ".join(timefmt.human(r["remind_at"], tz) for r in added) + ". Díselo así.")
         except conversation.NoteError as exc:
             raise ToolError(str(exc)) from None
-        return {"group_reminders": [{**r, "remind_at": timefmt.human(r["remind_at"], tz)}
+        return {"chat_reminders": [{**r, "remind_at": timefmt.human(r["remind_at"], tz)}
                                     for r in conversation.reminders(ctx.conn, chat)], "message": done}
 
     def anuncios(args):
@@ -1750,6 +1818,11 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         subject = _vinci_subject(ctx, args.get("materia"))
         book = _books(ctx, [subject])[subject.code] if subject else None
         return _material(ctx, _vinci_course_ids(ctx, args.get("materia")), args.get("nombre"), book)
+
+    def modulos(args):
+        if not args.get("materia") and not args.get("nombre"):
+            raise ToolError("Dime «materia» (o «nombre» para buscar en los Módulos de todas).")
+        return _modules(ctx, _vinci_course_ids(ctx, args.get("materia")), args.get("nombre"))
 
     def buscar(args):
         subject = _vinci_subject(ctx, args.get("materia"))
@@ -1971,7 +2044,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              {"action": {"type": "string", "enum": ["add", "remove"], "description": "por defecto add"},
               "text": {"type": "string", "description": "la nota, corta (add)"},
               "note_id": {"type": "integer", "description": "el «id» de la nota (remove)"}}, read_only=False),
-        Tool("group_reminder", GROUP_REMINDER, group_reminder,
+        Tool("chat_reminder", CHAT_REMINDER, chat_reminder,
              {"action": {"type": "string", "enum": ["add", "remove"], "description": "por defecto add"},
               "text": {"type": "string", "description": "el aviso, corto (add)"},
               "at": {"type": "array", "items": {"type": "string"},
@@ -2001,6 +2074,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su «enlace_id». Con «materia», también su "
              "libro principal.", archivos,
              {**materia, "nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
+        Tool("modulos", MODULES, modulos, {**materia, "nombre": MODULE_NAME}),
         Tool("buscar_material", "Busca en el texto del material ya leído; devuelve archivo, página, fragmento y la "
              "«cita» lista para copiar, con el libro principal primero. Mucho material está en inglés: pasa también "
              "«traduccion». Si la pregunta es sobre una tarea, pasa «tarea_id»: sus anexos van primero, marcados.",
@@ -2036,7 +2110,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              ["clases"], read_only=False),
         Tool("add_todo", "Anota un pendiente personal en su lista («anota: …», «recuérdame …»): lecturas, trámites, "
              "lo que el profe dijo en clase y no subió. Le muestra una tarjeta con el botón «✅ Hecho»; se lo "
-             "recuerdo 24 h y 3 h antes y sale en el resumen de las 7:00 y en semana hasta que lo marque.", add_todo,
+             "recuerdo 24 h y 3 h antes y sale en el resumen de las 7:00 y en semana hasta que lo marque. Un aviso a una "
+             "hora exacta («avísame a las 6», «cada hora») es chat_reminder.", add_todo,
              {"text": {"type": "string", "description": "qué hacer, corto y en sus palabras (sin la fecha)"},
               "subject": {"type": "string", "description": "la materia, si la dijo"},
               "due": {"type": "string", "description": "para cuándo, si lo dijo: AAAA-MM-DD, o AAAA-MM-DD HH:MM si "
@@ -2225,6 +2300,9 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
 
     def archivos(args):
         return _material(ctx, course_ids(), args.get("nombre"), book())
+
+    def modulos(args):
+        return _modules(ctx, course_ids(), args.get("nombre"))
 
     def buscar(args):
         return _search(ctx, args, course_ids(), libros.file_ids(book()), can_fetch=True)
@@ -2415,6 +2493,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              "libro principal primero; y los enlaces de fuera (Google Docs, Drive, SharePoint, Dropbox, videos) con su "
              "«enlace_id».",
              archivos, {"nombre": {"type": "string", "description": "parte del nombre, módulo, sección o carpeta"}}),
+        Tool("modulos", MODULES, modulos, {"nombre": MODULE_NAME}),
         Tool("buscar_material", "Busca en el texto del material ya leído de tu materia (archivo, página, fragmento y "
              "la «cita» lista para copiar), con tu libro principal primero. Mucho material está en inglés: pasa "
              "también «traduccion». Si la pregunta es sobre una tarea, pasa «tarea_id»: sus anexos van primero, "

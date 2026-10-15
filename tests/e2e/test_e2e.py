@@ -30,7 +30,8 @@ test_canvas, no gateway:
 
 test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes his WhatsApp to Vinci (and anyone else
   to Vinci's guest tools); his week; work handed in outside the aula stays pending and late until he says it is done
-  (and back with «todavía no»), an exam held in class leaves on its own, and the summary lists the same; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
+  (and back with «todavía no»), an exam held in class leaves on its own, and the summary lists the same; Física's
+  Modules gain a class recording, a Zoom ID subheader and Perusall, and Vinci gives each with its aula link; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names,
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
@@ -41,7 +42,7 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), reminders he asks for there that the agenda sends to the group at their time, once (one
-  missed by days never goes out), and its notices (a reminder before a class; trusted, a friend's
+  missed by days never goes out), and one he asks for in his private chat, sent to him alone, and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
@@ -109,6 +110,20 @@ TRACE: dict = {}  # this test's world, for the trace page tests/conftest.py writ
 GROUP_IDLE = 25  # seconds a WhatsApp group stays one conversation here (4 h live)
 BOOK_ASK = "📘 *El libro principal de "
 GROUP_REMINDER = "Historias de usuario en formato requerimiento: se entregan el vie 2 oct"
+PRIVATE_REMINDER = "Repasar vectores antes de la lección"
+# What Física's Modules gain after the gateway's first polls: the Zoom ID as a subheader, a class recording and Perusall.
+PHYSICS_MODULE = {
+    "id": 8109, "name": "CLASES VIRTUALES", "position": 9, "state": "unlocked", "items_count": 3,
+    "items_url": "{{BASE}}/api/v1/courses/102/modules/8109/items",
+    "items": [
+        {"id": 81091, "title": "ID ZOOM: 829 0000 0001", "position": 1, "indent": 0, "type": "SubHeader",
+         "module_id": 8109, "html_url": "{{BASE}}/courses/102/modules/items/81091", "published": True},
+        {"id": 81092, "title": "CLASE 2 - Vectores.mp4", "position": 2, "indent": 0, "type": "File",
+         "module_id": 8109, "html_url": "{{BASE}}/courses/102/modules/items/81092", "published": True,
+         "content_id": 5107, "url": "{{BASE}}/api/v1/courses/102/files/5107"},
+        {"id": 81093, "title": "PERUSALL: Lectura de cinemática", "position": 3, "indent": 0, "type": "ExternalTool",
+         "module_id": 8109, "html_url": "{{BASE}}/courses/102/modules/items/81093", "published": True,
+         "external_url": "https://app.perusall.com/lti/launch", "url": "{{BASE}}/api/v1/courses/102/external_tools/sessionless_launch"}]}
 
 
 @pytest.fixture(autouse=True)
@@ -547,7 +562,9 @@ class Script:
         if "háblanos en plural" in text and not called:
             return _call("mcp__vinci__chat_note", text="Hablarles en plural, como «nosotros»")
         if "recuérdanos" in text and not called:
-            return _call("mcp__vinci__group_reminder", text=GROUP_REMINDER, at=["2026-10-01 09:00", "2026-10-02 12:00"])
+            return _call("mcp__vinci__chat_reminder", text=GROUP_REMINDER, at=["2026-10-01 09:00", "2026-10-02 12:00"])
+        if "avísame mañana a las 9" in text and not called:
+            return _call("mcp__vinci__chat_reminder", text=PRIVATE_REMINDER, at=["2026-10-01 09:00"])
         flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results) or self.pending(text, called, results)
                 or self.vinci_study(text, called, results) or self.group_quiz(text, called, results))
@@ -723,6 +740,18 @@ class Script:
             if called == ["mcp__vinci__archivos"] and isinstance(last, dict) and last.get("enlaces"):
                 return _call("mcp__vinci__leer_archivo", enlace_id=last["enlaces"][0]["enlace_id"])
             return {"content": self.reading_answer(results[-1])}
+        if "grabación de la clase de física" in text:  # a recording: the catalog's videos, then the Modules
+            if not called:
+                return _call("mcp__vinci__archivos", materia="física", nombre="clase")
+            if called == ["mcp__vinci__archivos"]:
+                return _call("mcp__vinci__modulos", materia="física", nombre="clase")
+            videos = (_json(results[0]) or {}).get("videos") or []
+            return {"content": "Videos: " + ", ".join(f"{v['archivo']} {v['url']}" for v in videos) + "\n"
+                    + self.modules_answer(results[-1])}
+        if "link del perusall" in text:
+            if not called:
+                return _call("mcp__vinci__modulos", materia="física", nombre="perusall")
+            return {"content": self.modules_answer(results[-1])}
         if "documento de políticas" in text:
             if not called:
                 return _call("mcp__vinci__anuncios", materia="física")
@@ -731,6 +760,15 @@ class Script:
                 return _call("mcp__vinci__leer_archivo", enlace_id=item["enlaces"][0]["enlace_id"])
             return {"content": self.reading_answer(results[-1])}
         return None
+
+    @staticmethod
+    def modules_answer(raw: str) -> str:
+        """What the model says after modulos: each item with its kind and its aula link."""
+        data = _json(raw)
+        if not isinstance(data, dict) or not data.get("modulos"):
+            return _problem(raw)
+        return "\n".join(f"{m['modulo']} · {i['tipo']}: {i['titulo']} {i.get('url', '')}".strip()
+                         for m in data["modulos"] for i in m["items"])
 
     @staticmethod
     def reading_answer(raw: str) -> str:
@@ -760,7 +798,7 @@ class Script:
                              + "\nTu lista:\n" + "\n".join(f"- {t['text']}" for t in data["todos"]))
             elif isinstance(data, dict) and "chat_notes" in data:
                 parts.append(f"📝 {data['message']}")
-            elif isinstance(data, dict) and "group_reminders" in data:
+            elif isinstance(data, dict) and "chat_reminders" in data:
                 parts.append(f"⏰ {data['message']}")
             elif isinstance(data, dict) and data.get("hecho"):
                 parts.append(data["hecho"])
@@ -1758,6 +1796,7 @@ def test_whatsapp_captain(tmp_path):
             {**template, "id": tid, "name": name, "submission_types": types, "due_at": due, "lock_at": None,
              "description": html_text, "html_url": f"{canvas.base}/courses/102/assignments/{tid}"}
             for tid, name, types, due, html_text in ELSEWHERE_TASKS]
+        canvas.extra["courses/102/modules"] = [json.loads(json.dumps(PHYSICS_MODULE).replace("{{BASE}}", canvas.base))]
         run([bot, "sondeo"], T_VINCI)
         listed = text_of(say(captain_jid, captain_jid, "qué tengo pendiente en Física", "Capitán"))
         assert "- Práctica 2 en el simulador [external_submission, atrasada]" in listed, listed
@@ -1773,6 +1812,22 @@ def test_whatsapp_captain(tmp_path):
                       "chat y en el resumen; con «ya hice…» sale y con «todavía no» vuelve. Un examen presencial que ya "
                       "pasó sale solo, y uno que el aula no explica queda como «unknown» hasta que él dice cómo se "
                       "entrega. El resumen de las 7:00 usa la misma lista")
+
+        # 10a''. What the aula's Modules show: a class recording (a video the catalog lists, not hides), the Zoom ID
+        # the professor wrote as a subheader, and the Perusall tool, each with its aula link.
+        recording = text_of(say(captain_jid, captain_jid, "hay grabación de la clase de física?", "Capitán"))
+        video_url = f"{canvas.base}/courses/102/files/5107"
+        assert f"Videos: CLASE 2 - Vectores.mp4 {video_url}" in recording, recording
+        assert (f"CLASES VIRTUALES · video: CLASE 2 - Vectores.mp4 {canvas.base}/courses/102/modules/items/81092"
+                in recording), recording
+        perusall = text_of(say(captain_jid, captain_jid, "pásame el link del perusall de física", "Capitán"))
+        assert (f"CLASES VIRTUALES · herramienta externa: PERUSALL: Lectura de cinemática "
+                f"{canvas.base}/courses/102/modules/items/81093") in perusall, perusall
+        assert "CLASES VIRTUALES · título: ID ZOOM: 829 0000 0001" in recording, recording
+        md.append(f"→ Vinci (grabación): {normalize(recording)}\n→ Vinci (Perusall): {normalize(perusall)}\n")
+        report.append("Lo que muestran los Módulos del aula llega a Vinci (modulos): una grabación de clase (que el "
+                      "catálogo lista en «videos» en vez de esconderla), la herramienta Perusall y el ID de Zoom que el "
+                      "profesor escribió como título, cada uno con su enlace del aula")
 
         # 10g. Vinci's commands on WhatsApp, without the model
         calls = len(llm.requests)
@@ -2025,21 +2080,26 @@ def test_whatsapp_friend(tmp_path):
         assert in_group and in_private, turns
         assert "Ahora: miércoles 30 sep 2026, 08:30" in in_group[-1] and "en plural" in in_group[-1], in_group[-1]
         assert "Chat: su chat privado contigo." in in_private[-1] and "en plural" not in in_private[-1], in_private[-1]
-        assert "Recordatorios que el sistema mandará a este grupo: #" in in_group[-1], in_group[-1]
+        assert "Recordatorios que el sistema mandará a este chat: #" in in_group[-1], in_group[-1]
         assert "Recordatorios que" not in in_private[-1], in_private[-1]
+        mine = say(captain_jid, captain_jid, "avísame mañana a las 9 que repase vectores", "Capitán")
+        assert "sale en su chat el jue 1 oct, 09:00" in text_of(mine), text_of(mine)
         mark = len(wa.sent)
         for _ in range(2):  # the second tick must not repeat it
             run([bot, "agenda"], "2026-10-01T09:00:20-05:00")
         time.sleep(2)
         reminded = [m for m in wa.messages_to(GROUP_WA, mark) if "Recordatorio" in m.get("message", "")]
         assert len(reminded) == 1 and GROUP_REMINDER in reminded[0]["message"], reminded
+        to_me = [m for m in wa.messages_to(captain_jid, mark) if PRIVATE_REMINDER in m.get("message", "")]
+        assert len(to_me) == 1 and "Recordatorio" in to_me[0]["message"], to_me
         assert "<b>" not in reminded[0]["message"], reminded[0]["message"]
         md.append(f"→ Vinci (recordatorio al grupo, jue 09:00): {normalize(reminded[0]['message'])}\n")
         report.append("Cada turno termina con la hora de ahora y las notas de ese chat: «háblanos en plural» queda como "
                       "nota del grupo (chat_note) y llega en cada mensaje del grupo, nunca al chat privado del capitán")
         report.append("«@vinci recuérdanos mañana a las 9 y el viernes a mediodía…» programa dos recordatorios del grupo "
-                      "(group_reminder) que Vinci ve en el contexto del grupo; `espol-bot agenda` manda el del jueves "
-                      "al grupo a su hora, una sola vez y sin el modelo")
+                      "(chat_reminder) que Vinci ve en el contexto del grupo; `espol-bot agenda` manda el del jueves "
+                      "al grupo a su hora, una sola vez y sin el modelo; «avísame mañana a las 9…» en su chat privado "
+                      "sale en ese mismo tick, a él solo")
 
         # 10b'. «@vinci activa los avisos»: the agenda tick before a class reminds the group, without the model, once
         notices = say(GROUP_WA, captain_jid, "@vinci activa los avisos", "Capitán", group=True)

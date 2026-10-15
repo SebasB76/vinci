@@ -238,6 +238,9 @@ disco ni el contexto del modelo:
   (dile «ya lo compartieron» y lo prueba otra vez). Un Google Docs se vuelve a leer al día siguiente, porque el
   profe lo sigue editando. Los videos, formularios, carpetas, OneDrive personal y Teams quedan listados con su
   enlace para que los abras tú.
+- **Grabaciones y Módulos:** las grabaciones de clase y los videos subidos al aula salen en el catálogo con su
+  enlace, aunque el bot no los vea por dentro. Los Módulos se guardan en su orden, con cada ítem (un Perusall, una
+  tarea, el ID de Zoom que el profesor escribió como título), así que «pásame el link del Perusall» tiene respuesta.
 - **Documentos que le mandas:** un PDF, DOCX o PPTX del curso que le mandas al bot pasa a su material y se puede
   buscar; lo que es tuyo (un deber resuelto, tus apuntes) va al cuaderno.
 
@@ -415,7 +418,7 @@ dashboard usan la misma lista.
 |---|---|---|
 | **La conversación** | En el perfil de Hermes del bot. Al llegar a unos 80 000 tokens, Hermes la resume (por defecto esperaría a 256 000), porque cada mensaje viaja con todo el chat. En WhatsApp, un chat sin mensajes por 4 horas empieza una conversación nueva; la anterior queda guardada. | Hermes |
 | **La memoria** | En el perfil de Hermes del bot: lo que el bot decide recordar de ti entre conversaciones, igual en todos tus chats. La hora y lo que hacen sus herramientas no van ahí: se los dicen ellas cada vez. | Cada bot, la suya |
-| **Los recordatorios de un grupo** | `espol.db` (tabla `group_reminders`): el texto y la hora de cada recordatorio que pediste en un grupo, y cuándo salió. | Vinci, cuando se lo pides en el grupo |
+| **Los recordatorios a una hora** | `espol.db` (tabla `group_reminders`): el texto y la hora de cada recordatorio que pediste en un grupo o en tu chat, y cuándo salió. | Vinci, cuando se lo pides en ese chat |
 | **Las notas de un chat** | `espol.db` (tabla `chat_notes`): lo que vale en un solo chat, como la forma de hablarle a un grupo. Vinci las lee en cada mensaje de ese chat, junto con la hora de ahora. | Vinci, cuando se lo pides |
 | **Lo que están haciendo** | `espol.db` (tablas `chat_focus` y `activities`): la materia de la que hablaban (3 horas) y lo que dejaron a medias en ese chat, como un quiz o una sesión de estudio, con por dónde iban. Vinci lo lee en cada mensaje de ese chat. | Vinci (la materia, sola, cuando nombras una) |
 | **El cuaderno** | `cuadernos/<CÓDIGO>/` en la carpeta de datos: lo visto en clase, apuntes, dudas, temas débiles, fotos, audios, documentos, lo que Vinci le pasó y los quiz con tus respuestas. | Solo el bot de esa materia (Vinci lo lee) |

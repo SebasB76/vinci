@@ -333,6 +333,7 @@ class _Syncer:
 
         links: dict[str, dict] = {}
         module_pages: dict[str, dict] = {}
+        outline: list[tuple] = []
         modules_ok = True
         try:
             for module in self.client.iter_pages(f"courses/{cid}/modules", {"include[]": ["items"]}):
@@ -342,6 +343,8 @@ class _Syncer:
                 name, section = clean_title(module.get("name")), None
                 for item in items or []:
                     kind = item.get("type")
+                    outline.append((cid, len(outline), name or "", section, kind or "", clean_title(item.get("title")),
+                                    item.get("content_id"), item.get("html_url"), item.get("external_url")))
                     if kind == "SubHeader":  # «ANTES de clase en vivo», «Materiales adicionales»…
                         section = clean_title(item.get("title"))
                     elif kind == "File" and item.get("content_id"):
@@ -371,6 +374,10 @@ class _Syncer:
             modules_ok = False
         if not listing_ok and not modules_ok:
             raise CanvasError("no tengo acceso a Archivos ni a Módulos", 403)
+        if modules_ok:
+            self.conn.execute("DELETE FROM module_items WHERE course_id = ?", (cid,))
+            self.conn.executemany("INSERT INTO module_items(course_id, seq, module, section, kind, title, content_id,"
+                                  " html_url, external_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", outline)
 
         complete = self._linked(course, found, links, module_pages, quiet_catalog)
         seen = self._store_files(course, found, folders)

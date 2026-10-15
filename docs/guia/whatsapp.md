@@ -63,8 +63,12 @@ para el profesor. Si le respondes, Vinci sabe que hablas de esa materia. Los apu
 folder`) también llegan aquí: las preguntas `//vinci` y el resumen con feedback al terminar la clase.
 
 **Tus avisos.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a tu chat de WhatsApp, con
-su encuesta en vez de botones.
+su encuesta en vez de botones. Si le pides un aviso a una hora exacta («avísame a las 6 que imprima el informe»,
+«recuérdame cada hora hasta las 7 que haga el control»), Vinci lo programa y te llega a esa hora, sin el modelo.
 
+- **Lo que muestran los Módulos.** «¿Hay grabación de la clase de Estadística?», «pásame el link del Perusall»: Vinci
+  lee los Módulos del aula como tú los ves, con las grabaciones y videos, Perusall, el ID de Zoom que el profesor
+  escribió entre los ítems y lo de cada semana, y te pasa el enlace del aula de cada uno. No ve un video por dentro.
 - **Lo que pide una tarea.** «¿Qué pide el taller 2?»: Vinci lee la consigna que escribió el profesor y los
   archivos que trae. No hace falta el nombre exacto: «el taller de integrales» la encuentra entre todas las del
   semestre, también las entregadas; si dos encajan, te pregunta cuál, y si le dices «esa no es», busca otra. Para tus

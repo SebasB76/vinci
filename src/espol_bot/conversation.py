@@ -3,7 +3,7 @@ conversation, a restart and a long chat's summary:
 
 - the clock and what kind of chat it is;
 - notes that hold in that chat only (`chat_note`: how a group wants to be spoken to, something agreed there);
-- in a group, the reminders still to go out there (`group_reminder`; avisos.group_reminders sends them);
+- the reminders still to go out in that chat (`chat_reminder`; avisos.chat_reminders sends them);
 - the subject in focus: the one the student last named here, for what comes in without one (a photo, a voice note,
   «anota…»), while it lasts;
 - the activity open here (a quiz, a study session), active or paused, with where it got to: Vinci answers whatever
@@ -31,7 +31,7 @@ from espol_bot import materias
 
 MAX_NOTES = 10
 NOTE_CHARS = 300
-MAX_REMINDERS = 10  # still to go out, per group
+MAX_REMINDERS = 24  # still to go out, per chat: «every hour» for a day
 FOCUS_TTL = timedelta(hours=3)
 ACTIVITY_IDLE = timedelta(hours=4)  # an activity left this long is paused: it waits to be asked for again
 ACTIVITY_KEEP = timedelta(days=3)  # one paused longer is not brought up any more (it stays in the table)
@@ -88,7 +88,7 @@ def remove_note(conn: sqlite3.Connection, chat: str, note_id: int) -> bool:
     return removed
 
 
-# -- a group's reminders ------------------------------------------------------------------
+# -- a chat's reminders -------------------------------------------------------------------
 
 
 def reminders(conn: sqlite3.Connection, chat: str) -> list[dict]:
@@ -113,7 +113,7 @@ def add_reminders(conn: sqlite3.Connection, chat: str, text: str, moments: list[
             added.append(same)
             continue
         if len(present) >= MAX_REMINDERS:
-            raise NoteError(f"Este grupo ya tiene {MAX_REMINDERS} recordatorios pendientes: borra uno (action: remove).")
+            raise NoteError(f"Este chat ya tiene {MAX_REMINDERS} recordatorios pendientes: borra uno (action: remove).")
         reminder_id = conn.execute("INSERT INTO group_reminders(chat, text, remind_at, created_at) VALUES (?, ?, ?, ?)",
                                    (chat, text, at, timefmt.iso(now))).lastrowid
         present.append({"id": reminder_id, "text": text, "remind_at": at})
@@ -321,9 +321,9 @@ def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: 
     here = notes(conn, chat) if chat else []
     if here:
         lines.append("Notas de este chat (valen solo aquí): " + " · ".join(f"#{n['id']} {n['text']}" for n in here))
-    planned = reminders(conn, chat) if chat and chat_type == "group" else []
+    planned = reminders(conn, chat) if chat else []
     if planned:
-        lines.append("Recordatorios que el sistema mandará a este grupo: " + " · ".join(
+        lines.append("Recordatorios que el sistema mandará a este chat: " + " · ".join(
             f"#{r['id']} {timefmt.human(r['remind_at'], core.tz)} «{r['text']}»" for r in planned))
     names = {s.code: s.name for s in subjects or []}
     current = focus(conn, session, now)

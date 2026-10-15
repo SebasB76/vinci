@@ -294,7 +294,7 @@ def _file(r: sqlite3.Row, assigned: set[int] = frozenset()) -> dict:
             "tamano": r["size"], "subido": r["created_at"], "actualizado": r["updated_at"],
             "descargado": r["local_path"] if r["local_path"] and Path(r["local_path"]).exists() else None,
             "indexado": r["index_status"], "paginas": r["pages"], "idioma": r["language"] or None,
-            "copia_de": r["duplicate_of"], "url": r["html_url"],
+            "copia_de": r["duplicate_of"], "url": r["html_url"], "mime": r["content_type"],
             "anterior": r["id"] not in assigned and is_old(r["folder"], r["display_name"],
                                                             term_year(r["term_start"], r["course_name"], r["term"]))}
 
@@ -310,6 +310,53 @@ def files(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | No
     needle, assigned = (fold(name) if name else None), assigned_files(conn)
     return [_file(r, assigned) for r in rows if not needle or any(
         needle in fold(r[k]) for k in ("display_name", "module", "section", "folder", "source"))]
+
+
+MEDIA_EXTENSIONS = {"mp4", "m4v", "mov", "webm", "mkv", "avi", "wmv", "mp3", "m4a", "wav", "ogg", "opus"}
+
+
+def is_media(f: dict) -> bool:
+    """A class recording or a video: nothing to read, but a student asks for its link."""
+    return (f.get("mime") or "").startswith(("video/", "audio/")) or f["extension"] in MEDIA_EXTENSIONS
+
+
+ITEM_KIND = {"SubHeader": "título", "File": "archivo", "Page": "página", "Assignment": "tarea", "Quiz": "quiz",
+             "Discussion": "foro", "ExternalUrl": "enlace", "ExternalTool": "herramienta externa"}
+
+
+def module_items(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | None = None) -> list[dict]:
+    """The Modules of the courses as the student sees them, in order. With `name`, only the items whose title,
+    module or subheader has it (a subheader's own text too: «ID ZOOM: 829…»)."""
+    extra, params = _course_filter(ids, "m.course_id")
+    rows = conn.execute(
+        f"""SELECT m.*, c.name AS course_name, f.content_type, f.display_name, f.filename, a.due_at,
+                   (SELECT l.id FROM links l WHERE l.course_id = m.course_id AND l.url = m.external_url) AS link_id
+            FROM module_items m JOIN courses c ON c.id = m.course_id
+            LEFT JOIN files f ON m.kind = 'File' AND f.id = m.content_id
+            LEFT JOIN assignments a ON m.kind = 'Assignment' AND a.id = m.content_id
+            WHERE c.active = 1{extra} ORDER BY c.name, m.seq""",
+        params,
+    ).fetchall()
+    needle = fold(name) if name else None
+    out = []
+    for r in rows:
+        if needle and not any(needle in fold(r[k]) for k in ("title", "module", "section", "display_name")):
+            continue
+        kind = ITEM_KIND.get(r["kind"], r["kind"].lower())
+        if r["kind"] == "File" and is_media({"mime": r["content_type"], "extension": Path(
+                r["filename"] or r["display_name"] or r["title"] or "").suffix.lower().lstrip(".")}):
+            kind = "video"
+        item = {"curso": r["course_name"], "curso_id": r["course_id"], "modulo": r["module"], "seccion": r["section"],
+                "tipo": kind, "titulo": r["title"],
+                "url": r["external_url"] if r["kind"] == "ExternalUrl" else r["html_url"]}
+        if r["kind"] == "File":
+            item["archivo_id"] = r["content_id"]
+        elif r["kind"] == "Assignment":
+            item["tarea_id"], item["vence"] = r["content_id"], r["due_at"]
+        if r["link_id"] is not None:
+            item["enlace_id"] = r["link_id"]
+        out.append(item)
+    return out
 
 
 def _link(r: sqlite3.Row) -> dict:

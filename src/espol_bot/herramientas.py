@@ -662,6 +662,9 @@ def _media_entry(f: dict, several_courses: bool) -> dict:
 def _modules(ctx: Ctx, course_ids: list[int] | None, name: str | None) -> dict:
     """The Modules page of each course, in its order: a subheader («título») heads the items under it."""
     items = queries.module_items(ctx.conn, course_ids, name)
+    missed = bool(name and not items and course_ids)
+    if missed:  # the professor's words are not the student's: show the whole page rather than nothing
+        items = queries.module_items(ctx.conn, course_ids)
     if not items:
         return {"modulos": [], "nota": (
             "Ningún ítem de los Módulos tiene ese nombre: prueba con otra palabra, o busca en tareas (con «buscar») y "
@@ -690,6 +693,8 @@ def _modules(ctx: Ctx, course_ids: list[int] | None, name: str | None) -> dict:
              "link, una grabación o una herramienta (Perusall, Zoom). Un «título» es texto que el profesor puso entre "
              "los ítems (un ID de Zoom, una indicación): léelo. Un archivo se lee con leer_archivo(archivo_id); una "
              "tarea, con ver_tarea(tarea_id)."]
+    if missed:
+        notes.insert(0, f"Ningún ítem dice «{name}»: te muestro todos los Módulos de la materia; búscalo tú entre ellos.")
     if len(items) > MODULE_ITEM_LIMIT:
         notes.append(f"Muestro {MODULE_ITEM_LIMIT} de {len(items)} ítems: filtra con «materia» o «nombre».")
     result["nota"] = " ".join(notes)

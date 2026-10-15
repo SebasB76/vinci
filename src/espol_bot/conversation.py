@@ -313,7 +313,10 @@ def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> st
 def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: str, chat_type: str,
             session: str = "", subjects: list[materias.Subject] | None = None, message: str = "") -> str:
     """The block the model reads at the end of each message of this chat."""
-    lines = [HEADER, f"Ahora: {clock(now, core)} (hora de Ecuador). Úsala para «hoy», «mañana» y lo que vence."]
+    lines = [HEADER, f"Ahora: {clock(now, core)} (hora de Ecuador). Úsala para «hoy», «mañana» y lo que vence.",
+             # SOUL.md says it too, but live the model still repeated an earlier wrong answer without a tool call
+             "Lo del aula (archivos, grabaciones, tareas, anuncios, notas) lo consultas con tus herramientas en este "
+             "turno, aunque ya lo hayas contestado: tu respuesta anterior pudo estar mal o vieja."]
     if chat_type == "group":
         lines.append("Chat: un grupo de WhatsApp; todo el grupo lee lo que contestas.")
     elif chat_type:

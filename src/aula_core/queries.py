@@ -308,11 +308,17 @@ def files(conn: sqlite3.Connection, ids: list[int] | None = None, name: str | No
         params,
     ).fetchall()
     needle, assigned = (fold(name) if name else None), assigned_files(conn)
-    return [_file(r, assigned) for r in rows if not needle or any(
+    media = bool(needle and MEDIA_WORDS.search(needle))
+    found = [_file(r, assigned) for r in rows]
+    return [f for f, r in zip(found, rows) if not needle or (media and is_media(f)) or any(
         needle in fold(r[k]) for k in ("display_name", "module", "section", "folder", "source"))]
 
 
 MEDIA_EXTENSIONS = {"mp4", "m4v", "mov", "webm", "mkv", "avi", "wmv", "mp3", "m4a", "wav", "ogg", "opus"}
+
+
+# A recording is rarely named one («CLASE 3 - ESTADISTICA.mp4»): a search for it matches every video.
+MEDIA_WORDS = re.compile(r"grab|video|record|audio|mp4")
 
 
 def is_media(f: dict) -> bool:
@@ -340,12 +346,13 @@ def module_items(conn: sqlite3.Connection, ids: list[int] | None = None, name: s
     needle = fold(name) if name else None
     out = []
     for r in rows:
-        if needle and not any(needle in fold(r[k]) for k in ("title", "module", "section", "display_name")):
-            continue
         kind = ITEM_KIND.get(r["kind"], r["kind"].lower())
         if r["kind"] == "File" and is_media({"mime": r["content_type"], "extension": Path(
                 r["filename"] or r["display_name"] or r["title"] or "").suffix.lower().lstrip(".")}):
             kind = "video"
+        if needle and not (kind == "video" and MEDIA_WORDS.search(needle)) and not any(
+                needle in fold(r[k]) for k in ("title", "module", "section", "display_name")):
+            continue
         item = {"curso": r["course_name"], "curso_id": r["course_id"], "modulo": r["module"], "seccion": r["section"],
                 "tipo": kind, "titulo": r["title"],
                 "url": r["external_url"] if r["kind"] == "ExternalUrl" else r["html_url"]}

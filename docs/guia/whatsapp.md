@@ -157,7 +157,8 @@ Vinci los programa: el Vinci de un amigo no puede escribir en el grupo por su cu
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.
 2. Vinci le escribe a Angel por privado con un botón a la página del token (la misma de `/token`, en modo WhatsApp).
-3. Angel crea un token en el aula, lo pega en la página y pulsa «Enviar cifrado a Vinci».
+3. Angel toca «Abrir el aula para crear el token» en esa página, crea el token, lo pega y pulsa «Enviar cifrado a
+   Vinci».
 4. El token llega cifrado por el relé. Vinci lo verifica, lee el aula de Angel y le confirma sus materias en su chat.
    Sin relé, la página le da un texto cifrado para pegar en el chat.
 
@@ -172,7 +173,7 @@ y Vinci los contesta sin gastar tokens:
 |---|---|
 | `/start` | Saluda y muestra los comandos |
 | `/estado` | La salud del sistema, como en Telegram |
-| `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: pegas el token nuevo y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
+| `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: su botón «Abrir el aula para crear el token» te lleva a donde se crea, lo pegas y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
 | `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
 | `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo, y los resultados de todos llegan cuando todos responden o a los 15 minutos |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |

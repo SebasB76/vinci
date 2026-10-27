@@ -84,6 +84,10 @@ function init() {
     status.dataset.kind = kind;
   };
   const inTelegram = Boolean(window.TelegramWebviewProxy) || window.parent !== window;
+  $("aula").addEventListener("click", (event) => {
+    // A Mini App's webview does not follow target=_blank: Telegram opens the link in the browser itself.
+    if (postEvent("web_app_open_link", { url: event.currentTarget.href })) event.preventDefault();
+  });
   if (!publicKey || !(inTelegram || whatsapp)) {
     say("Este formulario se abre desde el botón «🔑 Pegar token» que te manda Vinci cuando le escribes /token.");
     input.disabled = send.disabled = reveal.disabled = true;

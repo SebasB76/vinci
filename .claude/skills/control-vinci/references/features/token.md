@@ -8,7 +8,7 @@ the captain must paste a new token. The model never sees a token.
 |---|---|---|
 | 1. Trigger | the "chain broke" alert with «🔑 Pegar token», or `/token` | `/token` in the DM (in a group it asks for the DM) |
 | 2. What arrives | a Mini App button | a guide image with the Canvas steps, then a link button |
-| 3. The page | `docs/token/` encrypts with the one-time public key in the link (RSA-OAEP) | same page, WhatsApp mode |
+| 3. The page | `docs/token/` opens the aula's profile at «+ Nuevo token de acceso» (a fixed ESPOL link), then encrypts with the one-time public key in the link (RSA-OAEP) | same page, WhatsApp mode |
 | 4. Back to the laptop | Telegram hands the ciphertext to the plugin | the page posts to the relay; the laptop polls it every 3 s while the link is open. Without relay: ciphertext to paste in the chat |
 | 5. Result | Vinci checks it with Canvas, saves it, resumes the chain, confirms in chat | same |
 

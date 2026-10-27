@@ -183,9 +183,10 @@ uno nuevo no hace falta abrir `secrets.env` ni escribir nada:
 
 1. Abre el aviso de Vinci «La cadena automática del token de Canvas se cortó». Trae un enlace a tu perfil del aula
    y un botón «🔑 Pegar token». Si no lo encuentras, mándale `/token` a Vinci y te llega el mismo formulario.
-2. En el aula, toca «+ Nuevo token de acceso» y copia el token.
-3. Toca «🔑 Pegar token»: se abre un formulario dentro de Telegram. Pega el token y toca «Enviar cifrado a Vinci».
-4. Vinci lo verifica con el aula, lo guarda y reanuda la renovación. Te confirma en el chat.
+2. Toca «🔑 Pegar token»: se abre un formulario dentro de Telegram.
+3. Toca «Abrir el aula para crear el token». En el aula, toca «+ Nuevo token de acceso» y copia el token.
+4. Vuelve al formulario, pega el token y toca «Enviar cifrado a Vinci».
+5. Vinci lo verifica con el aula, lo guarda y reanuda la renovación. Te confirma en el chat.
 
 <p align="center">
   <img src="../../docs/images/token-formulario.png" alt="El formulario de /token dentro de Telegram: un campo oculto para pegar el token de Canvas y el botón «Enviar cifrado a Vinci»" width="300">

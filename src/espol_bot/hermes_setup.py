@@ -102,9 +102,10 @@ WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
 TELEGRAM_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
-# The model's API key in the Docker image comes from the container's environment (Coolify), but a multiplexed
-# gateway reads each profile's secrets from that profile's .env only: setup copies it there.
-MODEL_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")
+# The model's API key (and Groq's, for voice notes) in the Docker image comes from the container's environment
+# (Coolify), but a multiplexed gateway reads each profile's secrets from that profile's .env only: setup copies it.
+MODEL_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "ZAI_API_KEY",
+              "KIMI_API_KEY", "DASHSCOPE_API_KEY", "GROQ_API_KEY")
 
 
 def find_hermes(explicit: str | None) -> str:

@@ -27,6 +27,9 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    | `VINCI_PROVIDER` | `openai-api` |
    | `VINCI_MODEL` | `gpt-6-luna`, u otro modelo del proveedor |
 
+   Con DeepSeek, usa `DEEPSEEK_API_KEY`, `VINCI_PROVIDER` = `deepseek` y `VINCI_MODEL` = `deepseek-flash`. También
+   sirven `ZAI_API_KEY` (GLM, proveedor `zai`), `KIMI_API_KEY` (`kimi`) y `DASHSCOPE_API_KEY` (Qwen, `alibaba`).
+
    En una instalación nueva, agrega también `CANVAS_TOKEN`, `WHATSAPP_CAPTAIN` y, si ya publicaste el relé,
    `WHATSAPP_RELAY_URL` y `WHATSAPP_RELAY_TOKEN`. Estas solo llenan lo que falta en `secrets.env`: Vinci renueva su
    token de Canvas ahí, así que un reinicio nunca le devuelve uno viejo. Si pasas tu Vinci desde la PC (abajo), no
@@ -42,8 +45,8 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
 Conserva el arranque de la imagen y no agregues `--init` en **Custom Docker options**. Hermes necesita controlar el
 proceso inicial del contenedor para ejecutar la preparación de Vinci y supervisar el gateway.
 
-Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se transcriben con la misma key de
-OpenAI. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
+Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se transcriben con una key de
+OpenAI o de Groq (`GROQ_API_KEY`): DeepSeek y los otros modelos chinos no transcriben audio. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
 El servidor usa el `config.toml` del repo: para cambiar algo, haz commit del cambio y redespliega. Así se enciende
 Telegram también (`[channels] telegram = true`), junto con `TELEGRAM_BOT_TOKEN` y `TELEGRAM_USER_ID`.
 

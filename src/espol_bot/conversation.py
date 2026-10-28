@@ -122,6 +122,23 @@ def add_reminders(conn: sqlite3.Connection, chat: str, text: str, moments: list[
     return added
 
 
+def snooze(conn: sqlite3.Connection, reminder_id: int, at: datetime | None, now: datetime) -> dict | None:
+    """The reminder `reminder_id` again at `at` (None: not again). A second vote on its poll replaces the first, so
+    each one keeps at most one snooze waiting. None when the reminder is gone."""
+    row = conn.execute("SELECT chat, text FROM group_reminders WHERE id = ?", (reminder_id,)).fetchone()
+    if row is None:
+        return None
+    conn.execute("DELETE FROM group_reminders WHERE snoozed_from = ? AND sent_at IS NULL", (reminder_id,))
+    again = {"id": None, "text": row["text"], "remind_at": None}
+    if at is not None:
+        again["remind_at"] = timefmt.iso(at)
+        again["id"] = conn.execute("INSERT INTO group_reminders(chat, text, remind_at, created_at, snoozed_from) "
+                                   "VALUES (?, ?, ?, ?, ?)",
+                                   (row["chat"], row["text"], again["remind_at"], timefmt.iso(now), reminder_id)).lastrowid
+    conn.commit()
+    return again
+
+
 def remove_reminder(conn: sqlite3.Connection, chat: str, reminder_id: int) -> bool:
     removed = conn.execute("DELETE FROM group_reminders WHERE chat = ? AND id = ? AND sent_at IS NULL",
                            (chat, reminder_id)).rowcount == 1

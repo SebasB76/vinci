@@ -24,8 +24,8 @@
 - **Qué prueba una cita:** que el bot leyó esa página de ese archivo en ese chat, en las últimas 12 horas; no que la
   página diga exactamente lo que el bot resume. Ábrela con su enlace si te importa el detalle.
 - **Recordatorios de un grupo:** solo tu Vinci los programa; el Vinci de un amigo no escribe en un grupo por su
-  cuenta. Salen con un margen de unos 30 segundos, y no salen si el servidor estuvo apagado más de 6 horas después
-  de su hora.
+  cuenta. Salen con un margen de unos 30 segundos. Si WhatsApp está caído, salen cuando vuelve; no salen si el
+  servidor estuvo apagado o WhatsApp caído más de 6 horas después de su hora.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
 - **WhatsApp no es oficial:** el puente de Hermes es un cliente no oficial de WhatsApp (Baileys). WhatsApp puede
   bloquear el número de Vinci, por eso va en un chip aparte. En WhatsApp no hay botones: los avisos de un amigo

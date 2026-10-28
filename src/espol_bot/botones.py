@@ -29,6 +29,9 @@ plugin should show:
                           subject's, its //vinci questions and its summary go to that bot
   v1:k:<nota>:no          «No es de clase»: the note is never read again
   v1:k:<nota>:cambiar     «Cambiar materia»: sends the card with every subject
+  v1:p:<recordatorio>:1h|1d|ok
+                          the poll under a reminder in the captain's WhatsApp chat (avisos.chat_reminders): the same
+                          reminder an hour from the vote, or a day after it was due; «✅ Ya está» calls off the snooze
 
 A tick on the dashboard comes in as `v1:s:…` or `v1:t:…` too (dashboard.py); either one, from the chat or the
 dashboard, refreshes the snapshot behind the menu button.
@@ -46,11 +49,11 @@ from pathlib import Path
 
 from aula_core import Aula, timefmt
 from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
-from espol_bot import dashboard, equipo, grades, horario, materias, messages, store, submission
+from espol_bot import conversation, dashboard, equipo, grades, horario, materias, messages, store, submission
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
-PATTERN = re.compile(r"v1:([aghckxrnstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
+PATTERN = re.compile(r"v1:([aghckxrnpstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
@@ -88,6 +91,8 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
         if kind == "k":
             from espol_bot import notes
             return notes.choose(cfg, conn, ref, arg, now)
+        if kind == "p":
+            return _snooze(cfg, conn, ref, arg, now)
         return _save_schedule(cfg, conn, ref, now) if arg == "ok" else _discard(conn, ref, now)
     finally:
         aula.close()
@@ -103,6 +108,21 @@ def _handoff(cfg: BotConfig, conn, alert_id: int, code: str, now: datetime) -> d
     _, created = store.queue_handoff(conn, code, "aviso", alert["texto"], now, alert_id=alert_id)
     toast = f"Enviado a {subject.display}" if created else f"Ya estaba enviado a {subject.display}"
     return _answer(toast, messages.handoff_queued(subject.display, subject.handle(), again=not created))
+
+
+def _snooze(cfg: BotConfig, conn, reminder_id: int, arg: str, now: datetime) -> dict:
+    row = conn.execute("SELECT remind_at FROM group_reminders WHERE id = ?", (reminder_id,)).fetchone()
+    at = None
+    if row is not None and arg != "ok":
+        at = now + timedelta(hours=1)
+        if arg == "1d":
+            at = max(timefmt.parse(row["remind_at"]) + timedelta(days=1), at)
+    again = conversation.snooze(conn, reminder_id, at, now)
+    if again is None:
+        return _answer("Ese recordatorio ya no existe.")
+    if at is None:
+        return _answer("👍 Listo, no te lo recuerdo más.")
+    return _answer(f"⏰ Te lo recuerdo otra vez el {timefmt.human(again['remind_at'], cfg.core.tz)}.")
 
 
 def _submitted(conn, assignment_id: int, submitted: bool, now: datetime) -> dict:

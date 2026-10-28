@@ -31,7 +31,8 @@
   chat_notes           what holds in one chat only (a group's way of being spoken to), which Vinci reads in
                        every turn there and nowhere else (conversation.py)
   group_reminders      a message Vinci's agenda sends to a WhatsApp chat (a group, or the captain's own) at the time
-                       the captain asked for there («recuérdanos el viernes a mediodía…»), once (conversation.py, avisos.py)
+                       the captain asked for there («recuérdanos el viernes a mediodía…»), once (conversation.py, avisos.py);
+                       claimed while it goes out, and a snooze of one is a new row pointing at it
   chat_focus           per conversation (Hermes' session key: a chat, and in a group one person): the subject it is
                        about, while it lasts, for what comes in without one (a photo, a voice note)
   activities           per conversation: a quiz or a study session open, paused or done, with where it got to, so
@@ -217,6 +218,7 @@ CREATE TABLE IF NOT EXISTS activities (
 # Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS leaves an existing table as it was.
 ADDED_COLUMNS = {
     "class_notes": ["checked_digest TEXT"],
+    "group_reminders": ["claimed_at TEXT", "snoozed_from INTEGER"],
 }
 # Tables whose key gained a column: made again from scratch, since what they hold matters only for a few hours.
 REKEYED = {"shown_pages": "session"}

@@ -364,7 +364,30 @@ def _local_dates(ctx: Ctx, task: dict) -> dict:
     return task
 
 
+def _auto_reminders(ctx: Ctx, task: dict) -> str:
+    """When the poll reminds the student of this task on its own (poller._send_reminders), so the model never
+    promises one that will not come: a task already due or handed in gets none."""
+    due, now, tz = timefmt.parse(task["vence"]), ctx.now(), ctx.cfg.core.tz
+    if task["entregada"]:
+        return "Ya está entregada: no sale ningún aviso automático."
+    if due is None or due <= now:
+        return ("No sale ningún aviso automático: " + ("no tiene fecha." if due is None else "ya venció.")
+                + " Si quiere uno, es un recordatorio aparte a la hora que te diga.")
+    sent = {r[0] for r in ctx.conn.execute("SELECT hours FROM bot_reminders WHERE assignment_id = ? AND due_at = ?",
+                                           (task["id"], task["vence"]))}
+    left = sorted((h for h in ctx.cfg.reminder_hours if h not in sent), reverse=True)
+    # an offset already passed goes out at the next poll, all of them in one message
+    moments = (["en unos minutos"] if any(due - timedelta(hours=h) <= now for h in left) else []) + [
+        f"el {timefmt.human(due - timedelta(hours=h), tz)} ({h} h antes)" for h in left
+        if due - timedelta(hours=h) > now]
+    if not moments:
+        return "Ya le llegaron sus avisos automáticos; no sale otro."
+    return (f"Si no la entrega, el sistema le avisa solo {' y '.join(moments)}. No prometas otros: uno a otra hora "
+            f"es un recordatorio aparte.")
+
+
 def _task(ctx: Ctx, task: dict) -> dict:
+    task["avisos_automaticos"] = _auto_reminders(ctx, task)
     task = _local_dates(ctx, task)
     task["archivos"] = [{"archivo_id": f["id"], "archivo": f["archivo"],
                          "estado": queries.file_state(f, ctx.cfg.core.max_file_mb), "url": f["url"]}

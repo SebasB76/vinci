@@ -29,6 +29,16 @@ def find_hermes(scratch_home: Path) -> str | None:
     return None
 
 
+def bundled_locales(hermes: str) -> str | None:
+    """The locales/ of the Hermes source tree, when the self-contained venv's own copy of the tree (its workspace/)
+    has none: without it every message Hermes writes itself is its catalog key («gateway.voice.…»)."""
+    workspace = Path(hermes).resolve().parents[2] / "workspace"
+    source = Path.home() / ".hermes" / "hermes-agent" / "locales"
+    if workspace.is_dir() and not (workspace / "locales").is_dir() and source.is_dir():
+        return str(source)
+    return None
+
+
 def _works(hermes: str, scratch_home: Path) -> bool:
     try:
         proc = subprocess.run([hermes, "--version"], capture_output=True, text=True, timeout=60,

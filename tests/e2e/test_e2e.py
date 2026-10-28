@@ -103,7 +103,7 @@ sys.path.insert(0, str(HERE))
 from fake_servers import (  # noqa: E402
     PORTAL_CARD, PORTAL_PASSWORD, PORTAL_USER, FakeCanvas, FakeDSpace, FakePages, FakePortal, FakeRelay, FakeWeb,
     FakeWhatsApp, ScriptedLLM, Tripwire)
-from hermes_harness import find_hermes  # noqa: E402
+from hermes_harness import bundled_locales, find_hermes  # noqa: E402
 
 ARTIFACT = Path(os.environ.get("E2E_ARTIFACT_DIR") or REPO / "artifacts" / "e2e")  # tests/conftest.py's too
 TRACE: dict = {}  # this test's world, for the trace page tests/conftest.py writes when it fails
@@ -1043,6 +1043,8 @@ def world(tmp_path: Path):
         assert Path(base_env["HOME"]).resolve().is_relative_to(tmp_path.resolve()), "la prueba usa un HOME temporal"
         if hermes:
             base_env["HERMES_BIN"] = hermes
+            if locales := bundled_locales(hermes):
+                base_env["HERMES_BUNDLED_LOCALES"] = locales
 
         def run(args, now, *, env_extra=None, check=True, stdin="", new_session=False, timeout=300):
             env = {**base_env, "AULA_NOW": now, **(env_extra or {})}
@@ -1765,8 +1767,10 @@ def test_whatsapp_captain(tmp_path):
         shared = profiles / "vinci" / "platforms" / "whatsapp" / "session"
         assert shared.is_symlink() and shared.readlink() == session, "Vinci ve las equivalencias de LID del puente"
         assert "vinci-whatsapp" in default_cfg["plugins"]["enabled"]
-        assert default_cfg["plugins"]["entries"]["vinci-whatsapp"]["allow_gateway_injection"] is True, \
-            "only this plugin may put a question back in its chat (the Académico's sign-in)"
+        vinci_cfg = yaml.safe_load((profiles / "vinci" / "config.yaml").read_text())
+        assert all(cfg["plugins"]["entries"]["vinci-whatsapp"]["allow_gateway_injection"] is True
+                   for cfg in (default_cfg, vinci_cfg)), \
+            "only this plugin may put a turn back in its chat (a brief, the Académico's sign-in), from either profile"
         plugin_src = (home / ".hermes" / "plugins" / "vinci-whatsapp" / "__init__.py").read_text()
         assert "{{" not in plugin_src and CAPTAIN_WA in plugin_src
         relay_line = f'RELAY = "{data_dir / "amigos" / "rele.json"}"'

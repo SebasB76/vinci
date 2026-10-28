@@ -18,7 +18,9 @@ cada conversación. Solo lee: no usa el modelo, no llama al aula y no cambia nad
 El texto de un chat solo se ve en tus chats privados. De un amigo o de un grupo, el panel muestra solo los tiempos,
 las herramientas y el largo de cada mensaje.
 
-Los costos son los que estima Hermes con su tabla de precios, no la factura de tu proveedor.
+Los costos son los que estima Hermes con su tabla de precios, no la factura de tu proveedor. Hermes guarda un
+solo total por conversación: si una conversación cruza la medianoche, el panel reparte su gasto entre los días según
+cuántas respuestas dio Vinci en cada uno.
 
 ## Encenderlo
 

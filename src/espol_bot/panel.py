@@ -115,14 +115,36 @@ def _jobs(profile: dict) -> list[dict]:
 
 
 def _usage(conn: sqlite3.Connection, profile: str, since: float, tz) -> list[dict]:
-    rows = conn.execute("SELECT model, last_seen, api_call_count, input_tokens, output_tokens, cache_read_tokens, "
-                        "cache_write_tokens, estimated_cost_usd FROM session_model_usage WHERE last_seen >= ?",
-                        (since,)).fetchall()
-    # a session spanning midnight counts on the day of its last call
-    return [{"profile": profile, "model": model,
-             "day": datetime.fromtimestamp(seen, timezone.utc).astimezone(tz).date().isoformat(),
-             "calls": calls, "input": i, "output": o, "cache_read": cr, "cache_write": cw, "usd": usd or 0.0}
-            for model, seen, calls, i, o, cr, cw, usd in rows]
+    rows = conn.execute("SELECT session_id, model, first_seen, last_seen, api_call_count, input_tokens, output_tokens, "
+                        "cache_read_tokens, cache_write_tokens, estimated_cost_usd FROM session_model_usage "
+                        "WHERE last_seen >= ?", (since,)).fetchall()
+    first_day = _day(since, tz)
+    found = []
+    for sid, model, first, last, calls, i, o, cr, cw, usd in rows:
+        for day, share in _call_days(conn, sid, first, last, tz).items():
+            if day >= first_day:
+                found.append({"profile": profile, "model": model, "day": day, "calls": calls * share,
+                              "input": i * share, "output": o * share, "cache_read": cr * share,
+                              "cache_write": cw * share, "usd": (usd or 0.0) * share})
+    return found
+
+
+def _day(stamp: float, tz) -> str:
+    return datetime.fromtimestamp(stamp, timezone.utc).astimezone(tz).date().isoformat()
+
+
+def _call_days(conn: sqlite3.Connection, session: str, first: float | None, last: float, tz) -> dict[str, float]:
+    """How a session's spend splits over the days its calls happened: Hermes keeps one running total per session, so
+    each day takes the share of the session's answers given that day. One that spans midnight is split, not put
+    whole on its last day."""
+    if first is None or _day(first, tz) == _day(last, tz):
+        return {_day(last, tz): 1.0}
+    days: dict[str, int] = {}
+    for (stamp,) in conn.execute("SELECT timestamp FROM messages WHERE session_id = ? AND role = 'assistant'",
+                                 (session,)):
+        days[_day(stamp, tz)] = days.get(_day(stamp, tz), 0) + 1
+    total = sum(days.values())
+    return {day: n / total for day, n in days.items()} if total else {_day(last, tz): 1.0}
 
 
 def _private(profile: dict, chat_type: str | None) -> bool:

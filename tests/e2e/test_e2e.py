@@ -42,7 +42,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), reminders he asks for there that the agenda sends to the group at their time, once (one
-  missed by days never goes out), and one he asks for in his private chat, sent to him alone, and its notices (a reminder before a class; trusted, a friend's
+  missed by days never goes out; none lost while the bridge is down), and one he asks for in his private chat, sent
+  to him alone with a poll that snoozes it to the next day, and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
   the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
@@ -2093,21 +2094,45 @@ def test_whatsapp_friend(tmp_path):
         mine = say(captain_jid, captain_jid, "avísame mañana a las 9 que repase vectores", "Capitán")
         assert "sale en su chat el jue 1 oct, 09:00" in text_of(mine), text_of(mine)
         mark = len(wa.sent)
-        for _ in range(2):  # the second tick must not repeat it
-            run([bot, "agenda"], "2026-10-01T09:00:20-05:00")
+        wa.failing.add("send")  # the bridge lost WhatsApp right at 9:00: nothing goes out, and nothing is lost
+        run([bot, "agenda"], "2026-10-01T09:00:20-05:00")
+        wa.failing.discard("send")
+        assert not wa.messages_to(GROUP_WA, mark) and not wa.messages_to(captain_jid, mark), wa.sent[mark:]
+        for _ in range(2):  # back a minute later: both go out then, and the second tick must not repeat them
+            run([bot, "agenda"], "2026-10-01T09:01:20-05:00")
         time.sleep(2)
         reminded = [m for m in wa.messages_to(GROUP_WA, mark) if "Recordatorio" in m.get("message", "")]
         assert len(reminded) == 1 and GROUP_REMINDER in reminded[0]["message"], reminded
         to_me = [m for m in wa.messages_to(captain_jid, mark) if PRIVATE_REMINDER in m.get("message", "")]
         assert len(to_me) == 1 and "Recordatorio" in to_me[0]["message"], to_me
         assert "<b>" not in reminded[0]["message"], reminded[0]["message"]
-        md.append(f"→ Vinci (recordatorio al grupo, jue 09:00): {normalize(reminded[0]['message'])}\n")
+        assert not wa.polls_to(GROUP_WA, mark), "en un grupo cualquiera votaría la encuesta de posponer"
+        snooze = wa.polls_to(captain_jid, mark)
+        assert len(snooze) == 1 and snooze[0]["options"] == ["⏰ En 1 hora", "🌙 Mañana a esta hora", "✅ Ya está"], \
+            snooze
+        calls, mark = len(llm.requests), len(wa.sent)
+        wa.vote(captain_jid, captain_jid, snooze[0]["messageId"], "🌙 Mañana a esta hora")
+        again = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark)
+                                       if "Te lo recuerdo otra vez el vie 2 oct, 09:00" in m.get("message", "")], 60)
+        assert again and len(llm.requests) == calls, wa.messages_to(captain_jid, mark)
+        mark = len(wa.sent)
+        run([bot, "agenda"], "2026-10-02T09:00:20-05:00")
+        time.sleep(2)
+        assert [m for m in wa.messages_to(captain_jid, mark) if PRIVATE_REMINDER in m.get("message", "")], \
+            wa.sent[mark:]
+        md.append(f"→ Vinci (recordatorio al grupo, jue 09:00): {normalize(reminded[0]['message'])}\n"
+                  f"→ al capitán: {normalize(to_me[0]['message'])} [encuesta «{snooze[0]['question']}»: "
+                  f"{' / '.join(snooze[0]['options'])}]\n**Capitán** vota «🌙 Mañana a esta hora» → Vinci: "
+                  f"{normalize(text_of(again))}\n")
         report.append("Cada turno termina con la hora de ahora y las notas de ese chat: «háblanos en plural» queda como "
                       "nota del grupo (chat_note) y llega en cada mensaje del grupo, nunca al chat privado del capitán")
         report.append("«@vinci recuérdanos mañana a las 9 y el viernes a mediodía…» programa dos recordatorios del grupo "
                       "(chat_reminder) que Vinci ve en el contexto del grupo; `espol-bot agenda` manda el del jueves "
                       "al grupo a su hora, una sola vez y sin el modelo; «avísame mañana a las 9…» en su chat privado "
-                      "sale en ese mismo tick, a él solo")
+                      "sale en ese mismo tick, a él solo. Si el puente de WhatsApp está caído a esa hora, ninguno se "
+                      "pierde: salen en el primer tick después de que vuelve, una vez. El privado trae una encuesta "
+                      "«⏰ En 1 hora / 🌙 Mañana a esta hora / ✅ Ya está», y su voto lo vuelve a programar sin el "
+                      "modelo")
 
         # 10b'. «@vinci activa los avisos»: the agenda tick before a class reminds the group, without the model, once
         notices = say(GROUP_WA, captain_jid, "@vinci activa los avisos", "Capitán", group=True)

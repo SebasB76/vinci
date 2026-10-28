@@ -65,7 +65,10 @@ folder`) también llegan aquí: las preguntas `//vinci` y el resumen con feedbac
 
 **Tus avisos.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a tu chat de WhatsApp, con
 su encuesta en vez de botones. Si le pides un aviso a una hora exacta («avísame a las 6 que imprima el informe»,
-«recuérdame cada hora hasta las 7 que haga el control»), Vinci lo programa y te llega a esa hora, sin el modelo.
+«recuérdame cada hora hasta las 7 que haga el control»), Vinci lo programa y te llega a esa hora, sin el modelo. «Hazme
+acuerdo» también vale. Ese recordatorio llega con una encuesta: «⏰ En 1 hora» o «🌙 Mañana a esta hora» lo vuelve a
+programar, y «✅ Ya está» lo deja ahí. Si pides que no se te pase una tarea del aula, Vinci te dice cuándo te avisa
+solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para una tarea ya vencida.
 
 - **Lo que muestran los Módulos.** «¿Hay grabación de la clase de Estadística?», «pásame el link del Perusall»: Vinci
   lee los Módulos del aula como tú los ves, con las grabaciones y videos, Perusall, el ID de Zoom que el profesor
@@ -151,7 +154,8 @@ tus mensajes: guarda lo que tú le dices que acordaron.
 **Recordatorios para el grupo.** Escribe en el grupo «@vinci recuérdanos mañana a las 9 y el viernes a mediodía que
 entregamos las historias de usuario». Vinci te confirma el día y la hora de cada uno, y a esa hora el recordatorio
 sale en el grupo, para todos. Si no dices la hora, Vinci usa las 9:00 y te lo dice. «@vinci borra el recordatorio
-del viernes» quita uno. Si el servidor estuvo apagado y un recordatorio se atrasa más de 6 horas, no sale. Solo tu
+del viernes» quita uno. Si WhatsApp se cae a esa hora, el recordatorio sale apenas vuelve. Si el servidor estuvo
+apagado o WhatsApp caído y un recordatorio se atrasa más de 6 horas, no sale. Solo tu
 Vinci los programa: el Vinci de un amigo no puede escribir en el grupo por su cuenta.
 
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:

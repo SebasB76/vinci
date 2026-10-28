@@ -9,7 +9,8 @@ Model-free. In a plain notice group, only what the whole class shares: never a g
     all of one poll in a single message.
   - `chat_reminders`, from the same agenda tick: what the captain asked Vinci to remind a group of, at the time he
     gave (`chat_reminder`), in any group that is on, with or without notices; and the ones he asked for himself, in
-    his private chat.
+    his private chat, with a poll to snooze it (botones `v1:p:…`). One the bridge did not take is tried again every
+    tick until LATE: it counts as sent only once WhatsApp has it.
 
 A trusted group («@vinci este grupo es de confianza», amigos.trusted_groups) is friends who agreed to share their
 aula with each other. Its members are the captain and every friend with a Vinci who is in it (the bridge's
@@ -45,6 +46,8 @@ DUE_DAYS = 7
 MEETING = re.compile(r"https://[\w.-]*(?:zoom\.us/j/|teams\.microsoft\.com/l/(?:meetup-join|team)/|meet\.google\.com/)\S+")
 PARALELO = re.compile(r"paralelo\s*(\d+)", re.I)
 LATE = timedelta(hours=6)  # a reminder missed by more (the laptop was off) is dropped, not sent out of time
+CLAIMED_FOR = timedelta(minutes=5)  # a claim this old is from a tick that died mid-send: the reminder is free again
+SNOOZE = [("⏰ En 1 hora", "1h"), ("🌙 Mañana a esta hora", "1d"), ("✅ Ya está", "ok")]
 
 
 @dataclass
@@ -304,23 +307,45 @@ def chat_reminders(cfg: BotConfig, now: datetime) -> None:
     aula = Aula(cfg.core)
     try:
         conn = store.ensure(aula.conn)
-        due = conn.execute("SELECT * FROM group_reminders WHERE sent_at IS NULL AND remind_at <= ? ORDER BY remind_at, id",
-                           (timefmt.iso(now),)).fetchall()
+        stale_claim = timefmt.iso(now - CLAIMED_FOR)
+        due = conn.execute("SELECT * FROM group_reminders WHERE sent_at IS NULL AND remind_at <= ? "
+                           "AND (claimed_at IS NULL OR claimed_at < ?) ORDER BY remind_at, id",
+                           (timefmt.iso(now), stale_claim)).fetchall()
         for r in due:
             # claimed before it goes out, so a second tick or a restart never sends it twice
-            if conn.execute("UPDATE group_reminders SET sent_at = ? WHERE id = ? AND sent_at IS NULL",
-                            (timefmt.iso(now), r["id"])).rowcount != 1:
+            if conn.execute("UPDATE group_reminders SET claimed_at = ? WHERE id = ? AND sent_at IS NULL "
+                            "AND (claimed_at IS NULL OR claimed_at < ?)",
+                            (timefmt.iso(now), r["id"], stale_claim)).rowcount != 1:
                 continue
             conn.commit()
+            chat = r["chat"].removeprefix("whatsapp:")
             if now - timefmt.parse(r["remind_at"]) > LATE:
                 log.warning("avisos: recordatorio #%d de %s no salió a tiempo; lo descarto", r["id"], r["remind_at"])
-                continue
-            chat = r["chat"].removeprefix("whatsapp:")
             # only the captain's own Vinci has chat_reminder, so a private chat here is his
-            if chat.endswith("@g.us") and chat not in amigos.groups(cfg):
+            elif chat.endswith("@g.us") and chat not in amigos.groups(cfg):
                 log.info("avisos: recordatorio #%d de un grupo apagado; no sale", r["id"])
+            elif not _remind(cfg, chat, r):
+                conn.execute("UPDATE group_reminders SET claimed_at = NULL WHERE id = ?", (r["id"],))
+                conn.commit()
                 continue
-            log.info("avisos: recordatorio #%d", r["id"])
-            _send(cfg, [chat], f"⏰ <b>Recordatorio</b>\n{messages.e(r['text'])}")
+            conn.execute("UPDATE group_reminders SET sent_at = ? WHERE id = ?", (timefmt.iso(now), r["id"]))
+            conn.commit()
     finally:
         aula.close()
+
+
+def _remind(cfg: BotConfig, chat: str, reminder) -> bool:
+    """Whether WhatsApp took the reminder. Its snooze poll may fail on its own: the reminder already went out."""
+    to = whatsapp.WhatsApp(chat, cfg.whatsapp_bridge, polls=cfg.core.data_dir)
+    try:
+        to.send(f"⏰ <b>Recordatorio</b>\n{messages.e(reminder['text'])}")
+    except whatsapp.WhatsAppError as exc:
+        log.error("avisos: el recordatorio #%d no salió (%s); lo intento en el próximo minuto", reminder["id"], exc)
+        return False
+    log.info("avisos: recordatorio #%d", reminder["id"])
+    if not to.group:  # in a group anyone could vote it
+        try:
+            to.poll([(label, f"v1:p:{reminder['id']}:{arg}") for label, arg in SNOOZE])
+        except whatsapp.WhatsAppError as exc:
+            log.warning("avisos: el recordatorio #%d salió sin su encuesta: %s", reminder["id"], exc)
+    return True

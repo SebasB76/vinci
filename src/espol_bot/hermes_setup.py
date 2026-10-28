@@ -597,10 +597,11 @@ class Setup:
         plugins = _section(merged, "plugins")
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
-        # Only the default profile's plugins get the gateway's injector: this one puts a question the Académico's
-        # sign-in held back in its Vinci session (portal_login.py).
-        entries = _section(plugins, "entries")
-        _section(entries, WHATSAPP_PLUGIN)["allow_gateway_injection"] = True
+        # The plugin puts a queued turn (the brief before a class, a question the Académico's sign-in held back) in
+        # its Vinci session: an older Hermes lets only the default profile's plugins inject, a recent one only the
+        # session's own profile's (below).
+        injection = {"plugins": {"entries": {WHATSAPP_PLUGIN: {"allow_gateway_injection": True}}}}
+        _deep_merge(merged, copy.deepcopy(injection))
         if merged != current:
             changed |= _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 
@@ -618,7 +619,8 @@ class Setup:
         for home in [self.root, *routed]:
             if home != self.root:
                 changed |= self._share_whatsapp_ids(home)
-            plugin_changed = home != self.root and self.managed_config(home, {}, plugins=[WHATSAPP_PLUGIN])
+            plugin_changed = home != self.root and self.managed_config(home, copy.deepcopy(injection),
+                                                                         plugins=[WHATSAPP_PLUGIN])
             # only the default profile's copy polls the relay: one poller, in the process that owns the bridge
             own = {**values, "RELAY": str(mailboxes) if home == self.root else ""}
             for plugin_file in sorted((TEMPLATES / "plugins" / WHATSAPP_PLUGIN).glob("*.*")):

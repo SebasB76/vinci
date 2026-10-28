@@ -43,10 +43,12 @@ friend's and in the default one; it acts only on WhatsApp.
 - The /token page and the dashboard, opened from a button: what they post to Vinci's relay (src/espol_bot/relay.py)
   is fetched here every few seconds while a link is open (`espol-bot whatsapp-rele`), only by the default profile's
   copy and one process at a time, and answered in the chat of whom the link was for.
-- The Académico, once connected from its button (src/espol_bot/portal_login.py): the question that needed it waits
-  in TURNS, and this loop puts it back in the Hermes session it came from (ctx.inject_message, which the gateway
-  allows this plugin only: plugins.entries.vinci-whatsapp.allow_gateway_injection), on WhatsApp or Telegram, so
-  Vinci answers it there. Only the default profile's copy can: the gateway hands its injector to that profile.
+- The Académico, once connected from its button (src/espol_bot/portal_login.py), and the brief before a class
+  (agenda.run_vinci): the question waits in TURNS, and a loop puts it back in the Hermes session it came from
+  (ctx.inject_message, which the gateway allows this plugin only: plugins.entries.vinci-whatsapp.allow_gateway_injection),
+  on WhatsApp or Telegram, so Vinci answers it there. A recent Hermes lets a plugin inject only into its own profile's
+  sessions, an older one hands its injector to the default profile only: so the copy in each Vinci's profile tries
+  its own sessions, the default one tries them all, and whichever the gateway takes first claims the turn.
 
 When adding or removing a friend changed the routes, the gateway restarts itself once the turns in flight end.
 Any failure here drops the message: nothing reaches a Vinci that this plugin could not place.
@@ -81,7 +83,10 @@ GROUP_IDLE = int("{{GROUP_IDLE}}")  # seconds; the E2E test shortens it
 PRIVATE_IDLE = 4 * 3600
 RELAY = "{{RELAY}}"  # relay.py's mailboxes; set only in the default profile's copy, the one that polls
 RELAY_EVERY = 3
-TURNS = os.path.join(os.path.dirname(RELAY), "turns") if RELAY else ""
+TURNS = os.path.join(os.path.dirname(REGISTRY), "turns")  # relay.queue_turn
+# This copy's profile, from where setup put it (<root>/profiles/<name>/plugins/vinci-whatsapp/); "" in the default's.
+_HOME = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+PROFILE = os.path.basename(_HOME) if os.path.basename(os.path.dirname(_HOME)) == "profiles" else ""
 ENV = {"AULA_CONFIG": "{{CONFIG}}", "AULA_SECRETS": "{{SECRETS}}", "HERMES_BIN": "{{HERMES}}"}
 SEALED_RE = re.compile(r"v1\.[A-Za-z0-9_-]{200,}")
 # ESPOL's aula tokens: 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~".
@@ -126,6 +131,8 @@ def register(ctx):
     ctx.register_platform_handler("whatsapp", _wire_votes)
     if RELAY:
         threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
+    elif PROFILE:
+        threading.Thread(target=_turns_loop, args=(ctx,), name=f"vinci-turnos-{PROFILE}", daemon=True).start()
 
 
 async def _dispatch(event=None, gateway=None, session_store=None, **_):
@@ -585,9 +592,18 @@ def _relay_loop(ctx):
             logger.exception("no pude atender el relé")
 
 
+def _turns_loop(ctx):
+    while True:
+        time.sleep(RELAY_EVERY)
+        try:
+            _inject_turns(ctx)
+        except Exception:
+            logger.exception("no pude retomar un turno en el perfil %s", PROFILE)
+
+
 def _inject_turns(ctx):
-    """Each question the Académico's sign-in left (portal_login.py), back in its session; kept for a retry while the
-    gateway cannot take it yet, dropped when it expires."""
+    """Each turn queued for a session (relay.queue_turn), back in it; kept for a retry while the gateway cannot take
+    it yet, dropped when it expires. A profile's copy takes only that profile's sessions («agent:<profile>:…»)."""
     try:
         names = sorted(n for n in os.listdir(TURNS) if n.endswith(".json"))
     except FileNotFoundError:
@@ -595,13 +611,22 @@ def _inject_turns(ctx):
     for name in names:
         path = os.path.join(TURNS, name)
         turn = _read_dict(path)
-        if not turn.get("session") or float(turn.get("expires") or 0) < time.time():
-            logger.warning("una pregunta del Académico venció sin volver a su chat")
-            os.remove(path)
+        session = str(turn.get("session") or "")
+        if PROFILE and not session.startswith(f"agent:{PROFILE}:"):
             continue
-        if ctx.inject_message(str(turn.get("text") or ""), session_key=str(turn["session"])):
-            os.remove(path)
-            logger.info("pregunta del Académico devuelta a su chat")
+        claimed = f"{path}.{os.getpid()}-{threading.get_ident()}"
+        try:  # the other copy may be at the same file: only one gets to rename it
+            os.rename(path, claimed)
+        except FileNotFoundError:
+            continue
+        if not session or float(turn.get("expires") or 0) < time.time():
+            logger.warning("un turno para %s venció sin volver a su chat", session or "?")
+            os.remove(claimed)
+        elif ctx.inject_message(str(turn.get("text") or ""), session_key=session):
+            os.remove(claimed)
+            logger.info("turno devuelto a su chat")
+        else:
+            os.rename(claimed, path)
 
 
 def _close_quizzes():

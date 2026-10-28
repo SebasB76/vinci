@@ -7,23 +7,21 @@ the university's Canvas (aulavirtual). It has one maintainer, called "the captai
 and docs, and a few friends who each get their own Vinci on WhatsApp. It is a side project:
 shipping speed beats ceremony, and a bug found later is fixed in a new session.
 
-## Status (2026-10-14)
+## Status (2026-10-28)
 
-- Live: one Hermes gateway on an old laptop at the captain's home (Omarchy, no Docker), as the systemd
-  user service `hermes-gateway`. It serves `vinci` and one `amigo-<name>` profile per friend. Reach it with
-  `ssh vinci-server` (an alias in the captain's `~/.ssh/config`, over Tailscale); the live install is
-  `~/espol-academic-bot` there. The captain's PC only keeps a dev checkout: its Vinci profiles are parked in
-  `~/.hermes/vinci-en-laptop/`, so never start a gateway with them there.
+- Live: the Docker image (`Dockerfile`, `deploy/`) on Coolify, since 2026-10-27, on DeepSeek (`VINCI_PROVIDER`,
+  `VINCI_MODEL` and `DEEPSEEK_API_KEY` in Coolify's variables). One container, one Hermes gateway for `vinci` and one
+  `amigo-<name>` profile per friend; all its state lives in the volume `/opt/data` (`docs/guia/servidor.md`). Coolify
+  builds `main` only when someone presses **Redeploy**: no webhook, and its CLI here has no valid token.
+- Off: the old laptop `vinci-server` (offline since 2026-10-19). The captain's PC only keeps a dev checkout: its
+  Vinci profiles are parked in `~/.hermes/vinci-en-servidor/`, so never start a gateway with them there.
 - Live: WhatsApp is the only channel (`[channels] telegram = false`): Vinci, on a separate number through
   Hermes's unofficial bridge, keeps every subject in one chat, with its notebook and the brief before each class.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
-- Live: the admin panel (`espol-bot panel`, the user service `vinci-panel`) on `vinci-server`, published with
-  Tailscale Funnel: the captain's tailnet sees everything; from the internet it needs the `PANEL_KEY` link
-  (`espol-bot panel --nueva-clave`) and shows no chat text (`docs/guia/panel.md`).
-- Ready, not live yet: the Docker image (`Dockerfile`, `deploy/`) for the Taws club's Coolify, with an OpenAI
-  key; `deploy/move.py` moves the laptop's data there (`docs/guia/servidor.md`).
+- Not running: the admin panel (`espol-bot panel`, `docs/guia/panel.md`). It ran on `vinci-server`; the image
+  opens no port, so Coolify has none.
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).
 
 ## Where to start
@@ -53,16 +51,16 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 2. If behavior changed, extend `tests/e2e/test_e2e.py` and run `uv run pytest` once, after
    all changes.
 3. `gh pr merge <n> --merge --delete-branch` (the repo keeps merge commits).
-4. `ssh vinci-server`, then in `~/espol-academic-bot`: `git pull && ./setup.sh`.
-5. There: `hermes gateway restart`, then `.venv/bin/espol-bot doctor`.
-6. There: `.venv/bin/vinci-check smoke` (about 45 s), plus a `vinci-check say` or `vote` that
-   exercises the change itself.
+4. Ask the captain to press **Redeploy** on Vinci's app in Coolify, and wait for **Healthy**: each boot does what
+   `./setup.sh` does.
+5. In the container's **Terminal**: `espol-bot doctor`.
+6. There: `s6-setuidgid hermes env HOME=/opt/data /opt/vinci/.venv/bin/vinci-check smoke` (about 45 s), plus a
+   `vinci-check say` or `vote` that exercises the change itself.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
 
 ## Working rules
 
-- `~/espol-academic-bot` on `vinci-server` is the live install: `setup.sh` writes its own path into
-  the Hermes profiles and the `.venv` is an editable install. Never switch branches there. On the PC, work in a
+- The live install is the Coolify container, built from `main`: never deploy a branch there. On the PC, work in a
   git worktree of `~/Projects/espol-academic-bot`, and never run `setup.sh` on the PC.
 - E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to
   "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
@@ -112,7 +110,9 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 
 ## Commands
 
-The commands from `./setup.sh` down to `tail -f` run on `vinci-server`, in `~/espol-academic-bot`.
+The commands from `./setup.sh` down to `tail -f` are for an install like the old `vinci-server`. In the Coolify
+container's Terminal, run `espol-bot` and `hermes` as they are (they run as the `hermes` user), and the data lives
+under `/opt/data` (`docs/guia/servidor.md`).
 
 ```bash
 uv sync                                   # dependencies, dev included

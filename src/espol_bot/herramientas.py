@@ -281,6 +281,16 @@ class Ctx:
     code: str | None = None
     _aula: Aula | None = field(default=None, repr=False)
     stale: health.Stale | None = field(default=None, repr=False)  # set by refresh() when the aula's copy is old
+    # where the conversation behind the current call happens: {canal, tipo, chat, sesion} (mcp_server.CHANNEL_ARG)
+    channel: dict = field(default_factory=dict, repr=False)
+
+    def set_channel(self, note: dict) -> None:
+        self.channel = note
+
+    @property
+    def session(self) -> str:
+        """The chat this call comes from (Hermes' session key): which pages a citation there may point at."""
+        return str(self.channel.get("sesion") or "")
 
     @property
     def aula(self) -> Aula:
@@ -517,7 +527,7 @@ def _search(ctx: Ctx, args: dict, course_ids: list[int] | None, prefer: set[int]
              ][:n - len(hits)]
     for hit in hits:
         hit["cita"] = citations.cite(hit["archivo"], hit["unidad"], hit["pagina"], url=hit["url"])
-        citations.record(ctx.conn, ctx.bot, hit["archivo_id"], [hit["pagina"]], ctx.now())
+        citations.record(ctx.conn, ctx.bot, ctx.session, hit["archivo_id"], [hit["pagina"]], ctx.now())
     result: dict = {"resultados": _trim_hits(hits)}
     ids = course_ids if course_ids is not None else [c["id"] for c in queries.courses(ctx.conn)]
     marks = ",".join("?" * len(ids)) or "NULL"
@@ -616,7 +626,8 @@ def _read(ctx: Ctx, file_id: int, pages, *, can_fetch: bool) -> dict:
         kept.append({**page, "cita": citations.cite(data["archivo"], data["unidad"], page["pagina"], url=data["url"])})
     result["contenido"] = kept
     if kept:  # a blank page inside the range was read too
-        citations.record(ctx.conn, ctx.bot, data["id"], range(kept[0]["pagina"], kept[-1]["pagina"] + 1), ctx.now())
+        citations.record(ctx.conn, ctx.bot, ctx.session, data["id"], range(kept[0]["pagina"], kept[-1]["pagina"] + 1),
+                         ctx.now())
     if data["indexado"] == "escaneado":
         result["aviso"] = _scan_notice(ctx, data["ocr"], can_fetch=can_fetch)
     elif not data["descargado"]:
@@ -1130,7 +1141,6 @@ QUIZ_QUESTIONS = {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
         "entry_id": {"type": "integer", "description": "o la entrada del cuaderno de la materia de donde sale "
                                                        "(una foto, un apunte, un texto que te pasó)"}},
     "required": ["question", "options", "answer", "explanation"]}}
-CHANNEL_FRESH = 600  # seconds: canal.json older than this is from another conversation
 PORTAL_TOPICS = ("historial", "promedio", "avance", "calificaciones", "horario", "examenes", "todo")
 PORTAL_OLD = timedelta(days=30)
 GPA_NOTE = ("Give the GPA exactly as the portal shows it (`gpa`, from Información General), never one you work out "
@@ -1198,22 +1208,17 @@ def _press(ctx: Ctx, data: str) -> dict:
 
 
 def _whatsapp_chat(ctx: Ctx) -> WhatsApp | None:
-    """The owner's private WhatsApp chat when this conversation happens on WhatsApp (canal.json, which the
-    vinci-botones plugin writes before every tool call); a friend's Vinci lives there. None: Telegram."""
+    """The owner's private WhatsApp chat when this conversation happens on WhatsApp; a friend's Vinci lives there.
+    None: Telegram."""
     owner = None
     if ctx.cfg.friend:
         owner = load_secret_values().get("WHATSAPP_OWNER")
     elif not ctx.cfg.telegram:
         settings = whatsapp_settings()
         owner = settings.captain if settings else None
-    elif ctx.hermes_home is not None:
-        try:
-            note = json.loads((ctx.hermes_home / "canal.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            note = {}
-        if note.get("canal") == "whatsapp" and time.time() - float(note.get("en") or 0) < CHANNEL_FRESH:
-            settings = whatsapp_settings()
-            owner = settings.captain if settings else None
+    elif _channel(ctx).get("canal") == "whatsapp":
+        settings = whatsapp_settings()
+        owner = settings.captain if settings else None
     return WhatsApp(owner, ctx.cfg.whatsapp_bridge, polls=ctx.cfg.core.data_dir) if owner else None
 
 
@@ -1321,22 +1326,34 @@ def _books(ctx: Ctx, subjects: list[materias.Subject]) -> dict[str, dict]:
 
 def _media_file(ctx: Ctx, path: str) -> Path:
     """A file the student sent this bot (Hermes keeps it in the profile's media cache, or in its own cache for
-    WhatsApp: <hermes>/profiles/<bot> → <hermes>/cache)."""
+    WhatsApp: <hermes>/profiles/<bot> → <hermes>/cache, which every profile shares, so there only one this chat
+    sent)."""
     if ctx.hermes_home is None:
         raise ToolError("Este servidor no conoce la carpeta de Hermes del bot; no puedo tomar adjuntos.")
     try:
         real = Path(path).expanduser().resolve(strict=True)
     except (FileNotFoundError, RuntimeError, OSError):
         raise ToolError(f"No encuentro el archivo {path}.") from None
-    roots = [(ctx.hermes_home / d).resolve() for d in MEDIA_DIRS if (ctx.hermes_home / d).exists()]
+    own = [(ctx.hermes_home / d).resolve() for d in MEDIA_DIRS if (ctx.hermes_home / d).exists()]
     shared = ctx.hermes_home.parent.parent / "cache" if ctx.hermes_home.parent.name == "profiles" else None
-    roots += [(shared / d).resolve() for d in WHATSAPP_MEDIA_DIRS if shared and (shared / d).exists()]
-    if not real.is_file() or not any(real.is_relative_to(root) for root in roots):
-        raise ToolError("Solo puedo tomar archivos que el estudiante te mandó por Telegram o WhatsApp "
+    whatsapp = [(shared / d).resolve() for d in WHATSAPP_MEDIA_DIRS if shared and (shared / d).exists()]
+    if not real.is_file() or not (any(real.is_relative_to(root) for root in own) or
+                                  any(real.is_relative_to(root) for root in whatsapp) and _sent_here(ctx, real)):
+        raise ToolError("Solo puedo tomar archivos que el estudiante te mandó en este chat por Telegram o WhatsApp "
                         "(los que Hermes guarda en su caché), no otros archivos del computador.")
     if real.stat().st_size > MAX_ATTACHMENT:
         raise ToolError("El archivo es demasiado grande (máximo 50 MB).")
     return real
+
+
+def _sent_here(ctx: Ctx, path: Path) -> bool:
+    """Whether this call's chat sent `path` (adjuntos.json, which the vinci-whatsapp plugin keeps in the profile)."""
+    try:
+        owners = json.loads((ctx.hermes_home / "adjuntos.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    chat = _channel(ctx).get("chat")
+    return bool(chat) and (owners.get(str(path)) or {}).get("chat") == chat
 
 
 def _document(ctx: Ctx, path: str) -> Path:
@@ -1402,7 +1419,7 @@ def _page_for_summary(ctx: Ctx, course_ids, visual: dict) -> dict:
         image = extract.render_page(Path(info["descargado"]), page)
     except ValueError as exc:
         raise ToolError(str(exc)) from None
-    citations.record(ctx.conn, ctx.bot, file_id, [page], ctx.now())
+    citations.record(ctx.conn, ctx.bot, ctx.session, file_id, [page], ctx.now())
     return {"imagen": image, "cita": citations.cite(info["archivo"], "página", page, url=info["url"])}
 
 
@@ -1420,7 +1437,8 @@ def _summary_tool(ctx: Ctx) -> Tool:
                     values = section.get(key)
                     checked = []
                     for value in values if isinstance(values, list) else [values] if values else []:
-                        text, changes = citations.check(ctx.conn, ctx.bot, course_ids, str(value))
+                        text, changes = citations.check(ctx.conn, ctx.bot, ctx.session, course_ids, str(value),
+                                                        ctx.now())
                         wrong += [c["cita"] for c in changes if not c["cambio"].startswith("enlace")]
                         checked.append(text)
                     if checked:
@@ -1455,14 +1473,8 @@ def _open_activity(ctx: Ctx, session: str, activity_id) -> dict:
 
 
 def _channel(ctx: Ctx) -> dict:
-    """Where this tool call's conversation happens (canal.json, which the vinci-botones plugin writes before it)."""
-    if ctx.hermes_home is None:
-        return {}
-    try:
-        note = json.loads((ctx.hermes_home / "canal.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return note if time.time() - float(note.get("en") or 0) < CHANNEL_FRESH else {}
+    """Where this tool call's conversation happens, as the vinci-botones plugin passed it with the call."""
+    return ctx.channel
 
 
 def _reminder_at(ctx: Ctx, value, now: datetime) -> datetime:
@@ -2569,10 +2581,10 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
     ])
 
 
-def page_image(cfg: BotConfig, code: str | None, file_id: int, page: int) -> dict:
+def page_image(cfg: BotConfig, code: str | None, file_id: int, page: int, session: str = "") -> dict:
     """A page of a downloaded PDF of the subject `code` (None: Vinci's, any subject), as a JPEG: what the plugin's
-    ver_pagina shows the model."""
-    ctx = Ctx(cfg, code=code.upper() if code else None)
+    ver_pagina shows the model in the chat `session`."""
+    ctx = Ctx(cfg, code=code.upper() if code else None, channel={"sesion": session})
     try:
         info = queries.file_by_id(ctx.conn, file_id)
         if code and info["curso_id"] not in agenda.course_ids_for(ctx.conn, ctx.subject()):
@@ -2585,7 +2597,7 @@ def page_image(cfg: BotConfig, code: str | None, file_id: int, page: int) -> dic
             jpeg = extract.render_page(Path(info["descargado"]), page)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
-        citations.record(ctx.conn, ctx.bot, file_id, [page], ctx.now())
+        citations.record(ctx.conn, ctx.bot, ctx.session, file_id, [page], ctx.now())
         return {"archivo_id": file_id, "archivo": info["archivo"], "pagina": page, "paginas": info["paginas"],
                 "cita": citations.cite(info["archivo"], "página", page, url=info["url"]),
                 "tipo": "image/jpeg", "imagen": base64.b64encode(jpeg).decode()}
@@ -2626,13 +2638,13 @@ def entry_image(cfg: BotConfig, code: str, entry_id: int) -> dict:
             "tipo": "image/jpeg", "imagen": base64.b64encode(out.getvalue()).decode()}
 
 
-def check_citations(cfg: BotConfig, code: str | None, text: str) -> dict:
-    """An answer of Vinci (no `code`) or of a subject bot with its citations checked (citations.py): what the
-    plugin sends instead, when something changed."""
-    ctx = Ctx(cfg, code=code.upper() if code else None)
+def check_citations(cfg: BotConfig, code: str | None, text: str, session: str = "") -> dict:
+    """An answer of Vinci (no `code`) or of a subject bot in the chat `session` with its citations checked
+    (citations.py): what the plugin sends instead, when something changed."""
+    ctx = Ctx(cfg, code=code.upper() if code else None, channel={"sesion": session})
     try:
         course_ids = agenda.course_ids_for(ctx.conn, ctx.subject()) if code else None
-        checked, changes = citations.check(ctx.conn, ctx.bot, course_ids, text)
+        checked, changes = citations.check(ctx.conn, ctx.bot, ctx.session, course_ids, text, ctx.now())
     finally:
         ctx.aula.close()
     for change in changes:

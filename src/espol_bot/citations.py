@@ -1,11 +1,11 @@
 """Citations a bot can back up.
 
 Every page of the material a tool shows a bot (a search hit, a page read, a page seen as an image) is
-recorded per bot, and the tool hands the model that page's citation ready to copy: file, page or slide,
-and its link in the aula. Before an answer reaches the captain, the vinci-botones plugin runs
-`espol-bot citas` on it (`check`): a citation of a page this bot was never shown, or of a file that is
-not in its material, becomes a warning, and one that lost its link or carries a wrong one gets the
-file's own. Only citations shaped like the ones the tools hand out are checked: «📄 <file>, página N»,
+recorded per bot and chat, and the tool hands the model that page's citation ready to copy: file, page or
+slide, and its link in the aula. Before an answer reaches the captain, the vinci-botones plugin runs
+`espol-bot citas` on it (`check`): a citation of a page this bot was not shown in this chat within SHOWN_FOR,
+or of a file that is not in its material, becomes a warning, and one that lost its link or carries a wrong
+one gets the file's own. Only citations shaped like the ones the tools hand out are checked: «📄 <file>, página N»,
 with or without its link.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import unquote, urldefrag
 
 from aula_core import timefmt
@@ -22,6 +22,8 @@ from aula_core.catalog import normalized_name
 VINCI = "vinci"  # Vinci's pages; a subject bot's go under its code
 PLURAL = {"página": "páginas", "diapositiva": "diapositivas", "sección": "secciones"}
 MAX_RANGE = 60  # a longer range cites a whole book, not a page
+# A page read earlier than this is no longer what the model has in front of it: a chat starts over after 4 h idle.
+SHOWN_FOR = timedelta(hours=12)
 _LOCATOR = (r"(?:p[áa]ginas?|diapositivas?|secci(?:[óo]n|ones)|hojas?|p[áa]gs?\.|pp?\.|diap\.)\s*"
             r"(?P<first>\d+)(?:\s*(?:-|–|a|al)\s*(?P<last>\d+))?(?!\d)")
 LINKED = re.compile(r"(?:📄\s*)?\[(?P<label>(?P<name>[^\[\]\n]+?),\s*" + _LOCATOR + r")\]\((?P<url>[^()\s]+)\)",
@@ -45,11 +47,12 @@ def cite(name: str, unit: str, first: int, last: int | None = None, url: str | N
     return f"📄 [{label}]({_url(url)})" if url else f"📄 {label}"
 
 
-def record(conn: sqlite3.Connection, bot: str, file_id: int, pages, now: datetime) -> None:
-    rows = [(bot, file_id, int(page), timefmt.iso(now)) for page in dict.fromkeys(pages)]
+def record(conn: sqlite3.Connection, bot: str, session: str, file_id: int, pages, now: datetime) -> None:
+    """`session`: the chat the page was shown in (Hermes' session key; empty outside a chat)."""
+    rows = [(bot, session, file_id, int(page), timefmt.iso(now)) for page in dict.fromkeys(pages)]
     if rows:
-        conn.executemany("INSERT INTO shown_pages(bot, file_id, page, shown_at) VALUES (?, ?, ?, ?)"
-                         " ON CONFLICT(bot, file_id, page) DO UPDATE SET shown_at = excluded.shown_at", rows)
+        conn.executemany("INSERT INTO shown_pages(bot, session, file_id, page, shown_at) VALUES (?, ?, ?, ?, ?)"
+                         " ON CONFLICT(bot, session, file_id, page) DO UPDATE SET shown_at = excluded.shown_at", rows)
         conn.commit()
 
 
@@ -65,15 +68,17 @@ def _candidates(conn: sqlite3.Connection, course_ids: list[int] | None, name: st
     return by_url or [r for r in rows if key and normalized_name(r["display_name"]) == key]
 
 
-def _shown(conn: sqlite3.Connection, bot: str, file_id: int, first: int, last: int) -> bool:
+def _shown(conn: sqlite3.Connection, bot: str, session: str, file_id: int, first: int, last: int,
+           now: datetime) -> bool:
     if last < first or last - first >= MAX_RANGE:
         return False
-    seen = conn.execute("SELECT COUNT(*) FROM shown_pages WHERE bot = ? AND file_id = ? AND page BETWEEN ? AND ?",
-                        (bot, file_id, first, last)).fetchone()[0]
+    seen = conn.execute("SELECT COUNT(*) FROM shown_pages WHERE bot = ? AND session = ? AND file_id = ? "
+                        "AND page BETWEEN ? AND ? AND shown_at >= ?",
+                        (bot, session, file_id, first, last, timefmt.iso(now - SHOWN_FOR))).fetchone()[0]
     return seen == last - first + 1
 
 
-def _verdict(conn, bot: str, course_ids, match: re.Match) -> tuple[str, str | None]:
+def _verdict(conn, bot: str, session: str, course_ids, match: re.Match, now: datetime) -> tuple[str, str | None]:
     """(what the citation becomes, why it changed or None)."""
     label, url = match["label"].strip(), match.groupdict().get("url")
     first = int(match["first"])
@@ -81,7 +86,7 @@ def _verdict(conn, bot: str, course_ids, match: re.Match) -> tuple[str, str | No
     files = _candidates(conn, course_ids, match["name"].strip(), url)
     if not files:
         return f"⚠️ «{label}» (ese archivo no está en el material: no lo tomes como fuente)", "archivo desconocido"
-    shown = next((f for f in files if _shown(conn, bot, f["id"], first, last)), None)
+    shown = next((f for f in files if _shown(conn, bot, session, f["id"], first, last, now)), None)
     if shown is None:
         return f"⚠️ «{label}» (esa página no salió del material que leí: no la tomes como fuente)", "página no leída"
     right = shown["html_url"]
@@ -90,15 +95,16 @@ def _verdict(conn, bot: str, course_ids, match: re.Match) -> tuple[str, str | No
     return (f"📄 [{label}]({_url(right)})" if right else f"📄 {label}"), "enlace corregido" if url else "enlace agregado"
 
 
-def check(conn: sqlite3.Connection, bot: str, course_ids: list[int] | None, text: str) -> tuple[str, list[dict]]:
-    """The answer with each citation checked against the pages `bot` was shown in `course_ids` (None: every
-    course), and what changed."""
+def check(conn: sqlite3.Connection, bot: str, session: str, course_ids: list[int] | None, text: str,
+          now: datetime) -> tuple[str, list[dict]]:
+    """The answer with each citation checked against the pages `bot` was shown in this chat (`session`) in
+    `course_ids` (None: every course), and what changed."""
     matches = list(LINKED.finditer(text))
     taken = [m.span() for m in matches]
     matches += [m for m in PLAIN.finditer(text) if not any(a < m.end() and m.start() < b for a, b in taken)]
     out, changes, at = [], [], 0
     for match in sorted(matches, key=lambda m: m.start()):
-        new, why = _verdict(conn, bot, course_ids, match)
+        new, why = _verdict(conn, bot, session, course_ids, match, now)
         out += [text[at:match.start()], new]
         at = match.end()
         if why:

@@ -58,7 +58,7 @@ class LoginError(ConfigError):
 
 def request(cfg: BotConfig, channel: dict, topic: str, question: str, now: datetime) -> dict:
     """Asks the captain's side for a sign-in whose button goes to this chat and whose answer goes back to this
-    Hermes session. `channel`: what the vinci-botones plugin noted before the tool call (canal.json)."""
+    Hermes session. `channel`: where the tool call came from (herramientas.Ctx.channel)."""
     platform, session = channel.get("canal", ""), channel.get("sesion", "")
     if channel.get("tipo") not in ("dm", "private", ""):
         raise LoginError("Conectar el Académico se hace por privado: pídele que te escriba en su chat contigo.")

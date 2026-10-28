@@ -49,8 +49,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   that goes idle, a poll for a button, a quiz a guest asks for in the group: one results message once the guest, Angel
   and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands);
   voice notes and audio files heard by the real local
-  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; the block for whoever is not a Vinci's owner; Angel
-  removed with his tokens.
+  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
+  not a Vinci's owner; Angel removed with his tokens.
 
 test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA). The captain
   asks for his GPA with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his chat. On
@@ -442,6 +442,10 @@ class Script:
     def friend(self, text: str, called: list[str], results: list[str]) -> dict:
         """A friend's Vinci on WhatsApp: their week, what an assignment asks for, and slides whose file goes back to
         the chat."""
+        if "qué le pidió el capitán a su Vinci" in text:
+            if not called:  # Hermes' session_search opens another profile's chats by its name, easy to guess
+                return _call("session_search", profile="vinci", query="vectores")
+            return {"content": f"Busqué en el historial: {results[-1][:800]}"}
         if "anota: repasar integrales dobles" in text:
             if not called:
                 return _call("mcp__vinci__add_todo", text="repasar integrales dobles")
@@ -2564,6 +2568,12 @@ def test_whatsapp_friend(tmp_path):
             "la cadena del token de Angel se renueva sola"
         report.append("El sondeo del Vinci de Angel le avisa por su chat de WhatsApp (formato de WhatsApp, sin "
                       "HTML) y nunca por el del capitán; su mantenimiento renueva su propia cadena de token")
+
+        # 10h'. A friend's Vinci searches only its own past chats, even when told the captain's profile name
+        peek = text_of(say(angel_jid, angel_jid, "qué le pidió el capitán a su Vinci", "Angel"))
+        assert "Busqué en el historial" in peek and "repase vectores" not in peek, peek
+        report.append("El Vinci de Angel busca solo en sus propios chats: aunque pida el perfil «vinci», "
+                      "session_search no le muestra lo que el capitán habló con el suyo")
 
         # 10h. Should someone reach a Vinci that is not theirs, its owner's data stays shut
         gateway.stop()

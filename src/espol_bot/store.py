@@ -14,8 +14,8 @@
   todos                the captain's own to-do list (readings, paperwork, what a professor said in
                        class): text, subject and due date when given, and when it was done
   todo_reminders       which to-do reminders were already sent (like bot_reminders)
-  shown_pages          each page of the material a tool showed a bot (Vinci or a subject): what a citation
-                       in its answers may point at (citations.py)
+  shown_pages          each page of the material a tool showed a bot (Vinci or a subject) in a chat: what a
+                       citation in its answers there may point at (citations.py)
   grading_schemes      per subject: how it is graded this semester (grades.py), saved only by the
                        captain's «Guardar» under a proposal
   grading_scheme_proposals
@@ -175,10 +175,11 @@ CREATE TABLE IF NOT EXISTS note_questions (
 );
 CREATE TABLE IF NOT EXISTS shown_pages (
     bot TEXT NOT NULL,
+    session TEXT NOT NULL,
     file_id INTEGER NOT NULL,
     page INTEGER NOT NULL,
     shown_at TEXT NOT NULL,
-    PRIMARY KEY (bot, file_id, page)
+    PRIMARY KEY (bot, session, file_id, page)
 );
 CREATE TABLE IF NOT EXISTS chat_notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,9 +218,15 @@ CREATE TABLE IF NOT EXISTS activities (
 ADDED_COLUMNS = {
     "class_notes": ["checked_digest TEXT"],
 }
+# Tables whose key gained a column: made again from scratch, since what they hold matters only for a few hours.
+REKEYED = {"shown_pages": "session"}
 
 
 def ensure(conn: sqlite3.Connection) -> sqlite3.Connection:
+    for table, column in REKEYED.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if have and column not in have:
+            conn.execute(f"DROP TABLE {table}")
     conn.executescript(SCHEMA)
     for table, columns in ADDED_COLUMNS.items():
         have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}

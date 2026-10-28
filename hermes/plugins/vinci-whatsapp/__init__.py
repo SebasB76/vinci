@@ -33,6 +33,8 @@ friend's and in the default one; it acts only on WhatsApp.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
   instead, from the names of everyone who has written to Vinci (kept in NAMES), also in the message it quotes.
 - A sticker never reaches a Vinci: Hermes would hand it over as a document it cannot open.
+- A file that goes on to a Vinci is noted with its chat (ATTACHMENTS): WhatsApp's files land in Hermes' shared cache,
+  and a tool takes one only for the chat that sent it (herramientas._media_file).
 - In a group, what goes on to a Vinci starts with who wrote it, already checked by their number. Every Vinci speaks
   from the same WhatsApp account, so Hermes calls any of their messages «your previous message»: a quote counts as
   this Vinci's own only when its text is in this conversation. After GROUP_IDLE without a message, the conversation
@@ -120,6 +122,9 @@ NOT_YOURS = ("(un mensaje de Vinci que no está en tu conversación: es del Vinc
              "rato) ")
 AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an audio file
 CALLS_VINCI_RE = re.compile(r"\b[bv]in(?:ch|c|s)h?i\b")  # «Vinci» as Whisper may spell it, over _plain text
+# Next to the profile's config (<profile>/plugins/vinci-whatsapp/__init__.py); the profile's tools read it there.
+ATTACHMENTS = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "adjuntos.json"))
+ATTACHMENTS_KEPT = 7 * 86400
 _HEARD = {}  # the last audio heard: a group's audio file is heard to place it, then again for the model
 _TASKS = set()  # asyncio keeps only a weak reference to a task
 _VOTES = asyncio.Lock()
@@ -148,6 +153,7 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
         names = _remember(source)  # anyone who mentions Vinci, even without their own Vinci yet
         result = await _sort(event, source, gateway)
         if result is None:
+            _note_attachments(event, source)
             original = str(getattr(event, "text", "") or "")
             text = original
             kind, audio = _audio(event)
@@ -460,6 +466,22 @@ def _remember(source):
         except OSError as exc:  # a name not kept only leaves a mention as a number
             logger.warning("no pude guardar el nombre de quien escribe: %s", exc)
     return names
+
+
+def _note_attachments(event, source):
+    paths = [os.path.realpath(str(p)) for p in getattr(event, "media_urls", None) or []]
+    if not paths:
+        return
+    now = time.time()
+    owners = {p: o for p, o in _read_dict(ATTACHMENTS).items() if now - float(o.get("en") or 0) < ATTACHMENTS_KEPT}
+    owners.update(dict.fromkeys(paths, {"chat": f"whatsapp:{getattr(source, 'chat_id', '')}", "en": now}))
+    try:
+        tmp = f"{ATTACHMENTS}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(owners, fh)
+        os.replace(tmp, ATTACHMENTS)
+    except OSError as exc:  # the file reaches the model, but its tools will not take it
+        logger.warning("no pude anotar de qué chat es un adjunto: %s", exc)
 
 
 def _named(text, names):

@@ -95,9 +95,9 @@ APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 # 25K verbatim tail already weigh ~50K, so a lower trigger would summarize again every question or two.
 COMPRESSION_THRESHOLD_TOKENS = 80_000
 # Hermes tools (besides the MCP ones in herramientas.GUEST_TOOLS) someone in a WhatsApp group other than the
-# captain may use: the web and reading skills and past chats. Not memory or skill_manage: what a guest says must
-# never become something Vinci remembers or does for the captain.
-GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "session_search", "clarify"]
+# captain may use: the web and reading skills. Not memory or skill_manage: what a guest says must never become
+# something Vinci remembers or does for the captain. Not session_search: it reads the captain's private chats too.
+GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "clarify"]
 WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message

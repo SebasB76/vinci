@@ -18,6 +18,9 @@ from typing import Any, Callable
 log = logging.getLogger(__name__)
 
 SUPPORTED_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+# Where the conversation behind a call happens: the vinci-botones plugin adds it to every call (pre_tool_call), so
+# two chats at once never mix it up. It is not in any tool's schema: the model never sees or sets it.
+CHANNEL_ARG = "_canal"
 
 
 class ToolError(Exception):
@@ -44,11 +47,13 @@ class Tool:
 
 
 class Server:
-    def __init__(self, name: str, version: str, tools: list[Tool], instructions: str = ""):
+    def __init__(self, name: str, version: str, tools: list[Tool], instructions: str = "",
+                 on_channel: Callable[[dict], None] | None = None):
         self.name = name
         self.version = version
         self.tools = {t.name: t for t in tools}
         self.instructions = instructions
+        self.on_channel = on_channel
 
     # -- one request ----------------------------------------------------------------------
 
@@ -84,6 +89,10 @@ class Server:
         tool = self.tools.get(name)
         if tool is None:
             return _text(f"No existe la herramienta «{name}». Disponibles: {', '.join(self.tools)}.", error=True)
+        arguments = dict(arguments)
+        channel = arguments.pop(CHANNEL_ARG, None)
+        if self.on_channel is not None:
+            self.on_channel(channel if isinstance(channel, dict) else {})
         unknown = set(arguments) - set(tool.properties)
         if unknown:
             return _text(f"Argumentos desconocidos para {name}: {', '.join(sorted(unknown))}.", error=True)

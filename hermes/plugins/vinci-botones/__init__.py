@@ -27,7 +27,9 @@ Model-free Telegram handlers of Vinci and its subject bots, answering only the c
 On WhatsApp, Hermes routes each sender to their own Vinci (the captain's, or a friend's: amigos.py), and the plugin
 of the default profile drops whoever has none. Should anyone else still reach this Vinci, they get only the tools in
 GUEST_TOOLS (hook pre_tool_call): the course material, a past exam, slides, the web; never the owner's deliverables,
-grades, lists, schedule or memory. When the hook cannot tell who asks, it blocks.
+grades, lists, schedule, memory or past chats. When the hook cannot tell who asks, it blocks. The same hook keeps
+session_search in this profile (Hermes would open another's chats with «profile»: a friend's Vinci, the captain's)
+and hands each of this project's tools the chat its call comes from (CHANNEL_ARG), so two chats at once never mix.
 
 Every turn ends with what Vinci must know about its chat (hook pre_llm_call, `espol-bot contexto`, which also reads
 the student's message for a subject he names): the clock, since Hermes dates a conversation by the day it started,
@@ -55,8 +57,6 @@ import logging
 import os
 import re
 import subprocess
-import time
-from pathlib import Path
 
 logger = logging.getLogger("vinci-botones")
 
@@ -69,8 +69,8 @@ SUBJECT = "{{CODIGO}}"  # this bot's subject code; empty for Vinci
 WHATSAPP_OWNER = "{{WHATSAPP_OWNER}}"  # whose Vinci this is, on WhatsApp: the captain's number, or a friend's
 # Tool name → the arguments a guest may not pass (herramientas.GUEST_TOOLS plus a few Hermes tools).
 GUEST_TOOLS = json.loads('''{{GUEST_TOOLS}}''')
-# Next to this profile's config (<profile>/plugins/vinci-botones/__init__.py): its tools read it there.
-CHANNEL = Path(__file__).resolve().parents[2] / "canal.json"
+MCP_TOOLS = ("mcp__vinci__", "mcp__materia__")  # this project's own tools (mcp_server.py)
+CHANNEL_ARG = "_canal"  # mcp_server.CHANNEL_ARG
 GUEST_BLOCKED = ("Eso es del dueño de este Vinci (su aula, sus notas, sus listas o la memoria de Vinci): solo él "
                  "puede pedirlo. Explícale a quien lo pidió que para tener lo suyo tiene que pedirle al dueño que lo "
                  "agregue, y ofrécele lo que sí puedes: el material de los cursos, exámenes anteriores o diapositivas.")
@@ -323,7 +323,7 @@ def register(ctx):
 
     ctx.register_platform_handler("telegram", _wire)
     ctx.register_hook("transform_llm_output", _check_citations)
-    ctx.register_hook("pre_tool_call", _guard_guests)
+    ctx.register_hook("pre_tool_call", _before_tool)
     ctx.register_hook("pre_llm_call", _turn_context)
     # Vinci (no SUBJECT) gets them too: without Telegram it reads every subject's pages and notebooks itself
     photo = PHOTO_TOOL if SUBJECT else VINCI_PHOTO_TOOL
@@ -339,43 +339,53 @@ def _whatsapp_number(user_id):
     return "" if user_id.endswith("@lid") else re.sub(r"[:@].*$", "", user_id)
 
 
-def _guard_guests(tool_name="", args=None, **_):
-    _note_channel()
+def _before_tool(tool_name="", args=None, **_):
+    if _guest_blocked(tool_name, args):
+        return {"action": "block", "message": GUEST_BLOCKED}
+    if tool_name == "session_search":
+        return {"action": "modify", "args": {"profile": ""}}
+    if tool_name.startswith(MCP_TOOLS):  # always set, so a value the model made up never gets through
+        return {"action": "modify", "args": {CHANNEL_ARG: _channel_note()}}
+    return None
+
+
+def _guest_blocked(tool_name, args):
     try:
         from gateway.session_context import get_session_env
         if get_session_env("HERMES_SESSION_PLATFORM", "") != "whatsapp":
-            return None
+            return False
         senders = {_whatsapp_number(get_session_env(key, "")) for key in
                    ("HERMES_SESSION_USER_ID", "HERMES_SESSION_USER_ID_ALT")}
         if WHATSAPP_OWNER and WHATSAPP_OWNER in senders:
-            return None
+            return False
         forbidden = GUEST_TOOLS.get(tool_name)
-        if forbidden is not None and not set(args or {}) & set(forbidden):
-            return None
+        return forbidden is None or bool(set(args or {}) & set(forbidden))
     except Exception as exc:  # who asks is unknown: only what a guest may do goes through
         logger.error("no pude saber quién pide %s: %s", tool_name, exc)
-        if tool_name in GUEST_TOOLS and not GUEST_TOOLS[tool_name]:
-            return None
-    return {"action": "block", "message": GUEST_BLOCKED}
+        return not (tool_name in GUEST_TOOLS and not GUEST_TOOLS[tool_name])
 
 
-def _note_channel():
+def _channel_note():
     """Where the conversation behind this tool call happens, for the tools to send a card there (herramientas.py:
-    a poll in the owner's WhatsApp chat instead of Telegram buttons) and to answer in it later. The tools run in
-    another process."""
+    a poll in the owner's WhatsApp chat instead of Telegram buttons) and to answer in it later."""
     try:
         from gateway.session_context import get_session_env
-        note = {"canal": get_session_env("HERMES_SESSION_PLATFORM", ""),
+        return {"canal": get_session_env("HERMES_SESSION_PLATFORM", ""),
                 "tipo": get_session_env("HERMES_SESSION_CHAT_TYPE", ""),
                 "chat": _chat_key(get_session_env),
                 # the session an answer can be put back in (the Académico's sign-in: portal_login.py)
-                "sesion": get_session_env("HERMES_SESSION_KEY", ""), "en": time.time()}
-        if note["canal"]:
-            tmp = CHANNEL.with_suffix(".tmp")
-            tmp.write_text(json.dumps(note), encoding="utf-8")
-            os.replace(tmp, CHANNEL)
+                "sesion": get_session_env("HERMES_SESSION_KEY", "")}
     except Exception as exc:  # the card goes to Telegram, as before
-        logger.warning("no pude anotar el canal: %s", exc)
+        logger.warning("no pude saber de qué chat viene la llamada: %s", exc)
+        return {}
+
+
+def _session_key():
+    try:
+        from gateway.session_context import get_session_env
+        return get_session_env("HERMES_SESSION_KEY", "")
+    except Exception:
+        return ""
 
 
 def _chat_key(get_session_env):
@@ -405,7 +415,8 @@ def _check_citations(response_text="", **_):
     if not any(mark in (response_text or "") for mark in CITES):
         return None
     try:
-        proc = subprocess.run([BOT, "citas", *(("--curso", SUBJECT) if SUBJECT else ())], input=response_text,
+        proc = subprocess.run([BOT, "citas", *(("--curso", SUBJECT) if SUBJECT else ()), "--sesion", _session_key()],
+                              input=response_text,
                               capture_output=True, text=True, timeout=20, env=_env())
         return json.loads(proc.stdout or "{}").get("respuesta") or None
     except Exception as exc:  # never hold an answer back over the check
@@ -431,7 +442,8 @@ async def _see_page(args, **_):
     except (KeyError, TypeError, ValueError):
         return json.dumps({"error": "Dime «archivo_id» y «pagina» como números."}, ensure_ascii=False)
     try:
-        result = await _run("pagina", *(["--curso", SUBJECT] if SUBJECT else []), str(file_id), str(page))
+        result = await _run("pagina", *(["--curso", SUBJECT] if SUBJECT else []), "--sesion", _session_key(),
+                            str(file_id), str(page))
     except Exception as exc:
         logger.error("ver_pagina: %s", exc)
         return json.dumps({"error": "No pude mostrar la página; intenta de nuevo."}, ensure_ascii=False)

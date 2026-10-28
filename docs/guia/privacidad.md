@@ -6,7 +6,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 
 | Archivo | Qué es |
 |---|---|
-| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas, las páginas del material que leyó cada bot (con eso se revisan sus citas) y de qué materia es cada nota de tu carpeta de apuntes |
+| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas, las páginas del material que leyó cada bot en cada chat (con eso se revisan sus citas) y de qué materia es cada nota de tu carpeta de apuntes |
 | `materiales/<curso>/` | Los archivos descargados del aula, una carpeta por curso (y en `recibidos/`, el material que le mandaste a un bot) |
 | `libros/<CÓDIGO>/` | Donde pones el PDF del libro principal de una materia si pesa más de 20 MB |
 | `tessdata/` | Los modelos de OCR de español e inglés que bajó `setup.sh` |
@@ -36,9 +36,11 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   un código de emparejamiento), y los botones también revisan que seas tú. Una instalación es para un estudiante.
 - **En WhatsApp, cada uno con lo suyo.** Hermes manda cada mensaje al Vinci de quien lo escribe: el tuyo o el de
   un amigo que agregaste. Un amigo nunca llega a tu Vinci, y si alguien llegara al Vinci de otro, el plugin le
-  niega las herramientas con datos del dueño (su aula, sus notas, sus listas). En un grupo activo, a quien no tiene
-  su Vinci le contesta tu Vinci como invitado: con esas mismas herramientas cerradas, y con la regla de no contarle
-  nada tuyo, ni lo que Vinci recuerda de ti. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
+  niega las herramientas con datos del dueño (su aula, sus notas, sus listas). Ningún Vinci busca en los chats de
+  otro: la búsqueda en conversaciones anteriores se queda en el perfil de quien pregunta. En un grupo activo, a quien
+  no tiene su Vinci le contesta tu Vinci como invitado: con esas mismas herramientas cerradas, sin buscar en tus
+  conversaciones anteriores, y con la regla de no contarle nada tuyo, ni lo que Vinci recuerda de ti. Un archivo que
+  alguien manda por WhatsApp solo lo toman las herramientas del chat donde llegó. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
   aula pegado tal cual en WhatsApp no se usa: Vinci le pide que lo borre.
 - **El panel no lee los chats de otros.** El [panel de administración](panel.md) muestra el texto solo de tus chats
   privados, y solo a ti, desde tu red de Tailscale. De un amigo o de un grupo, muestra solo tiempos, herramientas y

@@ -55,7 +55,8 @@ el voto lo deshace.
 
 Cada materia tiene su cuaderno: lo que se vio en clase, tus dudas, los temas que te cuestan, las fotos de la pizarra y
 tus notas de voz. Vinci te confirma dónde guardó cada cosa («📘 Estadística · guardé la foto»); si se equivocó, dile
-«era de Cálculo».
+«era de Cálculo». Vinci solo guarda un archivo en el chat donde lo mandaste: una foto que mandaste en un grupo se
+guarda desde ese grupo, no desde tu chat privado.
 
 **El brief antes de cada clase.** 30 minutos antes de cada clase de tu horario (`brief_minutos_antes`), Vinci te
 manda el brief a este chat: repaso de la clase anterior, lo que vence, material nuevo, conceptos clave y una pregunta

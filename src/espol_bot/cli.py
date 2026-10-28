@@ -155,16 +155,16 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
     if which == "amigo":
         server = Server("vinci", "1.0", herramientas.friend_tools(ctx),
                         "Herramientas del Vinci de un amigo: su aula virtual (solo lectura), material, exámenes "
-                        "anteriores y presentaciones.")
+                        "anteriores y presentaciones.", ctx.set_channel)
     elif which == "vinci":
         server = Server("vinci", "1.0", herramientas.vinci_tools(ctx),
                         "Herramientas de Vinci: aula virtual (solo lectura) de todas las materias, cuadernos "
-                        "(solo lectura), horario y traspasos a los bots de materia.")
+                        "(solo lectura), horario y traspasos a los bots de materia.", ctx.set_channel)
     else:
         if not code:
             raise ConfigError("mcp materia necesita --curso CÓDIGO")
         server = Server("materia", "1.0", herramientas.subject_tools(ctx),
-                        f"Herramientas del bot de {code.upper()}: solo esa materia y su cuaderno.")
+                        f"Herramientas del bot de {code.upper()}: solo esa materia y su cuaderno.", ctx.set_channel)
     logging.info("mcp %s%s: iniciado", which, f" {code}" if code else "")
     return server.serve()
 
@@ -367,6 +367,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci, cualquier materia)")
     p.add_argument("archivo_id", type=int)
     p.add_argument("pagina", type=int)
+    p.add_argument("--sesion", default="", help="el chat donde se muestra (la clave de sesión de Hermes)")
     sub.add_parser("notes", help="leer tu carpeta de apuntes y pasárselos a los bots de materia (cron de Vinci)")
     p = sub.add_parser("foto", help="una foto del cuaderno como imagen (la usa ver_foto, del plugin vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia")
@@ -379,6 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("citas", help="comprobar las citas de una respuesta leída por stdin (la usa el plugin "
                                      "vinci-botones)")
     p.add_argument("--curso", default=None, help="código de la materia (vacío: Vinci)")
+    p.add_argument("--sesion", default="", help="el chat de la respuesta (la clave de sesión de Hermes)")
     p = sub.add_parser("contexto", help="el contexto de un turno: la hora y lo que vale en ese chat (lo usa el "
                                         "plugin vinci-botones)")
     p.add_argument("--chat", default="", help="canal:id del chat (whatsapp:…@g.us)")
@@ -480,7 +482,7 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import herramientas
             from espol_bot.mcp_server import ToolError
             try:
-                result = herramientas.page_image(cfg, args.curso, args.archivo_id, args.pagina)
+                result = herramientas.page_image(cfg, args.curso, args.archivo_id, args.pagina, args.sesion)
             except ToolError as exc:
                 result = {"error": str(exc)}
             print(json.dumps(result, ensure_ascii=False))
@@ -520,7 +522,7 @@ def main(argv: list[str] | None = None) -> int:
             from espol_bot import herramientas
             from espol_bot.mcp_server import ToolError
             try:
-                result = herramientas.check_citations(cfg, args.curso, sys.stdin.read())
+                result = herramientas.check_citations(cfg, args.curso, sys.stdin.read(), args.sesion)
             except ToolError as exc:  # a subject no longer in materias.toml: the answer goes as it is
                 logging.warning("citas: %s", exc)
                 result = {}

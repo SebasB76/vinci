@@ -93,7 +93,7 @@ const KINDS = {vinci: ["Vinci", "var(--c1)"], materia: ["Bots de materia", "var(
                amigo: ["Amigos", "var(--c3)"], otro: ["Otros", "var(--c4)"]};
 const $ = id => document.getElementById(id);
 const usd = v => v > 0 && v < 0.005 ? "<$0.01" : "$" + (v >= 10 ? v.toFixed(1) : v.toFixed(2));
-const kTok = v => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(v);
+const kTok = v => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(Math.round(v));
 const ago = iso => {
   if (!iso) return "—";
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -195,7 +195,7 @@ function render(d) {
   table($("byBot"), [["Bot"], ["Modelo"], ["Último uso"], ["Llamadas", 1], ["Tokens", 1], ["Costo", 1]],
         Object.values(bot).sort((a, b) => b.usd - a.usd).map(r => el("tr", {},
           el("td", {}, r.profile), el("td", {}, shortModel(r.model)), el("td", {class: "nowrap"}, dayLabel(r.last)),
-          el("td", {class: "n"}, r.calls),
+          el("td", {class: "n"}, Math.round(r.calls)),
           el("td", {class: "n"}, kTok(r.tokens)), el("td", {class: "n"}, usd(r.usd)))));
 
   table($("jobs"), [["Bot"], ["Tarea"], ["Última"], ["Próxima"], ["Estado"]],
@@ -248,7 +248,7 @@ function showTip(bar) {
       ...bots.slice(0, 5).map(([name, b]) => row(`${name} · ${[...b.models].join("/")}`, usd(b.usd))),
       ...(bots.length > 5 ? [el("div", {class: "muted small"}, `y ${bots.length - 5} más`)] : []),
       el("hr"),
-      row("Llamadas al modelo", data.calls), row("Tokens", kTok(data.tokens)),
+      row("Llamadas al modelo", Math.round(data.calls)), row("Tokens", kTok(data.tokens)),
       row("Costo por llamada", usd(data.usd / Math.max(1, data.calls))));
   }
   tip.hidden = false;

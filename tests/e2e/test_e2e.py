@@ -535,6 +535,14 @@ class Script:
     def pending(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """Física's pending list with how each is handed in; «ya hice …» marks the lab done, «todavía no» undoes it,
         and «se entrega por correo» says how the unclear one is handed in."""
+        if "qué tengo pendiente esta semana" in text:
+            if not called:
+                return _call("mcp__vinci__semana")
+            if called == ["mcp__vinci__semana"]:
+                return _call("mcp__vinci__show_page", page="deliverables")
+            urgent = [p["tarea"] for p in _json(results[0])["pendientes"][:2]]
+            return {"content": f"Tienes {len(_json(results[0])['pendientes'])} entregas. Lo urgente: "
+                               + "; ".join(urgent) + ". El resto está en tu panel."}
         if "qué tengo pendiente en Física" in text:
             if not called:
                 return _call("mcp__vinci__tareas", materia="física")
@@ -1421,7 +1429,8 @@ def test_canvas(tmp_path):
         # 4. daily summary -----------------------------------------------------------------
         run([bot, "resumen"], T_SUMMARY)
         summary = take("Resumen diario · mar 29 sep 07:00")
-        assert len(summary) == 1 and "Resumen de tu semana" in summary[0]["text"]
+        assert len(summary) == 2 and "Resumen de tu semana" in summary[0]["text"]
+        assert summary[1]["button"] == "📋 Ver mis entregas", "después del resumen, el botón a su panel"
         for expected in ("Taller 2: Movimiento parabólico", "Taller 3: Derivadas", "Examen parcial",
                          "Informe de laboratorio 1", "Ya entregaste 1", "Cambio de fecha del Taller 3"):
             assert expected in summary[0]["text"], f"falta «{expected}» en el resumen"
@@ -1834,6 +1843,14 @@ def test_whatsapp_captain(tmp_path):
                 f"{canvas.base}/courses/102/modules/items/81093") in perusall, perusall
         assert "CLASES VIRTUALES · título: ID ZOOM: 829 0000 0001" in recording, recording
         md.append(f"→ Vinci (grabación): {normalize(recording)}\n→ Vinci (Perusall): {normalize(perusall)}\n")
+        # 10f'. «¿qué tengo pendiente?» in private: a short answer, with a button to his dashboard (show_page)
+        asked = say(captain_jid, captain_jid, "qué tengo pendiente esta semana", "Capitán", expect=2)
+        [panel] = [m for m in asked if m["path"] == "send-url-button"]
+        assert panel["buttonText"] == "📋 Ver mis entregas" and "#d=" in panel["url"], panel
+        assert "El resto está en tu panel" in text_of(asked), asked
+        report.append("«qué tengo pendiente esta semana» en privado: Vinci contesta corto y manda con show_page un "
+                      "botón a su panel de entregas")
+
         report.append("Lo que muestran los Módulos del aula llega a Vinci (modulos): una grabación de clase (que el "
                       "catálogo lista en «videos» en vez de esconderla), la herramienta Perusall y el ID de Zoom que el "
                       "profesor escribió como título, cada uno con su enlace del aula")
@@ -1861,6 +1878,8 @@ def test_whatsapp_captain(tmp_path):
         assert "Práctica 2 en el simulador" in text_of(summary) and "Lección 2" not in text_of(summary), \
             "the summary lists the late lab handed in elsewhere, as the chat does, and not the exam already held"
         assert "<b>" not in text_of(summary), text_of(summary)
+        assert summary[-1]["path"] == "send-url-button" and summary[-1]["buttonText"] == "📋 Ver mis entregas", \
+            "el resumen de las 7:00 termina con el botón a su panel"
         assert not any("Consultar con" in o for p in wa.polls_to(captain_jid, mark) for o in p["options"]), \
             "sin bots de materia no hay «Consultar con …»"
         md.append(f"**(resumen de las 7:00 del capitán)** → Vinci: {normalize(text_of(summary))[:300]}…\n")

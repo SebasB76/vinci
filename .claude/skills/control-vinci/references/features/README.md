@@ -15,7 +15,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | «🎓 Consultar con …» handoff | button under each alert | not needed: reply to the alert, Vinci answers with that subject | yes | `funciones.md` |
 | «✅ Ya lo entregué» | button | poll | no | `funciones.md` |
 | Work handed in outside the aula (`delivery`: external lab, event in class, unknown) | in every pending list | same; «ya lo hice» / «todavía no» / «se entrega por correo» | no (classification is a script) | `uso.md` «El resumen de las 7:00» |
-| Dashboard of deliverables | «📋 Entregas» menu button, Mini App | `/entregas` → link button; ticks come back through the relay | no | `uso.md` «El dashboard de entregas» |
+| Dashboard of deliverables | «📋 Entregas» menu button, Mini App | link button: `/entregas`, after the 07:00 summary, and from Vinci (`show_page`) on «¿qué tengo pendiente?» in private; ticks come back through the relay | no (the button from Vinci: yes) | `uso.md` «El dashboard de entregas» |
 | To-do list («anota: …») | card with «✅ Hecho» | poll | yes (parsing), no (reminders) | `funciones.md` |
 | Grade calculator | ask Vinci or a subject bot; «✅ Guardar esquema» | ask Vinci; «Guardar esquema» poll | yes, the math is a script | `uso.md` «La calculadora de notas» |
 | Team of subject bots | «arma mi equipo» → «➕ Crear» | not needed: one Vinci for every subject | no | `instalacion.md` «7. Arma tu equipo de bots desde el chat» |
@@ -34,7 +34,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
 | PDF summaries | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
 | `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
-| `/token` new Canvas token | Mini App form | guide image + link button, back through the relay | no | `uso.md` «Token nuevo desde Telegram (`/token`)» |
+| `/token` new Canvas token | Mini App form | guide image + link button, back through the relay; Vinci sends it too (`show_page`) when the token died or he asks | no (from Vinci: yes) | `uso.md` «Token nuevo desde Telegram (`/token`)» |
 | `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
 | Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it, by name, with no unasked reminders; someone without a Vinci gets Vinci as a guest (guest tools only, marked in the turn's header); ignores stickers; starts over after 4 h idle | yes | `whatsapp.md` «Vinci en WhatsApp» |
 | A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
@@ -54,7 +54,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | How each assignment is handed in | `src/aula_core/queries.py` (`delivery`, `pending`), `set_assignment_delivery` in `herramientas.py` | `vinci-check say "¿qué tengo pendiente?"` lists an overdue external lab as late (uses the model) |
 | Alerts, reminders, summary | `src/espol_bot/poller.py`, `priority.py`, `messages.py` | `vinci-check status` (poll age); `espol-bot resumen` sends the summary for real |
 | Buttons (all) | `src/espol_bot/botones.py`, `hermes/plugins/vinci-botones/` | `vinci-check vote "<option>"` on a harmless poll (`press` with Telegram on) |
-| Dashboard | `src/espol_bot/dashboard.py`, `docs/dashboard/` | `vinci-check page dashboard` |
+| Dashboard | `src/espol_bot/dashboard.py` (`whatsapp_link`), `docs/dashboard/`, `show_page` in `herramientas.py`, `Bot._dashboard_button` in `poller.py` | `vinci-check page dashboard`; `vinci-check say "¿qué tengo pendiente?"` brings the button (uses the model) |
 | To-do list | `src/espol_bot/store.py`, `herramientas.py` | `vinci-check say "¿qué tengo esta semana?"` (uses the model) |
 | Grade calculator | `src/espol_bot/grades.py` | ask «¿cómo voy en Estadística?» through `chat` (uses the model) |
 | Team of subject bots | `src/espol_bot/equipo.py`, `materias.py` | `vinci-check bots`; never press «➕ Crear» to test |

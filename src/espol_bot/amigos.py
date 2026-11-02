@@ -361,22 +361,17 @@ def _mark(cfg: BotConfig, data: str, now: datetime) -> Outcome:
 
 
 def _deliverables(cfg: BotConfig, data: str, now: datetime) -> Outcome:
-    """/entregas: a button to the dashboard with this aula's deliverables. A tick goes back through the relay when
-    there is one (relay.py), else to this chat with /marca typed."""
-    from espol_bot import dashboard, materias, relay
-    if not cfg.dashboard_page:
-        return Outcome("El panel de entregas está apagado en esta instalación.")
-    box = relay.issue(cfg, "mark", relay.owner(cfg), relay.DASHBOARD_TTL, now)
+    """/entregas: a button to the dashboard with this aula's deliverables (dashboard.whatsapp_link)."""
+    from espol_bot import dashboard
     aula = Aula(cfg.core)
     try:
-        conn = store_ensure(aula.conn)
-        url = dashboard.whatsapp_url(conn, cfg, materias.load(cfg.core), now, whatsapp.own_number(), box)
+        found = dashboard.whatsapp_link(store_ensure(aula.conn), cfg, now)
     finally:
         aula.close()
-    after = ("Marca una como entregada en el panel y te confirmo aquí." if box else
-             "Al marcar una en el panel, vuelves a este chat con el mensaje listo: envíalo y la cuento.")
-    return Outcome(f"📋 Tus entregas, el semestre y lo nuevo del aula.\n\n{after}",
-                   button={"text": "📋 Ver mis entregas", "url": url})
+    if found is None:
+        return Outcome("El panel de entregas está apagado en esta instalación.")
+    button, after = found
+    return Outcome(f"📋 Tus entregas, el semestre y lo nuevo del aula.\n\n{after}", button=button)
 
 
 def _vote(cfg: BotConfig, data: str, now: datetime) -> Outcome:

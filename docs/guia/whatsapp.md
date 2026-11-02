@@ -14,7 +14,11 @@ número personal.
    teléfono, y escribe el código.
 5. Corre `./setup.sh` y arranca el gateway: `hermes gateway start`.
 
-**Páginas dentro de WhatsApp.** El formulario del token y el panel de entregas llegan como un botón. En el iPhone,
+**Páginas dentro de WhatsApp.** El formulario del token y el panel de entregas llegan como un botón. No hace falta
+escribir `/entregas` ni `/token`: el panel llega al final del resumen de las 7:00, y Vinci te lo manda cuando le
+preguntas «¿qué tengo pendiente?» en privado. Entonces su respuesta es corta: lo atrasado y lo que vence hoy o
+mañana. Si tu token dejó de funcionar o le preguntas cómo poner uno nuevo, Vinci te manda el formulario. En un grupo
+no manda páginas, porque tienen tus datos. En el iPhone,
 el botón abre la página dentro de WhatsApp, como un Mini App de Telegram. En WhatsApp Web abre otra pestaña: Web no
 tiene otra forma de abrir una página. En Android no lo probamos. `setup.sh` agrega la ruta del botón al puente de
 Hermes sin editar su `bridge.js` (`hermes/whatsapp/vinci-bridge.js`). Si el puente no la tiene, la página llega
@@ -178,7 +182,7 @@ y Vinci los contesta sin gastar tokens:
 | `/start` | Saluda y muestra los comandos |
 | `/estado` | La salud del sistema, como en Telegram |
 | `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: su botón «Abrir» te lleva a donde se crea, lo pegas y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
-| `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
+| `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). También llega al final del resumen de las 7:00 y cuando preguntas «¿qué tengo pendiente?». Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
 | `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo, y los resultados de todos llegan cuando todos responden o a los 15 minutos |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 

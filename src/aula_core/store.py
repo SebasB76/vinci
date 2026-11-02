@@ -137,6 +137,12 @@ CREATE TABLE IF NOT EXISTS links (
     UNIQUE (course_id, url)
 );
 
+CREATE TABLE IF NOT EXISTS assignment_groups (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL,
+    name TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS quizzes (
     assignment_id INTEGER PRIMARY KEY,
     quiz_id INTEGER NOT NULL,
@@ -232,7 +238,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
 ADDED_COLUMNS = {
     "courses": ["term_start TEXT", "term_end TEXT"],
     "assignments": ["allowed_extensions TEXT", "asks_scan INTEGER NOT NULL DEFAULT 0", "description TEXT", "material TEXT",
-                    "rubric TEXT"],
+                    "rubric TEXT", "group_id INTEGER"],
     "announcements": ["material TEXT"],
     "links": ["checked_at TEXT", "problem TEXT"],
     "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",

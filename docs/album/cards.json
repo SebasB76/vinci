@@ -1,0 +1,231 @@
+{
+ "version": 1,
+ "collections": [
+  {
+   "id": "espol",
+   "name": "ESPOL"
+  },
+  {
+   "id": "iconos",
+   "name": "Íconos"
+  }
+ ],
+ "cards": [
+  {
+   "id": "polito",
+   "n": 1,
+   "name": "Polito",
+   "collection": "espol",
+   "group": "Mascota",
+   "rarity": "leg"
+  },
+  {
+   "id": "rectorado",
+   "n": 2,
+   "name": "Rectorado",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare"
+  },
+  {
+   "id": "biblioteca",
+   "n": 3,
+   "name": "Biblioteca central",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "bosque",
+   "n": 4,
+   "name": "Bosque protector",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare"
+  },
+  {
+   "id": "fiec",
+   "n": 5,
+   "name": "FIEC",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "fcnm",
+   "n": 6,
+   "name": "FCNM",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "fimcp",
+   "n": 7,
+   "name": "FIMCP",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "fcsh",
+   "n": 8,
+   "name": "FCSH",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "fict",
+   "n": 9,
+   "name": "FICT",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "fimcm",
+   "n": 10,
+   "name": "FIMCM",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "fadcom",
+   "n": 11,
+   "name": "FADCOM",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "coliseo",
+   "n": 12,
+   "name": "Coliseo",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare"
+  },
+  {
+   "id": "canchas",
+   "n": 13,
+   "name": "Canchas",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "bus",
+   "n": 14,
+   "name": "Bus ESPOL",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare"
+  },
+  {
+   "id": "comedor",
+   "n": 15,
+   "name": "Comedor central",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com"
+  },
+  {
+   "id": "aula-magna",
+   "n": 16,
+   "name": "Aula magna",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare"
+  },
+  {
+   "id": "graduacion",
+   "n": 17,
+   "name": "Graduación",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "epic"
+  },
+  {
+   "id": "beatles",
+   "n": 18,
+   "name": "The Beatles",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "epic"
+  },
+  {
+   "id": "michael-jackson",
+   "n": 19,
+   "name": "Michael Jackson",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "epic"
+  },
+  {
+   "id": "the-office",
+   "n": 20,
+   "name": "The Office",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "rare"
+  },
+  {
+   "id": "queen",
+   "n": 21,
+   "name": "Queen",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "rare"
+  },
+  {
+   "id": "breaking-bad",
+   "n": 22,
+   "name": "Breaking Bad",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "rare"
+  },
+  {
+   "id": "friends",
+   "n": 23,
+   "name": "Friends",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "com"
+  },
+  {
+   "id": "star-wars",
+   "n": 24,
+   "name": "Star Wars",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "rare"
+  },
+  {
+   "id": "harry-potter",
+   "n": 25,
+   "name": "Harry Potter",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "rare"
+  },
+  {
+   "id": "simpsons",
+   "n": 26,
+   "name": "Los Simpson",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "com"
+  },
+  {
+   "id": "bad-bunny",
+   "n": 27,
+   "name": "Bad Bunny",
+   "collection": "iconos",
+   "group": "Íconos",
+   "rarity": "com"
+  }
+ ]
+}

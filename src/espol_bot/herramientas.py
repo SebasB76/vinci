@@ -64,7 +64,7 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, citations, conversation, dashboard, diapositivas, grades,
+from espol_bot import (academic_portal, agenda, album, citations, conversation, dashboard, diapositivas, grades,
                        grades_page, health, horario, libros, materias, messages, portal_login, priority, quiz, resumen, store, submission,
                        token_form, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
@@ -1607,11 +1607,13 @@ PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página,
         "panel de entregas (lo pendiente y atrasado en orden de prioridad, lo nuevo del aula y el avance del semestre; "
         "ahí las marca como entregadas). «grades»: «Tus notas», cómo va en cada materia con esquema guardado (lo "
         "asegurado, lo que necesita para aprobar y el detalle por parcial, las mismas cuentas de grade_status). "
+        "«album»: su álbum de cartas (las que tiene y las que le faltan; gana sobres al entregar a tiempo y al sacar "
+        "8/10 o más en una lección o un examen). "
         "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. Una página por "
         "respuesta como máximo, nunca en un grupo.")
-PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "token"],
+PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "album", "token"],
                             "description": "deliverables: su panel de entregas; grades: sus notas en todas las "
-                                           "materias; token: el formulario del token"}}
+                                           "materias; album: su álbum de cartas; token: el formulario del token"}}
 
 
 def _send_grades(ctx: Ctx, chat: WhatsApp, now: datetime) -> dict:
@@ -1633,7 +1635,7 @@ def _send_grades(ctx: Ctx, chat: WhatsApp, now: datetime) -> dict:
 def _show_page(ctx: Ctx, args: dict) -> dict:
     page = args.get("page")
     if page not in PAGE_PROPERTIES["page"]["enum"]:
-        raise ToolError("page es deliverables, grades o token.")
+        raise ToolError("page es deliverables, grades, album o token.")
     if _group_chat(ctx):
         raise ToolError("En un grupo no mando páginas: tienen sus datos. Dile que te escriba por privado o que use "
                         "/entregas allá.")
@@ -1653,6 +1655,15 @@ def _show_page(ctx: Ctx, args: dict) -> dict:
                                "atrasado, en pocas líneas, y que el resto está en el panel."}
         if page == "grades":
             return _send_grades(ctx, chat, now)
+        if page == "album":
+            found = album.whatsapp_link(ctx.conn, ctx.cfg, now)
+            if found is None:
+                raise ToolError("El álbum está apagado en esta instalación.")
+            chat.send(f"🎴 Tu álbum: {found['cards']} de {found['total']} cartas.",
+                      link={"text": found["text"], "url": found["url"]})
+            return {"enviado": "un botón «🎴 Ver mi álbum» a su chat privado",
+                    "mensaje": "Ya le llegó el botón. Dile en una línea cuántas cartas tiene y que gana sobres al "
+                               "entregar a tiempo y al sacar 8/10 o más en lecciones y exámenes."}
         form = token_form.open_form(ctx.cfg, now, whatsapp=True)
         chat.send(form["respuesta"], link=form["button"], image=form.get("image"))
     except (TelegramError, ConfigError) as exc:

@@ -213,6 +213,22 @@ CREATE TABLE IF NOT EXISTS activities (
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS album_packs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL UNIQUE,
+    reason TEXT NOT NULL,
+    gold INTEGER NOT NULL DEFAULT 0,
+    cards TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    sent_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS album_cards (
+    card TEXT PRIMARY KEY,
+    count INTEGER NOT NULL,
+    first_at TEXT NOT NULL
+);
 """
 
 # Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS leaves an existing table as it was.

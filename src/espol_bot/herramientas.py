@@ -64,8 +64,9 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, citations, conversation, diapositivas, grades, health, horario, libros,
-                       materias, messages, portal_login, priority, quiz, resumen, store, submission, visuales)
+from espol_bot import (academic_portal, agenda, citations, conversation, dashboard, diapositivas, grades, health,
+                       horario, libros, materias, messages, portal_login, priority, quiz, resumen, store, submission,
+                       token_form, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -271,7 +272,7 @@ FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
-    "set_assignment_delivery", "study_activity"})
+    "set_assignment_delivery", "study_activity", "show_page"})
 
 
 @dataclass
@@ -348,8 +349,14 @@ def _stale_note(ctx: Ctx) -> str:
                 f"dilo en media línea («según mi lectura del {since}»), sin la causa y sin pedirle el token, que "
                 f"eso ya le llegó por privado. Nunca digas que algo sigue sin entregar o sin nota: di «al {since} no "
                 f"estaba entregada».")
-    fix = (", y que renueve el token: " + ("con /token en este chat" if ctx.code is None else "mandándole /token a Vinci")
-           if ctx.stale.token else "")
+    fix = ""
+    if ctx.stale.token and ctx.code is not None:
+        fix = ", y que renueve el token mandándole /token a Vinci"
+    elif ctx.stale.token and _whatsapp_chat(ctx) is not None:
+        fix = (", y mándale el formulario del token con show_page (page: token) si todavía no se lo mandaste en esta "
+               "conversación")
+    elif ctx.stale.token:
+        fix = ", y que renueve el token con /token en este chat"
     return (f"No pude leer el aula virtual desde el {since} ({ctx.stale.why}): estos datos son de esa hora, y lo que "
             f"entregó, publicaron o calificaron después no aparece. Empieza tu respuesta diciéndoselo{fix}. Nunca le "
             f"digas que algo sigue sin entregar o sin nota: di «al {since} no estaba entregada».")
@@ -1596,6 +1603,44 @@ def _academic_record(ctx: Ctx, args: dict) -> dict:
                         "data saved: answer it then. Do not ask for anything else now.")}
 
 
+PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página, ya con sus datos. «deliverables»: su "
+        "panel de entregas (lo pendiente y atrasado en orden de prioridad, lo nuevo del aula y el avance del semestre; "
+        "ahí las marca como entregadas). «token»: el formulario para crear un token nuevo del aula, con una imagen "
+        "con los pasos. Una página por respuesta como máximo, nunca en un grupo.")
+PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "token"],
+                            "description": "deliverables: su panel de entregas; token: el formulario del token"}}
+
+
+def _show_page(ctx: Ctx, args: dict) -> dict:
+    page = args.get("page")
+    if page not in PAGE_PROPERTIES["page"]["enum"]:
+        raise ToolError("page es deliverables o token.")
+    if _group_chat(ctx):
+        raise ToolError("En un grupo no mando páginas: tienen sus datos. Dile que te escriba por privado o que use "
+                        "/entregas allá.")
+    chat = _whatsapp_chat(ctx)
+    if chat is None:
+        raise ToolError("En Telegram el panel está en el botón «📋 Entregas» del menú, y /token abre el formulario.")
+    now = ctx.now()
+    try:
+        if page == "deliverables":
+            found = dashboard.whatsapp_link(ctx.conn, ctx.cfg, now)
+            if found is None:
+                raise ToolError("El panel de entregas está apagado en esta instalación.")
+            button, after = found
+            chat.send(f"📋 Tus entregas, el semestre y lo nuevo del aula. {after}", link=button)
+            return {"enviado": "un botón «📋 Ver mis entregas» a su chat privado",
+                    "mensaje": "Ya le llegó el botón. No repitas la lista completa: lo que vence hoy o mañana y lo "
+                               "atrasado, en pocas líneas, y que el resto está en el panel."}
+        form = token_form.open_form(ctx.cfg, now, whatsapp=True)
+        chat.send(form["respuesta"], link=form["button"], image=form.get("image"))
+    except (TelegramError, ConfigError) as exc:
+        raise ToolError(f"No pude mandarle la página: {exc}") from None
+    return {"enviado": "la imagen con los pasos y el botón del formulario del token, a su chat privado",
+            "mensaje": "Ya le llegó el formulario con los pasos. Dile en una línea que lo siga ahí y que nunca pegue el "
+                       "token en el chat."}
+
+
 def vinci_tools(ctx: Ctx) -> list[Tool]:
     tools = _vinci_tools(ctx)
     if ctx.cfg.telegram or ctx.cfg.friend:
@@ -2177,6 +2222,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         _summary_tool(ctx),
         Tool("academic_record", PORTAL, lambda args: _academic_record(ctx, args), PORTAL_PROPERTIES, ["topic", "question"],
              read_only=False),
+        Tool("show_page", PAGE, lambda args: _show_page(ctx, args), PAGE_PROPERTIES, ["page"], read_only=False),
     ])
 
 

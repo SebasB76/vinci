@@ -407,6 +407,20 @@ class Bot:
                                        health.aula_stale(self.aula, self.cfg.poll_minutes, now))
         return text, courses, done
 
+    def _dashboard_button(self, now: datetime) -> None:
+        """On WhatsApp, the dashboard's button in its own short message after the summary (a button's text has a
+        short limit; Telegram has the page in its menu). Its ticks stay open until the next summary."""
+        if self.cfg.telegram:
+            return
+        found = dashboard.whatsapp_link(self.conn, self.cfg, now, ttl=timedelta(hours=24))
+        if not found:
+            return
+        button, after = found
+        try:  # the summary already went out: a lost button must not send it again
+            self.telegram.send(f"📋 Tus entregas, en tu panel. {after}", link=button)
+        except TelegramError as exc:
+            log.warning("resumen: no pude mandar el botón del panel (%s)", exc)
+
     def summary(self, *, sync_first: bool = True) -> PollResult:
         result = PollResult()
         if sync_first:
@@ -418,6 +432,7 @@ class Bot:
         text, courses, done = self.summary_text(now)
         try:
             self._send(text, courses, done)
+            self._dashboard_button(now)
         except TelegramError as exc:
             result.error = str(exc)
             return result

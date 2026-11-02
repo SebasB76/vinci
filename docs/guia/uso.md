@@ -140,6 +140,9 @@ Cómo funciona:
 3. Al marcar una entrega, la página abre el chat de Vinci con un `/start` especial. El plugin lo atiende sin el
    modelo, borra ese mensaje, te confirma en el chat y pone al día el botón.
 
+En WhatsApp no hay botón de menú: el panel llega como un botón al final del resumen de las 7:00, con `/entregas`, y
+cuando le preguntas a Vinci «¿qué tengo pendiente?» en privado ([WhatsApp](whatsapp.md)).
+
 Si una entrega que marcaste sigue apareciendo, el resumen es anterior a tu toque: cierra la página y ábrela otra vez.
 Telegram guarda el botón un rato; si no lo ves, cierra y abre el chat. Para ponerlo al día sin esperar al sondeo,
 corre `.venv/bin/espol-bot dashboard`.
@@ -387,6 +390,9 @@ Después, lo que más pesa en tu nota
 Sin peso conocido, por fecha
 • mañana 09:00 — Cálculo de una Variable: Lectura guiada de Cálculo · no sé a qué parte de la nota va
 ```
+
+En WhatsApp, después del resumen llega un botón «📋 Ver mis entregas» a tu [panel de entregas](#el-dashboard-de-entregas).
+Ese botón sirve hasta el resumen del día siguiente.
 
 1. **Lo que vence en menos de 24 h**, por fecha: ya no hay tiempo de cambiarlo por otra cosa.
 2. **El resto de la semana, lo que más vale primero.** El peso sale del esquema de la materia que confirmaste para la

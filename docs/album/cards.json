@@ -226,6 +226,16 @@
    "collection": "iconos",
    "group": "Íconos",
    "rarity": "com"
+  },
+  {
+   "id": "grupap",
+   "n": 28,
+   "name": "GrupAP",
+   "collection": "espol",
+   "group": "NASA Space Apps 2025",
+   "rarity": "leg",
+   "art": "art/grupap-ebe35a71d8.bin",
+   "wide": true
   }
  ]
 }

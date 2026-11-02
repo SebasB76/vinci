@@ -31,7 +31,8 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    sirven `ZAI_API_KEY` (GLM, proveedor `zai`), `KIMI_API_KEY` (`kimi`) y `DASHSCOPE_API_KEY` (Qwen, `alibaba`).
 
    En una instalación nueva, agrega también `CANVAS_TOKEN`, `WHATSAPP_CAPTAIN` y, si ya publicaste el relé,
-   `WHATSAPP_RELAY_URL` y `WHATSAPP_RELAY_TOKEN`. Estas solo llenan lo que falta en `secrets.env`: Vinci renueva su
+   `WHATSAPP_RELAY_URL` y `WHATSAPP_RELAY_TOKEN`; para ver el arte cifrado del álbum, `ALBUM_ART_KEY` (la crea
+   `uv run scripts/album_card.py key --copy` en tu PC y la deja en tu portapapeles). Estas solo llenan lo que falta en `secrets.env`: Vinci renueva su
    token de Canvas ahí, así que un reinicio nunca le devuelve uno viejo. Si pasas tu Vinci desde la PC (abajo), no
    agregues ninguna: la mudanza trae tu `secrets.env`.
 7. Pulsa **Deploy**. En cada arranque, la imagen hace lo mismo que `./setup.sh`: crea o actualiza los perfiles, los

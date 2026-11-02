@@ -1,13 +1,16 @@
 """The album: packs of three cards that Vinci gives for what the student does in the aula, with no model.
 
 A pack comes for a deliverable handed in before its deadline, or for 8/10 or more in a lección or an exam (an
-assignment whose Canvas group or name says so); a full score makes it a gold pack, with an epic card or better. Vinci
+assignment whose Canvas group or name says so); a full score makes it a gold pack, with an epic card or better. One
+more comes with each 07:00 summary, without the rare card a pack for the aula guarantees. Vinci
 draws the cards when it gives the pack and keeps them in espol.db, so each friend's Vinci keeps an album of its own.
 Nothing from before the album's first poll counts: a new install does not hand out the whole semester at once.
 
 The page (docs/album/, on GitHub Pages) asks no server for the student's data: the pack and the collection ride in the
 URL's fragment, as on «Tus notas» (grades_page.py). Only the catalog (docs/album/cards.json, also read here) comes from
-the page's own site, so new cards need no change in code.
+the page's own site, so new cards need no change in code. Art with people's faces is stored there encrypted
+(scripts/album_card.py); its key, ALBUM_ART_KEY in secrets.env, rides in the fragment too, so only a link from Vinci
+shows it.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from functools import lru_cache
 
 from aula_core import timefmt
 from aula_core.catalog import fold
-from aula_core.config import REPO_ROOT
+from aula_core.config import REPO_ROOT, ConfigError, load_secret_values
 from aula_core.store import get_meta, set_meta
 from espol_bot import messages
 from espol_bot.config import BotConfig
@@ -38,6 +41,7 @@ PACK_SIZE = 3
 GOOD_SHARE = 0.8
 TEST = re.compile(r"\b(leccion|lecciones|examen|examenes|parcial|parciales)\b")
 SINCE = "album_since"
+DAILY = "diario:"
 MAX_PER_POLL = 4  # the rest wait for the next poll, so a busy day does not flood the chat
 BUTTON = "🎴 Abrir mi sobre"
 ALBUM_BUTTON = "🎴 Ver mi álbum"
@@ -48,9 +52,9 @@ def catalog() -> tuple[dict, ...]:
     return tuple(json.loads(CATALOG.read_text(encoding="utf-8"))["cards"])
 
 
-def draw(cards: tuple[dict, ...], rng: random.Random, *, gold: bool = False) -> list[str]:
-    """Three card ids, the rarest last so the page shows it at the end. A pack has a rare or better; a gold one, an
-    epic or better."""
+def draw(cards: tuple[dict, ...], rng: random.Random, *, gold: bool = False, floor: bool = True) -> list[str]:
+    """Three card ids, the rarest last so the page shows it at the end. A pack has a rare or better (with `floor`); a
+    gold one, an epic or better."""
     pools = {r: [c for c in cards if c["rarity"] == r] for r in RARITIES}
     rarity = {c["id"]: c["rarity"] for c in cards}
 
@@ -62,7 +66,7 @@ def draw(cards: tuple[dict, ...], rng: random.Random, *, gold: bool = False) -> 
     picks = [pick(RARITIES) for _ in range(PACK_SIZE - 1)]
     if gold:
         picks.append(pick(("epic", "leg")))
-    elif all(rarity[p] == "com" for p in picks):
+    elif floor and all(rarity[p] == "com" for p in picks):
         picks.append(pick(("rare", "epic", "leg")))
     else:
         picks.append(pick(RARITIES))
@@ -105,6 +109,18 @@ def collection(conn: sqlite3.Connection) -> dict[str, int]:
     return {r["card"]: r["count"] for r in conn.execute("SELECT card, count FROM album_cards")}
 
 
+def _store(conn: sqlite3.Connection, now: datetime, source: str, reason: str, picks: list[str], gold: bool) -> None:
+    have = collection(conn)
+    cards = []
+    for card in picks:
+        cards.append({"id": card, "new": have.get(card, 0) == 0})
+        have[card] = have.get(card, 0) + 1
+        conn.execute("INSERT INTO album_cards(card, count, first_at) VALUES (?, 1, ?) "
+                     "ON CONFLICT(card) DO UPDATE SET count = count + 1", (card, timefmt.iso(now)))
+    conn.execute("INSERT INTO album_packs(source, reason, gold, cards, created_at) VALUES (?, ?, ?, ?, ?)",
+                 (source, reason, int(gold), json.dumps(cards), timefmt.iso(now)))
+
+
 def give(conn: sqlite3.Connection, now: datetime, rng: random.Random | None = None) -> int:
     """Draws a pack for each new reason; how many it gave. The first call only starts the album."""
     since = get_meta(conn, SINCE)
@@ -116,24 +132,40 @@ def give(conn: sqlite3.Connection, now: datetime, rng: random.Random | None = No
     new = [f for f in earned(conn, since) if f["source"] not in known]
     rng = rng or random.Random()
     for found in new:
-        have = collection(conn)
-        cards = []
-        for card in draw(catalog(), rng, gold=found["gold"]):
-            cards.append({"id": card, "new": have.get(card, 0) == 0})
-            have[card] = have.get(card, 0) + 1
-            conn.execute("INSERT INTO album_cards(card, count, first_at) VALUES (?, 1, ?) "
-                         "ON CONFLICT(card) DO UPDATE SET count = count + 1", (card, timefmt.iso(now)))
-        conn.execute("INSERT INTO album_packs(source, reason, gold, cards, created_at) VALUES (?, ?, ?, ?, ?)",
-                     (found["source"], found["reason"], int(found["gold"]), json.dumps(cards), timefmt.iso(now)))
+        _store(conn, now, found["source"], found["reason"], draw(catalog(), rng, gold=found["gold"]), found["gold"])
     conn.commit()
     return len(new)
 
 
+def give_daily(conn: sqlite3.Connection, now: datetime, today: str, rng: random.Random | None = None) -> bool:
+    """The pack of the 07:00 summary, once a day and only once the album started."""
+    source = f"{DAILY}{today}"
+    if get_meta(conn, SINCE) is None or conn.execute(
+            "SELECT 1 FROM album_packs WHERE source = ?", (source,)).fetchone():
+        return False
+    picks = draw(catalog(), rng or random.Random(), floor=False)
+    _store(conn, now, source, "Te llega uno cada mañana con tu resumen", picks, False)
+    conn.commit()
+    return True
+
+
+def art_key() -> str:
+    """The key of the encrypted art (base64url), or "" without one: the page then shows initials."""
+    try:
+        return load_secret_values().get("ALBUM_ART_KEY", "")
+    except ConfigError:
+        return ""
+
+
 def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None = None) -> dict:
     data = {"v": VERSION, "at": timefmt.iso(now), "have": collection(conn)}
+    if key := art_key():
+        data["k"] = key
     if pack is not None:
         data["pack"] = {"id": pack["id"], "reason": messages.plain(pack["reason"]), "gold": bool(pack["gold"]),
                         "cards": json.loads(pack["cards"])}
+        if pack["source"].startswith(DAILY):
+            data["pack"]["daily"] = True
     return data
 
 
@@ -145,6 +177,8 @@ def page_url(cfg: BotConfig, data: dict) -> str:
 
 
 def message(pack: sqlite3.Row) -> str:
+    if pack["source"].startswith(DAILY):
+        return "🎴 Tu sobre del día: 3 cartas para tu álbum. Mañana con el resumen te llega otro."
     if pack["gold"]:
         return f"🌟 {pack['reason']}: te ganaste un <b>sobre dorado</b>. Trae una carta épica o mejor."
     return f"🎴 {pack['reason']}: te ganaste un sobre con 3 cartas para tu álbum."

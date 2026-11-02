@@ -12,7 +12,7 @@
      captain's own to-dos (store.todos, each with «✅ Hecho»); and, for a quiz that opens at a set time for
      a short window (a 30-minute test in class), «abre en 15 min» before it opens, or «ya abrió» right after;
   5. give a pack for the album for each deliverable handed in on time and each lección or exam of 8/10 or more,
-     and send it with its page (album.py);
+     and send it with its page (album.py); the 07:00 summary brings one more, the pack of the day;
   6. point the menu button of Vinci's chat at a fresh dashboard when what it shows changed (dashboard.py);
   7. per subject bot: index the books the captain put in `libros/<CÓDIGO>/`, and ask once, from
      that bot's chat, for its main book's PDF when there is none it can read (libros.py).
@@ -442,4 +442,14 @@ class Bot:
         set_meta(self.conn, "bot_last_summary", today)
         self.conn.commit()
         result.sent.append(text)
+        self._daily_pack(now, today)
         return result
+
+    def _daily_pack(self, now: datetime, today: str) -> None:
+        """The album's pack of the day, after the summary. A failed send waits for the next poll (album.deliver)."""
+        if not self.cfg.album_page or not album.give_daily(self.conn, now, today):
+            return
+        try:
+            album.deliver(self.conn, self.cfg, self.telegram, now)
+        except TelegramError as exc:
+            log.warning("resumen: no pude mandar el sobre del día (%s)", exc)

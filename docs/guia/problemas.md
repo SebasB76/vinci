@@ -28,7 +28,8 @@
   servidor estuvo apagado o WhatsApp caído más de 6 horas después de su hora.
 - **Sobres del álbum:** Vinci ve una entrega a tiempo en el próximo sondeo del aula, unos 10 minutos después. Una
   entrega que marcas con «✅ Ya lo entregué» antes de su fecha también da sobre. Las figuras de ESPOL todavía no
-  están en el catálogo (`docs/album/cards.json`).
+  están en el catálogo (`docs/album/cards.json`). El arte cifrado de una carta lo abre cualquiera que tenga un enlace
+  de Vinci: si reenvías el enlace de tu sobre, quien lo recibe también ve las caras.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
 - **WhatsApp no es oficial:** el puente de Hermes es un cliente no oficial de WhatsApp (Baileys). WhatsApp puede
   bloquear el número de Vinci, por eso va en un chip aparte. En WhatsApp no hay botones: los avisos de un amigo

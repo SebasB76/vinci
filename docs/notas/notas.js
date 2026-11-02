@@ -131,7 +131,7 @@ export function view(data, now, selected = 0) {
     <h1>Tus notas</h1><p class="meta">${meta}</p></div></header>`;
   if (subjects.length > 1) {
     html += `<div class="tabs" role="tablist">${subjects.map((s, i) => `<button type="button" class="tab c${hue(s.name)}" role="tab"
-      data-subject="${i}" aria-selected="${i === selected}"><span class="av">${esc(initials(s.name))}</span>${esc(s.name)}${
+      data-subject="${i}" aria-selected="${i === selected}"><span class="av">${esc(initials(s.name))}</span><span class="nm ellipsis">${esc(s.name)}</span>${
       s.verdict === "out_of_reach" ? '<span class="dot" aria-label="en riesgo"></span>' : ""}</button>`).join("")}</div>`;
   }
   html += subjects.length ? subjectView(subjects[Math.min(selected, subjects.length - 1)])
@@ -166,8 +166,13 @@ async function init() {
     const tab = event.target.closest("[data-subject]");
     if (!tab) return;
     selected = Number(tab.dataset.subject);
+    // The strip keeps where the student left it and glides to the tab, instead of jumping back to the start.
+    const scrolled = app.querySelector(".tabs")?.scrollLeft || 0;
     render();
-    app.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });
+    const strip = app.querySelector(".tabs");
+    if (strip) strip.scrollLeft = scrolled;
+    app.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   });
 }
 

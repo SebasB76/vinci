@@ -116,20 +116,20 @@ token), el botón sigue ahí para volver a intentarlo, y un doble toque no entre
 
 ## El dashboard de entregas
 
-El botón «📋 Entregas» está al lado del campo de texto, en el chat de Vinci. Al tocarlo se abre una página dentro
-de Telegram con tres partes:
+El botón «📋 Entregas» está al lado del campo de texto, en el chat de Vinci (en WhatsApp, escribe `/entregas`). Al
+tocarlo se abre «Tu semana», una página dentro del chat:
 
-- **El semestre:** una línea del primer al último día de clases, con la marca de hoy, el porcentaje que llevas, la
-  semana y los días que faltan. Cada entrega es un punto sobre la línea; tócalo y la página baja hasta esa entrega.
-- **Tus entregas pendientes:** las tareas sin entregar y tus pendientes anotados, en grupos (Atrasadas, Hoy, Esta
-  semana, Más adelante y Sin fecha). Cada una dice su materia, la hora, cuánto pesa en tu nota (si la calculadora
-  lo sabe) y el día. Toca el círculo para marcarla: es lo mismo que «✅ Ya lo entregué» o «✅ Hecho».
-- **Novedades:** los avisos del aula de los últimos 7 días, con un punto azul en lo que no has leído.
+- **Tres números arriba:** lo que tienes por entregar esta semana, lo atrasado y en qué semana del semestre vas.
+- **Entregas:** las tareas sin entregar y tus pendientes anotados, en grupos (Atrasadas, Hoy, Esta semana, Más
+  adelante y Sin fecha). Cada una lleva las iniciales de su materia en un color fijo, cuándo vence y cuánto pesa en
+  tu nota (si la calculadora lo sabe). Toca el círculo de la derecha para marcarla: es lo mismo que «✅ Ya lo
+  entregué» o «✅ Hecho».
+- **Novedades:** la otra pestaña. Los avisos del aula de los últimos 7 días, con un punto en lo que no has leído.
 
 <p align="center">
-  <img src="../../docs/images/dashboard.png" alt="El dashboard dentro de Telegram: la línea del semestre con la marca de hoy, las entregas en Atrasadas, Hoy, Esta semana y Sin fecha, y las novedades del aula" width="300">
+  <img src="../../docs/images/dashboard.png" alt="«Tu semana»: tres números (por entregar esta semana, atrasadas y la semana del semestre), las pestañas Entregas y Novedades, y las entregas en Atrasadas, Hoy, Esta semana y Más adelante" width="300">
 </p>
-<p align="center"><sub>Con los datos ficticios de la prueba E2E.</sub></p>
+<p align="center"><sub>Con datos ficticios.</sub></p>
 
 Cómo funciona:
 

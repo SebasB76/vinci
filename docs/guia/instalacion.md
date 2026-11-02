@@ -166,7 +166,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `canvas.cache_minutos` | `10` | Cuánto tiempo `aula` y los bots reutilizan los datos guardados antes de volver a leer el aula |
 | `canvas.request_interval_seconds` | `1.0` | Pausa mínima entre dos consultas del sondeo al aula (lo que preguntas en Telegram no espera) |
 | `dashboard.url` | `https://sebasb76.github.io/vinci/dashboard/` | La página del botón «📋 Entregas». Vacío (`""`): sin dashboard, y el chat vuelve a su botón de menú de siempre |
-| `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la línea del semestre. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
+| `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la semana del semestre que muestra el dashboard. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
 | `channels.telegram` | `false` | `false`: Vinci te habla solo por WhatsApp (necesita `WHATSAPP_CAPTAIN`) y lleva todas tus materias en un chat; los bots de materia quedan apagados, sin borrarse. `true`: también Telegram, con un bot por materia |
 | `notificaciones.intervalo_minutos` | `10` | Cada cuánto revisa el aula (mínimo 5) |

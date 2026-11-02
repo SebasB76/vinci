@@ -360,8 +360,9 @@ para ver la siguiente y al final las pegas en tu álbum. Para verlo sin un sobre
 mi álbum?».
 
 - **Las cartas:** la colección ESPOL (Polito, el campus y GrupAP) y la de Íconos (series, películas y artistas).
-  Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos una rara. Una legendaria
-  lleva su sello y, al tocarla, se abre en grande.
+  Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos una rara. Las cartas son de
+  pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado. Al tocar una carta, se abre en
+  grande.
 - **Las caras no son públicas:** el arte de una carta con personas reales está cifrado en GitHub. Solo lo abre la
   clave que va dentro del enlace de Vinci; sin ese enlace, la carta muestra sus iniciales.
 - **Solo lo nuevo cuenta:** el álbum empieza el día que tu Vinci lo estrena; lo que entregaste o te calificaron antes

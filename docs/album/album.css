@@ -46,53 +46,74 @@ body.opening { background: var(--panel); }
 .pk h2 .s { display: block; font-family: var(--serif); font-weight: 400; color: var(--accent); letter-spacing: -.4px; }
 .pk .why { margin-top: 14px; font-size: 13px; line-height: 1.35; color: rgb(247 244 240 / .7); }
 
-/* A card: a white card with the rarity's color on top; the legendary one is the night hero with the accent. */
-.vc { position: relative; width: 100%; height: 100%; border-radius: var(--r-md); background: var(--card); padding: 7px; display: flex; flex-direction: column; color: var(--ink); }
-.vc .art { flex: 1; border-radius: 14px; background: var(--tone); display: grid; place-items: center; position: relative; overflow: hidden; }
+/* A card is a pixel object, like its art: a 9-slice frame per rarity (frames/, scaled by --px with no smoothing), a
+   dithered back, the art, a name plate in Press Start 2P and the rarity's tag. */
+@font-face { font-family: "Press Start 2P"; src: url(fonts/press-start-2p.woff2) format("woff2"); font-display: swap; }
+.vc { --px: 3px; --p2: calc(var(--px) * 2); box-sizing: border-box; min-width: 0; position: relative; width: 100%; height: 100%; padding: calc(var(--px) * 7);
+  display: flex; flex-direction: column; color: var(--plate-ink); font-family: "Press Start 2P", monospace; image-rendering: pixelated;
+  background: conic-gradient(var(--bg2) 25%, transparent 0 50%, var(--bg2) 0 75%, transparent 0) 0 0 / var(--p2) var(--p2), var(--bg);
+  clip-path: polygon(0 var(--p2), var(--px) var(--p2), var(--px) var(--px), var(--p2) var(--px), var(--p2) 0,
+    calc(100% - var(--p2)) 0, calc(100% - var(--p2)) var(--px), calc(100% - var(--px)) var(--px), calc(100% - var(--px)) var(--p2), 100% var(--p2),
+    100% calc(100% - var(--p2)), calc(100% - var(--px)) calc(100% - var(--p2)), calc(100% - var(--px)) calc(100% - var(--px)),
+    calc(100% - var(--p2)) calc(100% - var(--px)), calc(100% - var(--p2)) 100%, var(--p2) 100%, var(--p2) calc(100% - var(--px)),
+    var(--px) calc(100% - var(--px)), var(--px) calc(100% - var(--p2)), 0 calc(100% - var(--p2))); }
+.vc::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; border: calc(var(--px) * 8) solid transparent;
+  border-image: var(--frame) 8 stretch; image-rendering: pixelated; }
+.vc .art { position: relative; flex: 1; min-height: 0; margin: var(--px); overflow: hidden; outline: var(--px) solid var(--dark);
+  display: grid; place-items: center; background: conic-gradient(var(--tone2) 25%, transparent 0 50%, var(--tone2) 0 75%, transparent 0) 0 0 / var(--p2) var(--p2), var(--tone); }
 .vc .art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.vc .ini { font: 400 68px/1 var(--serif); letter-spacing: -1px; }
-.vc .no { position: absolute; z-index: 1; left: 8px; top: 8px; font-size: 11px; color: var(--ink-2); background: rgb(255 255 255 / .6); border-radius: 999px; padding: 3px 8px; }
-.vc .flag { position: absolute; z-index: 1; right: 8px; top: 8px; }
-.vc .bd { padding: 10px 6px 4px; }
-.vc .nm { font-size: 16px; font-weight: 500; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vc .mt { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
-.t-com { --tone: var(--panel); } .t-rare { --tone: var(--c0); } .t-epic { --tone: var(--c1); } .t-leg { --tone: var(--accent); }
-/* The legendary frame: the night hero around the art, its name in the serif and a seal in the accent. */
-.vc.t-leg { background: var(--night-bg); color: var(--night-ink); padding: 9px; }
-.vc.t-leg .ini { color: #000; }
-.vc.t-leg .nm { font: 400 19px/1.1 var(--serif); letter-spacing: -.3px; }
-.vc.t-leg .mt { color: rgb(247 244 240 / .6); }
-.vc .seal { position: absolute; z-index: 1; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 500; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--accent); color: #000; }
-.vc .seal .i { width: 12px; height: 12px; fill: currentColor; }
-.vc.s .seal { display: none; }
-.vc.s.t-leg { padding: 4px; }
-.vc.s.t-leg .nm { font: 400 11.5px/1.1 var(--serif); }
+.vc .ini { font-size: 26px; line-height: 1; color: var(--dark); }
+.vc .no, .vc .flag { position: absolute; z-index: 1; top: var(--p2); font-size: 7px; line-height: 1; padding: 4px 5px; border-radius: 0;
+  background: var(--dark); color: #fff; text-transform: uppercase; font-family: inherit; font-weight: 400; letter-spacing: 0; }
+.vc .no { left: var(--p2); }
+.vc .flag { right: var(--p2); }
+.vc .flag.hi { background: var(--accent); color: #000; }
+.vc .bd { margin-top: calc(var(--px) * 2.5); padding: var(--p2) calc(var(--px) * 2.5); background: var(--plate);
+  box-shadow: inset 0 0 0 var(--px) var(--dark), inset 0 0 0 var(--p2) var(--line); }
+.vc .nm { font-size: 10px; line-height: 1.4; text-transform: uppercase; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.vc .mt { margin-top: 5px; font-size: 6px; line-height: 1.3; color: var(--sub); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vc .rk { display: flex; justify-content: center; margin-top: calc(var(--px) * 2.5); }
+.vc .tag { font-size: 8px; line-height: 1; letter-spacing: .04em; white-space: nowrap; padding: calc(var(--px) * 1.6) calc(var(--px) * 3);
+  background: var(--tag); color: var(--tag-ink); box-shadow: inset 0 0 0 var(--px) var(--dark), inset 0 calc(var(--px) * -2) 0 var(--tag-shade); }
+.t-com { --frame: url(frames/com.png); --bg: #3a352e; --bg2: #423c34; --dark: #17140f; --plate: #1f1b16; --line: #c9c2b6; --plate-ink: #f2efe9;
+  --sub: #c9c2b6; --tag: #c9c2b6; --tag-ink: #17140f; --tag-shade: #8d8579; --tone: #d9d3c9; --tone2: #cfc8bd; }
+.t-rare { --frame: url(frames/rare.png); --bg: #17284a; --bg2: #1c3058; --dark: #0b1426; --plate: #0b1426; --line: #7fb6ff; --plate-ink: #eaf4ff;
+  --sub: #a9cdfa; --tag: #7fb6ff; --tag-ink: #0b1426; --tag-shade: #3f78cc; --tone: #b9d7fb; --tone2: #a9cdfa; }
+.t-epic { --frame: url(frames/epic.png); --bg: #261640; --bg2: #2e1b4d; --dark: #140b24; --plate: #140b24; --line: #c08cff; --plate-ink: #f6edff;
+  --sub: #d9b8ff; --tag: #c08cff; --tag-ink: #140b24; --tag-shade: #7d45d6; --tone: #dcc4ff; --tone2: #d1b3ff; }
+.t-leg { --frame: url(frames/leg.png); --bg: #1b1f3b; --bg2: #232850; --dark: #140d04; --plate: #10132a; --line: #f2c230; --plate-ink: #fff3b0;
+  --sub: #a9b1e8; --tag: #c4243b; --tag-ink: #fff3b0; --tag-shade: #8c1023; --tone: #f2c230; --tone2: #e5b225; }
+/* The caption under a pack's card keeps the page's pills, in each rarity's color. */
 .rp { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--line-soft); color: var(--ink-2); white-space: nowrap; }
-.rp.t-rare { background: var(--c0); color: #1f3550; } .rp.t-epic { background: var(--c1); color: #3b2f66; } .rp.t-leg { background: var(--accent); color: #000; }
-.vc.s { padding: 4px; border-radius: 14px; }
-.vc.s .art { border-radius: 10px; }
-.vc.s .ini { font-size: 28px; }
-.vc.s .no { font-size: 9px; padding: 1px 5px; left: 5px; top: 5px; }
-.vc.s .flag { right: 5px; top: 5px; font-size: 9px; padding: 1px 6px; }
-.vc.s .bd { padding: 5px 3px 2px; }
-.vc.s .nm { font-size: 10.5px; }
-.vc.s .mt { display: none; }
+.rp.t-rare { background: #cfe3fc; color: #1b3a70; } .rp.t-epic { background: #e6d6ff; color: #43207e; } .rp.t-leg { background: #f2c230; color: #3a2503; }
+.vc.s { --px: 2px; padding: calc(var(--px) * 7); }
+.vc.s .ini { font-size: 15px; }
+.vc.s .no, .vc.s .flag { font-size: 5px; padding: 2px 3px; }
+.vc.s .bd { margin-top: 4px; padding: 6px 5px 5px; }
+.vc.s .nm { font-size: 6px; }
+.vc.s .rk { display: none; }
 
 /* The album */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .cell { aspect-ratio: 5 / 7; }
 .cell.own { cursor: pointer; }
-.cell.empty { border-radius: 14px; background: var(--line-soft); display: grid; place-items: center; font-size: 12px; color: var(--ink-4); }
+/* An empty slot: the card's stepped outline, pressed into the page. */
+.cell.empty { display: grid; place-items: center; font: 8px/1 "Press Start 2P", monospace; color: var(--ink-4); background: var(--line-soft);
+  clip-path: polygon(0 4px, 2px 4px, 2px 2px, 4px 2px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 2px, calc(100% - 2px) 2px, calc(100% - 2px) 4px, 100% 4px,
+    100% calc(100% - 4px), calc(100% - 2px) calc(100% - 4px), calc(100% - 2px) calc(100% - 2px), calc(100% - 4px) calc(100% - 2px), calc(100% - 4px) 100%,
+    4px 100%, 4px calc(100% - 2px), 2px calc(100% - 2px), 2px calc(100% - 4px), 0 calc(100% - 4px)); }
 .cell.fresh { animation: rise .45s ease both; }
-.cell.fresh .vc { box-shadow: inset 0 0 0 2px var(--accent); }
 .zoom { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgb(232 228 222 / .92);
   opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease-out); }
 .zoom.on { opacity: 1; pointer-events: auto; }
 .zoom .big { width: 240px; height: 336px; transform: scale(.96); transition: transform 220ms var(--ease-out); }
 .zoom.on .big { transform: none; }
 .zoom .big.wide { width: min(92vw, 380px); height: auto; }
+.zoom .big.wide .vc { --px: 4px; }
 .zoom .big.wide .art { flex: none; aspect-ratio: 4 / 3; }
+.zoom .big.wide .nm { font-size: 14px; }
+.zoom .big.wide .mt { font-size: 8px; }
+.zoom .big.wide .tag { font-size: 10px; }
 .empty-state { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 15px; line-height: 1.4; }
 
 @media (prefers-reduced-motion: reduce) {

@@ -76,6 +76,7 @@ function init() {
   };
   if (!publicKey || !relay || !MAILBOX_RE.test(mailbox)) {
     waitText.textContent = "Esta página se abre desde el botón «🎓 Conectar Académico» que te manda Vinci.";
+    wait.dataset.still = "1";
     return;
   }
   postEvent("web_app_ready");
@@ -113,6 +114,7 @@ function init() {
       say("");
     } else if (FINAL.has(state.state)) {
       stopped = true;
+      wait.dataset.still = "1";
       show("wait");
       password.value = code.value = "";
       waitText.textContent = state.message || "";

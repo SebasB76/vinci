@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="es" data-p="menta" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vinci · Sistema visual: menta y rosa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500&family=Gelasio:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* Neutrals, radii and weights follow Bobbin; only the accent and subject pastels change per proposal. */
+:root { --r-sm: 12px; --r-md: 20px; --r-lg: 36px; --night: #2A241D; --night-ink: #F7F4F0;
+  --sans: "Inter Tight", system-ui, sans-serif; --serif: "Gelasio", Georgia, serif; }
+[data-p="menta"] { --accent: #7AF3C2; --accent-2: #65E6B4; --accent-soft: #D2FEE9; }
+[data-p="rosa"] { --accent: #FFB3D1; --accent-2: #F7A4C4; --accent-soft: #FFE7F3; }
+
+[data-mode="light"] {
+  --paper: #F7F4F0; --panel: #E8E4DE; --sheet: #F2EFEA; --card: #FFFFFF; --strip: #F7F4F0;
+  --line: #CDC6BC; --line-soft: #ECE8E2;
+  --ink: #000000; --ink-2: #544E45; --ink-3: #70685C; --ink-4: #A39B8F; --on-accent: #000000;
+  --late: #B5432E; --late-bg: #F8E2DA; --done: #2F7A4A; --done-bg: #DFF0DC;
+}
+[data-mode="dark"] {
+  --paper: #1B1814; --panel: #2A241D; --sheet: #221E19; --card: #312B24; --strip: #2A251F;
+  --line: #4A4238; --line-soft: #3A332B;
+  --ink: #F7F4F0; --ink-2: #CDC6BC; --ink-3: #A39B8F; --ink-4: #70685C; --on-accent: #000000;
+  --late: #F0A08F; --late-bg: #46281F; --done: #9BCF9F; --done-bg: #26361F; --night: #14110E;
+}
+[data-mode="light"][data-p="menta"] { --c2: #D5E6F5; --c3: #E3DDF7; --c4: #F7DCCB; --c5: #EFE3CF; --c6: #F5DCE6; }
+[data-mode="light"][data-p="rosa"]  { --c2: #D5E6F5; --c3: #DCEAD2; --c4: #E3DDF7; --c5: #EFE3CF; --c6: #F7DCCB; }
+[data-mode="dark"][data-p="menta"]  { --c2: #2C3F52; --c3: #3B3558; --c4: #4A3426; --c5: #45392A; --c6: #4A2E3A; }
+[data-mode="dark"][data-p="rosa"]   { --c2: #2C3F52; --c3: #33432F; --c4: #3B3558; --c5: #45392A; --c6: #4A3426; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); }
+.shell { background: var(--paper); color: var(--ink); font: 400 16px/1.3 var(--sans); -webkit-font-smoothing: antialiased; transition: background .3s; }
+p { margin: 0; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+.banner { background: var(--accent); color: var(--on-accent); font-size: 14px; text-align: center; padding: 10px 16px; }
+.banner b { font-weight: 500; }
+
+.nav { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0 22px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 500; letter-spacing: -.3px; }
+.mark { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font: 400 22px/1 var(--serif); }
+.tag { font-size: 12px; color: var(--ink-3); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-weight: 400; letter-spacing: 0; }
+.controls { display: flex; gap: 8px; align-items: center; }
+.switch { display: inline-flex; padding: 4px; background: var(--panel); border-radius: 999px; }
+.switch button, .icon-btn { font: 500 14px var(--sans); border: 0; background: none; color: var(--ink-3); padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+.switch button[aria-pressed="true"] { background: var(--card); color: var(--ink); }
+.icon-btn { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; background: var(--panel); color: var(--ink); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; padding: 0 22px; border-radius: 999px; font: 500 16px var(--sans); border: 0; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn.sm { height: 36px; padding: 0 16px; font-size: 14px; gap: 8px; }
+.btn-accent { background: var(--accent); color: var(--on-accent); }
+.btn-glass { background: rgb(255 255 255 / .12); color: var(--night-ink); }
+.btn-line { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.btn-quiet { background: var(--line-soft); color: var(--ink); }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: dot 1.2s infinite; }
+.dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; } .dots i:nth-child(4) { animation-delay: .45s; }
+@keyframes dot { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+
+.hero { position: relative; overflow: hidden; border-radius: var(--r-lg); color: var(--night-ink); padding: 64px 56px;
+  background: radial-gradient(110% 120% at 88% -10%, #463C31 0%, var(--night) 52%, #1A1713 100%);
+  display: grid; grid-template-columns: 1.25fr 1fr; gap: 48px; align-items: center; }
+.h1 { font: 300 52px/1.08 var(--sans); letter-spacing: -1.2px; margin: 0; }
+.h1 .s { display: block; font-family: var(--serif); font-weight: 400; color: var(--accent); letter-spacing: -1px; }
+.hero .sub { margin-top: 18px; font-size: 18px; line-height: 1.4; color: rgb(247 244 240 / .7); max-width: 470px; }
+.hero .ctas { display: flex; gap: 10px; margin-top: 30px; flex-wrap: wrap; }
+.glass { justify-self: center; width: min(100%, 340px); border-radius: 28px; padding: 30px 24px; text-align: center; display: grid; gap: 14px; justify-items: center;
+  background: rgb(255 255 255 / .07); border: 1px solid rgb(255 255 255 / .12); backdrop-filter: blur(14px); }
+.glass .t { font-size: 20px; }
+.gchips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.gchip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgb(255 255 255 / .2); color: rgb(247 244 240 / .85); }
+.gchip svg.i { width: 15px; height: 15px; }
+.isq { width: 56px; height: 56px; border-radius: 14px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; flex: none; }
+.isq.sm { width: 44px; height: 44px; border-radius: 12px; }
+.wave { display: flex; gap: 3px; align-items: center; height: 22px; }
+.wave i { width: 3px; border-radius: 3px; background: currentColor; animation: wave 1.1s ease-in-out infinite; }
+.wave i:nth-child(1) { height: 8px; } .wave i:nth-child(2) { height: 18px; animation-delay: .1s; } .wave i:nth-child(3) { height: 12px; animation-delay: .2s; }
+.wave i:nth-child(4) { height: 20px; animation-delay: .3s; } .wave i:nth-child(5) { height: 10px; animation-delay: .4s; }
+@keyframes wave { 50% { transform: scaleY(.45); } }
+
+.sh { text-align: center; max-width: 660px; margin: 104px auto 44px; }
+.sh h2 { font: 400 36px/1.1 var(--serif); letter-spacing: -.6px; margin: 0; }
+.sh p { color: var(--ink-3); margin-top: 14px; line-height: 1.4; }
+
+.show { display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.accs { display: grid; gap: 12px; }
+.acc { background: var(--card); border-radius: var(--r-md); padding: 24px 26px; cursor: pointer; }
+.acc-h { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.acc .k { display: none; color: var(--ink-3); font-size: 18px; }
+.acc .t { font-size: 18px; font-weight: 500; letter-spacing: -.2px; }
+.pm { width: 36px; height: 36px; border-radius: 50%; background: var(--paper); color: var(--ink); display: grid; place-items: center; flex: none; transition: transform .25s; }
+.acc-b { display: none; }
+.acc.open .k { display: block; }
+.acc.open .pm { background: var(--accent); color: var(--on-accent); transform: rotate(45deg); }
+.acc.open .acc-b { display: block; margin-top: 16px; }
+.acc-b > p { color: var(--ink-2); line-height: 1.4; }
+.checks { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+.checks li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); line-height: 1.35; }
+.ck { width: 17px; height: 17px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; flex: none; margin-top: 1px; }
+.ck svg.i { width: 10px; height: 10px; stroke-width: 2.6; }
+.bar { height: 4px; border-radius: 9px; background: var(--line-soft); margin-top: 24px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent-2); border-radius: 9px; }
+.acc.open .bar i { animation: fill 7s linear forwards; }
+.acc.manual .bar i { animation: none; width: 100%; }
+@keyframes fill { to { width: 100%; } }
+
+.stage { position: relative; height: 720px; border-radius: var(--r-lg); background: var(--panel); overflow: hidden; padding-top: 52px; }
+.ghost { position: absolute; top: 26px; left: 50%; transform: translateX(-50%); width: min(340px, calc(100% - 72px)); height: 60px; border-radius: 24px 24px 0 0; background: var(--sheet); opacity: .5; }
+.sheet { position: relative; width: min(380px, calc(100% - 40px)); height: 100%; margin: 0 auto; border-radius: 28px 28px 0 0; background: var(--sheet);
+  overflow-y: auto; scrollbar-width: none; padding: 18px 14px 120px; }
+.sheet::-webkit-scrollbar { display: none; }
+.fade { position: absolute; inset: auto 0 0 0; height: 140px; background: linear-gradient(transparent, var(--panel) 85%); pointer-events: none; }
+
+.scr { display: none; gap: 12px; }
+.scr.on { display: grid; animation: rise .45s ease; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+.card { background: var(--card); border-radius: var(--r-md); padding: 16px; }
+.head { display: flex; gap: 12px; align-items: center; padding: 2px 4px 4px; }
+.head .t { font-size: 18px; letter-spacing: -.2px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+.meta span + span::before { content: "•"; margin-right: 6px; color: var(--ink-4); }
+.av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font: 500 13px var(--sans); color: var(--ink); flex: none; }
+.av.sm { width: 32px; height: 32px; font-size: 11.5px; }
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.tab { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; font-size: 14px; color: var(--ink-3); }
+.tab svg.i { width: 16px; height: 16px; }
+.tab.on { background: var(--card); color: var(--ink); }
+.card .tab.on { background: var(--paper); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { position: relative; border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 16px 6px 13px; text-align: center; background: var(--card); }
+.tile .n { font-size: 23px; letter-spacing: -.6px; white-space: nowrap; }
+.tile .l { font-size: 11.5px; line-height: 1.25; color: var(--ink-3); margin-top: 3px; }
+.tile.hi { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+.tile.hi .l { color: rgb(0 0 0 / .62); }
+.lab { font-size: 14px; color: var(--ink-2); }
+.gl { font-size: 12.5px; color: var(--ink-4); margin: 14px 0 0; }
+.gl:first-child { margin-top: 0; }
+.row { display: flex; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line-soft); }
+.gl + .row { border-top: 0; }
+.row .x { flex: 1; min-width: 0; }
+.row .ti { font-size: 14px; font-weight: 500; }
+.row .mt { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+.pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--line-soft); color: var(--ink-2); white-space: nowrap; flex: none; }
+.pill.hi { background: var(--accent); color: var(--on-accent); }
+.pill.late { background: var(--late-bg); color: var(--late); }
+.pill.done { background: var(--done-bg); color: var(--done); }
+.row.done .ti { color: var(--ink-3); }
+
+.ins { display: grid; grid-template-columns: 1fr 46px; gap: 7px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.ins:first-of-type { border-top: 0; }
+.ins .nm { font-size: 14px; }
+.ins .nm span { color: var(--ink-4); font-size: 12.5px; }
+.ins .sc { grid-row: span 2; font-size: 12px; font-weight: 500; text-align: center; padding: 5px 0; border-radius: 999px; }
+.segs { display: flex; gap: 4px; }
+.segs i { flex: 1; height: 7px; border-radius: 9px; background: var(--line-soft); }
+.segs.empty i { background: none; border-top: 2px dotted var(--line); height: 0; margin-top: 3px; border-radius: 0; }
+
+.doc { font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.doc h4 { font-size: 15px; font-weight: 500; color: var(--ink); margin: 16px 0 4px; }
+.doc h4:first-child { margin-top: 4px; }
+.doc a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--ink-4); }
+.more { color: var(--ink-4); }
+
+.prompt { background: var(--card); border-radius: var(--r-md); overflow: hidden; }
+.prompt .area { padding: 16px; min-height: 96px; font-size: 15px; color: var(--ink-4); }
+.strip { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 10px 10px 16px; background: var(--strip); border-top: 1px solid var(--line-soft); }
+.strip .hint { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
+.strip .hint svg.i { width: 15px; height: 15px; }
+.card .strip { margin: 14px -16px -16px; }
+.sugg { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 13px; color: var(--ink-3); }
+.sugg svg.i { width: 15px; height: 15px; }
+.step { display: flex; align-items: center; gap: 12px; padding: 10px 0; font-size: 14px; color: var(--ink-2); }
+.step + .step { border-top: 1px solid var(--line-soft); }
+.num { width: 24px; height: 24px; border-radius: 50%; background: var(--paper); color: var(--ink); display: grid; place-items: center; font-size: 12px; font-weight: 500; flex: none; }
+.step .x { flex: 1; }
+.qsegs { display: flex; gap: 4px; }
+.qsegs i { flex: 1; height: 4px; border-radius: 9px; background: var(--line-soft); }
+.qsegs i.on { background: var(--ink-3); } .qsegs i.cur { background: var(--accent-2); }
+.q { font-size: 18px; line-height: 1.35; letter-spacing: -.2px; padding: 2px 2px 6px; }
+.opt { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 14px; color: var(--ink-2); }
+.opt .lt { width: 24px; height: 24px; border-radius: 50%; background: var(--paper); color: var(--ink); display: grid; place-items: center; font-size: 12px; flex: none; }
+.opt.ok { box-shadow: none; background: var(--done-bg); color: var(--ink); }
+.opt.ok .lt { background: var(--done); color: var(--card); }
+.why { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); padding: 4px 2px 0; }
+
+.rel { position: relative; display: inline-flex; }
+.cursor { position: absolute; width: 26px; height: 26px; pointer-events: none; animation: hover 2.6s ease-in-out infinite; z-index: 2; }
+.cursor path { fill: var(--ink); stroke: var(--card); stroke-width: 1.4; stroke-linejoin: round; }
+@keyframes hover { 50% { transform: translate(-4px, -3px); } }
+
+.found { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.fcard { background: var(--card); border-radius: var(--r-md); padding: 28px; display: grid; gap: 18px; align-content: start; }
+.fcard .ft { font-size: 18px; font-weight: 500; }
+.fcard .fs { color: var(--ink-3); font-size: 14px; line-height: 1.4; margin-top: 4px; }
+.swatch-big { height: 120px; border-radius: 14px; background: var(--accent); display: flex; align-items: flex-end; justify-content: space-between; padding: 14px 16px; color: var(--on-accent); font-size: 14px; }
+.swatch-big code, .sw code { font: 12px ui-monospace, Menlo, monospace; opacity: .75; }
+.sws { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.sw { display: grid; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.sw i { display: block; height: 44px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line-soft); }
+.sw code { font-size: 10.5px; }
+.subj { display: flex; gap: 8px; }
+.spec { display: grid; grid-template-columns: 76px 1fr; gap: 14px; align-items: center; }
+.spec .aa { font-size: 56px; line-height: 1; letter-spacing: -1px; }
+.spec .nm { font-size: 15px; } .spec .us { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+.weights { display: flex; gap: 18px; font-size: 22px; letter-spacing: -.3px; }
+.weights span small { display: block; font-size: 11.5px; color: var(--ink-4); letter-spacing: 0; }
+.scale { display: grid; gap: 8px; border-top: 1px solid var(--line-soft); padding-top: 16px; }
+.scale div { display: flex; align-items: baseline; gap: 14px; }
+.scale small { width: 26px; color: var(--ink-4); font-size: 12px; flex: none; }
+.shapes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: end; }
+.shape { background: var(--paper); display: flex; align-items: flex-end; padding: 10px; font-size: 12px; color: var(--ink-3); }
+.layers { position: relative; height: 150px; border-radius: 22px; background: var(--panel); overflow: hidden; }
+.layers .l2 { position: absolute; inset: 26px 26px 0; border-radius: 16px 16px 0 0; background: var(--sheet); }
+.layers .l3 { position: absolute; inset: 52px 44px 0; border-radius: 12px 12px 0 0; background: var(--card); padding: 12px; font-size: 12px; color: var(--ink-3); }
+.pieces { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.opt-card { background: var(--card); border-radius: var(--r-md); padding: 28px; cursor: pointer; display: grid; gap: 14px; box-shadow: inset 0 0 0 1.5px transparent; }
+.opt-card.sel { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.opt-card .big { font-size: 38px; line-height: 1.05; letter-spacing: -.8px; }
+.opt-card .big .s { display: block; }
+.opt-card .chip { display: inline-block; width: 44px; height: 44px; border-radius: 12px; }
+.tones { margin-top: 28px; display: grid; gap: 12px; justify-items: center; text-align: center; }
+.tone-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.tone { display: inline-flex; align-items: center; gap: 8px; font: 400 14px var(--sans); color: var(--ink); background: var(--card); border: 0; border-radius: 999px; padding: 6px 14px 6px 6px; cursor: pointer; }
+.tone::before { content: ""; width: 24px; height: 24px; border-radius: 50%; background: var(--t); }
+.tone[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.foot { text-align: center; color: var(--ink-4); font-size: 13px; padding: 72px 24px 48px; line-height: 1.5; }
+
+@media (max-width: 980px) {
+  .hero { grid-template-columns: 1fr; padding: 48px 32px; }
+  .show { grid-template-columns: 1fr; }
+  .stage { order: -1; height: 660px; }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 0 14px; }
+  .hero { padding: 40px 22px; border-radius: 28px; }
+  .h1 { font-size: 40px; }
+  .sh h2 { font-size: 30px; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="out" viewBox="0 0 24 24"><path d="M8 16L16 8M9 8h7v7"/></symbol>
+  <symbol id="key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+  <symbol id="list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+  <symbol id="cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0112 0v5l1.5 2h-15zM10 21h4"/></symbol>
+  <symbol id="doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/></symbol>
+  <symbol id="folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></symbol>
+  <symbol id="shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></symbol>
+  <symbol id="eyeoff" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A9.9 9.9 0 0112 6c6 0 9.5 6 9.5 6a16 16 0 01-3 3.6M6.3 7.6C3.8 9.3 2.5 12 2.5 12s3.5 6 9.5 6c1.6 0 3-.4 4.2-1"/></symbol>
+  <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="book" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 015.5 4H11v16H5.5A1.5 1.5 0 014 18.5zM20 5.5A1.5 1.5 0 0018.5 4H13v16h5.5a1.5 1.5 0 001.5-1.5z"/></symbol>
+  <symbol id="spark" viewBox="0 0 24 24"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z"/></symbol>
+  <symbol id="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></symbol>
+  <symbol id="cur" viewBox="0 0 26 26"><path d="M4 2.5l17 9.2-7.3 1.9-3.6 7.1z"/></symbol>
+</svg>
+
+<div class="shell">
+  <div class="banner"><b id="ban-name">Propuesta 3 · Menta.</b> <span id="ban-text">Letra, grises y formas iguales a Bobbin; solo cambia el acento.</span></div>
+  <div class="wrap">
+    <nav class="nav">
+      <div class="brand"><span class="mark">V</span>Vinci <span class="tag">Sistema visual</span></div>
+      <div class="controls">
+        <div class="switch" role="group" aria-label="Propuesta"><button data-k="p" data-v="menta">Menta</button><button data-k="p" data-v="rosa">Rosa</button></div>
+        <button class="icon-btn" id="mode" aria-label="Cambiar entre claro y oscuro"><svg class="i"><use href="#moon"/></svg></button>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <h1 class="h1">Lo que Vinci sabe, <span class="s">ahora a la vista.</span></h1>
+        <p class="sub">Las webviews de Vinci se abren desde WhatsApp. Muestran entregas, notas y clases con el detalle que un mensaje no alcanza.</p>
+        <div class="ctas">
+          <a class="btn btn-accent" href="#pantallas">Ver las pantallas <svg class="i"><use href="#arrow"/></svg></a>
+          <a class="btn btn-glass" href="#base">Ver la base</a>
+        </div>
+      </div>
+      <div class="glass">
+        <span class="isq"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span></span>
+        <div class="t">Leyendo tu aula</div>
+        <div class="gchips">
+          <span class="gchip"><svg class="i"><use href="#clock"/></svg>hace 3 min</span>
+          <span class="gchip"><svg class="i"><use href="#book"/></svg>5 materias</span>
+          <span class="gchip"><svg class="i"><use href="#list"/></svg>12 entregas</span>
+          <span class="gchip"><svg class="i"><use href="#bell"/></svg>2 avisos nuevos</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="sh" id="pantallas">
+      <h2>Cada pantalla responde una sola pregunta</h2>
+      <p>Toca una función para ver su webview a tamaño de celular. Puedes desplazarte dentro de ella.</p>
+    </div>
+
+    <div class="show">
+      <div class="accs">
+        <div class="acc">
+          <div class="acc-h"><div><span class="k">Sin pegar nada en el chat</span><span class="t">Conectar el aula</span></div><span class="pm"><svg class="i"><use href="#plus"/></svg></span></div>
+          <div class="acc-b"><p>Vinci abre una página para el token. El token se cifra en el celular y nunca pasa por la conversación.</p>
+            <ul class="checks"><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Dos pasos cortos, uno por línea</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>El botón dice qué pasa al tocarlo</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>La seguridad cabe en tres frases</li></ul>
+            <div class="bar"><i></i></div></div>
+        </div>
+        <div class="acc">
+          <div class="acc-h"><div><span class="k">Todo lo que vence, en una vista</span><span class="t">Tu semana</span></div><span class="pm"><svg class="i"><use href="#plus"/></svg></span></div>
+          <div class="acc-b"><p>Lo urgente arriba y la próxima clase en un número grande. El resto espera en la lista.</p>
+            <ul class="checks"><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Atrasado, hoy y esta semana, por separado</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Cada materia conserva su color</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Se actualiza cada vez que Vinci lee el aula</li></ul>
+            <div class="bar"><i></i></div></div>
+        </div>
+        <div class="acc">
+          <div class="acc-h"><div><span class="k">Sabes cuánto te falta</span><span class="t">Notas por materia</span></div><span class="pm"><svg class="i"><use href="#plus"/></svg></span></div>
+          <div class="acc-b"><p>Vinci suma cada componente con su peso y te da una sola meta para lo que queda.</p>
+            <ul class="checks"><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Una cifra destacada: lo que necesitas</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Una barra por componente</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Lo pendiente se ve vacío, no en cero</li></ul>
+            <div class="bar"><i></i></div></div>
+        </div>
+        <div class="acc">
+          <div class="acc-h"><div><span class="k">Llegas sabiendo qué toca</span><span class="t">Antes de clase</span></div><span class="pm"><svg class="i"><use href="#plus"/></svg></span></div>
+          <div class="acc-b"><p>Media hora antes, el resumen de la clase: el tema, qué llevar y qué vence en esa materia.</p>
+            <ul class="checks"><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Se lee en un minuto</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Enlaces directos al material del aula</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Lo pendiente de esa materia, al final</li></ul>
+            <div class="bar"><i></i></div></div>
+        </div>
+        <div class="acc">
+          <div class="acc-h"><div><span class="k">Practica lo que más te cuesta</span><span class="t">Práctica</span></div><span class="pm"><svg class="i"><use href="#plus"/></svg></span></div>
+          <div class="acc-b"><p>Cinco preguntas sobre tu tema más flojo, con la explicación en cuanto respondes.</p>
+            <ul class="checks"><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Salen de tus diapositivas</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Una pregunta por pantalla</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>Tu avance queda guardado</li></ul>
+            <div class="bar"><i></i></div></div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="ghost"></div>
+        <div class="sheet" id="sheet">
+
+          <section class="scr">
+            <div class="head"><span class="isq sm"><svg class="i"><use href="#key"/></svg></span><div><div class="t">Conecta tu aula</div><div class="meta"><span>Pega tu token y Vinci vuelve a leer tus cursos</span></div></div></div>
+            <div class="card" style="padding:6px 16px">
+              <div class="step"><span class="num">1</span><span class="x">Abre el aula virtual</span><a class="btn btn-line sm" style="height:32px;padding:0 12px;font-size:13px">Abrir <svg class="i" style="width:14px;height:14px"><use href="#out"/></svg></a></div>
+              <div class="step"><span class="num">2</span><span class="x">Toca «+ Nuevo token de acceso» y cópialo</span></div>
+            </div>
+            <div class="prompt">
+              <div class="area">Pega aquí tu token</div>
+              <div class="strip"><span class="hint"><svg class="i"><use href="#lock"/></svg>Se cifra en tu celular</span>
+                <span class="rel"><span class="btn btn-accent sm">Enviar a Vinci <span class="dots"><i></i><i></i><i></i><i></i></span></span>
+                  <svg class="cursor" viewBox="0 0 26 26" style="right:-8px;bottom:-20px"><path d="M4 2.5l17 9.2-7.3 1.9-3.6 7.1z"/></svg></span></div>
+            </div>
+            <div class="sugg"><svg class="i"><use href="#eyeoff"/></svg>Ni WhatsApp ni el modelo ven tu token</div>
+            <div class="sugg"><svg class="i"><use href="#shield"/></svg>Solo el servidor de Vinci lo puede abrir</div>
+            <div class="sugg"><svg class="i"><use href="#clock"/></svg>La llave sirve una vez y vence pronto</div>
+          </section>
+
+          <section class="scr">
+            <div class="head"><span class="av" style="background:var(--accent)"><span style="font:400 20px var(--serif)">V</span></span><div><div class="t">Tu semana</div><div class="meta"><span>Semana 6 de 16</span><span>lun 2 nov</span></div></div></div>
+            <div class="tabs"><span class="tab on"><svg class="i"><use href="#list"/></svg>Entregas</span><span class="tab"><svg class="i"><use href="#cal"/></svg>Horario</span><span class="tab"><svg class="i"><use href="#bell"/></svg>Avisos</span></div>
+            <div class="card" style="display:grid;gap:14px">
+              <div class="lab">Esta semana</div>
+              <div class="tiles">
+                <div class="tile hi"><div class="n">3</div><div class="l">Entregas por hacer</div>
+                  <svg class="cursor" viewBox="0 0 26 26" style="right:4px;bottom:-12px"><path d="M4 2.5l17 9.2-7.3 1.9-3.6 7.1z"/></svg></div>
+                <div class="tile"><div class="n">1</div><div class="l">Atrasada</div></div>
+                <div class="tile"><div class="n">40 min</div><div class="l">Para tu próxima clase</div></div>
+              </div>
+              <div>
+                <div class="gl">Atrasada</div>
+                <div class="row"><span class="av sm" style="background:var(--c2)">ES</span><div class="x"><div class="ti">Deber 4</div><div class="mt">Estadística · venció ayer</div></div><span class="pill late">Atrasada</span></div>
+                <div class="gl">Hoy</div>
+                <div class="row"><span class="av sm" style="background:var(--c3)">SD</span><div class="x"><div class="ti">Control de lectura 5</div><div class="mt">Sistemas Distribuidos</div></div><span class="pill hi">23:59</span></div>
+                <div class="gl">Esta semana</div>
+                <div class="row"><span class="av sm" style="background:var(--c4)">IS</span><div class="x"><div class="ti">Avance 2 del proyecto</div><div class="mt">Ingeniería de Software I</div></div><span class="pill">jue 5</span></div>
+                <div class="row"><span class="av sm" style="background:var(--c5)">DP</span><div class="x"><div class="ti">Acta de constitución</div><div class="mt">Dirección de Proyectos</div></div><span class="pill">vie 6</span></div>
+                <div class="row done"><span class="av sm" style="background:var(--c6)">CS</span><div class="x"><div class="ti">Ensayo 2</div><div class="mt">Ciencias de la Sostenibilidad</div></div><span class="pill done">Entregado</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="scr">
+            <div class="head"><span class="av" style="background:var(--c2)">ES</span><div><div class="t">Estadística</div><div class="meta"><span>ESTG1034</span><span>Apruebas con 60</span></div></div></div>
+            <div class="card" style="display:grid;gap:14px">
+              <div class="lab">Para aprobar</div>
+              <div class="tiles">
+                <div class="tile hi"><div class="n">65,8&#8239;%</div><div class="l">Necesitas en lo que falta</div></div>
+                <div class="tile"><div class="n">17,3</div><div class="l">Puntos ganados</div></div>
+                <div class="tile"><div class="n">35&#8239;%</div><div class="l">Ya evaluado</div></div>
+              </div>
+              <div class="lab" style="margin-top:4px">Componentes</div>
+              <div>
+                <div class="ins"><div class="nm">Lección 1 <span>· 15 %</span></div><span class="sc" style="background:var(--c2)">45</span><div class="segs"><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+                <div class="ins"><div class="nm">Taller 1 <span>· 10 %</span></div><span class="sc" style="background:var(--c2)">60</span><div class="segs"><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i></i><i></i><i></i><i></i></div></div>
+                <div class="ins"><div class="nm">Deberes <span>· 10 %</span></div><span class="sc" style="background:var(--c2)">45</span><div class="segs"><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i style="background:var(--c2)"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+                <div class="ins"><div class="nm">Examen del 2.º parcial <span>· 35 %</span></div><span class="sc" style="background:var(--line-soft);color:var(--ink-3)">—</span><div class="segs empty"><i></i></div></div>
+                <div class="ins"><div class="nm">Proyecto <span>· 20 %</span></div><span class="sc" style="background:var(--line-soft);color:var(--ink-3)">—</span><div class="segs empty"><i></i></div></div>
+                <div class="ins"><div class="nm">Taller 2 <span>· 10 %</span></div><span class="sc" style="background:var(--line-soft);color:var(--ink-3)">—</span><div class="segs empty"><i></i></div></div>
+              </div>
+            </div>
+            <div class="card" style="display:grid;gap:12px">
+              <div class="lab">Temas que te cuestan</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill">intervalos de confianza</span><span class="pill">prueba t</span></div>
+              <div class="strip"><span class="hint"><svg class="i"><use href="#spark"/></svg>5 preguntas</span>
+                <span class="rel"><span class="btn btn-accent sm">Practicar prueba t</span>
+                <svg class="cursor" viewBox="0 0 26 26" style="right:-6px;bottom:-20px"><path d="M4 2.5l17 9.2-7.3 1.9-3.6 7.1z"/></svg></span></div>
+            </div>
+          </section>
+
+          <section class="scr">
+            <div class="head"><span class="av" style="background:var(--c3)">SD</span><div><div class="t">Sistemas Distribuidos</div><div class="meta"><span>Hoy</span><span>09:00–11:00</span><span>LAB 11C</span></div></div></div>
+            <div class="tabs"><span class="tab on"><svg class="i"><use href="#doc"/></svg>Resumen</span><span class="tab"><svg class="i"><use href="#list"/></svg>Pendientes</span><span class="tab"><svg class="i"><use href="#folder"/></svg>Material</span></div>
+            <div class="card doc">
+              <h4>Tema de hoy</h4>
+              <p>Consenso con Raft: cómo el clúster elige un líder y qué pasa cuando ese líder se cae. La clase sigue la lectura <a>Raft, sección 5</a> del aula.</p>
+              <h4>Qué llevar</h4>
+              <ul class="checks" style="margin-top:8px"><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>El control de lectura 5 resuelto</li><li><span class="ck"><svg class="i"><use href="#check"/></svg></span>La laptop con el laboratorio 4 clonado</li></ul>
+              <h4>Vence en esta materia</h4>
+              <div class="row" style="border-top:0;padding-bottom:2px"><div class="x"><div class="ti">Control de lectura 5</div><div class="mt">Se entrega en el aula</div></div><span class="pill hi">hoy 23:59</span></div>
+              <h4>Lo que vieron la clase pasada</h4>
+              <p>Relojes lógicos de Lamport y el orden de los eventos entre nodos. El profesor dejó dos ejercicios de práctica en la carpeta de la semana 5… <span class="more">seguir leyendo</span></p>
+            </div>
+          </section>
+
+          <section class="scr">
+            <div class="head"><span class="isq sm"><svg class="i"><use href="#spark"/></svg></span><div><div class="t">Practica prueba t</div><div class="meta"><span>Estadística</span><span>5 preguntas</span></div></div></div>
+            <div class="qsegs"><i class="on"></i><i class="on"></i><i class="cur"></i><i></i><i></i></div>
+            <div class="card" style="display:grid;gap:8px">
+              <div class="q">Tienes una muestra de 12 datos y no conoces σ. ¿Qué distribución usas para el intervalo de la media?</div>
+              <div class="opt"><span class="lt">A</span>Normal estándar (z)</div>
+              <div class="opt ok"><span class="lt"><svg class="i" style="width:12px;height:12px;stroke-width:2.6"><use href="#check"/></svg></span>t de Student con 11 grados de libertad
+                <svg class="cursor" viewBox="0 0 26 26" style="position:relative;margin-left:auto;margin-bottom:-14px"><path d="M4 2.5l17 9.2-7.3 1.9-3.6 7.1z"/></svg></div>
+              <div class="opt"><span class="lt">C</span>t de Student con 12 grados de libertad</div>
+              <div class="opt"><span class="lt">D</span>Chi-cuadrado con 11 grados de libertad</div>
+              <p class="why">Si no conoces σ y la muestra es pequeña, usas t con n − 1 = 11 grados de libertad.</p>
+              <div class="strip"><span class="hint">Pregunta 3 de 5</span><span class="btn btn-accent sm">Siguiente</span></div>
+            </div>
+          </section>
+
+        </div>
+        <div class="fade"></div>
+      </div>
+    </div>
+
+    <div class="sh" id="base">
+      <h2>Pocas piezas, siempre las mismas</h2>
+      <p>Si una pantalla nueva necesita algo que no está aquí, primero entra a este sistema y después a la pantalla.</p>
+    </div>
+
+    <div class="found">
+      <div class="fcard">
+        <div><div class="ft">Color</div><p class="fs">Un solo acento, siempre como relleno: el botón principal, la cifra que importa y los checks. Nunca como color de texto sobre el papel.</p></div>
+        <div class="swatch-big"><span>Acento</span><code data-hex="--accent"></code></div>
+        <div class="sws">
+          <div class="sw"><i style="background:var(--paper)"></i>Papel<code data-hex="--paper"></code></div>
+          <div class="sw"><i style="background:var(--panel)"></i>Panel<code data-hex="--panel"></code></div>
+          <div class="sw"><i style="background:var(--line)"></i>Línea<code data-hex="--line"></code></div>
+          <div class="sw"><i style="background:var(--ink-3)"></i>Gris<code data-hex="--ink-3"></code></div>
+          <div class="sw"><i style="background:var(--ink)"></i>Tinta<code data-hex="--ink"></code></div>
+        </div>
+        <div><p class="fs" style="margin:0 0 10px">Cada materia tiene un pastel fijo para todo el semestre.</p>
+          <div class="subj"><span class="av" style="background:var(--c2)">ES</span><span class="av" style="background:var(--c3)">SD</span><span class="av" style="background:var(--c4)">IS</span><span class="av" style="background:var(--c5)">DP</span><span class="av" style="background:var(--c6)">CS</span></div></div>
+      </div>
+
+      <div class="fcard">
+        <div><div class="ft">Letra</div><p class="fs">Las dos son libres y las más parecidas a GT Alpina y GT Standard, las fuentes de pago de Bobbin. La serif solo va en titulares; dentro de las pantallas todo va en la sans.</p></div>
+        <div class="spec"><span class="aa" style="font-family:var(--serif)">Aa</span><div><div class="nm">Gelasio</div><div class="us">Titulares · 34 y 48 · peso 400</div></div></div>
+        <div class="spec"><span class="aa" style="font-weight:300">Aa</span><div><div class="nm">Inter Tight</div><div class="us">Todo lo demás · 12 a 20</div></div></div>
+        <div class="weights"><span style="font-weight:300">Vinci<small>300</small></span><span style="font-weight:400">Vinci<small>400</small></span><span style="font-weight:500">Vinci<small>500 · máximo</small></span></div>
+        <div class="scale">
+          <div><small>34</small><span style="font:400 26px/1.1 var(--serif);letter-spacing:-.4px">Tu semana</span></div>
+          <div><small>18</small><span style="font-size:18px">Sistemas Distribuidos</span></div>
+          <div><small>14</small><span style="font-size:14px;color:var(--ink-2)">Control de lectura 5 · hoy 23:59</span></div>
+          <div><small>12</small><span style="font-size:12px;color:var(--ink-3)">Actualizado hace 3 min</span></div>
+        </div>
+      </div>
+
+      <div class="fcard">
+        <div><div class="ft">Forma</div><p class="fs">Sin sombras ni bordes gruesos. La profundidad sale de tres capas de color: panel, hoja y tarjeta.</p></div>
+        <div class="layers"><div class="l2"></div><div class="l3">Tarjeta sobre hoja sobre panel</div></div>
+        <div class="shapes">
+          <div class="shape" style="height:56px;border-radius:12px">12</div>
+          <div class="shape" style="height:76px;border-radius:20px">20</div>
+          <div class="shape" style="height:96px;border-radius:36px;padding-left:16px">36</div>
+        </div>
+        <div class="pieces">
+          <span class="btn btn-accent sm">Principal</span><span class="btn btn-line sm">Secundario</span><span class="btn btn-quiet sm">Discreto</span>
+          <span class="pill late">Atrasada</span><span class="pill hi">Hoy</span><span class="pill">jue 5</span><span class="pill done">Entregado</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sh">
+      <h2>¿Menta o rosa?</h2>
+      <p>Las dos tienen la intensidad del amarillo de Bobbin, pero en otro tono. Toca una tarjeta para ver toda la página con ese color.</p>
+    </div>
+    <div class="cmp">
+      <div class="opt-card" data-pick="menta">
+        <span class="chip" style="background:#7AF3C2"></span>
+        <div class="big" style="font-family:'Inter Tight';font-weight:300">Tu semana, <span class="s" style="font-family:Gelasio">en orden.</span></div>
+        <p class="fs" style="color:var(--ink-3);line-height:1.4">Menta. Fresca y clara sobre el papel cálido. Se distingue bien del verde de WhatsApp, que es más oscuro y más saturado.</p>
+      </div>
+      <div class="opt-card" data-pick="rosa">
+        <span class="chip" style="background:#FFB3D1"></span>
+        <div class="big" style="font-family:'Inter Tight';font-weight:300">Tu semana, <span class="s" style="font-family:Gelasio">en orden.</span></div>
+        <p class="fs" style="color:var(--ink-3);line-height:1.4">Rosa. Más juguetona y más memorable. Ningún botón de WhatsApp ni del aula usa este color, así que Vinci se reconoce al instante.</p>
+      </div>
+    </div>
+    <div class="tones">
+      <p class="fs" style="color:var(--ink-3)">¿Ninguno de los dos? Prueba otro tono con la misma intensidad:</p>
+      <div class="tone-row">
+        <button class="tone" data-tone="#8EDEFE,#7CD1F2" style="--t:#8EDEFE">Celeste</button>
+        <button class="tone" data-tone="#76EFE7,#5FE3DB" style="--t:#76EFE7">Agua</button>
+        <button class="tone" data-tone="#BEF67F,#AFEA6C" style="--t:#BEF67F">Lima</button>
+        <button class="tone" data-tone="#FFAFA0,#FFA191" style="--t:#FFAFA0">Coral</button>
+        <button class="tone" data-tone="#CFBCFF,#C3AFFF" style="--t:#CFBCFF">Lila</button>
+        <button class="tone" data-tone="#FBF27E,#F0E367" style="--t:#FBF27E">Amarillo de Bobbin (referencia)</button>
+      </div>
+    </div>
+
+    <p class="foot">Datos ficticios. Inter Tight y Gelasio son libres y pueden vivir dentro de <code>docs/</code>, sin cargarse desde Google.</p>
+  </div>
+</div>
+
+<script>
+const root = document.documentElement;
+const NAMES = { menta: "Propuesta 3 · Menta.", rosa: "Propuesta 4 · Rosa." };
+
+function paint() {
+  const style = getComputedStyle(root);
+  document.querySelectorAll("[data-k]").forEach((b) => b.setAttribute("aria-pressed", root.dataset[b.dataset.k] === b.dataset.v));
+  document.querySelectorAll("[data-hex]").forEach((el) => { el.textContent = style.getPropertyValue(el.dataset.hex).trim().toUpperCase(); });
+  document.querySelectorAll("[data-pick]").forEach((el) => el.classList.toggle("sel", el.dataset.pick === root.dataset.p));
+  const tone = document.querySelector('.tone[aria-pressed="true"]');
+  document.getElementById("ban-name").textContent = tone ? `Tono de prueba · ${tone.textContent}.` : NAMES[root.dataset.p];
+}
+function clearTone() {
+  root.style.removeProperty("--accent"); root.style.removeProperty("--accent-2");
+  document.querySelectorAll(".tone").forEach((t) => t.setAttribute("aria-pressed", "false"));
+}
+document.querySelectorAll("[data-k]").forEach((b) => b.addEventListener("click", () => { clearTone(); root.dataset[b.dataset.k] = b.dataset.v; paint(); }));
+document.querySelectorAll("[data-pick]").forEach((el) => el.addEventListener("click", () => { clearTone(); root.dataset.p = el.dataset.pick; paint(); }));
+document.querySelectorAll(".tone").forEach((t) => t.addEventListener("click", () => {
+  clearTone();
+  const [accent, deep] = t.dataset.tone.split(",");
+  root.style.setProperty("--accent", accent); root.style.setProperty("--accent-2", deep);
+  t.setAttribute("aria-pressed", "true");
+  paint();
+}));
+document.getElementById("mode").addEventListener("click", () => { root.dataset.mode = root.dataset.mode === "dark" ? "light" : "dark"; paint(); });
+
+const items = [...document.querySelectorAll(".acc")];
+const screens = [...document.querySelectorAll(".scr")];
+const sheet = document.getElementById("sheet");
+let timer, auto = true;
+function show(i) {
+  items.forEach((el, j) => el.classList.toggle("open", j === i));
+  screens.forEach((el, j) => el.classList.toggle("on", j === i));
+  sheet.scrollTop = 0;
+  clearTimeout(timer);
+  if (auto) timer = setTimeout(() => show((i + 1) % items.length), 7000);
+}
+// A tap stops the carousel, like Bobbin's section does.
+items.forEach((el, i) => el.addEventListener("click", () => { auto = false; items.forEach((x) => x.classList.add("manual")); show(i); }));
+const q = new URLSearchParams(location.search);
+if (q.get("p")) root.dataset.p = q.get("p");
+if (q.get("mode")) root.dataset.mode = q.get("mode");
+const start = Number(new URLSearchParams(location.search).get("s") || 0);
+if (new URLSearchParams(location.search).has("s")) { auto = false; items.forEach((x) => x.classList.add("manual")); }
+show(start);
+paint();
+</script>
+</body>
+</html>

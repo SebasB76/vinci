@@ -1,0 +1,236 @@
+/* Vinci's webview design system. The visual reference is experiments/design-system/index.html.
+   Pages need `font-src 'self'` in their CSP: the fonts live here so no page calls a third party. */
+
+@font-face {
+  font-family: "Inter Tight";
+  src: url("fonts/inter-tight-latin.woff2") format("woff2");
+  font-weight: 300 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gelasio";
+  src: url("fonts/gelasio-400-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  --paper: #F7F4F0;
+  --panel: #E8E4DE;
+  --card: #FFFFFF;
+  --strip: #F1EDE7;
+  --line: #CDC6BC;
+  --line-soft: #ECE8E2;
+  --ink: #000000;
+  --ink-2: #544E45;
+  --ink-3: #70685C;
+  --ink-4: #A39B8F;
+  --accent: #7AF3C2;
+  --accent-2: #65E6B4;
+  --on-accent: #000000;
+  --late: #B5432E;
+  --late-bg: #F8E2DA;
+  --done: #2F7A4A;
+  --done-bg: #DFF0DC;
+  --r-sm: 12px;
+  --r-md: 20px;
+  --r-lg: 36px;
+  --sans: "Inter Tight", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: "Gelasio", Georgia, serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light dark;
+}
+
+/* WhatsApp opens the webview in the phone's theme. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1B1814;
+    --panel: #2A241D;
+    --card: #312B24;
+    --strip: #2A251F;
+    --line: #4A4238;
+    --line-soft: #3A332B;
+    --ink: #F7F4F0;
+    --ink-2: #CDC6BC;
+    --ink-3: #A39B8F;
+    --ink-4: #70685C;
+    --late: #F0A08F;
+    --late-bg: #46281F;
+    --done: #9BCF9F;
+    --done-bg: #26361F;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.35 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+
+p { margin: 0; }
+b, strong { font-weight: 500; }
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 22px 16px calc(28px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+svg.i {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Page header: an accent square with an icon, the title and one line of context. */
+.head { display: flex; gap: 14px; align-items: center; padding: 4px 4px 8px; }
+.head h1 { margin: 0; font-size: 22px; font-weight: 400; letter-spacing: -0.3px; line-height: 1.2; }
+.head .meta { margin-top: 3px; font-size: 14px; color: var(--ink-3); }
+
+.isq {
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.isq svg.i { width: 22px; height: 22px; }
+
+.card { background: var(--card); border-radius: var(--r-md); padding: 16px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  font: 500 15px var(--sans);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn.sm { height: 34px; padding: 0 14px; font-size: 14px; }
+.btn.block { width: 100%; }
+.btn-accent { background: var(--accent); color: var(--on-accent); }
+.btn-accent:active { background: var(--accent-2); }
+.btn-line { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.btn-quiet { background: var(--line-soft); color: var(--ink); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Numbered steps inside a card. */
+.steps { list-style: none; margin: 0; padding: 4px 16px; }
+.steps li { display: flex; align-items: center; gap: 12px; padding: 11px 0; font-size: 14px; color: var(--ink-2); }
+.steps li + li { border-top: 1px solid var(--line-soft); }
+.steps .x { flex: 1; min-width: 0; }
+.num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  flex: none;
+}
+
+/* A text box with an action strip under it, like a chat composer. */
+.prompt { background: var(--card); border-radius: var(--r-md); overflow: hidden; }
+.prompt + .prompt { margin-top: 0; }
+.strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 16px;
+  background: var(--strip);
+  border-top: 1px solid var(--line-soft);
+}
+.strip .hint { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); min-width: 0; }
+.strip .hint svg.i { width: 15px; height: 15px; }
+
+.lbl { display: block; padding: 14px 16px 0; font-size: 13px; color: var(--ink-3); }
+.field { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; min-height: 56px; }
+.field input {
+  flex: 1;
+  min-width: 0;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 16px var(--sans);
+}
+.field input.mono { font: 15px var(--mono); }
+.field input::placeholder { color: var(--ink-4); }
+.field + .lbl { border-top: 1px solid var(--line-soft); }
+.suffix { flex: none; font-size: 14px; color: var(--ink-3); padding-right: 8px; }
+.reveal {
+  flex: none;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-2);
+  font: 500 14px var(--sans);
+  cursor: pointer;
+}
+.reveal:disabled { opacity: 0.45; }
+.prompt:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+
+/* Status line under a form; form.js and portal.js set data-kind. */
+.status { min-height: 1.35em; margin: 0 6px; font-size: 14px; color: var(--ink-2); }
+.status:empty { display: none; }
+.status[data-kind="error"] { color: var(--late); }
+.status[data-kind="ok"] { color: var(--done); }
+
+.pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--line-soft); color: var(--ink-2); white-space: nowrap; }
+.pill.hi { background: var(--accent); color: var(--on-accent); }
+.pill.late { background: var(--late-bg); color: var(--late); }
+.pill.done { background: var(--done-bg); color: var(--done); }
+
+/* Quiet outlined rows that explain the privacy of a form. */
+.trust { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.trust li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.trust li svg.i { width: 16px; height: 16px; margin-top: 1px; }
+.trust b { color: var(--ink); }
+
+/* The <symbol> sprite each page carries; inline style attributes are blocked by the CSP. */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }

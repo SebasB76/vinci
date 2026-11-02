@@ -4,6 +4,10 @@
 // stored encrypted (scripts/album_card.py); the fragment's `k` opens it, so it never shows without Vinci's link.
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
+const TAG = { com: "COMUN", rare: "RARA", epic: "EPICA", leg: "★ LEGENDARIA ★" };
+// Press Start 2P draws an accented capital as a small letter: the card's pixel text goes without accents, as in old
+// games, except the Ñ.
+const plain = (text) => String(text ?? "").normalize("NFD").replace(/(?<!N|n)[\u0300-\u036f]/g, "").normalize("NFC");
 const OPENED = "album-opened";
 const esc = (text) => String(text ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pad = (n) => String(n).padStart(3, "0");
@@ -56,9 +60,8 @@ async function unlock(data, cards) {
 function card(c, size = "", flag = "") {
   const src = c.src || c.img;
   const art = src ? `<img src="${esc(src)}" alt="">` : `<span class="ini">${esc(initials(c.name))}</span>`;
-  const seal = c.rarity === "leg" ? `<span class="seal">${SPARK}Carta legendaria</span>` : "";
-  return `<div class="vc t-${c.rarity} ${size}"><div class="art"><span class="no">Nº ${pad(c.n)}</span>${flag}${art}${seal}</div>
-    <div class="bd"><div class="nm">${esc(c.name)}</div><div class="mt"><span>${esc(c.group)}</span><span class="rp t-${c.rarity}">${RL[c.rarity]}</span></div></div></div>`;
+  return `<div class="vc t-${c.rarity} ${size}"><div class="art"><span class="no">Nº${pad(c.n)}</span>${flag}${art}</div>
+    <div class="bd"><div class="nm">${esc(plain(c.name))}</div><div class="mt">${esc(plain(c.group))}</div></div><div class="rk"><span class="tag">${TAG[c.rarity]}</span></div></div>`;
 }
 
 const head = (title, meta) => `<header class="head"><div class="isq">${SPARK}</div><div><h1>${esc(title)}</h1><p class="meta">${esc(meta)}</p></div></header>`;

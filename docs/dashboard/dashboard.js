@@ -9,10 +9,6 @@
 const DAY = 864e5;
 const WEEKDAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-const NEWS = {
-  assignment: ["📝", "Tarea nueva"], due: ["📅", "Cambio de fecha"], announcement: ["📢", "Anuncio"],
-  grade: ["✅", "Nota"], file: ["📚", "Material"], link: ["🔗", "Enlace"], course: ["🎓", "Materia nueva"],
-};
 const STORE = "vinci-dashboard";
 
 const MAILBOX_RE = /^[A-Za-z0-9_-]{22,64}$/;
@@ -71,17 +67,18 @@ const midnight = (date) => new Date(date.getFullYear(), date.getMonth(), date.ge
 const shortDate = (date) => `${date.getDate()} ${MONTHS[date.getMonth()]}`;
 const clock = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
+// A date without a time («2026-11-04») is that day here, not midnight UTC (the evening before in Ecuador).
+const parseDue = (due) => /^\d{4}-\d{2}-\d{2}$/.test(due) ? new Date(`${due}T00:00`) : new Date(due);
+
 function group(item, now) {
   if (!item.due) return "undated";
-  const due = new Date(item.due), today = midnight(now);
+  const due = parseDue(item.due), today = midnight(now);
   const day = item.allDay ? midnight(due) : due;
   if (item.allDay ? day < today : due < now) return "overdue";
   if (midnight(due).getTime() === today.getTime()) return "today";
   return midnight(due) - today < 7 * DAY ? "week" : "later";
 }
 
-const GROUPS = [["overdue", "Atrasadas", true], ["today", "Hoy", true], ["week", "Esta semana", false],
-  ["later", "Más adelante", false], ["undated", "Sin fecha", false]];
 
 function ago(at, now) {
   const when = new Date(at), hours = (now - when) / 36e5;
@@ -97,78 +94,125 @@ const place = (inline, left, width) => inline
   ? ` style="left:${left.toFixed(2)}%${width == null ? "" : `;width:${width.toFixed(2)}%`}"`
   : ` data-left="${left.toFixed(2)}"${width == null ? "" : ` data-width="${width.toFixed(2)}"`}`;
 
-function termView(term, items, now, inline) {
-  if (!term) return "";
-  const start = new Date(term.start), end = new Date(term.end), span = end - start;
-  const at = (date) => Math.min(100, Math.max(0, ((date - start) / span) * 100));
-  const pct = Math.round(at(now)), gone = Math.max(0, now - start) / DAY;
-  const weeks = Math.ceil(span / DAY / 7), week = Math.min(weeks, Math.floor(gone / 7) + 1);
-  const left = Math.ceil((end - now) / DAY);
-  const months = [];
-  for (let m = new Date(start.getFullYear(), start.getMonth() + 1, 1); m < end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
-    months.push(`<span${place(inline, at(m))}>${MONTHS[m.getMonth()]}</span>`);
-  }
-  const pins = items.filter((i) => i.due && !i.todo && new Date(i.due) >= start && new Date(i.due) <= end).map((i) => {
-    const hot = new Date(i.due) - now < DAY;
-    return `<button type="button" class="pin${hot ? " hot" : ""}" data-pin="${esc(i.id)}"${place(inline, at(new Date(i.due)))}
-      aria-label="${esc(i.title)}" title="${esc(i.title)}"></button>`;
-  }).join("");
-  return `<section class="term" aria-label="Avance del semestre">
-    <div class="head"><h1 class="ellipsis">${esc(term.name || "Semestre")}</h1>
-      <span class="pct"><b>${pct}%</b> · semana ${week} de ${weeks}</span></div>
-    <div class="line"><div class="rail"></div><div class="gone"${place(inline, 0, pct)}></div>
-      <div class="today"${place(inline, pct)}>HOY</div>${pins}</div>
-    <div class="months">${months.join("")}</div>
-    <div class="legend"><span>${shortDate(start)}</span><span>${left > 0 ? `faltan ${left} días` : "terminó el semestre"}</span>
-      <span>${shortDate(end)}</span></div>
-  </section>`;
+
+const GROUPS = [["overdue", "Atrasadas"], ["today", "Hoy"], ["week", "Esta semana"], ["later", "Más adelante"],
+  ["undated", "Sin fecha"]];
+
+const ICONS = {
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  pin: '<path d="M12 21v-6M8 4h8l-1 6 3 3H6l3-3z"/>',
+  assignment: '<path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/>',
+  due: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  announcement: '<path d="M4 10v4h3l6 4V6L7 10zM17 9a4 4 0 010 6"/>',
+  grade: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>',
+  file: '<path d="M4 5.5A1.5 1.5 0 015.5 4H11v16H5.5A1.5 1.5 0 014 18.5zM20 5.5A1.5 1.5 0 0018.5 4H13v16h5.5a1.5 1.5 0 001.5-1.5z"/>',
+  link: '<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
+  course: '<path d="M2.5 9.5L12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5V16c0 1.5 2.5 3 5.5 3s5.5-1.5 5.5-3v-4.5"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0112 0v5l1.5 2h-15zM10 21h4"/>',
+};
+const icon = (name, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.bell}</svg>`;
+const NEWS_LABEL = { assignment: "Tarea nueva", due: "Cambio de fecha", announcement: "Anuncio", grade: "Nota",
+  file: "Material", link: "Enlace", course: "Materia nueva" };
+
+// A subject keeps one pastel and its initials everywhere: «Sistemas Distribuidos» → SD in the same color each time.
+const SMALL = new Set(["de", "del", "la", "las", "los", "el", "y", "e", "en", "a", "para", "i", "ii", "iii", "iv"]);
+function initials(course) {
+  const words = String(course || "").normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[\s\-–:.,]+/)
+    .filter((w) => w && !SMALL.has(w.toLowerCase()));
+  if (!words.length) return "·";
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+}
+function hue(course) {
+  let h = 0;
+  for (const c of String(course || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % 5;
 }
 
-function itemView(item, now, done) {
-  const icon = item.todo ? "📌 " : item.quiz ? "⏱️ " : "";
-  const due = item.due ? new Date(item.due) : null;
-  const sub = [due && !item.allDay ? clock(due) : "", item.course || (item.todo ? "Personal" : ""),
-    item.elsewhere ? "fuera del aula" : ""].filter(Boolean).join(" · ");
-  const date = due ? `<div class="date"><small>${WEEKDAYS[due.getDay()]}</small><b>${due.getDate()}</b>${
-    due.getMonth() !== now.getMonth() ? `<small>${MONTHS[due.getMonth()]}</small>` : ""}</div>` : "";
-  return `<div class="it${done ? " done" : ""}" id="it-${esc(item.id)}">
+function duePill(item, key, now) {
+  if (!item.due) return "";
+  const due = parseDue(item.due);
+  const day = due.getDate() === now.getDate() && key === "today" ? "hoy" : `${WEEKDAYS[due.getDay()]} ${due.getDate()}`;
+  const text = item.allDay ? day : `${key === "today" ? "" : `${day} · `}${clock(due)}`.trim();
+  const kind = key === "overdue" ? " late" : key === "today" ? " hi" : "";
+  return `<span class="pill${kind}">${esc(key === "overdue" ? `venció ${day}` : text)}</span>`;
+}
+
+function itemView(item, key, now, done) {
+  const avatar = item.todo ? `<span class="av mine">${icon("pin")}</span>`
+    : `<span class="av c${hue(item.course)}">${esc(initials(item.course))}</span>`;
+  const meta = [item.todo ? "Tuya" : item.course, item.quiz ? "cuestionario" : "", item.elsewhere ? "fuera del aula" : "",
+    item.weight != null ? `${item.weight} % de la nota` : ""].filter(Boolean).map(esc).join(" · ");
+  return `<div class="it${done ? " done" : ""}" id="it-${esc(item.id)}">${avatar}
+    <div class="body"><div class="t ellipsis">${esc(item.title)}</div>
+      <div class="s">${duePill(item, key, now)}<span class="ellipsis">${meta}</span></div></div>
     <button type="button" class="check" data-check="${esc(item.id)}" aria-pressed="${done}"
-      aria-label="${done ? "Desmarcar" : "Marcar"}: ${esc(item.title)}">✓</button>
-    <div class="body"><div class="t ellipsis">${icon}${esc(item.title)}</div><div class="s ellipsis">${esc(sub)}</div></div>
-    ${item.weight != null ? `<span class="wt">${esc(item.weight)}%</span>` : ""}${date}
+      aria-label="${done ? "Desmarcar" : "Marcar"}: ${esc(item.title)}">${icon("check")}</button>
   </div>`;
 }
 
 function newsView(entry, now, read) {
-  const [icon, label] = NEWS[entry.kind] || ["🔔", "Aviso"];
+  const label = NEWS_LABEL[entry.kind] || "Aviso";
   const extra = entry.kind === "due" && entry.due ? ` · ahora vence ${WEEKDAYS[new Date(entry.due).getDay()]} ${shortDate(new Date(entry.due))}`
     : entry.score ? ` · ${esc(entry.score)}` : "";
-  return `<div class="nw${read ? " read" : ""}"><span class="unread" aria-hidden="true"></span>
-    <span class="ic" aria-hidden="true">${entry.quiz ? "⏱️" : icon}</span>
+  return `<div class="nw${read ? " read" : ""}"><span class="ic">${icon(entry.kind)}</span>
     <div class="body"><div class="t">${esc(entry.title)}</div>
-      <div class="s">${label} · ${esc(entry.course)} · ${ago(entry.at, now)}${extra}</div></div></div>`;
+      <div class="s">${label} · ${esc(entry.course)} · ${ago(entry.at, now)}${extra}</div></div>
+    <span class="unread" aria-hidden="true"></span></div>`;
 }
 
-// The whole page as HTML. `state` is what the phone remembers: {marks: {id: {done, at}}, read: [news ids]}.
+function termTile(term, now, inline) {
+  if (!term) return "";
+  const start = new Date(term.start), end = new Date(term.end), span = end - start;
+  const pct = Math.min(100, Math.max(0, ((now - start) / span) * 100));
+  const weeks = Math.ceil(span / DAY / 7), week = Math.min(weeks, Math.floor(Math.max(0, now - start) / DAY / 7) + 1);
+  return `<div class="tile"><div class="n">${week}/${weeks}</div><div class="l">semanas del semestre</div>
+    <div class="term"><i${place(inline, 0, pct)}></i></div></div>`;
+}
+
+// The whole page as HTML. `state` is what the phone remembers: {marks: {id: {done, at}}, read: [news ids], tab}.
 export function view(data, now, state = {}, { inline = false } = {}) {
   const snapshotAt = Date.parse(data.at || 0);
   const marks = state.marks || {}, read = new Set(state.read || []);
   const isDone = (id) => Boolean(marks[id] && marks[id].at > snapshotAt && marks[id].done);
-  const items = data.items || [];
-  const groups = GROUPS.map(([key, title, hot]) => {
-    const inGroup = items.filter((i) => group(i, now) === key).sort((a, b) => (a.due || "").localeCompare(b.due || ""));
-    return inGroup.length ? `<div class="grp${hot ? " hot" : ""}"><h2>${title}</h2><span>${inGroup.length}</span></div>
-      <div class="list">${inGroup.map((i) => itemView(i, now, isDone(i.id))).join("")}</div>` : "";
-  }).join("");
-  const news = data.news || [];
+  const items = data.items || [], news = data.news || [];
+  const keyed = items.map((i) => [group(i, now), i]);
+  const count = (keys) => keyed.filter(([k, i]) => keys.includes(k) && !isDone(i.id)).length;
+  const pending = count(["today", "week"]), late = count(["overdue"]);
+  const unread = news.filter((n) => !read.has(n.id)).length;
+  const tab = state.tab === "news" && news.length ? "news" : "items";
   const updated = data.at ? new Date(data.at) : null;
-  return `${termView(data.term, items, now, inline)}
-    ${groups || `<div class="empty"><b>🎉</b>No tienes entregas pendientes.</div>`}
-    ${data.more ? `<p class="more">Y ${data.more} más en el aula virtual.</p>` : ""}
-    ${news.length ? `<div class="feedhead"><h2>Novedades</h2>${news.some((n) => !read.has(n.id))
-      ? `<button type="button" data-read-all>Marcar como leídas</button>` : ""}</div>
-      <div class="list">${news.map((n) => newsView(n, now, read.has(n.id))).join("")}</div>` : ""}
-    ${updated ? `<p class="foot">Actualizado el ${WEEKDAYS[updated.getDay()]} ${shortDate(updated)}, ${clock(updated)}</p>` : ""}`;
+
+  const title = pending ? `${pending} ${pending === 1 ? "entrega" : "entregas"} esta semana`
+    : late ? "Ponte al día" : "Semana tranquila";
+  const head = `<header class="head"><span class="logo" aria-hidden="true"></span><div>
+      <h1>Tu semana</h1><p class="meta">${esc(title)}${updated ? ` · ${WEEKDAYS[now.getDay()]} ${shortDate(now)}` : ""}</p></div></header>`;
+  const tiles = `<div class="tiles">
+      <div class="tile hi"><div class="n">${pending}</div><div class="l">por entregar esta semana</div></div>
+      <div class="tile${late ? " late" : ""}"><div class="n">${late}</div><div class="l">${late === 1 ? "atrasada" : "atrasadas"}</div></div>
+      ${termTile(data.term, now, inline) || `<div class="tile"><div class="n">${count(["later", "undated"])}</div><div class="l">más adelante</div></div>`}
+    </div>`;
+  const tabs = news.length ? `<div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" data-tab="items" aria-selected="${tab === "items"}">${icon("list")}Entregas</button>
+      <button type="button" class="tab" role="tab" data-tab="news" aria-selected="${tab === "news"}">${icon("bell")}Novedades${
+        unread ? ` <span class="count">${unread}</span>` : ""}</button></div>` : "";
+
+  let body;
+  if (tab === "news") {
+    body = `<section class="card list">${news.map((n) => newsView(n, now, read.has(n.id))).join("")}</section>
+      ${unread ? `<button type="button" class="btn btn-quiet sm read-all" data-read-all>Marcar todo como leído</button>` : ""}`;
+  } else {
+    const groups = GROUPS.map(([key, name]) => {
+      const inGroup = keyed.filter(([k]) => k === key).map(([, i]) => i).sort((a, b) => (a.due || "").localeCompare(b.due || ""));
+      return inGroup.length ? `<p class="gl${key === "overdue" ? " late" : ""}">${name}</p>
+        ${inGroup.map((i) => itemView(i, key, now, isDone(i.id))).join("")}` : "";
+    }).join("");
+    body = groups ? `<section class="card list">${groups}</section>`
+      : `<div class="card empty"><b>Nada pendiente.</b>Disfruta mientras dure.</div>`;
+    if (data.more) body += `<p class="more">Y ${data.more} más en el aula virtual.</p>`;
+  }
+  const foot = updated ? `<p class="foot"><span class="live"></span>Actualizado el ${WEEKDAYS[updated.getDay()]} ${shortDate(updated)}, ${clock(updated)}</p>` : "";
+  return `${head}${tiles}${tabs}${body}${foot}`;
 }
 
 export function applyLayout(root) {
@@ -192,13 +236,6 @@ function postEvent(type, data = {}) {
   return false;
 }
 
-function applyTheme(theme) {
-  const root = document.documentElement.style;
-  for (const [name, value] of Object.entries(theme)) {
-    if (/^#[0-9a-f]{3,8}$/i.test(value)) root.setProperty(`--tg-${name.replace(/_/g, "-")}`, value);
-  }
-}
-
 function load() {
   try {
     return JSON.parse(localStorage.getItem(STORE) || "{}");
@@ -217,8 +254,7 @@ function save(state) {
 
 async function init() {
   const app = document.getElementById("app");
-  const { payload, theme } = readFragment(location.hash);
-  applyTheme(theme);
+  const { payload } = readFragment(location.hash);
   postEvent("web_app_ready");
   postEvent("web_app_expand");
   let data;
@@ -228,7 +264,7 @@ async function init() {
     data = null;
   }
   if (!data || data.v !== 1) {
-    app.innerHTML = `<div class="empty"><b>📋</b>Abre este panel con el botón «📋 Entregas» del chat de Vinci, o con /entregas en WhatsApp.</div>`;
+    app.innerHTML = `<div class="card empty"><b>Aquí no hay nada todavía.</b>Abre esta página con /entregas en tu chat con Vinci.</div>`;
     return;
   }
   const state = load();
@@ -238,7 +274,7 @@ async function init() {
   };
   render();
   app.addEventListener("click", (event) => {
-    const check = event.target.closest("[data-check]"), pin = event.target.closest("[data-pin]");
+    const check = event.target.closest("[data-check]"), tab = event.target.closest("[data-tab]");
     if (check) {
       const id = check.dataset.check, done = check.getAttribute("aria-pressed") !== "true";
       state.marks = { ...state.marks, [id]: { done, at: Date.now() } };
@@ -246,7 +282,7 @@ async function init() {
       render();
       if (data.wa) {  // opened from /entregas on WhatsApp: through the relay, else back to the chat with it typed
         postMark(data, id, done).then((sent) => {
-          if (sent) return toast(done ? "✅ Enviado: Vinci te confirma en el chat." : "↩️ Desmarcada: Vinci te confirma en el chat.");
+          if (sent) return toast(done ? "Enviado. Vinci te confirma en el chat." : "Desmarcada. Vinci te confirma en el chat.");
           const item = (data.items || []).find((i) => i.id === id);
           const text = `/marca ${id} ${done ? "ok" : "no"}${item ? ` · ${item.title}` : ""}`;
           window.location.href = `https://wa.me/${data.wa}?text=${encodeURIComponent(text)}`;
@@ -255,12 +291,9 @@ async function init() {
       }
       const link = `/${data.bot}?start=${id[0]}_${id.slice(1)}_${done ? "ok" : "no"}`;
       if (!postEvent("web_app_open_tg_link", { path_full: link })) window.open(`https://t.me${link}`, "_blank");
-    } else if (pin) {
-      const row = document.getElementById(`it-${pin.dataset.pin}`);
-      if (!row) return;
-      row.scrollIntoView({ behavior: "smooth", block: "center" });
-      row.classList.add("flash");
-      setTimeout(() => row.classList.remove("flash"), 900);
+    } else if (tab) {
+      state.tab = tab.dataset.tab;
+      render();
     } else if (event.target.closest("[data-read-all]")) {
       state.read = [...new Set([...(state.read || []), ...(data.news || []).map((n) => n.id)])].slice(-200);
       save(state);

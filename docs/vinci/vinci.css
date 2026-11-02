@@ -33,6 +33,12 @@
   --late-bg: #F8E2DA;
   --done: #2F7A4A;
   --done-bg: #DFF0DC;
+  /* One pastel per subject, picked by its name (dashboard.js hue). */
+  --c0: #D5E6F5;
+  --c1: #E3DDF7;
+  --c2: #F7DCCB;
+  --c3: #EFE3CF;
+  --c4: #F5DCE6;
   --r-sm: 12px;
   --r-md: 20px;
   --r-lg: 36px;
@@ -59,6 +65,11 @@
     --late-bg: #46281F;
     --done: #9BCF9F;
     --done-bg: #26361F;
+    --c0: #2C3F52;
+    --c1: #3B3558;
+    --c2: #4A3426;
+    --c3: #45392A;
+    --c4: #4A2E3A;
   }
 }
 
@@ -82,6 +93,7 @@ main {
   margin: 0 auto;
   padding: 22px 16px calc(28px + env(safe-area-inset-bottom));
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-content: start;
 }

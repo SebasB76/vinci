@@ -5,32 +5,28 @@
 # Vinci
 
 Tu aula virtual, pero en WhatsApp.<br>
-<sub>Para estudiantes de ESPOL. Sin apps nuevas, sin drama.</sub>
+<sub>Sin apps nuevas, sin drama.</sub>
 
 </div>
 
 <br>
 
 <p align="center">
-  <img src="docs/images/vinci-pantallas.png" alt="Tres chats de WhatsApp con Vinci: un recordatorio de entrega con la encuesta «¿Ya lo entregaste?»; una nota de voz que pregunta el promedio y Vinci contesta desde el Académico; fotos de un deber que Vinci convierte en PDF y entrega en el aula cuando votas «Entregar»" width="100%">
+  <img src="docs/images/vinci-demo.webp" alt="Animación: en WhatsApp le preguntas a Vinci cuánto necesitas para pasar Estadística y te responde con la cuenta; escribes /entregas, tocas «Ver mis entregas» y se abre la página «Tu semana»; marcas «Control de lectura 5» como entregada y Vinci te lo confirma en el chat" width="100%">
 </p>
 <p align="center"><sub>Datos ficticios.</sub></p>
 
 ## Qué hace
 
-Lee tu aula cada 10 minutos y te escribe cuando hay algo: una tarea nueva, un cambio de fecha, una nota.
-Antes de que algo venza, te recuerda. Dos veces.
+- Te avisa antes de que algo venza.
+- Cada mañana te arma la semana.
+- Te prepara para cada clase.
+- Responde sobre tu material, con la fuente.
+- Te dice cuánto necesitas para pasar.
+- Entrega tus deberes desde unas fotos.
+- Entiende audios, capturas y fotos de la pizarra.
 
-- A las 7:00 te manda la semana en orden. `/entregas` la abre en una página.
-- Media hora antes de cada clase, te cuenta qué toca.
-- Le preguntas por tu material y te contesta citando la página. También te toma quiz y busca exámenes anteriores.
-- ¿Cuánto necesitas para pasar? Hace la cuenta con los pesos del sílabo. Tu promedio y tus horarios los saca del
-  Académico.
-- Le mandas fotos del deber, arma el PDF y lo entrega en el aula. Solo si le dices que sí.
-- Entiende audios, capturas y fotos de la pizarra. También en grupos.
-- Tus amigos pueden tener el suyo, cada uno con su aula.
-
-Lo de revisar y recordar no usa IA, así que no gasta tokens. [Todo lo demás →](docs/guia/funciones.md#qué-hace-vinci)
+[Todo lo que hace →](docs/guia/funciones.md#qué-hace-vinci)
 
 ## De dónde lee
 
@@ -38,22 +34,10 @@ Lo de revisar y recordar no usa IA, así que no gasta tokens. [Todo lo demás �
 - **[Académico](https://www.academico.espol.edu.ec):** promedio, avance, historial y horarios de clases y exámenes.
 - **[DSpace](https://www.dspace.espol.edu.ec):** unos 20 000 exámenes anteriores, de todas las facultades.
 
-## Empezar
-
-**¿Alguien ya tiene Vinci?** Que te agregue como amigo. Te llega un link, conectas tu aula y ya.
-
-**¿Quieres el tuyo?** Corre en tu servidor con Docker. En [Coolify](https://coolify.io) son tres pasos:
-
-1. Crea una app desde este repo, con el `Dockerfile` y un volumen en `/opt/data`.
-2. Pon la key de tu proveedor de IA, tu token del aula y tu número de WhatsApp.
-3. Dale a **Deploy** y vincula el número de Vinci.
-
-[Paso a paso →](docs/guia/servidor.md#crear-la-app) · [Sin Docker →](docs/guia/servidor.md#en-una-laptop-vieja-en-casa-sin-docker)
-
 ## Privacidad
 
-Solo lee tu aula. Lo único que escribe es una entrega que tú aprobaste. Tus datos se quedan en tu servidor, y tus
-tokens y tu contraseña viajan cifrados: nunca pasan por el chat ni por la IA. [Los detalles →](docs/guia/privacidad.md#seguridad-y-privacidad)
+Solo lee tu aula, y solo entrega lo que tú apruebas. Tus datos se quedan en tu servidor.
+[Los detalles →](docs/guia/privacidad.md#seguridad-y-privacidad)
 
 ## Más
 
@@ -65,7 +49,7 @@ tokens y tu contraseña viajan cifrados: nunca pasan por el chat ni por la IA. [
 ---
 
 <sub>
-<b>In English:</b> a self-hosted WhatsApp study assistant for ESPOL students, built on
+<b>In English:</b> a self-hosted WhatsApp study assistant for your Canvas courses, built on
 <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>. It reads your Canvas courses, reminds you
 before deadlines, answers questions about your course material and hands in your work.
 </sub>

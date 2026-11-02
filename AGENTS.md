@@ -153,7 +153,7 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
 - `docs/guia/`: the user guides the README links to.
 - `relay/`: Cloudflare Worker that passes encrypted webview results back to the laptop.
 - `tests/e2e/`: the E2E with its fake servers, Hermes harness and fixtures.
-- `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README image).
+- `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README demo).
 - `.claude/skills/control-vinci/`: how agents verify on the live bots, and the feature map.
 
 ## Language

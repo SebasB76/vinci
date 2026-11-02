@@ -98,9 +98,9 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 | A `vinci-check` command | `.claude/skills/control-vinci/SKILL.md` |
 | What runs live, or a command here | «Status» or «Commands» in this file |
 | A known limit (fixed or new) | `problemas.md` «Límites conocidos» |
-| A headline feature (new or gone) | the «Qué hace» table in `README.md` + `funciones.md` |
+| A headline feature (new or gone) | the «Qué hace» list in `README.md` + `funciones.md` |
 | The summary, dashboard, Académico or hand-in messages | `docs/images/pantallas/pantallas.html`, then `scripts/render_screens.sh` |
-| A new ESPOL source (like the Académico) | «Conectado a ESPOL» in `README.md` |
+| A new ESPOL source (like the Académico) | «De dónde lee» in `README.md` |
 
 ## Do not re-propose
 

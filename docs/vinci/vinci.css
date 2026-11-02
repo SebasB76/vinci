@@ -47,32 +47,8 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* Every transition here: fast at the start, so a tap answers at once. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  color-scheme: light dark;
-}
-
-/* WhatsApp opens the webview in the phone's theme. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1B1814;
-    --panel: #2A241D;
-    --card: #312B24;
-    --strip: #2A251F;
-    --line: #4A4238;
-    --line-soft: #3A332B;
-    --ink: #F7F4F0;
-    --ink-2: #CDC6BC;
-    --ink-3: #A39B8F;
-    --ink-4: #70685C;
-    --late: #F0A08F;
-    --late-bg: #46281F;
-    --done: #9BCF9F;
-    --done-bg: #26361F;
-    --c0: #2C3F52;
-    --c1: #3B3558;
-    --c2: #4A3426;
-    --c3: #45392A;
-    --c4: #4A2E3A;
-  }
+  /* Light only, even on a dark phone; "only" also stops a browser from darkening the page itself. */
+  color-scheme: only light;
 }
 
 * { box-sizing: border-box; }

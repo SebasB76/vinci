@@ -60,6 +60,8 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 
 ## Working rules
 
+- Webviews (`docs/token/`, `docs/dashboard/`, `docs/academico/`, `docs/notas/` and any new page) are light only,
+  even on a phone in dark mode: no dark palette, no theme toggle. They all use `docs/vinci/vinci.css`.
 - The live install is the Coolify container, built from `main`: never deploy a branch there. On the PC, work in a
   git worktree of `~/Projects/espol-academic-bot`, and never run `setup.sh` on the PC.
 - E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to

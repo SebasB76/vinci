@@ -62,6 +62,12 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 
 - Webviews (`docs/token/`, `docs/dashboard/`, `docs/academico/`, `docs/notas/` and any new page) are light only,
   even on a phone in dark mode: no dark palette, no theme toggle. They all use `docs/vinci/vinci.css`.
+- Before you change a webview, use Emil Kowalski's skills in `.claude/skills/`: `mobile-native` (tap, zoom, safe
+  areas), `break-ui` (long names, URLs, empty lists, through a fake `#d=` snapshot), and for motion
+  `find-animation-opportunities`, `emil-design-eng` and `review-animations`. Keep what PR #108 set: transitions on
+  `var(--ease-out)` and under 300 ms, `prefers-reduced-motion` honored, `:active` on every control, inputs at 16px,
+  `:hover` only inside `@media (hover: hover)`. Bump the `?v=` of every changed file in each page's `index.html`:
+  GitHub Pages and WhatsApp cache them.
 - The live install is the Coolify container, built from `main`: never deploy a branch there. On the PC, work in a
   git worktree of `~/Projects/espol-academic-bot`, and never run `setup.sh` on the PC.
 - E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to

@@ -17,7 +17,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Work handed in outside the aula (`delivery`: external lab, event in class, unknown) | in every pending list | same; «ya lo hice» / «todavía no» / «se entrega por correo» | no (classification is a script) | `uso.md` «El resumen de las 7:00» |
 | Dashboard of deliverables | «📋 Entregas» menu button, Mini App | link button: `/entregas`, after the 07:00 summary, and from Vinci (`show_page`) on «¿qué tengo pendiente?» in private; ticks come back through the relay | no (the button from Vinci: yes) | `uso.md` «El dashboard de entregas» |
 | To-do list («anota: …») | card with «✅ Hecho» | poll | yes (parsing), no (reminders) | `funciones.md` |
-| Grade calculator | ask Vinci or a subject bot; «✅ Guardar esquema» | ask Vinci; «Guardar esquema» poll | yes, the math is a script | `uso.md` «La calculadora de notas» |
+| Grade calculator | ask Vinci or a subject bot; «✅ Guardar esquema» | ask Vinci; «Guardar esquema» poll; «¿cómo voy en notas?» also brings «📊 Ver mis notas», the «Tus notas» page (`show_page`) | yes, the math is a script | `uso.md` «La calculadora de notas» |
 | Team of subject bots | «arma mi equipo» → «➕ Crear» | not needed: one Vinci for every subject | no | `instalacion.md` «7. Arma tu equipo de bots desde el chat» |
 | Brief before each class | subject bot, 30 min before | Vinci's DM, 30 min before (a system task Vinci answers) | yes | `whatsapp.md` «El brief antes de cada clase» |
 | Subject notebook (notes, photos, voice) | subject bot chat | Vinci's DM; the subject named, replied to, or in class by the schedule | yes | `whatsapp.md` «Tus materias, en un solo chat» |
@@ -56,7 +56,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Buttons (all) | `src/espol_bot/botones.py`, `hermes/plugins/vinci-botones/` | `vinci-check vote "<option>"` on a harmless poll (`press` with Telegram on) |
 | Dashboard | `src/espol_bot/dashboard.py` (`whatsapp_link`), `docs/dashboard/`, `show_page` in `herramientas.py`, `Bot._dashboard_button` in `poller.py` | `vinci-check page dashboard`; `vinci-check say "¿qué tengo pendiente?"` brings the button (uses the model) |
 | To-do list | `src/espol_bot/store.py`, `herramientas.py` | `vinci-check say "¿qué tengo esta semana?"` (uses the model) |
-| Grade calculator | `src/espol_bot/grades.py` | ask «¿cómo voy en Estadística?» through `chat` (uses the model) |
+| Grade calculator | `src/espol_bot/grades.py`; the page: `grades_page.py`, `docs/notas/` | ask «¿cómo voy en Estadística?» through `chat` (uses the model); `vinci-check page notas` renders the page with the live data |
 | Team of subject bots | `src/espol_bot/equipo.py`, `materias.py` | `vinci-check bots`; never press «➕ Crear» to test |
 | Class briefs | `src/espol_bot/agenda.py` (`run_vinci` without Telegram), `horario.py`, `relay.queue_turn` | after a class's brief time, `vinci-check whatsapp --chat dm` shows the «[Tarea del sistema …]» turn and the brief |
 | Notebook | `src/espol_bot/cuaderno.py`; Vinci's tools in `_subject_work_tools` (`herramientas.py`) | `vinci-check say "¿qué hay en el cuaderno de <materia>?"` (uses the model) |

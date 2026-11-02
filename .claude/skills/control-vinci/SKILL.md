@@ -34,7 +34,7 @@ The bots run the live checkout's code, not the worktree's: a behavior change is 
 | `vinci-check whatsapp [--profile vinci] [--chat dm\|group] [--last 8]` | read the latest WhatsApp turns and the tools the bot called |
 | `vinci-check say "<text>"` | write to Vinci in the captain's WhatsApp chat and get its reply (it reaches his phone too) |
 | `vinci-check vote "<option>"` | vote on Vinci's latest poll in the captain's WhatsApp chat |
-| `vinci-check page token\|dashboard` | open the GitHub Pages page in headless Chrome; the dashboard carries the real data |
+| `vinci-check page token\|dashboard\|notas` | open the GitHub Pages page in headless Chrome; the dashboard and «Tus notas» carry the real data |
 | `vinci-check smoke` | the standard round (about 45 s): status, `/estado`, both pages; with Telegram on, `/start` to each subject bot |
 
 All take `--json` and exit 1 on failure; a failure says what to run next.

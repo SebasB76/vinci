@@ -1,0 +1,59 @@
+/* Only what «Tus notas» adds to ../vinci/vinci.css; the reference is the «Notas por materia» screen in
+   experiments/design-system/index.html. */
+button { font: inherit; color: inherit; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.logo { width: 48px; height: 48px; border-radius: 50%; flex: none; background: url("../vinci/logo.png") center / cover; }
+
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { display: inline-flex; align-items: center; gap: 7px; padding: 6px 14px 6px 6px; border: 0; border-radius: 999px;
+       background: none; color: var(--ink-3); font-size: 14px; white-space: nowrap; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--card); color: var(--ink); }
+.tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--late); }
+
+.av { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
+      font-size: 11.5px; font-weight: 500; color: var(--ink); background: var(--sub, var(--line-soft)); }
+.av.lg { width: 48px; height: 48px; font-size: 14px; }
+.tab .av { width: 26px; height: 26px; font-size: 10px; }
+.c0 { --sub: var(--c0); } .c1 { --sub: var(--c1); } .c2 { --sub: var(--c2); } .c3 { --sub: var(--c3); } .c4 { --sub: var(--c4); }
+
+.sheet { display: grid; gap: 14px; }
+.head h2 { margin: 0; font-size: 22px; font-weight: 400; letter-spacing: -0.3px; line-height: 1.2; }
+.lab { font-size: 13px; color: var(--ink-3); }
+
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { border-radius: var(--r-sm); padding: 16px 6px 13px; text-align: center; background: var(--paper); }
+.tile .n { font-size: 24px; letter-spacing: -0.6px; line-height: 1.1; white-space: nowrap; }
+.tile .l { font-size: 12px; line-height: 1.25; color: var(--ink-3); margin-top: 3px; }
+.tile.hi { background: var(--accent); color: var(--on-accent); }
+.tile.hi .l { color: rgb(0 0 0 / .62); }
+.tile.late { background: var(--late-bg); }
+.tile.late .n { color: var(--late); }
+.tile.done { background: var(--done-bg); }
+.tile.done .n { color: var(--done); }
+.say { font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+
+.gl { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-4); }
+.gl b { color: var(--ink-3); font-weight: 500; }
+.ins { display: grid; grid-template-columns: 1fr 46px; gap: 7px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.gl + .ins, .lab + .ins { border-top: 0; }
+.ins .nm { font-size: 14px; }
+.ins .nm span { color: var(--ink-4); font-size: 12.5px; }
+.ins .sc { grid-row: span 2; font-size: 12px; font-weight: 500; text-align: center; padding: 5px 0; border-radius: 999px; background: var(--sub); }
+.ins .sc.none { background: var(--line-soft); color: var(--ink-3); }
+.ins .gr { grid-column: 1 / -1; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.segs { display: flex; gap: 4px; }
+.segs i { flex: 1; height: 7px; border-radius: 9px; background: var(--line-soft); }
+.segs i.on { background: var(--sub); }
+.segs.blank i { background: none; border-top: 2px dotted var(--line); height: 0; margin-top: 3px; border-radius: 0; }
+
+.note { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-radius: 16px;
+        box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 13.5px; line-height: 1.4; color: var(--ink-3); }
+.note svg.i { width: 16px; height: 16px; margin-top: 1px; }
+.note b { color: var(--ink); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.empty { text-align: center; padding: 28px 16px; color: var(--ink-3); }
+.empty b { display: block; font-size: 17px; font-weight: 400; color: var(--ink); margin-bottom: 4px; }
+.foot { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; color: var(--ink-4); margin-top: 6px; text-align: center; }

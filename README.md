@@ -22,7 +22,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 - Cada mañana te arma la semana.
 - Te prepara para cada clase.
 - Responde sobre tu material, con la fuente.
-- Te dice cuánto necesitas para pasar.
+- Te dice cuánto necesitas para pasar, materia por materia.
 - Entrega tus deberes desde unas fotos.
 - Entiende audios, capturas y fotos de la pizarra.
 

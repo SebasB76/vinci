@@ -319,6 +319,17 @@ Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puede
   – Deberes y lecciones (30 %): 80 % en el 20 % calificado · Lección 1: Límites 8/10
 ```
 
+En WhatsApp, si preguntas por todas tus materias («¿cómo voy en notas?», «muéstrame mis notas»), Vinci también te
+manda un botón «📊 Ver mis notas». Abre la página «Tus notas»: una pestaña por materia, la que está en riesgo primero.
+Cada materia muestra lo que necesitas en lo que falta, tus puntos ganados, cuánto ya evaluaron y una barra por
+componente con tus notas. Son las mismas cuentas del chat. La página no guarda nada: tus notas van dentro del enlace,
+después del `#`, y el navegador nunca se lo manda a GitHub.
+
+<p align="center">
+  <img src="../../docs/images/notas.png" alt="La página Tus notas: pestañas por materia, las tres cifras para aprobar y una barra por componente" width="300">
+</p>
+<p align="center"><sub>Con datos ficticios.</sub></p>
+
 - **Cómo se evalúa cada materia.** La primera vez, el bot busca los pesos en el sílabo, en las políticas del curso y
   en los anuncios (lo que diga un anuncio manda sobre el sílabo). Este semestre el primer parcial no tiene examen por
   El Niño y cada materia lo maneja distinto: en unas una lección vale lo que el examen, en otras todo el parcial sale

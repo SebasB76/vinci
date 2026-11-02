@@ -64,8 +64,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, citations, conversation, dashboard, diapositivas, grades, health,
-                       horario, libros, materias, messages, portal_login, priority, quiz, resumen, store, submission,
+from espol_bot import (academic_portal, agenda, citations, conversation, dashboard, diapositivas, grades,
+                       grades_page, health, horario, libros, materias, messages, portal_login, priority, quiz, resumen, store, submission,
                        token_form, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
@@ -1605,16 +1605,35 @@ def _academic_record(ctx: Ctx, args: dict) -> dict:
 
 PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página, ya con sus datos. «deliverables»: su "
         "panel de entregas (lo pendiente y atrasado en orden de prioridad, lo nuevo del aula y el avance del semestre; "
-        "ahí las marca como entregadas). «token»: el formulario para crear un token nuevo del aula, con una imagen "
-        "con los pasos. Una página por respuesta como máximo, nunca en un grupo.")
-PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "token"],
-                            "description": "deliverables: su panel de entregas; token: el formulario del token"}}
+        "ahí las marca como entregadas). «grades»: «Tus notas», cómo va en cada materia con esquema guardado (lo "
+        "asegurado, lo que necesita para aprobar y el detalle por parcial, las mismas cuentas de grade_status). "
+        "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. Una página por "
+        "respuesta como máximo, nunca en un grupo.")
+PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "token"],
+                            "description": "deliverables: su panel de entregas; grades: sus notas en todas las "
+                                           "materias; token: el formulario del token"}}
+
+
+def _send_grades(ctx: Ctx, chat: WhatsApp, now: datetime) -> dict:
+    found = grades_page.whatsapp_link(ctx.conn, ctx.cfg, now)
+    if found is None:
+        raise ToolError("La página de notas está apagada en esta instalación.")
+    if not found["subjects"]:
+        raise ToolError("Ninguna materia tiene su esquema de evaluación guardado: la página saldría vacía. Usa "
+                        "grade_status con una materia y, si no tiene esquema, propónselo con propose_grading_scheme.")
+    chat.send("📊 Tus notas: lo que llevas en cada materia y lo que te falta para aprobar.",
+              link={"text": found["text"], "url": found["url"]})
+    without = found["without"]
+    return {"enviado": "un botón «📊 Ver mis notas» a su chat privado", "sin_esquema": without,
+            "mensaje": "Ya le llegó el botón. Dile en una o dos líneas lo más importante (la materia en riesgo, o "
+                       "que va bien) sin repetir las cuentas de cada materia."
+                       + (" Las de «sin_esquema» no salen en la página: ofrécele armar su esquema." if without else "")}
 
 
 def _show_page(ctx: Ctx, args: dict) -> dict:
     page = args.get("page")
     if page not in PAGE_PROPERTIES["page"]["enum"]:
-        raise ToolError("page es deliverables o token.")
+        raise ToolError("page es deliverables, grades o token.")
     if _group_chat(ctx):
         raise ToolError("En un grupo no mando páginas: tienen sus datos. Dile que te escriba por privado o que use "
                         "/entregas allá.")
@@ -1632,6 +1651,8 @@ def _show_page(ctx: Ctx, args: dict) -> dict:
             return {"enviado": "un botón «📋 Ver mis entregas» a su chat privado",
                     "mensaje": "Ya le llegó el botón. No repitas la lista completa: lo que vence hoy o mañana y lo "
                                "atrasado, en pocas líneas, y que el resto está en el panel."}
+        if page == "grades":
+            return _send_grades(ctx, chat, now)
         form = token_form.open_form(ctx.cfg, now, whatsapp=True)
         chat.send(form["respuesta"], link=form["button"], image=form.get("image"))
     except (TelegramError, ConfigError) as exc:

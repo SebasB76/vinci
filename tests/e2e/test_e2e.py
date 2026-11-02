@@ -535,6 +535,12 @@ class Script:
     def pending(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """Física's pending list with how each is handed in; «ya hice …» marks the lab done, «todavía no» undoes it,
         and «se entrega por correo» says how the unclear one is handed in."""
+        if "muéstrame mis notas" in text:
+            if not called:
+                return _call("mcp__vinci__show_page", page="grades")
+            sent = _json(results[-1])
+            return {"content": "Ahí van tus notas; Cálculo todavía no tiene esquema." if isinstance(sent, dict)
+                    and sent.get("enviado") else _problem(results[-1])}
         if "qué tengo pendiente esta semana" in text:
             if not called:
                 return _call("mcp__vinci__semana")
@@ -1850,6 +1856,25 @@ def test_whatsapp_captain(tmp_path):
         assert "El resto está en tu panel" in text_of(asked), asked
         report.append("«qué tengo pendiente esta semana» en privado: Vinci contesta corto y manda con show_page un "
                       "botón a su panel de entregas")
+
+        # 10f''. «Tus notas»: he dictates Física's scheme, saves it with the poll, and asks for his grades
+        mark = len(wa.sent)
+        say(captain_jid, captain_jid, "en Física no hay examen en el primer parcial", "Capitán")
+        polls = wa.wait_for(lambda b: b.polls_to(captain_jid, mark), 30)
+        assert polls and polls[0]["question"] == "¿Guardo este esquema de notas?", fail(f"sin encuesta: {wa.sent[mark:]}")
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, polls[0]["messageId"], next(o for o in polls[0]["options"] if "Guardar" in o))
+        assert wa.wait_for(lambda b: b.messages_to(captain_jid, mark), 60), fail("el voto no guardó el esquema")
+        asked = say(captain_jid, captain_jid, "muéstrame mis notas", "Capitán", expect=2)
+        [page] = [m for m in asked if m["path"] == "send-url-button"]
+        assert page["buttonText"] == "📊 Ver mis notas", page
+        from espol_bot import dashboard as dashboard_module
+        grades_seen = dashboard_module.decode(page["url"].split("#d=", 1)[1])
+        assert [s["name"] for s in grades_seen["subjects"]] == ["Física I"], grades_seen
+        assert grades_seen["subjects"][0]["periods"][0]["exception"].startswith("Sin examen"), grades_seen
+        assert any(w.startswith("Cálculo") for w in grades_seen["without"]), grades_seen
+        report.append("«muéstrame mis notas» después de guardar el esquema de Física con la encuesta: llega el botón "
+                      "«📊 Ver mis notas» con las cuentas de la calculadora; Cálculo sale como materia sin esquema")
 
         report.append("Lo que muestran los Módulos del aula llega a Vinci (modulos): una grabación de clase (que el "
                       "catálogo lista en «videos» en vez de esconderla), la herramienta Perusall y el ID de Zoom que el "

@@ -14,7 +14,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 <p align="center">
   <img src="docs/images/vinci-demo.webp" alt="Animación: en WhatsApp le preguntas a Vinci cuánto necesitas para pasar Estadística y te responde con la cuenta; escribes /entregas, tocas «Ver mis entregas» y se abre la página «Tu semana»; marcas «Control de lectura 5» como entregada y Vinci te lo confirma en el chat" width="100%">
 </p>
-<p align="center"><sub>Datos ficticios.</sub></p>
+<p align="center"><sub>.</sub></p>
 
 ## Qué hace
 

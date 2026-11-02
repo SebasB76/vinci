@@ -7,7 +7,7 @@
     vinci-check whatsapp [--profile vinci]   latest WhatsApp turns from Hermes's own record (read-only)
     vinci-check say "<text>"                 a message to Vinci in the captain's WhatsApp chat; waits for the reply
     vinci-check vote "<option>"              vote on Vinci's latest poll in the captain's WhatsApp chat
-    vinci-check page token|dashboard         open the GitHub Pages page in headless Chrome
+    vinci-check page token|dashboard|notas   open the GitHub Pages page in headless Chrome
     vinci-check smoke                        all of the above that is safe, in about a minute
 
 Every command takes --json and exits 1 when the check fails. chat and press act as the captain's Telegram
@@ -33,7 +33,7 @@ from pathlib import Path
 
 from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import get_meta
-from espol_bot import dashboard, health, materias, relay, whatsapp as wa
+from espol_bot import dashboard, grades_page, health, materias, relay, whatsapp as wa
 from espol_bot.config import BotConfig, load_bot_config, whatsapp_settings
 
 TG = Path(os.environ.get("VINCI_TG", "~/.local/share/tg-user/tg")).expanduser()
@@ -302,6 +302,12 @@ def page(cfg: BotConfig, which: str) -> Result:
         url = dashboard.page_url(cfg, dashboard.snapshot(conn, cfg, materias.load(cfg.core), now_utc()),
                                  base=cfg.dashboard_page)
         probe = "document.title + ' | ' + document.body.innerText.slice(0, 300)"
+    elif which == "notas":
+        conn = _db(cfg)
+        if not cfg.grades_page or conn is None:
+            return Result("page", False, "No grades page: dashboard.grades_url is empty or espol.db does not exist yet.")
+        url = grades_page.page_url(cfg, grades_page.snapshot(conn, cfg, now_utc()))
+        probe = "document.title + ' | ' + document.body.innerText.slice(0, 300)"
     else:
         url = cfg.token_form_url
         probe = "document.title + ' | form:' + !!document.querySelector('form') + ' | ' + " \
@@ -397,7 +403,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("vote", help="vote on Vinci's latest poll in the captain's WhatsApp chat")
     p.add_argument("option", help="the option text, or a unique part of it")
     p = sub.add_parser("page", help="open a GitHub Pages page in headless Chrome")
-    p.add_argument("which", choices=("token", "dashboard"))
+    p.add_argument("which", choices=("token", "dashboard", "notas"))
     p = sub.add_parser("smoke", help="status, /estado to Vinci, /start to each subject bot (with Telegram on), both pages")
     p.add_argument("--timeout", type=float, default=90)
     args = parser.parse_args(argv)

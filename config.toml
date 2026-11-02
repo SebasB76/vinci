@@ -24,6 +24,9 @@ token_form_url = "https://sebasb76.github.io/vinci/token/"
 # No guarda nada: Vinci le pasa tus entregas y novedades dentro del enlace del botón, que solo se abre en tu chat.
 # Déjalo vacío ("") para no usarlo; el chat vuelve a su botón de menú de siempre.
 url = "https://sebasb76.github.io/vinci/dashboard/"
+# La página «Tus notas» que Vinci te manda por WhatsApp (docs/notas/): cómo vas en cada materia según la calculadora.
+# Tampoco guarda nada: tus notas van dentro del enlace. Vacío ("") para no usarla.
+grades_url = "https://sebasb76.github.io/vinci/notas/"
 # Último día de clases, para la barra del semestre (AAAA-MM-DD). Si lo dejas vacío, se usa el fin del periodo
 # según el aula, que también cuenta los exámenes y la recuperación.
 semester_end = "2027-01-15"

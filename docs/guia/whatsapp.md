@@ -14,10 +14,10 @@ número personal.
    teléfono, y escribe el código.
 5. Corre `./setup.sh` y arranca el gateway: `hermes gateway start`.
 
-**Páginas dentro de WhatsApp.** El formulario del token y el panel de entregas llegan como un botón. No hace falta
+**Páginas dentro de WhatsApp.** El formulario del token, el panel de entregas y tus notas llegan como un botón. No hace falta
 escribir `/entregas` ni `/token`: el panel llega al final del resumen de las 7:00, y Vinci te lo manda cuando le
 preguntas «¿qué tengo pendiente?» en privado. Entonces su respuesta es corta: lo atrasado y lo que vence hoy o
-mañana. Si tu token dejó de funcionar o le preguntas cómo poner uno nuevo, Vinci te manda el formulario. En un grupo
+mañana. Si preguntas «¿cómo voy en notas?», te manda «📊 Ver mis notas», con todas tus materias ([la calculadora](uso.md#la-calculadora-de-notas)). Si tu token dejó de funcionar o le preguntas cómo poner uno nuevo, Vinci te manda el formulario. En un grupo
 no manda páginas, porque tienen tus datos. En el iPhone,
 el botón abre la página dentro de WhatsApp, como un Mini App de Telegram. En WhatsApp Web abre otra pestaña: Web no
 tiene otra forma de abrir una página. En Android no lo probamos. `setup.sh` agrega la ruta del botón al puente de

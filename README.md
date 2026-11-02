@@ -1,133 +1,76 @@
 <div align="center">
 
-<img src="hermes/avatars/wizard.jpg" width="112" alt="Vinci, un mago azul en pixel art">
+<img src="docs/images/vinci-logo.png" width="110" alt="El logo de Vinci: un mago sonriente con lentes redondos, cuya cara es una burbuja de chat">
 
 # Vinci
 
-**Tu semestre en ESPOL, en un chat.**<br>
-Vinci lee tu aula virtual, te avisa antes de que algo se te pase<br>
-y te ayuda a estudiar por Telegram y WhatsApp.
-
-![Telegram](https://img.shields.io/badge/Telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white)
-![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white)
-![Hermes Agent](https://img.shields.io/badge/Hermes%20Agent-7c3aed?style=flat-square)
-![Python 3.11+](https://img.shields.io/badge/Python%203.11+-3776AB?style=flat-square&logo=python&logoColor=white)
-
-[Qué hace](#qué-hace) · [ESPOL](#conectado-a-espol) · [Empezar](#empezar) · [Guías](#guías) · [Privacidad](#privacidad)
+Tu aula virtual, pero en WhatsApp.<br>
+<sub>Para estudiantes de ESPOL. Sin apps nuevas, sin drama.</sub>
 
 </div>
 
 <br>
 
 <p align="center">
-  <img src="docs/images/vinci-pantallas.png" alt="Tres celulares: en Telegram, el resumen de las 7:00 con el panel de entregas abierto; en WhatsApp, una nota de voz que pregunta el promedio y Vinci contesta desde el Académico; en Telegram, fotos de un deber que el bot de Física convierte en PDF y entrega en el aula" width="100%">
+  <img src="docs/images/vinci-pantallas.png" alt="Tres chats de WhatsApp con Vinci: un recordatorio de entrega con la encuesta «¿Ya lo entregaste?»; una nota de voz que pregunta el promedio y Vinci contesta desde el Académico; fotos de un deber que Vinci convierte en PDF y entrega en el aula cuando votas «Entregar»" width="100%">
 </p>
-<p align="center"><sub>Datos ficticios, con los mensajes que los bots mandan en la prueba E2E.</sub>
-</p>
+<p align="center"><sub>Datos ficticios.</sub></p>
 
 ## Qué hace
 
-**Te mantiene al día**
-- **Avisos del aula.** Revisa el aula cada 10 minutos: tareas nuevas, cambios de fecha, anuncios, notas y material. Si es un cuestionario, te dice cuántas preguntas tiene y cuánto tiempo dura.
-- **Recordatorios.** Cada entrega pendiente, 24 h y 3 h antes. Si la entregaste en papel, pulsas «Ya lo entregué» y no insiste más.
-- **Resumen de las 7:00.** Tu semana en orden: primero lo que vence, después lo que más pesa en tu nota.
-- **Dashboard de entregas.** Una página dentro del chat con lo atrasado, lo de hoy y lo de la semana. Marcas una entrega con un toque.
-- **Tu lista de pendientes.** «Anota: estudiar el capítulo 3 para el viernes» y te lo recuerda como una tarea más.
+Lee tu aula cada 10 minutos y te escribe cuando hay algo: una tarea nueva, un cambio de fecha, una nota.
+Antes de que algo venza, te recuerda. Dos veces.
 
-**Estudia contigo**
-- **Todas tus materias en un chat.** Vinci sabe de qué materia hablas y te manda un repaso 30 minutos antes de cada clase. Con Telegram encendido, hay además un bot por materia.
-- **Preguntas sobre el material.** Explica, resume y te hace preguntas tipo examen, citando archivo, página y el enlace del aula. Cada cita se comprueba antes de enviarse.
-- **`/quiz`.** Un quiz corto en encuestas, con tu puntaje al final. Lo que fallas queda como tema débil.
-- **Tengo 20 minutos.** Una sesión corta con lo que te cuesta y lo que vence, paso a paso.
-- **Jurado de exposición.** Te pregunta como el profesor sobre tu documento o la rúbrica, una pregunta a la vez, y te dice tus fortalezas y debilidades.
-- **Exámenes anteriores.** Busca en DSpace los parciales de tu materia y te resuelve uno pregunta por pregunta.
-- **Cuaderno de cada materia.** Le cuentas lo que vieron, o le mandas una foto de la pizarra o una nota de voz, y lo guarda con un resumen.
-- **Tus apuntes de clase.** Escribe `//vinci <pregunta>` en tus notas y Vinci te contesta en el chat.
-- **Diapositivas.** «Hazme unas diapositivas de integrales dobles» y te manda el `.pptx`.
-- **Resúmenes en PDF.** «Hazme un resumen en PDF de estos temas» y te manda un PDF con cada tema, sus puntos, diagramas o maquetas cuando ayudan, y el enlace del aula de cada fuente.
-- **PDFs escaneados.** Lee con OCR las fotocopias, para que la búsqueda también las encuentre.
+- A las 7:00 te manda la semana en orden. `/entregas` la abre en una página.
+- Media hora antes de cada clase, te cuenta qué toca.
+- Le preguntas por tu material y te contesta citando la página. También te toma quiz y busca exámenes anteriores.
+- ¿Cuánto necesitas para pasar? Hace la cuenta con los pesos del sílabo. Tu promedio y tus horarios los saca del
+  Académico.
+- Le mandas fotos del deber, arma el PDF y lo entrega en el aula. Solo si le dices que sí.
+- Entiende audios, capturas y fotos de la pizarra. También en grupos.
+- Tus amigos pueden tener el suyo, cada uno con su aula.
 
-**Saca tus cuentas**
-- **Calculadora de notas.** «¿Cuánto necesito para pasar?», con los pesos del sílabo. Las cuentas las hace un script, no la IA.
-- **Tu Académico.** Promedio, avance de la carrera, materias aprobadas y horarios de exámenes, sin guardar tu contraseña.
-- **Horario desde una captura.** Le mandas una captura de tu horario y lo entiende solo.
+Lo de revisar y recordar no usa IA, así que no gasta tokens. [Todo lo demás →](docs/guia/funciones.md#qué-hace-vinci)
 
-**Hace por ti**
-- **Entrega a mano.** Fotos de tu deber, después un PDF, y lo entrega en el aula cuando pulsas «Entregar».
-- **Planes de estudio.** Vinci ve todas tus materias, entregas y clases juntas, y arma un plan para el parcial.
+## De dónde lee
 
-**Donde estés**
-- **WhatsApp.** Tu chat, tus grupos y un Vinci propio para cada amigo, con su aula. Entiende notas de voz. Telegram queda como opción (`channels.telegram`).
-- **Terminal y Claude Code.** El comando `aula` consulta todo, y una skill le enseña a Claude Code a usarlo.
-- **Estado y token desde el chat.** `/estado` te dice si todo está sano, y `/token` renueva el acceso al aula sin que el token pase por el chat.
-
-Todo corre en tu PC y solo te contesta a ti. Lo automático (revisar el aula, avisar, recordar) no usa la IA ni
-gasta tokens. [Cada función en detalle →](docs/guia/funciones.md#qué-hace-vinci)
-
-## Conectado a ESPOL
-
-Vinci lee lo que ESPOL ya tiene sobre ti, desde un solo chat:
-
-| Fuente | Qué lee |
-|---|---|
-| **[Aula virtual](https://aulavirtual.espol.edu.ec)** (Canvas) | Tareas, fechas, anuncios, notas y el material de cada curso. También entrega tus deberes hechos a mano. |
-| **[Académico](https://www.academico.espol.edu.ec)** | Promedio, avance de la carrera, historial, calificaciones y horarios de clases y exámenes. |
-| **[DSpace](https://www.dspace.espol.edu.ec)** | Unos 20 000 exámenes anteriores de todas las facultades, que Vinci busca y resuelve. |
-
-Y se vienen más.
+- **[Aula virtual](https://aulavirtual.espol.edu.ec):** tareas, fechas, anuncios, notas y material. Ahí también entrega.
+- **[Académico](https://www.academico.espol.edu.ec):** promedio, avance, historial y horarios de clases y exámenes.
+- **[DSpace](https://www.dspace.espol.edu.ec):** unos 20 000 exámenes anteriores, de todas las facultades.
 
 ## Empezar
 
-Vinci corre sobre [Hermes Agent](https://github.com/NousResearch/hermes-agent). Solo necesitas tu cuenta de
-ESPOL y unos minutos.
+**¿Alguien ya tiene Vinci?** Que te agregue como amigo. Te llega un link, conectas tu aula y ya.
 
-```bash
-git clone https://github.com/SebasB76/vinci.git && cd vinci
-./setup.sh                 # instala todo y crea secrets.env
-nano secrets.env           # tu token del aula, el bot de Vinci y tu ID de Telegram
-                           # en Telegram: mándale /start a tu bot nuevo
-./setup.sh                 # configura Vinci y te manda un mensaje de prueba
-hermes gateway install && hermes gateway start
-```
+**¿Quieres el tuyo?** Corre en tu servidor con Docker. En [Coolify](https://coolify.io) son tres pasos:
 
-Después, en Telegram, escríbele a Vinci **«arma mi equipo»** y mándale una captura de tu horario.
-La [instalación paso a paso](docs/guia/instalacion.md#paso-a-paso) explica de dónde sale cada token.
+1. Crea una app desde este repo, con el `Dockerfile` y un volumen en `/opt/data`.
+2. Pon la key de tu proveedor de IA, tu token del aula y tu número de WhatsApp.
+3. Dale a **Deploy** y vincula el número de Vinci.
 
-## Guías
-
-| Guía | Qué tiene |
-|---|---|
-| [Instalación](docs/guia/instalacion.md) | Paso a paso, configuración, actualizar y desinstalar |
-| [Uso diario](docs/guia/uso.md) | Vinci, los bots de materia, botones, comandos, `/token`, el Académico |
-| [WhatsApp](docs/guia/whatsapp.md) | Vincular el número, grupos, amigos y el relé |
-| [En un servidor](docs/guia/servidor.md) | Vinci en Coolify con Docker, y cómo pasar tu Vinci de la PC al servidor |
-| [Todas las funciones](docs/guia/funciones.md) | Cada función en detalle |
-| [Cómo funciona](docs/guia/como-funciona.md) | Hermes, el sondeo, la renovación del token y el repositorio |
-| [Terminal y Claude Code](docs/guia/terminal.md) | El comando `aula` y `espol-bot` |
-| [Panel de administración](docs/guia/panel.md) | Una página privada con la salud, el gasto y las conversaciones de tus bots |
-| [Privacidad](docs/guia/privacidad.md) | Qué guarda, qué sale de tu PC y qué puede hacer cada bot |
-| [Límites y problemas](docs/guia/problemas.md) | Lo que todavía no hace y cómo arreglar lo común |
-| [Contribuir](docs/guia/contribuir.md) | Hoja de ruta, la prueba E2E y `vinci-check` |
+[Paso a paso →](docs/guia/servidor.md#crear-la-app) · [Sin Docker →](docs/guia/servidor.md#en-una-laptop-vieja-en-casa-sin-docker)
 
 ## Privacidad
 
-- **Solo lee tu aula.** Lo único que escribe es una entrega que tú confirmaste.
-- **Tus datos se quedan en tu PC**, o en tu propio servidor. No hay un servidor central de Vinci.
-- **Los tokens y tu contraseña nunca pasan por el chat ni por la IA.** Viajan cifrados.
+Solo lee tu aula. Lo único que escribe es una entrega que tú aprobaste. Tus datos se quedan en tu servidor, y tus
+tokens y tu contraseña viajan cifrados: nunca pasan por el chat ni por la IA. [Los detalles →](docs/guia/privacidad.md#seguridad-y-privacidad)
 
-[Qué sale de tu PC y por qué →](docs/guia/privacidad.md#seguridad-y-privacidad)
+## Más
+
+[WhatsApp](docs/guia/whatsapp.md) · [Uso diario](docs/guia/uso.md) · [Funciones](docs/guia/funciones.md) ·
+[Servidor](docs/guia/servidor.md) · [Instalación](docs/guia/instalacion.md) · [Privacidad](docs/guia/privacidad.md) ·
+[Problemas](docs/guia/problemas.md) · [Cómo funciona](docs/guia/como-funciona.md) ·
+[Terminal](docs/guia/terminal.md) · [Contribuir](docs/guia/contribuir.md)
 
 ---
 
 <sub>
-<b>In English:</b> a self-hosted Telegram and WhatsApp assistant for ESPOL students, built on Hermes Agent.
-It reads your Canvas courses, sends alerts and reminders, and creates one study bot per subject.
+<b>In English:</b> a self-hosted WhatsApp study assistant for ESPOL students, built on
+<a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>. It reads your Canvas courses, reminds you
+before deadlines, answers questions about your course material and hands in your work.
 </sub>
 <br><br>
 <sub>
-Proyecto independiente, sin afiliación a ESPOL, Instructure, Nous Research, Telegram ni WhatsApp.
-Todavía sin licencia: pide permiso antes de reutilizar el código.
-Gracias a <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>,
-<a href="https://www.instructure.com/canvas">Canvas LMS</a> y la
-<a href="https://core.telegram.org/bots/api">Bot API de Telegram</a>.
+Proyecto independiente, sin afiliación a ESPOL, Instructure, Nous Research ni WhatsApp.
+Sin licencia todavía: pregunta antes de reusar el código.
 </sub>

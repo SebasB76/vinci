@@ -99,7 +99,6 @@ const GROUPS = [["overdue", "Atrasadas"], ["today", "Hoy"], ["week", "Esta seman
   ["undated", "Sin fecha"]];
 
 const ICONS = {
-  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   pin: '<path d="M12 21v-6M8 4h8l-1 6 3 3H6l3-3z"/>',
   assignment: '<path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/>',
   due: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/>',
@@ -144,10 +143,11 @@ function itemView(item, key, now, done) {
   const meta = [item.todo ? "Tuya" : item.course, item.quiz ? "cuestionario" : "", item.elsewhere ? "fuera del aula" : "",
     item.weight != null ? `${item.weight} % de la nota` : ""].filter(Boolean).map(esc).join(" · ");
   return `<div class="it${done ? " done" : ""}" id="it-${esc(item.id)}">${avatar}
-    <div class="body"><div class="t ellipsis">${esc(item.title)}</div>
-      <div class="s">${duePill(item, key, now)}<span class="ellipsis">${meta}</span></div></div>
+    <div class="body"><div class="t">${esc(item.title)}</div>
+      <div class="s">${duePill(item, key, now)}<span>${meta}</span></div></div>
     <button type="button" class="check" data-check="${esc(item.id)}" aria-pressed="${done}"
-      aria-label="${done ? "Desmarcar" : "Marcar"}: ${esc(item.title)}">${icon("check")}</button>
+      aria-label="${done ? "Desmarcar" : "Marcar"}: ${esc(item.title)}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path
+      pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
   </div>`;
 }
 
@@ -272,6 +272,18 @@ async function init() {
     app.innerHTML = view(data, new Date(), state);
     applyLayout(app);
   };
+  // A tick changes only its row and the counts: the row stays in place so its check and fade can animate.
+  const tick = (id) => {
+    const next = document.createElement("main");
+    next.innerHTML = view(data, new Date(), state);
+    applyLayout(next);
+    const row = app.querySelector(`#it-${CSS.escape(id)}`), fresh = next.querySelector(`#it-${CSS.escape(id)}`);
+    if (!row || !fresh) return render();
+    for (const part of [".head", ".tiles"]) app.querySelector(part)?.replaceWith(next.querySelector(part));
+    row.classList.toggle("done", fresh.classList.contains("done"));
+    const button = row.querySelector(".check"), model = fresh.querySelector(".check");
+    for (const name of ["aria-pressed", "aria-label"]) button.setAttribute(name, model.getAttribute(name));
+  };
   render();
   app.addEventListener("click", (event) => {
     const check = event.target.closest("[data-check]"), tab = event.target.closest("[data-tab]");
@@ -279,7 +291,7 @@ async function init() {
       const id = check.dataset.check, done = check.getAttribute("aria-pressed") !== "true";
       state.marks = { ...state.marks, [id]: { done, at: Date.now() } };
       save(state);
-      render();
+      tick(id);
       if (data.wa) {  // opened from /entregas on WhatsApp: through the relay, else back to the chat with it typed
         postMark(data, id, done).then((sent) => {
           if (sent) return toast(done ? "Enviado. Vinci te confirma en el chat." : "Desmarcada. Vinci te confirma en el chat.");

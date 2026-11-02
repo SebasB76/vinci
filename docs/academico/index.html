@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#F7F4F0">
   <title>Conecta tu Académico</title>
-  <link rel="stylesheet" href="../vinci/vinci.css?v=2">
+  <link rel="stylesheet" href="../vinci/vinci.css?v=3">
   <link rel="stylesheet" href="portal.css?v=3">
   <script type="module" src="portal.js?v=2"></script>
 </head>
@@ -30,16 +30,16 @@
       </div>
     </header>
 
-    <section id="wait" class="card">
+    <section id="wait" class="card appear">
       <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
       <p id="wait-text">Abriendo el Académico de ESPOL…</p>
     </section>
 
-    <form id="user-form" class="prompt" autocomplete="off" novalidate hidden>
+    <form id="user-form" class="prompt appear" autocomplete="off" novalidate hidden>
       <label for="user" class="lbl">Usuario de ESPOL</label>
       <div class="field">
         <input id="user" type="text" inputmode="email" autocomplete="username" autocapitalize="off" autocorrect="off"
-               spellcheck="false" placeholder="tu usuario" required>
+               spellcheck="false" enterkeyhint="next" placeholder="tu usuario" required>
         <span class="suffix">@espol.edu.ec</span>
       </div>
       <div class="strip">
@@ -48,7 +48,7 @@
       </div>
     </form>
 
-    <form id="login-form" class="prompt" autocomplete="off" novalidate hidden>
+    <form id="login-form" class="prompt appear" autocomplete="off" novalidate hidden>
       <label for="password" class="lbl">Contraseña</label>
       <div class="field">
         <input id="password" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off"
@@ -59,7 +59,7 @@
       <img id="captcha" alt="Imagen con el código que pide el Académico">
       <div class="field">
         <input id="code" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false"
-               placeholder="Las letras de la imagen" required>
+               enterkeyhint="send" placeholder="Las letras de la imagen" required>
       </div>
       <div class="strip">
         <span class="hint"><svg class="i" aria-hidden="true"><use href="#lock"/></svg>Se cifra en tu celular</span>

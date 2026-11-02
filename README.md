@@ -23,7 +23,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 - Te prepara para cada clase.
 - Responde sobre tu material, con la fuente.
 - Te dice cuánto necesitas para pasar, materia por materia.
-- Te regala sobres de cartas por entregar a tiempo y por tus buenas notas.
+- Te regala sobres de cartas por entregar a tiempo, por tus buenas notas y uno cada mañana.
 - Entrega tus deberes desde unas fotos.
 - Entiende audios, capturas y fotos de la pizarra.
 

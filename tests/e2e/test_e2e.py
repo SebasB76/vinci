@@ -14,7 +14,7 @@ test_canvas, no gateway:
      a file and its copy downloaded on demand.
   3. Vinci's polls, then the fixtures change (new assignment, due-date change, new announcement, posted grade, new
      material, the syllabus, a new module link, a submission), then polls 2-4 and the 07:00 summary (twice: the second
-     must not resend), each in the captain's WhatsApp chat, a reminder's «Ya lo entregué» as a poll. Only syllabi
+     must not resend; the album's pack of the day comes after it), each in the captain's WhatsApp chat, a reminder's «Ya lo entregué» as a poll. Only syllabi
      download on their own; while poll 2 slowly downloads the new one, `aula cursos --actualizar` must not wait for it.
      Then reading quizzes, against a Canvas of their own: a new quiz's alert and reminders carry its questions, time
      limit, attempts and when it opens and closes; a test open for 30 minutes warns before it opens, once; each quiz
@@ -1451,13 +1451,19 @@ def test_canvas(tmp_path):
         # 4. daily summary -----------------------------------------------------------------
         run([bot, "resumen"], T_SUMMARY)
         summary = take("Resumen diario · mar 29 sep 07:00")
-        assert len(summary) == 2 and "Resumen de tu semana" in summary[0]["text"]
+        assert len(summary) == 3 and "Resumen de tu semana" in summary[0]["text"]
         assert summary[1]["button"] == "📋 Ver mis entregas", "después del resumen, el botón a su panel"
+        # The album's pack of the day comes last, once a day like the summary.
+        assert summary[2]["button"] == "🎴 Abrir mi sobre" and "sobre del día" in summary[2]["text"], summary[2]
+        daily = dashboard_module.decode(summary[2]["url"].split("#d=", 1)[1])
+        assert daily["pack"]["daily"] and len(daily["pack"]["cards"]) == 3, daily
+        assert sum(daily["have"].values()) == 9, daily["have"]
         for expected in ("Taller 2: Movimiento parabólico", "Taller 3: Derivadas", "Examen parcial",
                          "Informe de laboratorio 1", "Ya entregaste 1", "Cambio de fecha del Taller 3"):
             assert expected in summary[0]["text"], f"falta «{expected}» en el resumen"
         run([bot, "resumen"], T_SUMMARY)
         assert take("Resumen diario repetido") == [], "el resumen se envía una vez al día"
+        report.append("El resumen de las 7:00 trajo después el sobre del día, con 3 cartas más; repetido, no manda nada")
 
         run([bot, "sondeo"], T_POLL4)
         poll4 = take("Sondeo 4 · mar 29 sep 20:30")
@@ -1919,8 +1925,9 @@ def test_whatsapp_captain(tmp_path):
         assert "Práctica 2 en el simulador" in text_of(summary) and "Lección 2" not in text_of(summary), \
             "the summary lists the late lab handed in elsewhere, as the chat does, and not the exam already held"
         assert "<b>" not in text_of(summary), text_of(summary)
-        assert summary[-1]["path"] == "send-url-button" and summary[-1]["buttonText"] == "📋 Ver mis entregas", \
-            "el resumen de las 7:00 termina con el botón a su panel"
+        buttons = [m.get("buttonText") for m in summary if m["path"] == "send-url-button"]
+        assert buttons[-2:] == ["📋 Ver mis entregas", "🎴 Abrir mi sobre"], \
+            "el resumen de las 7:00 trae el botón a su panel y después el sobre del día"
         assert not any("Consultar con" in o for p in wa.polls_to(captain_jid, mark) for o in p["options"]), \
             "sin bots de materia no hay «Consultar con …»"
         md.append(f"**(resumen de las 7:00 del capitán)** → Vinci: {normalize(text_of(summary))[:300]}…\n")

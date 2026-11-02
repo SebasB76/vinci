@@ -1,6 +1,7 @@
 // The album, as Vinci sends it on WhatsApp (espol_bot/album.py). The pack and the collection ride in the URL's
 // fragment (#d=<base64url of raw DEFLATE JSON>); only the catalog, cards.json, comes from this site. A pack is
-// opened the way of the design system's sheets: pull it up, then swipe each card away.
+// opened the way of the design system's sheets: pull it up, then swipe each card away. Art with real faces is
+// stored encrypted (scripts/album_card.py); the fragment's `k` opens it, so it never shows without Vinci's link.
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
 const OPENED = "album-opened";
@@ -17,9 +18,11 @@ export function readFragment(hash) {
   return "";
 }
 
+const bytesOf = (b64url) => Uint8Array.from(atob(b64url.replace(/-/g, "+").replace(/_/g, "/") +
+  "=".repeat((4 - (b64url.length % 4)) % 4)), (c) => c.charCodeAt(0));
+
 export async function decode(payload) {
-  const b64 = payload.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (payload.length % 4)) % 4);
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const bytes = bytesOf(payload);
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return JSON.parse(await new Response(stream).text());
 }
@@ -31,9 +34,30 @@ export function initials(name) {
   return w.length <= 5 && w === w.toUpperCase() ? w : w[0];
 }
 
+// Only the cards this person owns or is opening: one fetch each, decrypted once per page load.
+async function unlock(data, cards) {
+  if (!data.k || !crypto.subtle) return;
+  const wanted = new Set([...Object.keys(data.have || {}), ...(data.pack?.cards || []).map((e) => e.id)]);
+  try {
+    const key = await crypto.subtle.importKey("raw", bytesOf(data.k), "AES-GCM", false, ["decrypt"]);
+    await Promise.all([...wanted].map(async (id) => {
+      const c = cards.get(id);
+      if (!c?.art) return;
+      try {
+        const sealed = new Uint8Array(await (await fetch(c.art)).arrayBuffer());
+        const webp = await crypto.subtle.decrypt({ name: "AES-GCM", iv: sealed.slice(0, 12), additionalData: new TextEncoder().encode(id) },
+          key, sealed.slice(12));
+        c.src = URL.createObjectURL(new Blob([webp], { type: "image/webp" }));
+      } catch { /* a wrong key or a missing file: the card keeps its initials */ }
+    }));
+  } catch { /* an invalid key */ }
+}
+
 function card(c, size = "", flag = "") {
-  const art = c.img ? `<img src="${esc(c.img)}" alt="">` : `<span class="ini">${esc(initials(c.name))}</span>`;
-  return `<div class="vc t-${c.rarity} ${size}"><div class="art"><span class="no">Nº ${pad(c.n)}</span>${flag}${art}</div>
+  const src = c.src || c.img;
+  const art = src ? `<img src="${esc(src)}" alt="">` : `<span class="ini">${esc(initials(c.name))}</span>`;
+  const seal = c.rarity === "leg" ? `<span class="seal">${SPARK}Carta legendaria</span>` : "";
+  return `<div class="vc t-${c.rarity} ${size}"><div class="art"><span class="no">Nº ${pad(c.n)}</span>${flag}${art}${seal}</div>
     <div class="bd"><div class="nm">${esc(c.name)}</div><div class="mt"><span>${esc(c.group)}</span><span class="rp t-${c.rarity}">${RL[c.rarity]}</span></div></div></div>`;
 }
 
@@ -56,10 +80,10 @@ function openPack(data, cards) {
   const pack = data.pack;
   const pulled = pack.cards.map((entry) => ({ entry, c: cards.get(entry.id) })).filter((p) => p.c);
   document.body.classList.add("opening");
-  app.innerHTML = head(pack.gold ? "Tu sobre dorado" : "Tu sobre", pack.reason) + `<section class="stage"><div class="ghost"></div><div class="sheet">
+  app.innerHTML = head(pack.gold ? "Tu sobre dorado" : pack.daily ? "Tu sobre del día" : "Tu sobre", pack.reason) + `<section class="stage"><div class="ghost"></div><div class="sheet">
       <div class="stack">${pulled.map((p, i) => `<div class="slot" data-i="${i}">${card(p.c, "", p.entry.new ? '<span class="pill hi flag">Nueva</span>' : `<span class="pill flag">×${data.have[p.c.id] || 2}</span>`)}</div>`).reverse().join("")}</div>
       <div class="pack"><div class="pk"><div class="mark">V</div><span class="n3">${pulled.length} cartas</span>
-        <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">de esta semana.</span></h2><p class="why">${esc(pack.reason)}</p></div><span class="grab"></span></div>
+        <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">${pack.daily ? "de hoy." : "de esta semana."}</span></h2><p class="why">${esc(pack.reason)}</p></div><span class="grab"></span></div>
       <div class="cap"><div class="t">Desliza el sobre hacia arriba</div><div class="h">Tus cartas están debajo.</div></div>
       <div class="foot"><div class="segs">${pulled.map(() => "<i></i>").join("")}</div><button class="btn btn-accent block" type="button">Pegar en mi álbum</button></div>
     </div></section>`;
@@ -192,7 +216,9 @@ function showAlbum(data, cards, fresh, tab) {
   app.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showAlbum(data, cards, fresh, b.dataset.t)));
   const zoom = app.querySelector(".zoom");
   app.querySelectorAll(".cell.own").forEach((b) => b.addEventListener("click", () => {
-    zoom.querySelector(".big").innerHTML = card(cards.get(b.dataset.id));
+    const c = cards.get(b.dataset.id), big = zoom.querySelector(".big");
+    big.classList.toggle("wide", Boolean(c.wide && c.src));
+    big.innerHTML = card(c);
     zoom.classList.add("on");
   }));
   zoom.addEventListener("click", () => zoom.classList.remove("on"));
@@ -213,6 +239,7 @@ async function main() {
   }
   data.collections = catalog.collections;
   const cards = new Map(catalog.cards.map((c) => [c.id, c]));
+  await unlock(data, cards);
   if (data.pack && !opened().has(data.pack.id)) openPack(data, cards);
   else showAlbum(data, cards, false);
 }

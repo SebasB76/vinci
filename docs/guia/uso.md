@@ -344,6 +344,26 @@ después del `#`, y el navegador nunca se lo manda a GitHub.
 - **Ordena tus entregas.** Con el esquema guardado, el resumen de las 7:00 y «¿qué tengo esta semana?» te dicen
   cuánto vale cada entrega en tu nota y ponen primero lo que más pesa ([El resumen de las 7:00](#el-resumen-de-las-700)).
 
+## Tu álbum de cartas
+
+Vinci te regala un **sobre con 3 cartas** cuando:
+
+- entregas una tarea en el aula antes de su fecha límite, o
+- sacas 8/10 o más en una lección o un examen. Vinci los reconoce por el grupo de la nota en el aula («Lecciones»,
+  «Exámenes») o por su nombre. Con la nota completa, el sobre es **dorado** y trae una carta épica o mejor.
+
+Te llega un mensaje con el botón «🎴 Abrir mi sobre». En la página subes el sobre con el dedo, deslizas cada carta
+para ver la siguiente y al final las pegas en tu álbum. Para verlo sin un sobre nuevo, pídeselo a Vinci: «¿cómo va
+mi álbum?».
+
+- **Las cartas:** la colección ESPOL (Polito y el campus) y la de Íconos (series, películas y artistas). Cada carta
+  es común, rara, épica o legendaria; cada sobre trae al menos una rara.
+- **Solo lo nuevo cuenta:** el álbum empieza el día que tu Vinci lo estrena; lo que entregaste o te calificaron antes
+  no da sobres.
+- **Cada uno tiene el suyo:** el Vinci de cada amigo lleva su propio álbum.
+- **No guarda nada:** como «Tus notas», tus cartas van dentro del enlace, después del `#`, y el navegador nunca se
+  lo manda a GitHub.
+
 ## Tu Académico de ESPOL
 
 El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu promedio general y tu avance en la

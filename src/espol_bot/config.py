@@ -20,6 +20,7 @@ DEFAULT_TOKEN_FORM_URL = "https://sebasb76.github.io/vinci/token/"
 DEFAULT_DASHBOARD_URL = "https://sebasb76.github.io/vinci/dashboard/"
 # The grades page Vinci links to on WhatsApp (docs/notas/). Like the dashboard, its data rides in its URL.
 DEFAULT_GRADES_URL = "https://sebasb76.github.io/vinci/notas/"
+DEFAULT_ALBUM_URL = "https://sebasb76.github.io/vinci/album/"
 DEFAULT_PORTAL_URL = "https://www.academico.espol.edu.ec"
 # The page where the student signs in to the Académico (docs/academico/). It keeps nothing: credentials leave it sealed.
 DEFAULT_PORTAL_FORM_URL = "https://sebasb76.github.io/vinci/academico/"
@@ -56,6 +57,7 @@ class BotConfig:
     dashboard_url: str = DEFAULT_DASHBOARD_URL  # empty: no dashboard, the chat keeps its usual menu button
     dashboard_page: str = DEFAULT_DASHBOARD_URL  # the same page, which /entregas links to on WhatsApp (a friend's too)
     grades_page: str = DEFAULT_GRADES_URL        # empty: no grades page
+    album_page: str = DEFAULT_ALBUM_URL          # empty: no album, and no packs
     semester_end: date | None = None             # the last day of classes; None: the aula term's end
     notes_folder: Path | None = None  # the captain's class notes (notes.py); None: not read
     notes_idle_minutes: int = 15
@@ -142,6 +144,9 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     grades_url = str(dashboard.get("grades_url", DEFAULT_GRADES_URL) or "")
     if grades_url and not grades_url.startswith("https://"):
         raise ConfigError("dashboard.grades_url debe empezar con https://")
+    album_url = str(dashboard.get("album_url", DEFAULT_ALBUM_URL) or "")
+    if album_url and not album_url.startswith("https://"):
+        raise ConfigError("dashboard.album_url debe empezar con https://")
     end_raw = dashboard.get("semester_end") or None
     try:
         semester_end = end_raw if isinstance(end_raw, date) or end_raw is None else date.fromisoformat(str(end_raw))
@@ -180,6 +185,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         dashboard_url=dashboard_url if telegram else "",
         dashboard_page=dashboard_url,
         grades_page=grades_url,
+        album_page=album_url,
         semester_end=semester_end,
         notes_folder=Path(folder).expanduser() if folder and not friend else None,
         notes_idle_minutes=idle,

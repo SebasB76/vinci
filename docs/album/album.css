@@ -1,0 +1,101 @@
+/* Only what the album adds to ../vinci/vinci.css. The pack is the design system's night hero, shrunk. */
+:root {
+  --night: #2A241D;
+  --night-ink: #F7F4F0;
+  --night-bg: radial-gradient(110% 120% at 88% -10%, #463C31 0%, var(--night) 52%, #1A1713 100%);
+  --sheet: #F2EFEA;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+html { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior: none; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+.head .x { margin-left: auto; }
+
+/* The opening: a sheet on the panel, the pack on top of the cards */
+body.opening { background: var(--panel); }
+.opening main { min-height: 100dvh; padding-bottom: 0; grid-template-rows: auto 1fr; }
+.stage { position: relative; min-height: 560px; }
+.ghost { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: calc(100% - 64px); height: 40px; border-radius: 24px 24px 0 0;
+  background: var(--sheet); opacity: .5; }
+.sheet { position: absolute; inset: 14px 0 0; border-radius: 28px 28px 0 0; background: var(--sheet); overflow: hidden; }
+.stack { position: absolute; left: 0; right: 0; top: 34px; height: 330px; }
+.slot { position: absolute; left: 50%; top: 0; width: 220px; height: 308px; margin-left: -110px; touch-action: none; cursor: grab; will-change: transform; user-select: none; -webkit-user-select: none; }
+.pack { position: absolute; left: 50%; top: 24px; margin-left: -118px; z-index: 20; touch-action: none; cursor: grab; will-change: transform; user-select: none; -webkit-user-select: none; }
+.pack .grab { position: absolute; left: 50%; top: 10px; width: 36px; height: 4px; margin-left: -18px; border-radius: 4px; background: rgb(255 255 255 / .3); }
+.cap { position: absolute; left: 20px; right: 20px; top: 368px; text-align: center; }
+.cap .t { font-size: 18px; letter-spacing: -.2px; }
+.cap .m { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
+.cap .h { font-size: 13px; color: var(--ink-3); margin-top: 10px; line-height: 1.4; }
+.foot { position: absolute; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); }
+.foot .segs { margin-bottom: 14px; }
+.foot .btn { opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
+.foot .btn.on { opacity: 1; pointer-events: auto; transform: none; }
+.btn:active { transform: scale(0.97); }
+.rise { animation: rise .45s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+.segs { display: flex; gap: 4px; }
+.segs i { flex: 1; height: 4px; border-radius: 9px; background: var(--line-soft); transition: background-color 200ms ease; }
+.segs i.on { background: var(--ink-3); }
+.segs i.cur { background: var(--accent-2); }
+
+.pk { position: relative; width: 236px; height: 330px; border-radius: 28px; color: var(--night-ink); background: var(--night-bg); padding: 22px; display: flex; flex-direction: column; overflow: hidden; }
+.pk .mark { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font: 400 26px/1 var(--serif); }
+.pk .n3 { position: absolute; right: 22px; top: 18px; font-size: 15px; font-weight: 300; color: rgb(247 244 240 / .55); }
+.pk h2 { margin: auto 0 0; font: 300 30px/1.08 var(--sans); letter-spacing: -.6px; }
+.pk h2 .s { display: block; font-family: var(--serif); font-weight: 400; color: var(--accent); letter-spacing: -.4px; }
+.pk .why { margin-top: 14px; font-size: 13px; line-height: 1.35; color: rgb(247 244 240 / .7); }
+
+/* A card: a white card with the rarity's color on top; the legendary one is the night hero with the accent. */
+.vc { position: relative; width: 100%; height: 100%; border-radius: var(--r-md); background: var(--card); padding: 7px; display: flex; flex-direction: column; color: var(--ink); }
+.vc .art { flex: 1; border-radius: 14px; background: var(--tone); display: grid; place-items: center; position: relative; overflow: hidden; }
+.vc .art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vc .ini { font: 400 68px/1 var(--serif); letter-spacing: -1px; }
+.vc .no { position: absolute; z-index: 1; left: 8px; top: 8px; font-size: 11px; color: var(--ink-2); background: rgb(255 255 255 / .6); border-radius: 999px; padding: 3px 8px; }
+.vc .flag { position: absolute; z-index: 1; right: 8px; top: 8px; }
+.vc .bd { padding: 10px 6px 4px; }
+.vc .nm { font-size: 16px; font-weight: 500; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vc .mt { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.t-com { --tone: var(--panel); } .t-rare { --tone: var(--c0); } .t-epic { --tone: var(--c1); } .t-leg { --tone: var(--accent); }
+.vc.t-leg { background: var(--night-bg); color: var(--night-ink); }
+.vc.t-leg .ini { color: #000; }
+.vc.t-leg .mt { color: rgb(247 244 240 / .6); }
+.rp { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--line-soft); color: var(--ink-2); white-space: nowrap; }
+.rp.t-rare { background: var(--c0); color: #1f3550; } .rp.t-epic { background: var(--c1); color: #3b2f66; } .rp.t-leg { background: var(--accent); color: #000; }
+.vc.s { padding: 4px; border-radius: 14px; }
+.vc.s .art { border-radius: 10px; }
+.vc.s .ini { font-size: 28px; }
+.vc.s .no { font-size: 9px; padding: 1px 5px; left: 5px; top: 5px; }
+.vc.s .flag { right: 5px; top: 5px; font-size: 9px; padding: 1px 6px; }
+.vc.s .bd { padding: 5px 3px 2px; }
+.vc.s .nm { font-size: 10.5px; }
+.vc.s .mt { display: none; }
+
+/* The album */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cell { aspect-ratio: 5 / 7; }
+.cell.own { cursor: pointer; }
+.cell.empty { border-radius: 14px; background: var(--line-soft); display: grid; place-items: center; font-size: 12px; color: var(--ink-4); }
+.cell.fresh { animation: rise .45s ease both; }
+.cell.fresh .vc { box-shadow: inset 0 0 0 2px var(--accent); }
+.zoom { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgb(232 228 222 / .92);
+  opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease-out); }
+.zoom.on { opacity: 1; pointer-events: auto; }
+.zoom .big { width: 240px; height: 336px; transform: scale(.96); transition: transform 220ms var(--ease-out); }
+.zoom.on .big { transform: none; }
+.empty-state { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 15px; line-height: 1.4; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .cell.fresh { animation: none; }
+}
+
+/* The tiles and tabs of «Tu semana» (../dashboard/dashboard.css) */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { border-radius: var(--r-sm); padding: 16px 6px 13px; text-align: center; background: var(--card); }
+.tile .n { font-size: 26px; letter-spacing: -0.6px; line-height: 1.1; white-space: nowrap; }
+.tile .l { font-size: 12px; line-height: 1.25; color: var(--ink-3); margin-top: 3px; }
+.tile.hi { background: var(--accent); color: var(--on-accent); }
+.tile.hi .l { color: rgb(0 0 0 / .62); }
+.tabs { display: flex; gap: 2px; }
+.tab { padding: 8px 14px; border-radius: 999px; font-size: 14px; color: var(--ink-3); }
+.tab[aria-selected="true"] { background: var(--card); color: var(--ink); }

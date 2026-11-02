@@ -197,6 +197,7 @@ class _Syncer:
                 "excused": int(bool(sub.get("excused"))),
                 "missing": int(bool(sub.get("missing"))),
                 "late": int(bool(sub.get("late"))),
+                "group_id": a.get("assignment_group_id"),
             }
             seen.append(row["id"])
             prev = self.conn.execute("SELECT * FROM assignments WHERE id = ?", (row["id"],)).fetchone()
@@ -222,10 +223,10 @@ class _Syncer:
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
                      allowed_extensions, asks_scan, description, material, rubric, sub_state, submitted_at, score, grade,
-                     graded_at, excused, missing, late, active, first_seen)
+                     graded_at, excused, missing, late, group_id, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
                      :allowed_extensions, :asks_scan, :description, :material, :rubric, :sub_state, :submitted_at, :score,
-                     :grade, :graded_at, :excused, :missing, :late, 1, :now)
+                     :grade, :graded_at, :excused, :missing, :late, :group_id, 1, :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
                      submission_types=excluded.submission_types, allowed_extensions=excluded.allowed_extensions,
@@ -233,11 +234,30 @@ class _Syncer:
                      rubric=excluded.rubric, sub_state=excluded.sub_state,
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
-                     late=excluded.late, active=1""",
+                     late=excluded.late, group_id=excluded.group_id, active=1""",
                 {**row, "now": self.now_iso},
             )
         self._deactivate("assignments", course["id"], seen)
+        self._groups(course, {a.get("assignment_group_id") for a in raw} - {None})
         self.read.setdefault(course["id"], set()).add("assignments")
+
+    def _groups(self, course: dict, ids: set[int]) -> None:
+        """The names of the course's assignment groups («Lecciones», «Exámenes»), read only when one is new."""
+        known = {r["id"] for r in self.conn.execute("SELECT id FROM assignment_groups WHERE course_id = ?",
+                                                    (course["id"],))}
+        if ids <= known:
+            return
+        try:
+            groups = self.client.get_all(f"courses/{course['id']}/assignment_groups")
+        except (InvalidTokenError, ThrottledError):
+            raise
+        except CanvasError as exc:  # only the album's grade packs need them; the next sync tries again
+            log.warning("grupos de tareas de %s: %s", course["name"], exc)
+            return
+        for g in groups:
+            self.conn.execute("INSERT INTO assignment_groups(id, course_id, name) VALUES (?, ?, ?) "
+                              "ON CONFLICT(id) DO UPDATE SET course_id = excluded.course_id, name = excluded.name",
+                              (g["id"], course["id"], g.get("name") or ""))
 
     def _quiz(self, course: dict, a: dict, row: dict) -> dict | None:
         """What the Classic Quiz behind an assignment says about itself. Read again only when its assignment

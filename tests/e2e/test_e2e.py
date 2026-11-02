@@ -1425,7 +1425,23 @@ def test_canvas(tmp_path):
         assert "Lo bajo y lo leo cuando haga falta" in by_title["Semana 2 - Cinemática.pptx"], \
             "lo demás no se baja solo: queda en el catálogo"
         assert "Su bot de materia lo abre sin tu cuenta" in texts, "el enlace de un módulo avisa que el bot lo abre"
-        assert len(poll2) == 8, [m["text"][:40] for m in poll2]
+        assert len(poll2) == 10, [m["text"][:40] for m in poll2]
+        # The album started at poll 1: «Lección 1», graded before, gives nothing; Deber 2, handed in on time since,
+        # and Tarea 1's 9/10 in a «Lecciones» group do, each pack with its own page.
+        from espol_bot import dashboard as dashboard_module
+        packs = [m for m in poll2 if m["button"] == "🎴 Abrir mi sobre"]
+        assert len(packs) == 2, [m["text"][:60] for m in poll2]
+        assert "Deber 2: Continuidad" in packs[0]["text"] and "a tiempo" in packs[0]["text"], packs[0]["text"]
+        assert "Sacaste 9/10" in packs[1]["text"] and "Tarea 1: Vectores" in packs[1]["text"], packs[1]["text"]
+        catalog_ids = {c["id"] for c in json.loads((REPO / "docs" / "album" / "cards.json").read_text())["cards"]}
+        for m in packs:
+            assert m["url"].startswith("https://sebasb76.github.io/vinci/album/#d="), m["url"]
+            seen = dashboard_module.decode(m["url"].split("#d=", 1)[1])
+            assert len(seen["pack"]["cards"]) == 3 and {c["id"] for c in seen["pack"]["cards"]} <= catalog_ids, seen
+        assert sum(seen["have"].values()) == 6, seen["have"]
+        report.append("Álbum: el primer sondeo lo abrió sin repartir el semestre ya pasado; el sondeo 2 dio un sobre "
+                      "por el Deber 2 entregado a tiempo y otro por el 9/10 de la Tarea 1 (grupo «Lecciones y "
+                      "deberes» en el aula), cada uno con 3 cartas del catálogo en el enlace de su página")
         for m in poll1 + poll2:  # WhatsApp has no buttons: a reminder's «Ya lo entregué» is a poll after it
             assert m["options"][:1] == ([SUBMITTED] if "Recordatorio" in m["text"] else []), m
 

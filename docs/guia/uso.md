@@ -184,12 +184,12 @@ uno nuevo no hace falta abrir `secrets.env` ni escribir nada:
 1. Abre el aviso de Vinci «La cadena automática del token de Canvas se cortó». Trae un enlace a tu perfil del aula
    y un botón «🔑 Pegar token». Si no lo encuentras, mándale `/token` a Vinci y te llega el mismo formulario.
 2. Toca «🔑 Pegar token»: se abre un formulario dentro de Telegram.
-3. Toca «Abrir el aula para crear el token». En el aula, toca «+ Nuevo token de acceso» y copia el token.
+3. Toca «Abrir», junto a «Abre el aula virtual». En el aula, toca «+ Nuevo token de acceso» y copia el token.
 4. Vuelve al formulario, pega el token y toca «Enviar cifrado a Vinci».
 5. Vinci lo verifica con el aula, lo guarda y reanuda la renovación. Te confirma en el chat.
 
 <p align="center">
-  <img src="../../docs/images/token-formulario.png" alt="El formulario de /token dentro de Telegram: un campo oculto para pegar el token de Canvas y el botón «Enviar cifrado a Vinci»" width="300">
+  <img src="../../docs/images/token-formulario.png" alt="La página «Conecta tu aula»: los dos pasos para crear el token, el campo para pegarlo y el botón «Enviar cifrado a Vinci»" width="300">
 </p>
 
 Cómo se protege el token:
@@ -347,7 +347,7 @@ una vez, y guarda una copia en tu PC.
    repitas.
 
 <p align="center">
-  <img src="../../docs/images/academico-usuario.png" alt="La página «Conectar tu Académico»: el campo del usuario de ESPOL y el botón «Siguiente»" width="260">
+  <img src="../../docs/images/academico-usuario.png" alt="La página «Conecta tu Académico»: el campo del usuario de ESPOL y el botón «Siguiente»" width="260">
   <img src="../../docs/images/academico-captcha.png" alt="El segundo paso: la contraseña, la imagen del CAPTCHA que mandó el Académico y el aviso de que el código no era correcto" width="260">
 </p>
 

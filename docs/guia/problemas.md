@@ -2,6 +2,15 @@
 
 ## Límites conocidos
 
+- **Correo del profe:** Vinci te da el correo de un profesor o ayudante solo si el aula te lo muestra en
+  «Personas»; si lo esconde, te dice su nombre y te manda al buzón del aula. Vinci lee esa lista una vez por semana.
+- **Buzón del aula:** Vinci guarda solo los mensajes de profesores y ayudantes, de las materias en curso y de los
+  últimos 4 meses. Un mensaje fuera de una materia (sin curso) no lo ve.
+- **Foros:** Vinci sabe si participaste y quién te respondió solo en los foros con actividad reciente; un foro
+  viejo y quieto lo abre cuando alguien vuelva a escribir. Un foro que pide publicar antes de ver las respuestas
+  sale como «no has participado» hasta que publiques.
+- **Revisiones entre pares:** Vinci las busca solo mientras alguna tarea del aula las pide.
+
 - **Crear muchos bots seguidos:** Telegram puede pedirte esperar antes de crear otro. Vinci no se entera: vuelve
   a pulsar «➕ Crear» cuando pase ese tiempo. La tarjeta de «arma mi equipo» muestra hasta 8 botones «Crear» a la
   vez; con más materias, crea esas y pídela otra vez.

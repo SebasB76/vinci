@@ -20,6 +20,10 @@ test_canvas, no gateway:
      Then reading quizzes, against a Canvas of their own: a new quiz's alert and reminders carry its questions, time
      limit, attempts and when it opens and closes; a test open for 30 minutes warns before it opens, once; each quiz
      is read once (again only when it changes), never one already closed, and never its questions.
+     Then the rest of Canvas, against another Canvas: the professors and assistants, a new forum and a classmate's
+     reply to the student's post, a new exam in the calendar, the professor's inbox message (read without marking it
+     read; a classmate's message never stored), a new group, a peer review with its reminder, the late penalty on a
+     grade; what was already there gives no alert; the `aula` commands return it and the 07:00 summary lists it.
   4. retrieval: sample questions must hit the right file and page, never two copies of one page.
   5. a fresh install where two resources fail at different polls: the rest keeps working, one alert per failure
      episode and resource.
@@ -1548,6 +1552,83 @@ def test_canvas(tmp_path):
                       "el tiempo para resolverlo, los intentos, cuándo abre y cuándo cierra; un test que abre a una "
                       "hora fija por poco tiempo avisa antes de abrir, una vez. Cada cuestionario se lee una vez "
                       "(y otra solo si cambia), nunca uno ya cerrado, y jamás sus preguntas ni un intento")
+
+        # 4c. the rest of Canvas: professors, forums, calendar, inbox, groups, peer reviews, late penalty ----------
+        with FakeCanvas(CANVAS_TOKEN, "canvas-novedades") as news_canvas:
+            news_config = tmp_path / "config-novedades.toml"
+            news_config.write_text(config.replace(canvas.base, news_canvas.base).replace(
+                str(data_dir), str(tmp_path / "novedades")), encoding="utf-8")
+            news_env = {"AULA_CONFIG": str(news_config), "AULA_SECRETS": str(quiz_secrets)}
+            news_md = ["# Lo demás del aula: lo que llega al chat\n",
+                       "Un aula aparte, Programación Web, con su profesora y su ayudante, dos foros, el calendario, "
+                       "el buzón (con un mensaje de un compañero que nunca se guarda), un grupo y una revisión entre "
+                       "pares.\n"]
+
+            def news_poll(label: str, now: str) -> list[dict]:
+                run([bot, "sondeo"], now, env_extra=news_env)
+                sent = take(label)
+                news_md.append(f"## {label}\n")
+                news_md.extend(f"```\n{shown_text(m)}\n```\n" for m in sent)
+                return sent
+
+            def news_cli(*args: str, now: str = "2026-10-06T10:05:00-05:00"):
+                return json.loads(run([aula, *args, "--sin-actualizar", "--json"], now, env_extra=news_env).stdout)
+
+            sent = news_poll("Primer sondeo · lun 5 oct 10:00 (lo que ya había)", "2026-10-05T10:00:00-05:00")
+            assert len(sent) == 1 and "Listo" in sent[0]["text"], "lo que ya estaba no se avisa: " + str(sent)
+            news_canvas.state = "state2"
+            sent = news_poll("Sondeo · mar 6 oct 10:00 (lo nuevo)", "2026-10-06T10:00:00-05:00")
+            texts = "\n\n".join(m["text"] for m in sent)
+            for expected in ("Nota publicada", "Te bajaron 1 por entregar tarde",
+                             "Mensaje de Profesora E2E", "Desde esta semana el laboratorio es los jueves",
+                             "horario-lab.pdf",
+                             "Nuevo en el calendario", "Examen parcial (presencial)", "vie 9 oct, 09:00 a 11:00",
+                             "Aula 201",
+                             "Foro nuevo en Programación Web", "Foro 2: debate sobre REST",
+                             "Te respondieron", "¿Y para la API usas DRF?",
+                             "Te pusieron en un grupo", "Grupo 3: Compañera E2E, Compañero E2E",
+                             "Te toca revisar a un compañero"):
+                assert expected in texts, f"falta «{expected}» en el sondeo:\n{texts}"
+            for absent in ("Mensaje privado de un compañero", "Bienvenidos al curso", "Tutoría de proyecto",
+                           "Profe, ¿cambia el laboratorio?"):
+                assert absent not in texts, f"«{absent}» no debía llegar:\n{texts}"
+            reads = [path for _, path in news_canvas.requests]
+            assert all("auto_mark_as_read=false" in p for p in reads if re.search(r"/conversations/\d+", p)), reads
+            assert all(method == "GET" for method, _ in news_canvas.requests)
+
+            people = news_cli("personas")[0]
+            assert people["staff"] == [
+                {"name": "Profesora E2E", "role": "teacher", "email": "profesora.e2e@example.test"},
+                {"name": "Ayudante E2E", "role": "ta", "email": None}], people
+            assert people["groups"] == [{"name": "Grupo 3", "members": ["Compañera E2E", "Compañero E2E"]}], people
+            inbox = news_cli("mensajes")
+            assert [m["subject"] for m in inbox] == ["Cambio de grupo de laboratorio", "Bienvenida"], inbox
+            forums = {f["title"]: f for f in news_cli("foros")}
+            assert forums["Foro 1: presentaciones"]["participated"] is True, forums
+            assert forums["Foro 1: presentaciones"]["replies_to_you"] == 1, forums
+            assert forums["Foro 2: debate sobre REST"]["participated"] is False, forums
+            agenda_ = news_cli("calendario")
+            assert [e["title"] for e in agenda_["events"]] == ["Tutoría de proyecto", "Examen parcial (presencial)"]
+            assert [r["title"] for r in agenda_["peer_reviews"]] == ["Proyecto: entrega 1"], agenda_
+            grade = news_cli("notas")[0]["tareas"][0]
+            assert grade["late_penalty"] == 1.0, grade
+
+            run([bot, "resumen"], "2026-10-07T07:00:00-05:00", env_extra=news_env)
+            week = [m["text"] for m in take("Resumen · mié 7 oct 07:00") if "Resumen de tu semana" in m["text"]]
+            assert week and "En el calendario (2)" in week[0] and "Revisiones entre pares por hacer (1)" in week[0], week
+            news_md.append(f"## Resumen · mié 7 oct 07:00\n\n```\n{normalize(week[0])}\n```\n")
+            sent = news_poll("Sondeo · mié 7 oct 20:00 (la revisión vence en 19 h)", "2026-10-07T20:00:00-05:00")
+            assert len(sent) == 1 and "Te toca revisar a un compañero en Proyecto: entrega 1" in sent[0]["text"], sent
+            assert news_poll("Sondeo · mié 7 oct 20:30 (sin cambios)", "2026-10-07T20:30:00-05:00") == [], \
+                "ni el recordatorio ni los avisos se repiten"
+        (ARTIFACT / "novedades.md").write_text(normalize("\n".join(news_md)).replace(news_canvas.base,
+                                               "https://aulavirtual.test"), encoding="utf-8")
+        report.append("Lo demás del aula (otro Canvas): la nota trae los puntos que bajaron por atraso; llegan el "
+                      "mensaje de la profesora (con su adjunto, sin marcarlo leído), el examen nuevo del calendario, "
+                      "el foro nuevo, la respuesta de un compañero a tu post, tu grupo y la revisión entre pares, con "
+                      "su recordatorio; el mensaje de un compañero y lo que ya había no llegan. `aula personas`, "
+                      "`mensajes`, `foros` y `calendario` (lo que leen las herramientas de los bots) lo devuelven, y "
+                      "el resumen de las 7:00 trae el calendario y la revisión pendiente")
 
         # 5. retrieval -------------------------------------------------------------------
         run([aula, "archivos", "bajar", "5101", "--json"], T_SUMMARY)  # material comes down when it is asked for

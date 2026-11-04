@@ -17,7 +17,11 @@ Always pass `--json` and parse the output.
 | Active courses | `aula cursos --json` |
 | Pending work, by due date | `aula tareas --json` (`--dias 7`, `--curso calculo`) |
 | Announcements | `aula anuncios --json` (`--curso fisica -n 5`) |
-| Grades | `aula notas --json` |
+| Grades (with the professor's comments, rubric and late penalty) | `aula notas --json` |
+| Professors, assistants and your groups | `aula personas --json` |
+| What professors wrote in the aula's inbox | `aula mensajes --json` (`-n 10`) |
+| Calendar events (exams, live classes) and peer reviews to do | `aula calendario --json` (`--dias 30`) |
+| Forums (not announcements): due, participated, replies to you | `aula foros --json` |
 | Course files (the catalog, read or not) | `aula archivos --json` (`--curso ... --nombre "semana 3"`) |
 | Download (and index) files | `aula archivos bajar <id> [<id>...] --json` → `ruta_local` |
 | Read an indexed file | `aula archivos leer <id> --paginas 3-6 --json` |

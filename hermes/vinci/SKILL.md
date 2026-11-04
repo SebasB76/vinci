@@ -29,6 +29,10 @@ Todas leen datos locales ya sincronizados con el aula virtual (solo lectura) y l
 | Anotar un pendiente personal («anota: …», «recuérdame …» sin hora exacta) | `add_todo` (`text`, `subject`, `due`) |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
 | Qué comentó el profe de una entrega (comentarios, rúbrica calificada) | `notas`: su «feedback»; cítalo tal cual |
+| Quién es el profe o el ayudante, su correo, con quién está en su grupo | `people` |
+| Qué le escribió un profe por el buzón del aula | `inbox` |
+| Lo del calendario del aula (un examen, una clase en vivo) y las revisiones entre pares | `calendar` (`dias`) |
+| Los foros: cuáles hay, si ya participó, quién le respondió | `discussions` |
 | Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | Estudiar con tiempo («tengo 20 minutos») o practicar una exposición con jurado | `study_activity` (`start` `kind: study` o `jury`) |
 | Encontrar la tarea que nombra («el taller de vectores»), también entregada o vencida | `tareas` (`buscar`) |

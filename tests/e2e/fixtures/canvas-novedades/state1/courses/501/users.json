@@ -1,0 +1,25 @@
+[
+  {
+    "id": 9001,
+    "name": "Profesora E2E",
+    "short_name": "Profesora E2E",
+    "email": "profesora.e2e@example.test",
+    "enrollments": [
+      {
+        "course_id": 501,
+        "type": "TeacherEnrollment"
+      }
+    ]
+  },
+  {
+    "id": 9002,
+    "name": "Ayudante E2E",
+    "short_name": "Ayudante E2E",
+    "enrollments": [
+      {
+        "course_id": 501,
+        "type": "TaEnrollment"
+      }
+    ]
+  }
+]

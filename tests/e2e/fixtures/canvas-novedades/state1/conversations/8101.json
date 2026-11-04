@@ -1,0 +1,33 @@
+{
+  "id": 8101,
+  "subject": "Bienvenida",
+  "participants": [
+    {
+      "id": 9001,
+      "name": "Profesora E2E",
+      "common_courses": {
+        "501": [
+          "TeacherEnrollment"
+        ]
+      }
+    },
+    {
+      "id": 42,
+      "name": "Estudiante E2E",
+      "common_courses": {
+        "501": [
+          "StudentEnrollment"
+        ]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "id": 81011,
+      "author_id": 9001,
+      "created_at": "2026-09-15T15:00:00Z",
+      "body": "Bienvenidos al curso.",
+      "attachments": []
+    }
+  ]
+}

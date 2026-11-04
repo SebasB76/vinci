@@ -1,0 +1,45 @@
+{
+  "id": 8102,
+  "subject": "Cambio de grupo de laboratorio",
+  "participants": [
+    {
+      "id": 9001,
+      "name": "Profesora E2E",
+      "common_courses": {
+        "501": [
+          "TeacherEnrollment"
+        ]
+      }
+    },
+    {
+      "id": 42,
+      "name": "Estudiante E2E",
+      "common_courses": {
+        "501": [
+          "StudentEnrollment"
+        ]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "id": 81022,
+      "author_id": 9001,
+      "created_at": "2026-10-06T12:00:00Z",
+      "body": "Desde esta semana el laboratorio es los jueves.",
+      "attachments": [
+        {
+          "display_name": "horario-lab.pdf",
+          "url": "{{BASE}}/files/9902/download"
+        }
+      ]
+    },
+    {
+      "id": 81021,
+      "author_id": 42,
+      "created_at": "2026-10-05T12:00:00Z",
+      "body": "Profe, ¿cambia el laboratorio?",
+      "attachments": []
+    }
+  ]
+}

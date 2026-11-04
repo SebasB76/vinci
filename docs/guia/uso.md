@@ -10,6 +10,8 @@
 - «¿Qué dijo el profe de Cálculo?» · «¿Qué notas me publicaron?»
 - «¿El profe dejó comentarios en el Avance 1?» → te los cita, con los archivos que adjuntó y la rúbrica
   calificada por criterio.
+- «¿Qué me escribió la profe de Programación Web?» · «¿Cuál es el correo del ayudante de Física?» · «¿Con quién
+  estoy en el grupo del proyecto?» · «¿Tengo algún foro pendiente?» · «¿Qué hay en el calendario esta semana?»
 - «¿Cómo voy en notas?» · «¿Cuánto necesito para pasar Estadística?» · «En Física no hay examen en el primer
   parcial: todo son deberes y laboratorio» → te muestra el esquema para que lo guardes.
 - «Tengo esto de Física» + una foto, un PDF o una nota de voz → te dice a qué bot se lo pasó. Si no le queda

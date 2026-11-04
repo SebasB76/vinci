@@ -203,6 +203,81 @@ CREATE TABLE IF NOT EXISTS events (
     delivered_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS course_staff (
+    course_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    name TEXT,
+    role TEXT,
+    email TEXT,
+    PRIMARY KEY (course_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS discussions (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    message_text TEXT,
+    author TEXT,
+    posted_at TEXT,
+    last_reply_at TEXT,
+    due_at TEXT,
+    lock_at TEXT,
+    assignment_id INTEGER,
+    require_initial_post INTEGER NOT NULL DEFAULT 0,
+    participated INTEGER,
+    replies TEXT,
+    html_url TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    first_seen TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    start_at TEXT,
+    end_at TEXT,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    location TEXT,
+    description TEXT,
+    html_url TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    first_seen TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS inbox_threads (id INTEGER PRIMARY KEY, last_message_at TEXT);
+
+CREATE TABLE IF NOT EXISTS inbox_messages (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL,
+    course_id INTEGER NOT NULL,
+    subject TEXT,
+    author TEXT,
+    body TEXT,
+    created_at TEXT,
+    attachments TEXT
+);
+
+CREATE TABLE IF NOT EXISTS student_groups (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL,
+    name TEXT,
+    members_count INTEGER,
+    members TEXT,
+    active INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS peer_reviews (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL,
+    title TEXT,
+    due_at TEXT,
+    html_url TEXT,
+    done INTEGER NOT NULL DEFAULT 0,
+    reminded INTEGER NOT NULL DEFAULT 0,
+    first_seen TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS marked_submitted (
     assignment_id INTEGER PRIMARY KEY,
     marked_at TEXT NOT NULL
@@ -238,7 +313,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
 ADDED_COLUMNS = {
     "courses": ["term_start TEXT", "term_end TEXT"],
     "assignments": ["allowed_extensions TEXT", "asks_scan INTEGER NOT NULL DEFAULT 0", "description TEXT", "material TEXT",
-                    "rubric TEXT", "group_id INTEGER", "feedback TEXT"],
+                    "rubric TEXT", "group_id INTEGER", "feedback TEXT", "points_deducted REAL",
+                    "peer_reviews INTEGER NOT NULL DEFAULT 0"],
     "announcements": ["material TEXT"],
     "links": ["checked_at TEXT", "problem TEXT"],
     "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",

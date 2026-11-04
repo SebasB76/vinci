@@ -228,6 +228,7 @@ class Bot:
             self._deliver_events(result, now)
             self._send_reminders(result, now)
             self._send_quiz_openings(result, now)
+            self._send_peer_review_reminders(result, now)
             result.sent += album.deliver(self.conn, self.cfg, self.telegram, now)
         except TelegramError as exc:
             log.error("%s", exc)
@@ -340,6 +341,21 @@ class Bot:
             self.conn.commit()
         self._send_todo_reminders(result, now, horizon)
 
+    def _send_peer_review_reminders(self, result: PollResult, now: datetime) -> None:
+        """One reminder per peer review, within the largest reminder window before it is due."""
+        horizon = now + timedelta(hours=max(self.cfg.reminder_hours))
+        rows = self.conn.execute(
+            """SELECT r.*, c.name AS course_name FROM peer_reviews r JOIN courses c ON c.id = r.course_id
+               WHERE r.done = 0 AND r.reminded = 0 AND r.due_at > ? AND r.due_at <= ?""",
+            (timefmt.iso(now), timefmt.iso(horizon))).fetchall()
+        for r in rows:
+            text = messages.peer_review_reminder(dict(r), self.tz, now)
+            self._send(text, [r["course_id"]])
+            self.conn.execute("UPDATE peer_reviews SET reminded = 1 WHERE id = ?", (r["id"],))
+            self.conn.commit()
+            result.sent.append(text)
+            result.reminders += 1
+
     def _send_quiz_openings(self, result: PollResult, now: datetime) -> None:
         # A poll every N minutes must still warn before the opening, so the lead is at least one interval.
         lead = max(OPENING_LEAD, timedelta(minutes=self.cfg.poll_minutes))
@@ -407,7 +423,8 @@ class Bot:
             [e.item for e in entries if e.todo and e.tier == "overdue"] + undated
         done = [(messages.todo_done_button(t["text"]), f"v1:t:{t['id']}:ok") for t in shown[:MAX_BUTTONS]]
         text = messages.weekly_summary(entries, len(week) - len(pending), recent, self.tz, now, undated,
-                                       health.aula_stale(self.aula, self.cfg.poll_minutes, now))
+                                       health.aula_stale(self.aula, self.cfg.poll_minutes, now),
+                                       queries.calendar(self.conn, now, days=7))
         return text, courses, done
 
     def _dashboard_button(self, now: datetime) -> None:

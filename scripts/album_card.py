@@ -20,6 +20,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -42,12 +43,14 @@ STYLE = """Generate exactly one image with your image generation tool. Do not cr
 
 It is the art of a trading card in an album that a group of ESPOL students (Guayaquil, Ecuador) collect.
 Style: retro 16-bit pixel art, like a SNES game: visible pixels and dithering, crisp dark outlines, warm bright colors.
-Keep every person recognizable from the reference photos: the same face shape, hairstyle, skin tone, glasses, facial
-hair and expression. Do not make them look older, younger or like someone else.
-Scene: {brief}
-Composition: {shape}, the people centered, with room around the heads.
+{likeness}Scene: {brief}
+Composition: {shape}, the subject centered, with room around it.
 No frame, border, card layout or rarity label: the album draws the card's frame around this art. No text unless the
 scene asks for it."""
+
+LIKENESS = """Keep every person recognizable from the reference photos: the same face shape, hairstyle, skin tone, glasses,
+facial hair and expression. Do not make them look older, younger or like someone else.
+"""
 
 
 def b64url(raw: bytes) -> str:
@@ -79,7 +82,8 @@ def cmd_draw(args: argparse.Namespace) -> None:
         if not photo.is_file():
             sys.exit(f"No encuentro {photo}")
     shape = "landscape 4:3" if args.wide else "portrait 5:7 (taller than wide)"
-    prompt = STYLE.format(brief=args.brief, shape=shape)
+    likeness = LIKENESS if photos else ""
+    prompt = STYLE.format(brief=args.brief, shape=shape, likeness=likeness)
     started = time.time()
     with tempfile.TemporaryDirectory() as work:
         command = ["codex", "exec", "--skip-git-repo-check", "-C", work, "-s", "read-only", prompt]
@@ -87,7 +91,10 @@ def cmd_draw(args: argparse.Namespace) -> None:
             command += ["-i", str(photo)]
         print(f"Codex está dibujando «{args.id}» (1 a 3 minutos)…", flush=True)
         done = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
-    made = sorted((p for p in CODEX_IMAGES.rglob("*.png") if p.stat().st_mtime >= started),
+    # Codex keeps each session's images in its own folder: that keeps parallel draws apart.
+    session = re.search(r"session id: (\S+)", done.stdout + done.stderr)
+    folder = CODEX_IMAGES / session[1] if session else CODEX_IMAGES
+    made = sorted((p for p in folder.rglob("*.png") if p.stat().st_mtime >= started),
                   key=lambda p: p.stat().st_mtime)
     if not made:
         sys.exit(f"Codex no generó ninguna imagen.\n{done.stdout[-2000:]}\n{done.stderr[-2000:]}")
@@ -143,7 +150,7 @@ def main() -> None:
     key.add_argument("--copy", action="store_true", help="la copia al portapapeles, para Coolify")
     draw = sub.add_parser("draw", help="Codex dibuja la carta desde fotos")
     draw.add_argument("--id", required=True)
-    draw.add_argument("--photo", action="append", required=True)
+    draw.add_argument("--photo", action="append", default=[], help="sin fotos, Codex dibuja de memoria")
     draw.add_argument("--brief", required=True, help="la escena, en inglés o español")
     draw.add_argument("--wide", action="store_true", help="horizontal 4:3, para una escena de grupo")
     add = sub.add_parser("add", help="cifra el arte y pone la carta en cards.json")

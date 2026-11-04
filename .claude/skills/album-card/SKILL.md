@@ -17,6 +17,11 @@ The captain sends photos (in the chat they arrive as attachment paths) and says 
    `uv run scripts/album_card.py draw --id <id> --photo <a> [--photo <b>] --brief "<scene>" [--wide]`.
    The brief is the scene in one or two sentences: the place (an ESPOL building is a good default), the clothes, what
    they hold. It takes 1 to 3 minutes and prints the PNG path under `~/.local/share/espol-academic-bot/album-art/`.
+   - A batch: run every `draw` at once in the background (`&` and `wait`); each Codex session keeps its own images.
+   - Without `--photo`, Codex draws from memory: fine for famous people and characters, not for ESPOL buildings.
+     For a place the captain has no photo of, find one on the web (the faculty sites, espol.edu.ec, ESPOL's Flickr,
+     news og:image) and pass it as `--photo`.
+   - Codex now and then makes no image (`Codex no generó ninguna imagen`): run that one again, rewording the brief.
 3. Show the PNG to the captain (Read it, then link the path). Redraw with a sharper brief if a face is off; never ship
    one the captain did not approve.
 4. In a worktree, add it: `AULA_SECRETS=~/Projects/espol-academic-bot/secrets.env uv run scripts/album_card.py add

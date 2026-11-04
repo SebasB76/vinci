@@ -17,7 +17,8 @@
    "name": "Polito",
    "collection": "espol",
    "group": "Mascota",
-   "rarity": "leg"
+   "rarity": "leg",
+   "art": "art/polito-93aa0be9e1.bin"
   },
   {
    "id": "rectorado",
@@ -33,7 +34,8 @@
    "name": "Biblioteca central",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/biblioteca-60db935701.bin"
   },
   {
    "id": "bosque",
@@ -46,10 +48,11 @@
   {
    "id": "fiec",
    "n": 5,
-   "name": "FIEC",
+   "name": "FIEC nueva",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fiec-1ee2b0bb59.bin"
   },
   {
    "id": "fcnm",
@@ -57,7 +60,8 @@
    "name": "FCNM",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fcnm-b7b126bcf2.bin"
   },
   {
    "id": "fimcp",
@@ -65,7 +69,8 @@
    "name": "FIMCP",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fimcp-f4f388b50e.bin"
   },
   {
    "id": "fcsh",
@@ -73,7 +78,8 @@
    "name": "FCSH",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fcsh-07cbe03c7f.bin"
   },
   {
    "id": "fict",
@@ -81,7 +87,8 @@
    "name": "FICT",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fict-9ab110cb3b.bin"
   },
   {
    "id": "fimcm",
@@ -89,7 +96,8 @@
    "name": "FIMCM",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fimcm-54fcc13f18.bin"
   },
   {
    "id": "fadcom",
@@ -97,7 +105,8 @@
    "name": "FADCOM",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/fadcom-8ce1f2e617.bin"
   },
   {
    "id": "coliseo",
@@ -153,7 +162,9 @@
    "name": "The Beatles",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "epic"
+   "rarity": "epic",
+   "art": "art/beatles-a36761040d.bin",
+   "wide": true
   },
   {
    "id": "michael-jackson",
@@ -169,7 +180,9 @@
    "name": "The Office",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/the-office-00c1c2e054.bin",
+   "wide": true
   },
   {
    "id": "queen",
@@ -236,6 +249,143 @@
    "rarity": "leg",
    "art": "art/grupap-ebe35a71d8.bin",
    "wide": true
+  },
+  {
+   "id": "fiec-vieja",
+   "n": 29,
+   "name": "FIEC vieja",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare",
+   "art": "art/fiec-vieja-e3f6566f02.bin",
+   "wide": true
+  },
+  {
+   "id": "mami-ceci",
+   "n": 30,
+   "name": "Mami Ceci",
+   "collection": "espol",
+   "group": "Autoridades",
+   "rarity": "leg",
+   "art": "art/mami-ceci-2de7c5f1b3.bin"
+  },
+  {
+   "id": "dra-carmen",
+   "n": 31,
+   "name": "Dra. Carmen",
+   "collection": "espol",
+   "group": "Profes",
+   "rarity": "epic",
+   "art": "art/dra-carmen-f6fd85831b.bin"
+  },
+  {
+   "id": "llama",
+   "n": 32,
+   "name": "Llama de la suerte",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "epic",
+   "art": "art/llama-2a94bb6726.bin"
+  },
+  {
+   "id": "michael-scott",
+   "n": 33,
+   "name": "Michael Scott",
+   "collection": "iconos",
+   "group": "The Office",
+   "rarity": "epic",
+   "art": "art/michael-scott-8a65223a7d.bin"
+  },
+  {
+   "id": "dwight-schrute",
+   "n": 34,
+   "name": "Dwight Schrute",
+   "collection": "iconos",
+   "group": "The Office",
+   "rarity": "epic",
+   "art": "art/dwight-schrute-1975f781f9.bin"
+  },
+  {
+   "id": "jim-halpert",
+   "n": 35,
+   "name": "Jim Halpert",
+   "collection": "iconos",
+   "group": "The Office",
+   "rarity": "rare",
+   "art": "art/jim-halpert-ecf6d1f68b.bin"
+  },
+  {
+   "id": "pam-beesly",
+   "n": 36,
+   "name": "Pam Beesly",
+   "collection": "iconos",
+   "group": "The Office",
+   "rarity": "rare",
+   "art": "art/pam-beesly-28b296f6dd.bin"
+  },
+  {
+   "id": "kevin-malone",
+   "n": 37,
+   "name": "Kevin Malone",
+   "collection": "iconos",
+   "group": "The Office",
+   "rarity": "com",
+   "art": "art/kevin-malone-bc1dff78a4.bin"
+  },
+  {
+   "id": "fcv",
+   "n": 38,
+   "name": "FCV",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com",
+   "art": "art/fcv-fc61f143a4.bin"
+  },
+  {
+   "id": "tortugas-las-penas",
+   "n": 39,
+   "name": "Tortugas de Las Peñas",
+   "collection": "espol",
+   "group": "Mascota",
+   "rarity": "epic",
+   "art": "art/tortugas-las-penas-8c0c40ffe5.bin",
+   "wide": true
+  },
+  {
+   "id": "campus-las-penas",
+   "n": 40,
+   "name": "Campus Las Peñas",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare",
+   "art": "art/campus-las-penas-e205a9d63d.bin"
+  },
+  {
+   "id": "lago",
+   "n": 41,
+   "name": "Lago ESPOL",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare",
+   "art": "art/lago-421f2cd30f.bin"
+  },
+  {
+   "id": "stem",
+   "n": 42,
+   "name": "Edificio STEM",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "com",
+   "art": "art/stem-4f18d21a0c.bin"
+  },
+  {
+   "id": "residencias",
+   "n": 43,
+   "name": "Residencias",
+   "collection": "espol",
+   "group": "Campus",
+   "rarity": "rare",
+   "art": "art/residencias-5b500b2cd8.bin"
   }
  ]
 }

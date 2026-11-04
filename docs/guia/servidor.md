@@ -41,6 +41,8 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    cron jobs y los plugins.
 8. Espera a que Coolify muestre la app como **Healthy**, no solo **Running**. La imagen marca **Unhealthy** si la
    creación de perfiles falló o si el gateway no corre: en ese caso, mira los **Logs** (las líneas `[vinci]`).
+   Esas líneas también quedan en `/opt/data/logs/boot.log`, y un agente las lee desde tu PC con
+   `vinci-check remote logs boot`.
    Si vas a importar tu instalación y aún no cargaste los secretos, el primer arranque puede aparecer como
    **Unhealthy**. Continúa con la importación: cuando crea los perfiles correctamente, elimina esa marca de fallo.
    **Healthy** comprueba el proceso del gateway; confirma una respuesta por WhatsApp para verificar también el modelo.

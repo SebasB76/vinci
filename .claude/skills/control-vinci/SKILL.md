@@ -15,7 +15,9 @@ captain. Use `.venv/bin/vinci-check` of the main checkout (`~/Projects/espol-aca
 2. `vinci-check remote errors`: the grouped `errors.log` lines of the last 24 h.
 3. `vinci-check remote logs all --grep "<words>" -n 100`: what the gateway did, from every `gateway.log`. Hermes
    logs each message in the log of the profile that answers it, so the `[vinci]` or `[amigo-…]` in front of an
-   `inbound message` line says who answered; `gateway` is the root log (startup, WhatsApp bridge).
+   `inbound message` line says who answered; `gateway` is the root log (startup, WhatsApp bridge). After a Redeploy
+   that came up **Unhealthy**, read `vinci-check remote logs boot`: the `[vinci]` lines of each container start.
+   Coolify's build log stays out of reach: ask the captain to paste it when the build itself failed.
 4. `vinci-check remote turns --profile <vinci|amigo-…> -n 40`: the turns themselves, with tool calls.
 5. Fix it: in code (a PR, then the Redeploy in `AGENTS.md` "Done means"), or live with `remote run`, `remote put`
    or `remote restart` when the cause is state in `/opt/data` (say what you changed in the report).
@@ -30,7 +32,7 @@ him to run commands in the Terminal and paste the output.
 | Command | Use it to |
 |---|---|
 | `vinci-check remote status` / `errors` | health and the grouped errors, as the panel shows them |
-| `vinci-check remote logs [name] [-n 200] [--grep re] [-f] [--raw]` | tail or follow a log; no name lists them (`all`, `gateway`, `errors`, `bot`, `agent`, `<profile>/<log>`) |
+| `vinci-check remote logs [name] [-n 200] [--grep re] [-f] [--raw]` | tail or follow a log; no name lists them (`all`, `gateway`, `errors`, `bot`, `agent`, `boot`, `<profile>/<log>`) |
 | `vinci-check remote turns [--profile vinci] [-n 30] [--session id] [--raw]` | recent turns and tool calls of a profile |
 | `vinci-check remote run <command>` | a shell command in the container, as `hermes`, in `/opt/data` (options before the command) |
 | `vinci-check remote doctor` / `restart` | `espol-bot doctor` / `hermes gateway restart` |

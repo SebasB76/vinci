@@ -32,7 +32,7 @@ him to run commands in the Terminal and paste the output.
 | Command | Use it to |
 |---|---|
 | `vinci-check remote status` / `errors` | health and the grouped errors, as the panel shows them |
-| `vinci-check remote logs [name] [-n 200] [--grep re] [-f] [--raw]` | tail or follow a log; no name lists them (`all`, `gateway`, `errors`, `bot`, `agent`, `boot`, `<profile>/<log>`) |
+| `vinci-check remote logs [name] [-n 200] [--grep re] [-f] [--raw]` | tail or follow a log; no name lists them (`all`, `gateway`, `errors`, `bot`, `boot`, `remote-access`, `<profile>/<log>`) |
 | `vinci-check remote turns [--profile vinci] [-n 30] [--session id] [--raw]` | recent turns and tool calls of a profile |
 | `vinci-check remote run <command>` | a shell command in the container, as `hermes`, in `/opt/data` (options before the command) |
 | `vinci-check remote doctor` / `restart` | `espol-bot doctor` / `hermes gateway restart` |
@@ -40,7 +40,7 @@ him to run commands in the Terminal and paste the output.
 
 Logs and turns mask phone numbers, WhatsApp ids, friends' names and message text by default. Add `--raw` only when
 the text itself is the bug, and quote no more than needed in the report (initials, last digits). `run` and `get`
-are never masked: grep before you print. Every `run`, `get` and `put` is logged in `/opt/data/logs/agent.log`.
+are never masked: grep before you print. Every `run`, `get` and `put` is logged in `/opt/data/logs/remote-access.log`.
 
 The bots run `main` as of the last **Redeploy**: a behavior change is only live after "Done means" steps 3 and 4 in
 `AGENTS.md` (merge, Redeploy).

@@ -45,7 +45,7 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
-  masked logs, turns and files, and runs commands, each one in agent.log.
+  masked logs, turns and files, and runs commands, each one in remote-access.log.
 
 test_whatsapp_friend: a group the captain turns on, a note that holds in that group only (every turn ends with the clock
   and that chat's notes), reminders he asks for there that the agenda sends to the group at their time, once (one
@@ -2244,7 +2244,7 @@ def test_whatsapp_captain(tmp_path):
             outside = run([vc, "remote", "get", "../secrets.env", str(w.tmp_path)], T_VINCI, check=False,
                           **remote_env)
             assert outside.returncode == 1 and "fuera de" in outside.stderr, "nada fuera de la carpeta de Hermes"
-            audit = (home / ".hermes" / "logs" / "agent.log").read_text()
+            audit = (home / ".hermes" / "logs" / "remote-access.log").read_text()
             assert "run exit=3" in audit and "put " in audit and agent_key not in audit, audit
             run([bot, "panel", "--quitar-agente"], T_VINCI)
             assert run([vc, "remote", "status"], T_VINCI, check=False, **remote_env).returncode == 1, \
@@ -2258,7 +2258,7 @@ def test_whatsapp_captain(tmp_path):
                       "texto de chat, y una clave nueva corta el enlace anterior. `vinci-check remote`, con la clave "
                       "del agente (`--clave-agente`, firmada en cada pedido), lee el estado, los logs sin números ni "
                       "texto de mensajes (todo con `--raw`), los turnos, corre comandos y sube y baja archivos dentro "
-                      "de la carpeta de Hermes, y deja cada uno en `agent.log`; ni PANEL_KEY ni una firma falsa abren "
+                      "de la carpeta de Hermes, y deja cada uno en `remote-access.log`; ni PANEL_KEY ni una firma falsa abren "
                       "esa puerta, y `--quitar-agente` la cierra")
         (ARTIFACT / "whatsapp-capitan.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "capitán")

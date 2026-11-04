@@ -22,6 +22,10 @@ misma materia.
 | La materia de un vistazo (clases, pendientes, anuncios, cuaderno) | `resumen` |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` |
 | Qué comentó el profe de una entrega (comentarios, rúbrica calificada) | `notas`: su «feedback»; cítalo tal cual |
+| Quién es el profe o el ayudante, su correo, con quién está en su grupo | `people` |
+| Qué le escribió un profe por el buzón del aula | `inbox` |
+| Lo del calendario del aula (un examen, una clase en vivo) y las revisiones entre pares | `calendar` (`dias`) |
+| Los foros: cuáles hay, si ya participó, quién le respondió | `discussions` |
 | Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | Encontrar la tarea que nombra («el taller de vectores»), también entregada o vencida | `tareas` (`buscar`) |
 | Cómo va en notas y cuánto necesita (la calculadora) | `grade_status` (`what_if`, `target`) |

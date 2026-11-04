@@ -21,6 +21,13 @@ KIND_TITLE = {
     "grade_posted": "✅ Notas publicadas",
     "grade_changed": "✏️ Notas actualizadas",
     "comment_posted": "💬 Comentarios del profe",
+    "new_message": "✉️ Mensajes de los profes",
+    "new_event": "📆 En el calendario",
+    "event_changed": "📆 Cambios en el calendario",
+    "new_discussion": "🗣️ Foros nuevos",
+    "discussion_reply": "↩️ Respuestas en los foros",
+    "new_group": "👥 Grupos nuevos",
+    "peer_review_assigned": "🔍 Revisiones entre pares",
     "new_file": "📚 Material nuevo",
     "file_updated": "📚 Material actualizado",
     "new_link": "🔗 Enlaces nuevos",
@@ -103,7 +110,9 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
         author = f" ({e(ev['autor'])})" if ev.get("autor") else ""
         return f"📢 <b>Nuevo anuncio en {name}</b>{author}\n<b>{e(ev['titulo'])}</b>\n{e(text)}\n{link(ev['url'])}"
     if kind == "grade_posted":
-        return (f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n"
+        late = (f"⏰ Te bajaron {_number(ev['points_deducted'])} por entregar tarde.\n"
+                if ev.get("points_deducted") else "")
+        return (f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n{late}"
                 f"{_feedback(ev.get('feedback'))}{link(ev['url'])}")
     if kind == "grade_changed":
         return (f"✏️ <b>Nota actualizada</b> — {name}\n{e(ev['tarea'])}: {_score(ev, '')} "
@@ -111,6 +120,38 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
                 f"{_feedback(ev.get('feedback'))}{link(ev['url'])}")
     if kind == "comment_posted":
         return f"💬 <b>Comentario del profe</b> — {name}\n{e(ev['tarea'])}\n{_feedback(ev.get('feedback'))}{link(ev['url'])}"
+    if kind == "new_message":
+        files = "".join(f"📎 {link(f['url'], f['name'] or 'Archivo adjunto')}\n" for f in ev.get("adjuntos") or []
+                        if f.get("url"))
+        who = f" de {e(ev['autor'])}" if ev.get("autor") else ""
+        subject = f"<b>{e(ev['asunto'])}</b>\n" if ev.get("asunto") else ""
+        return (f"✉️ <b>Mensaje{who}</b> — {name}\n{subject}{e(_clip(ev.get('texto'), 1200))}\n{files}"
+                f"{link(ev['url'], 'Abrir el buzón del aula')}")
+    if kind in ("new_event", "event_changed"):
+        head = "📆 <b>Nuevo en el calendario</b>" if kind == "new_event" else "📆 <b>Cambió en el calendario</b>"
+        before = (f"Antes: {e(timefmt.human(ev.get('inicio_anterior'), tz))}\n"
+                  if kind == "event_changed" and ev.get("inicio_anterior") else "")
+        place = f"📍 {e(ev['lugar'])}\n" if ev.get("lugar") else ""
+        text = f"{e(_clip(ev.get('texto'), 300))}\n" if ev.get("texto") else ""
+        return (f"{head} — {name}\n{e(ev['titulo'])}\n{before}<b>{_event_time(ev, tz)}</b> "
+                f"({e(timefmt.until(ev['inicio'], now))})\n{place}{text}{link(ev['url'])}")
+    if kind == "new_discussion":
+        due = f"Vence: {e(timefmt.human(ev['due_at'], tz))}\n" if ev.get("due_at") else ""
+        graded = "Es calificado.\n" if ev.get("calificado") else ""
+        text = f"{e(_clip(ev.get('texto'), 400))}\n" if ev.get("texto") else ""
+        return f"🗣️ <b>Foro nuevo en {name}</b>\n{e(ev['titulo'])}\n{due}{graded}{text}{link(ev['url'], 'Abrir el foro')}"
+    if kind == "discussion_reply":
+        replies = "".join(f"💬 {e(r['autor'] or 'Alguien')}: <i>{e(_clip(r['texto'], 400))}</i>\n"
+                          for r in ev["respuestas"])
+        many = "Te respondieron" if len(ev["respuestas"]) == 1 else f"{len(ev['respuestas'])} respuestas a tu post"
+        return f"↩️ <b>{many}</b> — {name}\n{e(ev['titulo'])}\n{replies}{link(ev['url'], 'Abrir el foro')}"
+    if kind == "new_group":
+        members = ", ".join(ev.get("integrantes") or []) or "por ahora solo tú"
+        return f"👥 <b>Te pusieron en un grupo</b> — {name}\n{e(ev['grupo'])}: {e(members)}"
+    if kind == "peer_review_assigned":
+        due = f"Vence: {e(timefmt.human(ev['due_at'], tz))}\n" if ev.get("due_at") else ""
+        return (f"🔍 <b>Te toca revisar a un compañero</b> — {name}\n{e(ev['tarea'])}\n{due}"
+                f"{link(ev['url'], 'Abrir la revisión')}")
     if kind in ("new_file", "file_updated"):
         verb = "Nuevo material" if kind == "new_file" else "Material actualizado"
         where = "".join(f" · {e(ev[k])}" for k in ("modulo", "seccion") if ev.get(k))
@@ -155,13 +196,30 @@ def _feedback(found: dict | None) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
+def _clip(text: str | None, limit: int) -> str:
+    text = (text or "").strip()
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def _event_time(ev: dict, tz: ZoneInfo) -> str:
+    """When a calendar event happens: «jue 8 oct, 10:00 a 12:00», or the day alone when it takes all of it."""
+    if ev.get("todo_el_dia"):
+        return e(timefmt.human(ev["inicio"], tz).split(",")[0] + " (todo el día)")
+    start, end = timefmt.parse(ev.get("inicio")), timefmt.parse(ev.get("fin"))
+    text = timefmt.human(start, tz)
+    if end and end > start and end.astimezone(tz).date() == start.astimezone(tz).date():
+        text += f" a {end.astimezone(tz):%H:%M}"
+    return e(text)
+
+
 def _number(value) -> str:
     return f"{value:g}" if isinstance(value, (int, float)) else e(value)
 
 
 def _digest_line(ev: dict, tz: ZoneInfo) -> str:
     kind = ev["kind"]
-    name = str(ev.get("tarea") or ev.get("titulo") or ev.get("archivo") or ev.get("enlace") or ev["curso"])
+    name = str(ev.get("tarea") or ev.get("titulo") or ev.get("asunto") or ev.get("grupo") or ev.get("archivo")
+               or ev.get("enlace") or ev["curso"])
     extra = ""
     if kind in ("new_assignment", "due_changed") and ev.get("due_at"):
         extra = f" — vence {e(timefmt.human(ev['due_at'], tz))}"
@@ -171,6 +229,12 @@ def _digest_line(ev: dict, tz: ZoneInfo) -> str:
         extra = f" — {_score(ev)}"
         if (ev.get("feedback") or {}).get("comments"):
             extra += " · con comentario del profe"
+    elif kind in ("new_event", "event_changed") and ev.get("inicio"):
+        extra = f" — {_event_time(ev, tz)}"
+    elif kind == "new_message" and ev.get("autor"):
+        extra = f" — de {e(ev['autor'])}"
+    elif kind in ("new_discussion", "peer_review_assigned") and ev.get("due_at"):
+        extra = f" — vence {e(timefmt.human(ev['due_at'], tz))}"
     elif kind == "comment_posted":
         text = " ".join(c["text"] for c in ev["feedback"]["comments"])
         extra = f" — «{e(text[:80].rstrip() + ('…' if len(text) > 80 else ''))}»"
@@ -185,6 +249,12 @@ def digest(events: list[dict], tz: ZoneInfo) -> str:
     for kind, items in groups.items():
         blocks.append(f"<b>{KIND_TITLE.get(kind, kind)}</b>\n" + "\n".join(_digest_line(ev, tz) for ev in items))
     return "\n\n".join(blocks)
+
+
+def peer_review_reminder(review: dict, tz: ZoneInfo, now: datetime) -> str:
+    return (f"⏰ <b>Recordatorio</b> — {course(review['course_name'])}\nTe toca revisar a un compañero en "
+            f"{e(review['title'])}: vence {e(timefmt.human(review['due_at'], tz))} "
+            f"({e(timefmt.until(review['due_at'], now))}).\n{link(review['html_url'], 'Abrir la revisión')}")
 
 
 def hand_in_hint(handle: str | None) -> str:
@@ -278,9 +348,11 @@ TIER_TITLE = {"urgent": "Vence en menos de 24 h", "weighted": "Después, lo que 
 
 
 def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
-                   tz: ZoneInfo, now: datetime, undated_todos: list[dict] = (), stale=None) -> str:
+                   tz: ZoneInfo, now: datetime, undated_todos: list[dict] = (), stale=None,
+                   calendar: dict | None = None) -> str:
     """`entries`: the week's deliverables and the overdue ones, in priority.ordered's order. `stale`
-    (health.Stale): the aula could not be read lately, so what is pending is how it was then."""
+    (health.Stale): the aula could not be read lately, so what is pending is how it was then. `calendar`:
+    queries.calendar for the week (its events and the peer reviews still to do)."""
     today = now.astimezone(tz).date()
     end = today + timedelta(days=6)
     head = (f"☀️ <b>Resumen de tu semana</b>\n"
@@ -307,6 +379,16 @@ def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
     if unschemed:
         blocks.append(f"Sin esquema de notas, por fecha: {', '.join(unschemed)}. Dime cómo se evalúan y las ordeno "
                       "por lo que valen.")
+    events, reviews = (calendar or {}).get("events") or [], (calendar or {}).get("peer_reviews") or []
+    if events:
+        blocks.append(f"<b>📆 En el calendario ({len(events)})</b>\n" + "\n".join(
+            f"• {course(ev['course'])}: {link(ev['url'], ev['title'])} — "
+            f"{_event_time({'inicio': ev['start'], 'fin': ev['end'], 'todo_el_dia': ev['all_day']}, tz)}"
+            + (f" · {e(ev['location'])}" if ev["location"] else "") for ev in events))
+    if reviews:
+        blocks.append(f"<b>🔍 Revisiones entre pares por hacer ({len(reviews)})</b>\n" + "\n".join(
+            f"• {course(r['course'])}: {link(r['url'], r['title'])}"
+            + (f" — vence {e(timefmt.human(r['due'], tz))}" if r["due"] else "") for r in reviews))
     if submitted:
         blocks.append(f"Ya entregaste {submitted} de esta semana ✓")
     if undated_todos:

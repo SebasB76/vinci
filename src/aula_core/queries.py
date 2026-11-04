@@ -277,7 +277,7 @@ def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]
             "calificacion_actual": c["current_grade"],
             "tareas": [{"id": a["id"], "tarea": a["name"], "nota": a["score"], "calificacion": a["grade"],
                         "puntos": a["points_possible"], "calificada": a["graded_at"], "url": a["html_url"],
-                        **_feedback(a)}
+                        **({"late_penalty": a["points_deducted"]} if a["points_deducted"] else {}), **_feedback(a)}
                        for a in graded],
         })
     return result
@@ -461,3 +461,66 @@ def read_pages(conn: sqlite3.Connection, file_id: int, first: int | None = None,
     return {**info, "unidad": unit,
             "contenido": [{"pagina": n, "texto": "".join(parts), **({"ocr": True} if n in read else {})}
                           for n, parts in sorted(pages.items())]}
+
+
+def people(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]:
+    """Each course's professors and assistants (role «teacher» or «ta»; email null where the aula hides it) and the
+    student's groups in it."""
+    extra, params = _course_filter(ids, "c.id")
+    result = []
+    for c in conn.execute(f"SELECT * FROM courses c WHERE c.active = 1{extra} ORDER BY c.name", params).fetchall():
+        staff = conn.execute("SELECT * FROM course_staff WHERE course_id = ? ORDER BY role = 'ta', name",
+                             (c["id"],)).fetchall()
+        teams = conn.execute("SELECT * FROM student_groups WHERE course_id = ? AND active = 1 ORDER BY name",
+                             (c["id"],)).fetchall()
+        read = conn.execute("SELECT 1 FROM meta WHERE key = ?", (f"staff_read:{c['id']}",)).fetchone()
+        result.append({"course": c["name"], "course_id": c["id"], "staff_read": read is not None,
+                       "staff": [{"name": r["name"], "role": r["role"], "email": r["email"]} for r in staff],
+                       "groups": [{"name": g["name"], "members": json.loads(g["members"] or "[]")} for g in teams]})
+    return result
+
+
+def inbox(conn: sqlite3.Connection, ids: list[int] | None = None, limit: int = 10) -> list[dict]:
+    """The professors' and assistants' inbox messages, newest first."""
+    extra, params = _course_filter(ids, "m.course_id")
+    rows = conn.execute(
+        f"""SELECT m.*, c.name AS course_name FROM inbox_messages m JOIN courses c ON c.id = m.course_id
+            WHERE 1 = 1{extra} ORDER BY m.created_at DESC LIMIT ?""", (*params, limit)).fetchall()
+    return [{"course": r["course_name"], "subject": r["subject"], "author": r["author"], "at": r["created_at"],
+             "text": r["body"], "files": json.loads(r["attachments"] or "[]")} for r in rows]
+
+
+def calendar(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = None, days: int = 30) -> dict:
+    """Upcoming calendar events (not assignments) and the peer reviews still to do."""
+    extra, params = _course_filter(ids, "e.course_id")
+    start, end = timefmt.iso(now), timefmt.iso(now + timedelta(days=days))
+    events = conn.execute(
+        f"""SELECT e.*, c.name AS course_name FROM calendar_events e JOIN courses c ON c.id = e.course_id
+            WHERE e.active = 1 AND COALESCE(e.end_at, e.start_at) >= ? AND e.start_at <= ?{extra}
+            ORDER BY e.start_at""", (start, end, *params)).fetchall()
+    extra, params = _course_filter(ids, "r.course_id")
+    reviews = conn.execute(
+        f"""SELECT r.*, c.name AS course_name FROM peer_reviews r JOIN courses c ON c.id = r.course_id
+            WHERE r.done = 0{extra} ORDER BY r.due_at IS NULL, r.due_at""", params).fetchall()
+    return {"events": [{"course": r["course_name"], "title": r["title"], "start": r["start_at"], "end": r["end_at"],
+                        "all_day": bool(r["all_day"]), "location": r["location"], "text": r["description"],
+                        "url": r["html_url"]} for r in events],
+            "peer_reviews": [{"course": r["course_name"], "title": r["title"], "due": r["due_at"], "url": r["html_url"]}
+                             for r in reviews]}
+
+
+def discussions(conn: sqlite3.Connection, ids: list[int] | None = None, limit: int = 20) -> list[dict]:
+    """The courses' forums, the ones with activity first. `participated` is null when the topic was never opened."""
+    extra, params = _course_filter(ids, "d.course_id")
+    rows = conn.execute(
+        f"""SELECT d.*, c.name AS course_name, a.due_at AS graded_due FROM discussions d
+            JOIN courses c ON c.id = d.course_id LEFT JOIN assignments a ON a.id = d.assignment_id
+            WHERE d.active = 1{extra}
+            ORDER BY COALESCE(d.last_reply_at, d.posted_at) DESC LIMIT ?""", (*params, limit)).fetchall()
+    return [{"id": r["id"], "course": r["course_name"], "title": r["title"], "author": r["author"],
+             "posted": r["posted_at"], "last_reply": r["last_reply_at"], "due": r["graded_due"] or r["due_at"],
+             "closes": r["lock_at"], "graded": r["assignment_id"] is not None,
+             "post_first_to_see_replies": bool(r["require_initial_post"]),
+             "participated": None if r["participated"] is None else bool(r["participated"]),
+             "replies_to_you": len(json.loads(r["replies"])) if r["replies"] else 0,
+             "text": (r["message_text"] or "")[:600], "url": r["html_url"]} for r in rows]

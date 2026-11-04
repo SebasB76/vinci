@@ -270,7 +270,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 # are WhatsApp polls). No subject bots, notebooks or schedule: those are the captain's team.
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
-    "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "grade_status", "archivos", "modulos", "buscar_material",
+    "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
     "set_assignment_delivery", "study_activity", "show_page"})
 
@@ -1611,6 +1611,14 @@ PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página,
         "8/10 o más en una lección o un examen). "
         "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. Una página por "
         "respuesta como máximo, nunca en un grupo.")
+PEOPLE = ("Los profesores y ayudantes de cada materia (nombre, rol «teacher» o «ta», y correo cuando el aula lo "
+          "muestra; null si lo esconde) y sus grupos del aula con quién está en cada uno.")
+INBOX = ("Lo que le escribieron los profesores y ayudantes por el buzón del aula (mensajes directos o a la clase), lo "
+         "más nuevo primero, con sus adjuntos. Los mensajes de compañeros no se guardan.")
+CALENDAR = ("Lo que los profesores pusieron en el calendario del aula y no es una tarea (un examen, una clase en "
+            "vivo, una tutoría), con hora y lugar, y las revisiones entre pares que le tocan («peer_reviews»).")
+DISCUSSIONS = ("Los foros de discusión del aula (no los anuncios): de qué tratan, si vence o está calificado, si ya "
+               "participó («participated»: null si no lo he abierto) y cuántas respuestas le dejaron.")
 GRADES_FEEDBACK = ("Cada tarea trae «feedback»: los comentarios que dejó el profe en la entrega (y sus adjuntos) y "
                    "la rúbrica calificada por criterio. Sin «feedback», el profe no escribió nada; con "
                    "«feedback_read: false», todavía no lo leí del aula.")
@@ -1934,6 +1942,23 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         ctx.refresh()
         return queries.grades(ctx.conn, _vinci_course_ids(ctx, args.get("materia")))
 
+    def people(args):
+        ctx.refresh()
+        return queries.people(ctx.conn, _vinci_course_ids(ctx, args.get("materia")))
+
+    def inbox(args):
+        ctx.refresh()
+        return queries.inbox(ctx.conn, _vinci_course_ids(ctx, args.get("materia")), _int(args.get("n"), "n", 5, 1, 30))
+
+    def calendar(args):
+        ctx.refresh()
+        return queries.calendar(ctx.conn, ctx.now(), _vinci_course_ids(ctx, args.get("materia")),
+                                _int(args.get("dias"), "dias", 30, 1, 120))
+
+    def discussions(args):
+        ctx.refresh()
+        return queries.discussions(ctx.conn, _vinci_course_ids(ctx, args.get("materia")))
+
     def archivos(args):
         subject = _vinci_subject(ctx, args.get("materia"))
         book = _books(ctx, [subject])[subject.code] if subject else None
@@ -2175,6 +2200,11 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
         Tool("notas", "Notas publicadas por materia. " + GRADES_FEEDBACK, notas, dict(materia)),
+        Tool("people", PEOPLE, people, dict(materia)),
+        Tool("inbox", INBOX, inbox, {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
+        Tool("calendar", CALENDAR, calendar,
+             {**materia, "dias": {"type": "integer", "description": "los próximos N días (por defecto 30)"}}),
+        Tool("discussions", DISCUSSIONS, discussions, dict(materia)),
         Tool("grade_status", "La calculadora de notas: aplica el esquema de evaluación guardado de una materia (sus "
              "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "
              "en lo que falta para aprobar. Sin «subject», todas. Las cuentas vienen hechas en «summary».", grade_status,
@@ -2419,6 +2449,22 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         ctx.refresh()
         return queries.grades(ctx.conn, course_ids())
 
+    def people(args):
+        ctx.refresh()
+        return queries.people(ctx.conn, course_ids())
+
+    def inbox(args):
+        ctx.refresh()
+        return queries.inbox(ctx.conn, course_ids(), _int(args.get("n"), "n", 5, 1, 30))
+
+    def calendar(args):
+        ctx.refresh()
+        return queries.calendar(ctx.conn, ctx.now(), course_ids(), _int(args.get("dias"), "dias", 30, 1, 120))
+
+    def discussions(args):
+        ctx.refresh()
+        return queries.discussions(ctx.conn, course_ids())
+
     def archivos(args):
         return _material(ctx, course_ids(), args.get("nombre"), book())
 
@@ -2599,6 +2645,10 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
              "SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios, {"n": {"type": "integer"}}),
         Tool("notas", "Notas publicadas de tu materia. " + GRADES_FEEDBACK, notas),
+        Tool("people", PEOPLE, people),
+        Tool("inbox", INBOX, inbox, {"n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
+        Tool("calendar", CALENDAR, calendar, {"dias": {"type": "integer", "description": "los próximos N días"}}),
+        Tool("discussions", DISCUSSIONS, discussions),
         Tool("grade_status", "La calculadora de notas de tu materia: aplica su esquema de evaluación guardado (los "
              "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "
              "en lo que falta para aprobar. Las cuentas vienen hechas en «summary».", grade_status, STATUS_PROPERTIES),

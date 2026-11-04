@@ -75,6 +75,9 @@ DOWNLOADS = {5001: "capitulo-3-derivadas.pdf", 5005: "capitulo-3-derivadas.pdf",
              5010: "silabo-matg1049.pdf", 5301: "silabo-matg1049.pdf", 5102: "lectura-vectores-escaneada.pdf",
              6101: "taller-2-especificacion.pdf", 6102: "plantilla-taller.doc"}
 THROTTLE_ONCE = "/api/v1/courses/102/assignments"
+# Lists most fixtures leave out: no comments on a submission, no forums, an empty calendar, inbox or group list.
+EMPTY_UNLESS_GIVEN = re.compile(r"courses/\d+/(students/submissions|users|forums)|calendar_events|conversations"
+                                r"|users/self/groups|planner/items")
 PUBLIC_DOC = "1PoliticasFisicaE2E-publico_0000000000000000"  # the Google Doc of Física's policies, shared with anyone
 PRIVATE_DOC = "1RubricaFisicaE2E-privado_00000000000000000"  # the project rubric, shared only with some accounts
 DRIVE_FILE = "1GuiaLaboratorioE2E-drive_000000000"  # the lab guide, a PDF in Drive shared with anyone
@@ -542,7 +545,10 @@ class _CanvasHandler(_Quiet):
         if not url.path.startswith("/api/v1/"):
             return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]})
 
-        if url.path in canvas.failing:
+        api = url.path[len("/api/v1/"):]
+        if api.endswith("/discussion_topics") and ("only_announcements", "true") not in parse_qsl(url.query):
+            api = api.removesuffix("discussion_topics") + "forums"  # the same path serves forums and announcements
+        if f"/api/v1/{api}" in canvas.failing:  # a failing «discussion_topics» is the announcements, not the forums
             return self._json(503, {"errors": [{"message": "Service Unavailable"}]}, {"Retry-After": "0"})
 
         if url.path == THROTTLE_ONCE and not canvas.throttled:
@@ -550,9 +556,9 @@ class _CanvasHandler(_Quiet):
             return self._send(429, b"429 Too Many Requests (Rate Limit Exceeded)", "text/plain",
                               {"X-Rate-Limit-Remaining": "0.0", "Retry-After": "0"})
 
-        data = canvas.load(url.path[len("/api/v1/"):], account)
-        if data is None and url.path.endswith("/students/submissions"):
-            data = []  # a course where the professor has written nothing on any submission
+        data = canvas.load(api, account)
+        if data is None and EMPTY_UNLESS_GIVEN.fullmatch(api):
+            data = []
         if data is None:
             return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]}, quota)
         if isinstance(data, dict) and "__status" in data:

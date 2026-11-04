@@ -1,0 +1,31 @@
+[
+  {
+    "id": 5501,
+    "course_id": 501,
+    "name": "Proyecto: entrega 1",
+    "description": "<p>Suban el repositorio.</p>",
+    "due_at": "2026-10-04T04:59:00Z",
+    "lock_at": null,
+    "points_possible": 10,
+    "submission_types": [
+      "online_url"
+    ],
+    "published": true,
+    "workflow_state": "published",
+    "peer_reviews": true,
+    "html_url": "{{BASE}}/courses/501/assignments/5501",
+    "updated_at": "2026-09-20T12:00:00Z",
+    "submission": {
+      "assignment_id": 5501,
+      "workflow_state": "submitted",
+      "submitted_at": "2026-10-04T06:10:00Z",
+      "score": null,
+      "grade": null,
+      "graded_at": null,
+      "excused": null,
+      "missing": false,
+      "late": true,
+      "points_deducted": null
+    }
+  }
+]

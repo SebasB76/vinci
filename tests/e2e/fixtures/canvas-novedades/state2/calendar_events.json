@@ -1,0 +1,25 @@
+[
+  {
+    "id": 6601,
+    "title": "Tutoría de proyecto",
+    "start_at": "2026-10-07T20:00:00Z",
+    "end_at": "2026-10-07T21:00:00Z",
+    "all_day": false,
+    "context_code": "course_501",
+    "workflow_state": "active",
+    "html_url": "{{BASE}}/calendar?event_id=6601",
+    "location_name": "Sala de tutorías"
+  },
+  {
+    "id": 6602,
+    "title": "Examen parcial (presencial)",
+    "start_at": "2026-10-09T14:00:00Z",
+    "end_at": "2026-10-09T16:00:00Z",
+    "all_day": false,
+    "context_code": "course_501",
+    "workflow_state": "active",
+    "html_url": "{{BASE}}/calendar?event_id=6602",
+    "location_name": "Aula 201",
+    "description": "<p>Traer lápiz y cédula.</p>"
+  }
+]

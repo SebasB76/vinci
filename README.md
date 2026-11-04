@@ -31,7 +31,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 
 ## De dónde lee
 
-- **[Aula virtual](https://aulavirtual.espol.edu.ec):** tareas, fechas, anuncios, notas y material. Ahí también entrega.
+- **[Aula virtual](https://aulavirtual.espol.edu.ec):** tareas, fechas, anuncios, notas con los comentarios del profe, material, foros, calendario, los mensajes de tus profes y tus grupos. Ahí también entrega.
 - **[Académico](https://www.academico.espol.edu.ec):** promedio, avance, historial y horarios de clases y exámenes.
 - **[DSpace](https://www.dspace.espol.edu.ec):** unos 20 000 exámenes anteriores, de todas las facultades.
 

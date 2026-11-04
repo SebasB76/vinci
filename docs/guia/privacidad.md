@@ -6,7 +6,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 
 | Archivo | Qué es |
 |---|---|
-| `espol.db` | Tus materias, tareas, anuncios, notas, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas, las páginas del material que leyó cada bot en cada chat (con eso se revisan sus citas) y de qué materia es cada nota de tu carpeta de apuntes |
+| `espol.db` | Tus materias, tareas, anuncios, notas (con los comentarios del profe), los foros, el calendario, los profesores y ayudantes de cada curso, tus grupos, los mensajes que te escribieron profes y ayudantes, el catálogo y el índice del material, el libro principal de cada materia, cómo se evalúa cada materia y las notas que le contaste a un bot, los avisos enviados, tu lista de pendientes, las tareas que marcaste como entregadas, las páginas del material que leyó cada bot en cada chat (con eso se revisan sus citas) y de qué materia es cada nota de tu carpeta de apuntes |
 | `materiales/<curso>/` | Los archivos descargados del aula, una carpeta por curso (y en `recibidos/`, el material que le mandaste a un bot) |
 | `libros/<CÓDIGO>/` | Donde pones el PDF del libro principal de una materia si pesa más de 20 MB |
 | `tessdata/` | Los modelos de OCR de español e inglés que bajó `setup.sh` |
@@ -28,6 +28,7 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   solo cuando pulsas «📤 Entregar» debajo de ese PDF, nunca porque el modelo lo pida. No publica, no comenta y no
   cambia nada más. Otro componente hace `POST` y `DELETE` únicamente sobre los tokens propios de Vinci, verifica
   el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
+- **Del buzón del aula, solo lo de tus profes.** Vinci lee las conversaciones del buzón sin marcarlas como leídas y guarda solo los mensajes de profesores y ayudantes de tus cursos. Lo que te escribe un compañero no se guarda ni llega al modelo.
 - **Tus apuntes salen solo si son de clase.** Vinci lee tu carpeta de notas en tu PC, sin el modelo. Al modelo
   solo llegan las notas que quedaron de una materia (por su título, por la clase y su material, o por tu botón) y
   las líneas `//vinci`; una nota sin relación con ninguna clase no sale de tu PC. Tus archivos nunca se cambian:

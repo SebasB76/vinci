@@ -4,6 +4,10 @@
     aula tareas    [--curso X] [--dias N]
     aula anuncios  [--curso X] [-n N]
     aula notas     [--curso X]
+    aula personas  [--curso X]          (profesores, ayudantes y tus grupos)
+    aula mensajes  [--curso X] [-n N]   (lo que te escribieron los profesores en el buzón del aula)
+    aula calendario [--curso X] [--dias N]
+    aula foros     [--curso X]
     aula archivos  [listar] [--curso X] [--nombre Y]
     aula archivos  bajar <id>... | --curso X [--nombre Y]
     aula archivos  leer <id> [--paginas 3-5]
@@ -58,6 +62,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-n", type=int, default=10, help="cuántos (por defecto 10)")
 
     p = sub.add_parser("notas", parents=[common], help="calificaciones publicadas")
+    p.add_argument("--curso")
+
+    p = sub.add_parser("personas", parents=[common], help="profesores, ayudantes y tus grupos")
+    p.add_argument("--curso")
+
+    p = sub.add_parser("mensajes", parents=[common], help="mensajes de los profesores en el buzón del aula")
+    p.add_argument("--curso")
+    p.add_argument("-n", type=int, default=10, help="cuántos (por defecto 10)")
+
+    p = sub.add_parser("calendario", parents=[common], help="eventos del calendario y revisiones entre pares")
+    p.add_argument("--curso")
+    p.add_argument("--dias", type=int, default=30, help="los próximos N días (por defecto 30)")
+
+    p = sub.add_parser("foros", parents=[common], help="foros de discusión de tus materias")
     p.add_argument("--curso")
 
     p = sub.add_parser("archivos", parents=[common], help="catálogo del material: listar, bajar, leer")
@@ -147,6 +165,47 @@ def render_announcements(rows, aula: Aula) -> str:
     return "\n\n".join(blocks)
 
 
+def render_people(rows) -> str:
+    role = {"teacher": "profesor", "ta": "ayudante"}
+    blocks = []
+    for c in rows:
+        lines = [c["course"]]
+        lines += [f"  • {r['name']} ({role.get(r['role'], r['role'])})" + (f" · {r['email']}" if r["email"] else "")
+                  for r in c["staff"]] or ["  (sin profesores visibles)"]
+        lines += [f"  👥 {g['name']}: {', '.join(g['members']) or 'solo tú'}" for g in c["groups"]]
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) or "No tienes materias activas."
+
+
+def render_inbox(rows, aula: Aula) -> str:
+    if not rows:
+        return "No hay mensajes de profesores."
+    return "\n\n".join(
+        f"• {timefmt.human(m['at'], aula.cfg.tz)} — {m['course']}: {m['subject'] or '(sin asunto)'} ({m['author']})\n"
+        f"  {m['text']}" + "".join(f"\n  📎 {f['name']}" for f in m["files"]) for m in rows)
+
+
+def render_calendar(data, aula: Aula) -> str:
+    lines = [f"• {timefmt.human(e['start'], aula.cfg.tz)} — {e['course']}: {e['title']}"
+             + (f" · {e['location']}" if e["location"] else "") for e in data["events"]]
+    lines += [f"• 🔍 {timefmt.human(r['due'], aula.cfg.tz) if r['due'] else 'sin fecha'} — {r['course']}: "
+              f"revisar a un compañero en {r['title']}" for r in data["peer_reviews"]]
+    return "\n".join(lines) or "No hay eventos en el calendario."
+
+
+def render_discussions(rows, aula: Aula) -> str:
+    if not rows:
+        return "No hay foros."
+    out = []
+    for d in rows:
+        facts = [f"vence {timefmt.human(d['due'], aula.cfg.tz)}" if d["due"] else "",
+                 "calificado" if d["graded"] else "",
+                 {True: "participaste", False: "no has participado", None: ""}[d["participated"]],
+                 f"{d['replies_to_you']} respuesta(s) a ti" if d["replies_to_you"] else ""]
+        out.append(f"• {d['course']}: {d['title']}" + "".join(f" · {f}" for f in facts if f) + f"\n  {d['url']}")
+    return "\n".join(out)
+
+
 def _grade(value, grade, points) -> str:
     if value is None:
         return grade or "—"
@@ -166,7 +225,8 @@ def render_grades(rows) -> str:
         if not c["tareas"]:
             lines.append("  (sin notas publicadas)")
         for t in c["tareas"]:
-            lines.append(f"  • {t['tarea']}: {_grade(t['nota'], t['calificacion'], t['puntos'])}")
+            late = f" (−{t['late_penalty']:g} por atraso)" if t.get("late_penalty") else ""
+            lines.append(f"  • {t['tarea']}: {_grade(t['nota'], t['calificacion'], t['puntos'])}{late}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
@@ -305,6 +365,14 @@ def run(args, aula: Aula) -> int:
         _out(queries.announcements(conn, ids, limit=args.n), as_json, lambda r: render_announcements(r, aula))
     elif cmd == "notas":
         _out(queries.grades(conn, ids), as_json, render_grades)
+    elif cmd == "personas":
+        _out(queries.people(conn, ids), as_json, render_people)
+    elif cmd == "mensajes":
+        _out(queries.inbox(conn, ids, limit=args.n), as_json, lambda r: render_inbox(r, aula))
+    elif cmd == "calendario":
+        _out(queries.calendar(conn, aula.now(), ids, days=args.dias), as_json, lambda r: render_calendar(r, aula))
+    elif cmd == "foros":
+        _out(queries.discussions(conn, ids), as_json, lambda r: render_discussions(r, aula))
     elif cmd == "enlaces":
         _out(queries.links(conn, ids, args.nombre), as_json, render_links)
     elif cmd == "buscar":

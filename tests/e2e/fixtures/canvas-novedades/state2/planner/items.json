@@ -1,0 +1,14 @@
+[
+  {
+    "plannable_id": 3301,
+    "plannable_type": "assessment_request",
+    "course_id": 501,
+    "plannable_date": "2026-10-08T20:00:00Z",
+    "html_url": "/courses/501/assignments/5501/submissions/78",
+    "plannable": {
+      "id": 3301,
+      "title": "Proyecto: entrega 1",
+      "workflow_state": "assigned"
+    }
+  }
+]

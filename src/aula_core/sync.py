@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from aula_core import timefmt
+from aula_core import extras, timefmt
 from aula_core.canvas import (
     CanvasClient,
     CanvasError,
@@ -199,6 +199,8 @@ class _Syncer:
                 "missing": int(bool(sub.get("missing"))),
                 "late": int(bool(sub.get("late"))),
                 "group_id": a.get("assignment_group_id"),
+                "points_deducted": sub.get("points_deducted") or None,
+                "peer_reviews": int(bool(a.get("peer_reviews"))),
             }
             seen.append(row["id"])
             prev = self.conn.execute("SELECT * FROM assignments WHERE id = ?", (row["id"],)).fetchone()
@@ -221,7 +223,8 @@ class _Syncer:
                 grade_info = {**info, "nota": row["score"], "calificacion": row["grade"]}
                 if has_grade and not had_grade and not row["excused"]:
                     self.emit(quiet, "grade_posted", course, row["id"],
-                              {**grade_info, "feedback": json.loads(row["feedback"] or "{}") or None})
+                              {**grade_info, "feedback": json.loads(row["feedback"] or "{}") or None,
+                               "points_deducted": row["points_deducted"]})
                 elif has_grade and had_grade and (prev["score"], prev["grade"]) != (row["score"], row["grade"]):
                     self.emit(quiet, "grade_changed", course, row["id"],
                               {**grade_info, "nota_anterior": prev["score"], "calificacion_anterior": prev["grade"],
@@ -231,10 +234,11 @@ class _Syncer:
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
                      allowed_extensions, asks_scan, description, material, rubric, sub_state, submitted_at, score, grade,
-                     graded_at, excused, missing, late, group_id, feedback, active, first_seen)
+                     graded_at, excused, missing, late, group_id, feedback, points_deducted, peer_reviews, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
                      :allowed_extensions, :asks_scan, :description, :material, :rubric, :sub_state, :submitted_at, :score,
-                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, 1, :now)
+                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, :points_deducted, :peer_reviews, 1,
+                     :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
                      submission_types=excluded.submission_types, allowed_extensions=excluded.allowed_extensions,
@@ -242,7 +246,8 @@ class _Syncer:
                      rubric=excluded.rubric, sub_state=excluded.sub_state,
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
-                     late=excluded.late, group_id=excluded.group_id, feedback=excluded.feedback, active=1""",
+                     late=excluded.late, group_id=excluded.group_id, feedback=excluded.feedback,
+                     points_deducted=excluded.points_deducted, peer_reviews=excluded.peer_reviews, active=1""",
                 {**row, "now": self.now_iso},
             )
         self._deactivate("assignments", course["id"], seen)
@@ -714,7 +719,9 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
             s.emit(False, "new_course", course, course["id"], {"codigo": course["course_code"], "url": course["html_url"]})
         for resource, label, step in (("assignments", "tareas", s.assignments),
                                       ("announcements", "anuncios", s.announcements),
-                                      ("files", "archivos", s.files)):
+                                      ("files", "archivos", s.files),
+                                      ("staff", "profesores", lambda c, q: extras.staff(s, c, q)),
+                                      ("discussions", "foros", lambda c, q: extras.discussions(s, c, q))):
             baseline = _resource_key("seeded", course["id"], resource)
             failing = _resource_key("failing", course["id"], resource)
             reported = _resource_key("reported", course["id"], resource)
@@ -738,6 +745,7 @@ def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: d
                     set_meta(conn, baseline, s.now_iso)
             delete_meta(conn, failing, reported)
         conn.commit()
+    extras.read_all(s, courses)
     set_meta(conn, "initialized", "1")
     set_meta(conn, "last_sync", s.now_iso)
     conn.commit()

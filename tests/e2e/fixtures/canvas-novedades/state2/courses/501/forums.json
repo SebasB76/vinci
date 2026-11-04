@@ -1,0 +1,30 @@
+[
+  {
+    "id": 7101,
+    "title": "Foro 1: presentaciones",
+    "message": "<p>Cuéntanos qué framework usas.</p>",
+    "posted_at": "2026-09-22T15:00:00Z",
+    "last_reply_at": "2026-10-06T01:00:00Z",
+    "user_name": "Profesora E2E",
+    "published": true,
+    "require_initial_post": false,
+    "assignment_id": null,
+    "todo_date": null,
+    "lock_at": null,
+    "html_url": "{{BASE}}/courses/501/discussion_topics/7101"
+  },
+  {
+    "id": 7102,
+    "title": "Foro 2: debate sobre REST",
+    "message": "<p>¿REST o GraphQL? Argumenta con un ejemplo.</p>",
+    "posted_at": "2026-10-05T20:00:00Z",
+    "last_reply_at": null,
+    "user_name": "Profesora E2E",
+    "published": true,
+    "require_initial_post": true,
+    "assignment_id": null,
+    "todo_date": "2026-10-12T04:59:00Z",
+    "lock_at": null,
+    "html_url": "{{BASE}}/courses/501/discussion_topics/7102"
+  }
+]

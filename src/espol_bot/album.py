@@ -45,6 +45,10 @@ TEST = re.compile(r"\b(leccion|lecciones|examen|examenes|parcial|parciales)\b")
 SINCE = "album_since"
 DAILY = "diario:"
 GIFT = "regalo:"
+WELCOME = f"{GIFT}bienvenida"
+PENDING_HINT = ("\n\nGanas más sobres cuando entregas a tiempo y cuando sacas buenas notas. Para eso, conecta tu aula "
+                "virtual desde el enlace que te mandé: yo solo la leo, no cambio nada. Si el enlace ya no abre, "
+                "escríbeme /token.")
 MAX_PER_POLL = 4  # the rest wait for the next poll, so a busy day does not flood the chat
 BUTTON = "🎴 Abrir mi sobre"
 ALBUM_BUTTON = "🎴 Ver mi álbum"
@@ -161,6 +165,17 @@ def give_gift(conn: sqlite3.Connection, now: datetime, reason: str, rng: random.
             return False
         set_meta(conn, SINCE, timefmt.iso(now))
     _store(conn, now, f"{GIFT}{timefmt.iso(now)}", reason, draw(catalog(), rng or random.Random()), False)
+    conn.commit()
+    return True
+
+
+def give_welcome(conn: sqlite3.Connection, now: datetime, rng: random.Random | None = None) -> bool:
+    """The pack someone gets with the token link, once, before Vinci reads their aula; their album starts with it."""
+    if conn.execute("SELECT 1 FROM album_packs WHERE source = ?", (WELCOME,)).fetchone():
+        return False
+    if get_meta(conn, SINCE) is None:
+        set_meta(conn, SINCE, timefmt.iso(now))
+    _store(conn, now, WELCOME, "Para que empieces tu colección", draw(catalog(), rng or random.Random()), False)
     conn.commit()
     return True
 

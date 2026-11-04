@@ -5,23 +5,12 @@ description: Verify a change to Vinci or the subject bots on the live system, th
 
 # Control Vinci
 
-`vinci-check` drives the live bots. They run on the home laptop, so `vinci-check` runs there too, from the
-live checkout's `.venv/bin/`:
+`vinci-check` drives the live bots. They run in the Coolify container, so `vinci-check` runs there too: the
+captain types `vinci-check <command>` in the container's **Terminal** (it runs as the `hermes` user, like
+`espol-bot`). Nothing on the PC reaches the container, so ask him to run it and paste the output.
 
-```bash
-ssh vinci-server 'cd ~/espol-academic-bot && .venv/bin/vinci-check <command>'
-```
-
-To try a branch's `vinci-check` before merging, run that branch's code there against the live data, from a
-worktree on the laptop (`git worktree add`), never by switching branches in `~/espol-academic-bot`:
-
-```bash
-ssh vinci-server 'cd <worktree> && AULA_CONFIG=~/espol-academic-bot/config.toml AULA_SECRETS=~/espol-academic-bot/secrets.env \
-  PYTHONPATH=src ~/espol-academic-bot/.venv/bin/python -m espol_bot.check <command>'
-```
-
-The bots run the live checkout's code, not the worktree's: a behavior change is only live after
-"Done means" steps 3 to 5 in `AGENTS.md` (merge, `setup.sh`, gateway restart).
+The bots run `main` as of the last **Redeploy**: a behavior change is only live after "Done means" steps 3 and 4 in
+`AGENTS.md` (merge, Redeploy).
 
 ## Commands
 

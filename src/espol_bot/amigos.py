@@ -38,11 +38,11 @@ from pathlib import Path
 
 from aula_core import Aula, queries, timefmt
 from aula_core.canvas import CanvasError
-from aula_core.config import ConfigError, config_path, load_config, update_secret_values
+from aula_core.config import ConfigError, config_path, load_config, secrets_path, update_secret_values
 from aula_core.store import connect, file_lock, set_meta
 from espol_bot import token_form, whatsapp
 from espol_bot.store import ensure as store_ensure
-from espol_bot.config import BotConfig, load_bot_config, whatsapp_settings
+from espol_bot.config import CAPTAIN_SECRETS, BotConfig, load_bot_config, whatsapp_settings
 from espol_bot.token_renewal import RenewalError, TokenRenewal
 
 log = logging.getLogger(__name__)
@@ -156,7 +156,7 @@ def env(cfg: BotConfig, friend: Friend) -> dict[str, str]:
     """What points the code at the friend's aula instead of the captain's (aula_core.config, config.py)."""
     base = folder(cfg, friend)
     return {"AULA_CONFIG": str(config_path()), "AULA_SECRETS": str(base / "secrets.env"),
-            "AULA_DATA_DIR": str(base), "ESPOL_AMIGO": friend.slug}
+            "AULA_DATA_DIR": str(base), "ESPOL_AMIGO": friend.slug, CAPTAIN_SECRETS: str(secrets_path())}
 
 
 @contextmanager

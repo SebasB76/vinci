@@ -71,6 +71,7 @@ from aula_core.config import (
 from espol_bot import characters, herramientas, materias, quiz, skill_check
 from espol_bot.config import (
     BLOCKED_TOOLSETS,
+    CAPTAIN_SECRETS,
     DEFAULT_TELEGRAM_API,
     BotConfig,
     TelegramSecrets,
@@ -681,7 +682,7 @@ class Setup:
         managed["mcp_servers"]["vinci"]["env"].update(env)
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         self.configured.append((name, "amigo"))
-        extra = "".join(f"export {key}='{env[key]}'\n" for key in ("AULA_DATA_DIR", "ESPOL_AMIGO"))
+        extra = "".join(f"export {key}='{env[key]}'\n" for key in ("AULA_DATA_DIR", "ESPOL_AMIGO", CAPTAIN_SECRETS))
         values = {**self.values, "PROFILE_HOME": str(profile), "NOMBRE": friend.nombre, "CODIGO": "",
                   "SECRETS": env["AULA_SECRETS"], "DATA_DIR": env["AULA_DATA_DIR"], "AMIGO": friend.slug,
                   "WHATSAPP_OWNER": friend.numero, "ENV_EXTRA": extra}

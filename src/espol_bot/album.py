@@ -17,18 +17,20 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import sqlite3
 from datetime import datetime
 from functools import lru_cache
+from pathlib import Path
 
 from aula_core import timefmt
 from aula_core.catalog import fold
 from aula_core.config import REPO_ROOT, ConfigError, load_secret_values
 from aula_core.store import get_meta, set_meta
 from espol_bot import messages
-from espol_bot.config import BotConfig
+from espol_bot.config import CAPTAIN_SECRETS, BotConfig
 from espol_bot.dashboard import MAX_URL, encode
 
 log = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ GOOD_SHARE = 0.8
 TEST = re.compile(r"\b(leccion|lecciones|examen|examenes|parcial|parciales)\b")
 SINCE = "album_since"
 DAILY = "diario:"
+GIFT = "regalo:"
 MAX_PER_POLL = 4  # the rest wait for the next poll, so a busy day does not flood the chat
 BUTTON = "🎴 Abrir mi sobre"
 ALBUM_BUTTON = "🎴 Ver mi álbum"
@@ -149,10 +152,21 @@ def give_daily(conn: sqlite3.Connection, now: datetime, today: str, rng: random.
     return True
 
 
+def give_gift(conn: sqlite3.Connection, now: datetime, reason: str, rng: random.Random | None = None) -> bool:
+    """A pack the captain gives everyone (`espol-bot album-regalo`), once the album started; the next poll sends it."""
+    if get_meta(conn, SINCE) is None:
+        return False
+    _store(conn, now, f"{GIFT}{timefmt.iso(now)}", reason, draw(catalog(), rng or random.Random()), False)
+    conn.commit()
+    return True
+
+
 def art_key() -> str:
-    """The key of the encrypted art (base64url), or "" without one: the page then shows initials."""
+    """The key of the encrypted art (base64url), or "" without one: the page then shows initials. A friend's Vinci
+    reads it from the captain's secrets.env, the only one that holds it."""
+    captain = os.environ.get(CAPTAIN_SECRETS)
     try:
-        return load_secret_values().get("ALBUM_ART_KEY", "")
+        return load_secret_values(Path(captain) if captain else None).get("ALBUM_ART_KEY", "")
     except ConfigError:
         return ""
 
@@ -166,6 +180,8 @@ def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None =
                         "cards": json.loads(pack["cards"])}
         if pack["source"].startswith(DAILY):
             data["pack"]["daily"] = True
+        elif pack["source"].startswith(GIFT):
+            data["pack"]["gift"] = True
     return data
 
 
@@ -179,6 +195,8 @@ def page_url(cfg: BotConfig, data: dict) -> str:
 def message(pack: sqlite3.Row) -> str:
     if pack["source"].startswith(DAILY):
         return "🎴 Tu sobre del día: 3 cartas para tu álbum. Mañana con el resumen te llega otro."
+    if pack["source"].startswith(GIFT):
+        return f"🎁 {pack['reason']}: te llegó un <b>sobre de regalo</b> con 3 cartas para tu álbum."
     if pack["gold"]:
         return f"🌟 {pack['reason']}: te ganaste un <b>sobre dorado</b>. Trae una carta épica o mejor."
     return f"🎴 {pack['reason']}: te ganaste un sobre con 3 cartas para tu álbum."

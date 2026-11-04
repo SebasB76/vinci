@@ -128,6 +128,7 @@ uv run pytest                             # the E2E: 4 tests in parallel (fake C
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
 .venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
+.venv/bin/espol-bot album-regalo "<motivo>" # a gift pack for the captain and every friend, sent by the next poll
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 systemctl --user status vinci-panel      # the admin panel on 127.0.0.1:8787 (`tailscale serve status`)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins

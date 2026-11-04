@@ -6,6 +6,7 @@
     espol-bot mantenimiento          renew Canvas access (no model)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
     espol-bot probar                 send a test message from Vinci to your Telegram
+    espol-bot album-regalo [MOTIVO]  a gift pack for the captain and each friend, sent by the next poll
     espol-bot doctor                 system health: last poll and sync, token chain (read-only;
                                      exits 1 when something is broken)
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
@@ -326,6 +327,26 @@ def _portal(cfg, args) -> int:
     return 0
 
 
+def _album_gift(cfg, reason: str) -> int:
+    from aula_core import store as core_store
+    from espol_bot import album, amigos, store
+
+    def give(owner_cfg, who: str) -> None:
+        with file_lock(owner_cfg.core.data_dir, "bot.lock"):
+            conn = store.ensure(core_store.connect(owner_cfg.core.db_path))
+            try:
+                done = owner_cfg.album_page and album.give_gift(conn, now_utc(), reason)
+            finally:
+                conn.close()
+        print(f"{'🎁' if done else '·'} {who}: {'le llega en el próximo sondeo' if done else 'sin álbum todavía'}")
+
+    give(cfg, "tú")
+    for friend in amigos.active(cfg):
+        with amigos.scope(cfg, friend) as fcfg:
+            give(fcfg, friend.nombre)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
@@ -337,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu chat (WhatsApp o Telegram)")
     sub.add_parser("dashboard", help="poner ya el dashboard al día en el botón de menú del chat de Vinci")
     sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización y token (solo lectura)")
+    p = sub.add_parser("album-regalo", help="regalar un sobre del álbum a ti y a cada amigo; lo manda el próximo sondeo")
+    p.add_argument("motivo", nargs="?", default="Un regalo de Vinci, porque sí")
     p = sub.add_parser("panel", help="el panel de administración en el navegador: gateway, tareas, gasto y turnos "
                                      "(solo lectura)")
     p.add_argument("--puerto", type=int, default=8787)
@@ -439,6 +462,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd in ("doctor", "estado"):
             return _health(cfg, telegram=args.cmd == "estado")
+        if args.cmd == "album-regalo":
+            return _album_gift(cfg, args.motivo)
         if args.cmd == "whatsapp-vincular":
             from espol_bot import whatsapp
             return whatsapp.link(args.numero, cfg.whatsapp_bridge)

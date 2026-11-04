@@ -21,6 +21,8 @@ DEFAULT_DASHBOARD_URL = "https://sebasb76.github.io/vinci/dashboard/"
 # The grades page Vinci links to on WhatsApp (docs/notas/). Like the dashboard, its data rides in its URL.
 DEFAULT_GRADES_URL = "https://sebasb76.github.io/vinci/notas/"
 DEFAULT_ALBUM_URL = "https://sebasb76.github.io/vinci/album/"
+# A friend's Vinci reads its own secrets.env; this points it at the captain's, which holds the album's ALBUM_ART_KEY.
+CAPTAIN_SECRETS = "VINCI_CAPTAIN_SECRETS"
 DEFAULT_PORTAL_URL = "https://www.academico.espol.edu.ec"
 # The page where the student signs in to the Académico (docs/academico/). It keeps nothing: credentials leave it sealed.
 DEFAULT_PORTAL_FORM_URL = "https://sebasb76.github.io/vinci/academico/"

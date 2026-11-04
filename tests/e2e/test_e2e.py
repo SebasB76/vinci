@@ -15,7 +15,7 @@ test_canvas, no gateway:
   3. Vinci's polls, then the fixtures change (new assignment, due-date change, new announcement, posted grade with the
      professor's comment and its file (never the student's own comment), new
      material, the syllabus, a new module link, a submission), then polls 2-4 and the 07:00 summary (twice: the second
-     must not resend; the album's pack of the day comes after it), each in the captain's WhatsApp chat, a reminder's «Ya lo entregué» as a poll. Only syllabi
+     must not resend; the album's pack of the day comes after it; a gift pack from `album-regalo` goes with the next poll), each in the captain's WhatsApp chat, a reminder's «Ya lo entregué» as a poll. Only syllabi
      download on their own; while poll 2 slowly downloads the new one, `aula cursos --actualizar` must not wait for it.
      Then reading quizzes, against a Canvas of their own: a new quiz's alert and reminders carry its questions, time
      limit, attempts and when it opens and closes; a test open for 30 minutes warns before it opens, once; each quiz
@@ -1479,9 +1479,18 @@ def test_canvas(tmp_path):
         assert take("Resumen diario repetido") == [], "el resumen se envía una vez al día"
         report.append("El resumen de las 7:00 trajo después el sobre del día, con 3 cartas más; repetido, no manda nada")
 
+        # A gift pack from the captain to everyone with Vinci: the next poll sends it, with the page's gift title.
+        run([bot, "album-regalo", "Porque sí"], T_SUMMARY)
         run([bot, "sondeo"], T_POLL4)
         poll4 = take("Sondeo 4 · mar 29 sep 20:30")
+        gift = [m for m in poll4 if m["button"] == "🎴 Abrir mi sobre"]
+        assert len(gift) == 1 and "Porque sí" in gift[0]["text"] and "sobre de regalo" in gift[0]["text"], poll4
+        given = dashboard_module.decode(gift[0]["url"].split("#d=", 1)[1])
+        assert given["pack"]["gift"] and len(given["pack"]["cards"]) == 3 and sum(given["have"].values()) == 12, given
+        poll4 = [m for m in poll4 if m not in gift]
         assert len(poll4) == 1 and "Taller 2" in poll4[0]["text"] and "vence en 2 h" in poll4[0]["text"]
+        report.append("«espol-bot album-regalo Porque sí» dejó un sobre de regalo que el sondeo siguiente mandó, con su "
+                      "motivo y 3 cartas más")
         assert len(w.books) == 1, f"el libro se pide una sola vez: {w.books}"
         report.append("El sílabo de Cálculo dice que su libro es el Purcell, que en el aula es un SharePoint que pide la "
                       "cuenta de ESPOL: Vinci se lo pidió al capitán una sola vez, en su chat de WhatsApp")
@@ -2377,6 +2386,11 @@ def test_whatsapp_friend(tmp_path):
         jobs = {j["name"]: j for j in json.loads((angel_profile / "cron" / "jobs.json").read_text())["jobs"]}
         assert set(jobs) == {"amigo-sondeo", "amigo-mantenimiento", "amigo-resumen"}
         assert all(j["deliver"] == "local" for j in jobs.values())
+        # Angel's poll and tools read the album's art key from the captain's secrets.env, the only one holding it
+        captain_secrets = re.search(r"export VINCI_CAPTAIN_SECRETS='([^']+)'",
+                                    (angel_profile / "scripts" / "amigo-sondeo.sh").read_text())
+        assert captain_secrets and Path(captain_secrets[1]) != angel_dir / "secrets.env", captain_secrets
+        assert "WHATSAPP_CAPTAIN" in parse_env_file(Path(captain_secrets[1])), "apunta al secrets.env del capitán"
         report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con un botón a la "
                       "página (modo WhatsApp, con el relé y un buzón de un uso en el enlace); Angel pulsa «Enviar» y "
                       "el token llega cifrado por el relé, sin pegar nada ni pasar por el modelo: se verifica, "

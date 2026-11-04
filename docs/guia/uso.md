@@ -359,6 +359,10 @@ Vinci te regala un **sobre con 3 cartas** cuando:
 Además, cada mañana te llega el **sobre del día** después del [resumen de las 7:00](#el-resumen-de-las-700). Ese
 sobre no te asegura una carta rara.
 
+El capitán también puede regalar un **sobre de regalo** a todos los que tienen Vinci. En la Terminal del servidor,
+corre `espol-bot album-regalo "Porque sí"`, con el motivo entre comillas. A cada uno le llega en la siguiente
+revisión del aula, en menos de 10 minutos.
+
 Te llega un mensaje con el botón «🎴 Abrir mi sobre». En la página subes el sobre con el dedo, deslizas cada carta
 para ver la siguiente y al final las pegas en tu álbum. Para verlo sin un sobre nuevo, pídeselo a Vinci: «¿cómo va
 mi álbum?».

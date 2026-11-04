@@ -59,8 +59,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
-  link on their own (a fresh one with /token), the captain hears of it, and no model turn is spent; a gift
-  pack reaches them at once.
+  link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
+  turn is spent; a gift pack reaches them at once.
 
 test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA). The captain
   asks for his GPA with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his chat. On
@@ -2413,6 +2413,12 @@ def test_whatsapp_friend(tmp_path):
         assert re.fullmatch(r"m=[\w-]{22,64}", urlsplit(url).fragment), "the mailbox rides in the fragment"
         assert "toca «Enviar cifrado a Vinci»" in letter[0]["message"] and "v1." not in letter[0]["message"], letter
         md.append(f"→ a Angel, por privado: {normalize(letter[0]['message'])} [botón «{letter[0]['buttonText']}»]\n")
+        # A welcome pack follows the link: something to open before the token, once per person
+        welcome = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid) if "sobre de regalo" in m.get("message", "")],
+                              30)
+        assert welcome and welcome[0]["buttonText"] == "🎴 Abrir mi sobre" and "/album/#d=" in welcome[0]["url"], welcome
+        assert "Para que empieces tu colección" in welcome[0]["message"], welcome
+        assert "conecta tu aula virtual" in welcome[0]["message"], welcome
         friends = json.loads((data_dir / "amigos" / "amigos.json").read_text())["amigos"]
         assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Angel", ANGEL_WA, "pendiente")]
         calls = len(llm.requests)
@@ -2885,8 +2891,14 @@ def test_whatsapp_friend(tmp_path):
         assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Darío", NEWCOMER_WA, "pendiente")]
         again = text_of(say(newcomer_jid, newcomer_jid, "¿ya?", "Darío"))
         assert "escríbeme /token" in again, again
+        welcome = wa.wait_for(lambda b: [m for m in b.messages_to(newcomer_jid, mark)
+                                         if "sobre de regalo" in m.get("message", "")], 30)
+        assert welcome and welcome[0]["buttonText"] == "🎴 Abrir mi sobre", welcome
         relinked = say(newcomer_jid, newcomer_jid, "/token", "Darío", expect=2)
         assert relinked[-1]["path"] == "send-url-button" and relinked[-1]["url"] != letter[1]["url"], relinked
+        time.sleep(3)
+        assert not [m for m in wa.messages_to(newcomer_jid, mark) if "sobre de regalo" in m.get("message", "")][1:], \
+            "el sobre de bienvenida llega una sola vez"
         assert len(llm.requests) == calls, "alguien sin token no gasta turnos del modelo"
         # A gift pack reaches him too, at once (no poll runs for him yet), with a nudge to paste his token
         mark = len(wa.sent)
@@ -2897,7 +2909,8 @@ def test_whatsapp_friend(tmp_path):
         assert gift and gift[0]["path"] == "send-url-button" and "conecta tu aula virtual" in gift[0]["message"], gift
         assert "/album/#d=" in gift[0]["url"], gift[0]["url"]
         report.append("Con la inscripción abierta, un número desconocido que le escribe a Vinci por privado recibe solo "
-                      "el enlace para su token (y otro con /token, si el primero venció), el capitán se entera, y "
+                      "el enlace para su token (y otro con /token, si el primero venció) y un sobre de bienvenida para su "
+                      "álbum, una sola vez; el capitán se entera, y "
                       "nada de eso usa el modelo; un sobre de regalo le llega al momento, con la invitación a "
                       "conectar su aula")
 

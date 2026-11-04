@@ -7,12 +7,12 @@ that profile by its sender's number, in the friend's private chat and in any gro
 semana?» answers each person with their own aula, and one friend's tools never open another's data.
 
     1. The captain, in his WhatsApp chat with Vinci: «/amigo agregar 0991234567 Angel». Vinci writes to Angel's
-       private chat with a one-time link (token_form.py, the page in WhatsApp mode).
+       private chat with a one-time link (token_form.py, the page in WhatsApp mode), then a welcome album pack.
     2. Angel creates a token in the aula, the page encrypts it on the phone and Angel pastes the ciphertext in the
        chat. The plugin of Hermes' default profile (hermes/whatsapp/plugin) hands it to `espol-bot amigo token`
        before Hermes sees it: the token reaches no model and no log.
     3. The token is verified and starts its own renewal chain, the aula is read once, and the profile, its crons
-       and the routes are set up; the gateway restarts to load the routes.
+       and the routes are set up; the gateway serves the new profile without a restart.
     4. «/amigo quitar Angel» deletes the friend's tokens from the aula, the profile and the folder.
 
 `whatsapp.json` (same folder as the registry) lists the groups where Vinci answers whoever mentions it; the
@@ -40,7 +40,7 @@ from aula_core import Aula, queries, timefmt
 from aula_core.canvas import CanvasError
 from aula_core.config import ConfigError, config_path, load_config, secrets_path, update_secret_values
 from aula_core.store import connect, file_lock, set_meta
-from espol_bot import token_form, whatsapp
+from espol_bot import album, token_form, whatsapp
 from espol_bot.store import ensure as store_ensure
 from espol_bot.config import CAPTAIN_SECRETS, BotConfig, load_bot_config, whatsapp_settings
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -231,9 +231,27 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
     whatsapp.WhatsApp(number, cfg.whatsapp_bridge).send(form["respuesta"], link=form.get("button"),
                                                              image=form.get("image"))
     save(cfg, friends)
+    _welcome_pack(cfg, friend, now)
     log.info("amigo agregar: %s (pendiente)", friend.slug)
     return Outcome(f"Le escribí a {friend.nombre} por privado con el enlace para su token. Cuando lo pegue, armo su "
                    "Vinci y te aviso.")
+
+
+def _welcome_pack(cfg: BotConfig, friend: Friend, now: datetime) -> None:
+    """A pack to open right away, before the token: once per person. A later link retries one the chat did not take."""
+    with scope(cfg, friend) as fcfg:
+        if not fcfg.album_page:
+            return
+        conn = store_ensure(connect(fcfg.core.db_path))
+        try:
+            with file_lock(fcfg.core.data_dir, "bot.lock"):
+                album.give_welcome(conn, now)
+                album.deliver(conn, fcfg, whatsapp.WhatsApp(friend.numero, cfg.whatsapp_bridge), now,
+                              hint=album.PENDING_HINT)
+        except Exception:  # an extra: it never stops the signup
+            log.exception("no pude mandarle el sobre de bienvenida a %s", friend.slug)
+        finally:
+            conn.close()
 
 
 def signup(cfg: BotConfig, number: str, name: str, now: datetime) -> Outcome:

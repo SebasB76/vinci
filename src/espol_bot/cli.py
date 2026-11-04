@@ -350,7 +350,7 @@ def _album_gift(cfg, reason: str) -> int:
                 done = bool(owner_cfg.album_page) and album.give_gift(conn, now, reason, start=number is not None)
                 if done and number:
                     album.deliver(conn, owner_cfg, whatsapp.WhatsApp(number, owner_cfg.whatsapp_bridge), now,
-                                  hint=PENDING_GIFT_HINT)
+                                  hint=album.PENDING_HINT)
             except whatsapp.WhatsAppError as exc:
                 print(f"· {who}: no pude mandárselo ({exc}); le llega cuando pegue su token")
                 return
@@ -364,11 +364,6 @@ def _album_gift(cfg, reason: str) -> int:
         with amigos.scope(cfg, friend) as fcfg:
             give(fcfg, friend.nombre, None if friend.estado == amigos.ACTIVE else friend.numero)
     return 0
-
-
-PENDING_GIFT_HINT = ("\n\nGanas más sobres cuando entregas a tiempo y cuando sacas buenas notas. Para eso, conecta tu "
-                     "aula virtual desde el enlace que te mandé: yo solo la leo, no cambio nada. Si el enlace ya no "
-                     "abre, escríbeme /token.")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -152,10 +152,14 @@ def give_daily(conn: sqlite3.Connection, now: datetime, today: str, rng: random.
     return True
 
 
-def give_gift(conn: sqlite3.Connection, now: datetime, reason: str, rng: random.Random | None = None) -> bool:
-    """A pack the captain gives everyone (`espol-bot album-regalo`), once the album started; the next poll sends it."""
+def give_gift(conn: sqlite3.Connection, now: datetime, reason: str, rng: random.Random | None = None, *,
+              start: bool = False) -> bool:
+    """A pack the captain gives everyone (`espol-bot album-regalo`), once the album started; the next poll sends it.
+    `start`: a friend still without a token, whose album starts with it (no poll runs for them yet)."""
     if get_meta(conn, SINCE) is None:
-        return False
+        if not start:
+            return False
+        set_meta(conn, SINCE, timefmt.iso(now))
     _store(conn, now, f"{GIFT}{timefmt.iso(now)}", reason, draw(catalog(), rng or random.Random()), False)
     conn.commit()
     return True
@@ -202,9 +206,10 @@ def message(pack: sqlite3.Row) -> str:
     return f"🎴 {pack['reason']}: te ganaste un sobre con 3 cartas para tu álbum."
 
 
-def deliver(conn: sqlite3.Connection, cfg: BotConfig, sender, now: datetime) -> list[str]:
+def deliver(conn: sqlite3.Connection, cfg: BotConfig, sender, now: datetime, hint: str = "") -> list[str]:
     """Gives the packs earned since the last poll and sends the ones not sent yet, each with its page; the texts
-    sent. A pack stays unsent until the chat takes it, so a failed send is retried on the next poll."""
+    sent. A pack stays unsent until the chat takes it, so a failed send is retried on the next poll. `hint` goes
+    after each message."""
     if not cfg.album_page:
         return []
     give(conn, now)
@@ -212,7 +217,7 @@ def deliver(conn: sqlite3.Connection, cfg: BotConfig, sender, now: datetime) -> 
     pending = conn.execute("SELECT * FROM album_packs WHERE sent_at IS NULL ORDER BY id LIMIT ?",
                            (MAX_PER_POLL,)).fetchall()
     for pack in pending:
-        text = message(pack)
+        text = message(pack) + hint
         url = page_url(cfg, snapshot(conn, now, pack))
         if cfg.telegram:
             sender.send(text, reply_markup={"inline_keyboard": [[{"text": BUTTON, "url": url}]]})

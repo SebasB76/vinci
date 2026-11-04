@@ -361,7 +361,8 @@ sobre no te asegura una carta rara.
 
 El capitán también puede regalar un **sobre de regalo** a todos los que tienen Vinci. En la Terminal del servidor,
 corre `espol-bot album-regalo "Porque sí"`, con el motivo entre comillas. A cada uno le llega en la siguiente
-revisión del aula, en menos de 10 minutos.
+revisión del aula, en menos de 10 minutos. A quien le escribió a Vinci pero todavía no conecta su aula, le llega al
+momento, con una invitación a conectarla: sus cartas siguen en su álbum cuando lo haga.
 
 Te llega un mensaje con el botón «🎴 Abrir mi sobre». En la página subes el sobre con el dedo, deslizas cada carta
 para ver la siguiente y al final las pegas en tu álbum. Para verlo sin un sobre nuevo, pídeselo a Vinci: «¿cómo va

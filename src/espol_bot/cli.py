@@ -337,23 +337,38 @@ def _portal(cfg, args) -> int:
 
 
 def _album_gift(cfg, reason: str) -> int:
+    """A gift pack for the captain and every friend. A friend still without a token has no poll to send it: their
+    album starts here and the pack goes out at once, with a nudge to finish signing up."""
     from aula_core import store as core_store
-    from espol_bot import album, amigos, store
+    from espol_bot import album, amigos, store, whatsapp
 
-    def give(owner_cfg, who: str) -> None:
+    def give(owner_cfg, who: str, number: str | None = None) -> None:
+        now = now_utc()
         with file_lock(owner_cfg.core.data_dir, "bot.lock"):
             conn = store.ensure(core_store.connect(owner_cfg.core.db_path))
             try:
-                done = owner_cfg.album_page and album.give_gift(conn, now_utc(), reason)
+                done = bool(owner_cfg.album_page) and album.give_gift(conn, now, reason, start=number is not None)
+                if done and number:
+                    album.deliver(conn, owner_cfg, whatsapp.WhatsApp(number, owner_cfg.whatsapp_bridge), now,
+                                  hint=PENDING_GIFT_HINT)
+            except whatsapp.WhatsAppError as exc:
+                print(f"· {who}: no pude mandárselo ({exc}); le llega cuando pegue su token")
+                return
             finally:
                 conn.close()
-        print(f"{'🎁' if done else '·'} {who}: {'le llega en el próximo sondeo' if done else 'sin álbum todavía'}")
+        when = "ya se lo mandé" if number else "le llega en el próximo sondeo"
+        print(f"{'🎁' if done else '·'} {who}: {when if done else 'sin álbum todavía'}")
 
     give(cfg, "tú")
-    for friend in amigos.active(cfg):
+    for friend in amigos.load(cfg):
         with amigos.scope(cfg, friend) as fcfg:
-            give(fcfg, friend.nombre)
+            give(fcfg, friend.nombre, None if friend.estado == amigos.ACTIVE else friend.numero)
     return 0
+
+
+PENDING_GIFT_HINT = ("\n\nGanas más sobres cuando entregas a tiempo y cuando sacas buenas notas. Para eso, conecta tu "
+                     "aula virtual desde el enlace que te mandé: yo solo la leo, no cambio nada. Si el enlace ya no "
+                     "abre, escríbeme /token.")
 
 
 def main(argv: list[str] | None = None) -> int:

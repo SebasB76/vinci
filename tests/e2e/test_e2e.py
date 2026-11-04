@@ -31,7 +31,8 @@ test_canvas, no gateway:
      says the chain is cut (never that a replacement works) and stops calling Canvas with the dead tokens; the alert
      itself carries the token form's link (valid 24 h); the captain fills it 26 min later, it comes back sealed through the relay, and the
      chain comes back; a hidden CLI reseed also works. `espol-bot doctor` reads each of those moments without calling
-     Canvas or the chat.
+     Canvas or the chat. The maintenance's watchdog tells the captain once that his poll stopped, and again when it is
+     back.
 
 test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes his WhatsApp to Vinci (and anyone else
   to Vinci's guest tools); his week; work handed in outside the aula stays pending and late until he says it is done
@@ -56,7 +57,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands);
   voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
-  not a Vinci's owner; Angel removed with his tokens.
+  not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
+  link on their own (a fresh one with /token), the captain hears of it, and no model turn is spent.
 
 test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA). The captain
   asks for his GPA with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his chat. On
@@ -184,7 +186,7 @@ NEW_CANVAS_TOKEN = "7~nuevo-token-de-canvas"  # after the aula virtual refused t
 AUTO_FORM_TOKEN = ("Automatico5SinPedirlo" * 4)[:64]   # pasted in the form Vinci sent on its own
 ROLEPLAY = ("personaje", "personalidad", "Guía Académico", "aventurero", "El Analítico", "El Conector")
 # WhatsApp (Vinci's number, through Hermes' bridge): the captain, his friend Angel, someone else in the group.
-CAPTAIN_WA, ANGEL_WA, STRANGER_WA = "593980000001", "593990000002", "593990000003"
+CAPTAIN_WA, ANGEL_WA, STRANGER_WA, NEWCOMER_WA = "593980000001", "593990000002", "593990000003", "593990000004"
 CAPTAIN_LID = "770000000000001"  # how WhatsApp names the captain when it hides his number
 CAPTAIN_JID = f"{CAPTAIN_WA}@s.whatsapp.net"
 GROUP_WA = "120363000000000001@g.us"
@@ -1729,7 +1731,17 @@ def test_canvas(tmp_path):
         assert len(canvas.issued()) == 3
         assert canvas.token_ids[first] in canvas.deleted, "el antecesor ya reemplazado se borró de Canvas"
         run([bot, "sondeo"], T_RENEW_2)
-        assert take("Renovación automática · tres generaciones") == [], "renovar no manda ruido al chat"
+        # The last poll was at 20:30: the 21:00 maintenance's watchdog told the captain once, and stays quiet after
+        watched = take("Renovación automática · tres generaciones")
+        assert len(watched) == 1 and "Vigilancia · Tú · Sondeo" in watched[0]["text"], \
+            f"renovar no manda ruido al chat; solo la vigilancia, una vez: {watched}"
+        assert "no corre desde" in watched[0]["text"], watched
+        run([bot, "mantenimiento"], T_RENEW_2)
+        back = take("Vigilancia · el sondeo volvió")
+        assert len(back) == 1 and "Vigilancia · Tú · Sondeo" in back[0]["text"] and "volvió a estar bien" in \
+            back[0]["text"], back
+        report.append("La vigilancia del mantenimiento le avisó al capitán, una sola vez, que su sondeo no corría desde "
+                      "las 20:30, y le avisó otra vez cuando volvió")
         healthy = doctor("todo al día (tercera generación del token)", T_RENEW_2, broken=False)
         assert "✅ todo en orden" in healthy and "⚠️" not in healthy and "❌" not in healthy, healthy
         for line in ("✅ Sondeo: corrió hace un momento", "✅ Mantenimiento: corrió hace un momento",
@@ -1754,6 +1766,10 @@ def test_canvas(tmp_path):
         mark = len(canvas.requests)
         run([bot, "mantenimiento"], T_RENEW_4)
         cut = take("Cadena cortada · sonda y token actual vencidos")
+        # No poll since 22:22: the 23:03 maintenance's watchdog said so again, apart from the chain's own alert
+        watched = [m for m in cut if "Vigilancia · Tú · Sondeo" in m["text"]]
+        assert len(watched) == 1 and "no corre desde" in watched[0]["text"], cut
+        cut = [m for m in cut if m not in watched]
         cut_text = "\n".join(message["text"] for message in cut)
         assert "cadena automática del token" in cut_text and "No hace falta que escribas /token" in cut_text, cut_text
         assert "resembrar" not in cut_text, "el aviso no manda a la terminal"
@@ -2798,6 +2814,27 @@ def test_whatsapp_friend(tmp_path):
         say(GROUP_WA, captain_jid, "@vinci hola", "Capitán", group=True, expect=0)
         report.append("«/amigo quitar Angel» borra del aula todos los tokens que creó su cadena, su perfil y su carpeta; "
                       "«@vinci desactiva este grupo» lo apaga")
+
+        # 10k. Open signup ([channels] inscripcion_abierta): a stranger who writes privately gets the token link on
+        # their own, the captain hears of it, and no model turn is spent on them
+        newcomer_jid = f"{NEWCOMER_WA}@s.whatsapp.net"
+        calls, mark = len(llm.requests), len(wa.sent)
+        letter = say(newcomer_jid, newcomer_jid, "hola, ¿cómo funciona?", "Darío", expect=2)
+        assert letter[0]["path"] == "send-media" and "Hola, Darío" in letter[1]["message"], letter
+        assert letter[1]["path"] == "send-url-button" and letter[1]["buttonText"] == "🔑 Abrir formulario", letter
+        told = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "🆕 Darío" in m.get("message", "")],
+                           30)
+        assert told and "/amigo quitar Darío" in told[0]["message"], told
+        friends = json.loads((data_dir / "amigos" / "amigos.json").read_text())["amigos"]
+        assert [(f["nombre"], f["numero"], f["estado"]) for f in friends] == [("Darío", NEWCOMER_WA, "pendiente")]
+        again = text_of(say(newcomer_jid, newcomer_jid, "¿ya?", "Darío"))
+        assert "escríbeme /token" in again, again
+        relinked = say(newcomer_jid, newcomer_jid, "/token", "Darío", expect=2)
+        assert relinked[-1]["path"] == "send-url-button" and relinked[-1]["url"] != letter[1]["url"], relinked
+        assert len(llm.requests) == calls, "alguien sin token no gasta turnos del modelo"
+        report.append("Con la inscripción abierta, un número desconocido que le escribe a Vinci por privado recibe solo "
+                      "el enlace para su token (y otro con /token, si el primero venció), el capitán se entera, y "
+                      "nada de eso usa el modelo")
 
         (ARTIFACT / "whatsapp-amigo.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "amigo")

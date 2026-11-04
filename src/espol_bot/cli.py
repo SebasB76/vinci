@@ -222,6 +222,10 @@ def _friend_outcome(cfg, args):
         if not match:
             raise ConfigError("Uso: amigo agregar <número> <nombre>")
         outcome = amigos.add(cfg, match[1], match[2], now)
+    elif args.accion == "inscribir":
+        if not args.args:
+            raise ConfigError("Uso: amigo inscribir <número> [nombre]")
+        outcome = amigos.signup(cfg, args.args[0], " ".join(args.args[1:]), now)
     elif args.accion == "quitar":
         outcome = amigos.remove(cfg, " ".join(args.args), now)
     elif args.accion == "lista":
@@ -246,6 +250,11 @@ def _health(cfg, *, telegram: bool) -> int:
         print(json.dumps({"respuesta": health.telegram_report(found, now, cfg.core.tz)}, ensure_ascii=False))
         return 0
     print(health.terminal_report(found, now, cfg.core.tz))
+    if not cfg.friend:
+        from espol_bot import watch
+        friends = watch.terminal_lines(watch.survey(cfg, now))
+        if friends:
+            print("\nTus amigos:\n" + "\n".join(friends))
     return 1 if any(c.level == health.FAIL for c in found) else 0
 
 
@@ -363,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("panel", help="el panel de administración en el navegador: gateway, tareas, gasto y turnos "
                                      "(solo lectura)")
     p.add_argument("--puerto", type=int, default=8787)
+    p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 en el contenedor, detrás del proxy de Coolify")
     p.add_argument("--nueva-clave", action="store_true",
                    help="crear la clave del enlace para quien no está en tu red de Tailscale e imprimir el enlace; "
                         "el enlace anterior deja de servir")
@@ -415,8 +425,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("numero", nargs="?", default=None, help="el número de Vinci (593…), solo si no está vinculado")
     p = sub.add_parser("amigo", help="el Vinci de un amigo por WhatsApp: agregar, quitar, listar, o su token cifrado "
                                      "leído por stdin (lo usa el plugin vinci-whatsapp)")
-    p.add_argument("accion", choices=["agregar", "quitar", "lista", "token"])
-    p.add_argument("args", nargs="*", help="agregar: número y nombre; quitar: nombre o número; token: número")
+    p.add_argument("accion", choices=["agregar", "quitar", "lista", "token", "inscribir"])
+    p.add_argument("args", nargs="*", help="agregar: número y nombre; quitar: nombre o número; token: número; "
+                                           "inscribir: el número y el nombre de WhatsApp de quien escribió")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-grupo", help="activar o desactivar un grupo de WhatsApp donde Vinci contesta (lo "
                                               "usa el plugin vinci-whatsapp)")
@@ -458,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
                       f"/?k={key}\nQuien lo tenga ve el panel sin el texto de los chats. Para cortarle el acceso, "
                       "corre esto otra vez.")
                 return 0
-            panel.serve(cfg, args.puerto)
+            panel.serve(cfg, args.puerto, args.host)
             return 0
         if args.cmd in ("doctor", "estado"):
             return _health(cfg, telegram=args.cmd == "estado")

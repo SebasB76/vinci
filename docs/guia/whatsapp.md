@@ -174,6 +174,18 @@ Desde ahí, «@vinci qué tengo esta semana» le contesta a Angel con lo suyo y 
 por privado. Su Vinci le avisa de sus tareas nuevas por su chat de WhatsApp y renueva su token como el tuyo.
 `/amigos` te muestra la lista y `/amigo quitar Angel` borra su Vinci, sus datos y los tokens que creó su cadena.
 
+**Inscripción abierta.** Con `inscripcion_abierta = true` en `[channels]` de `config.toml` (así viene), no hace falta
+que agregues a nadie:
+
+1. Alguien que no es tu amigo le escribe a Vinci por privado, con cualquier mensaje.
+2. Vinci le manda solo el mismo enlace de `/amigo agregar`, y a ti te avisa: «🆕 Darío le escribió a Vinci…».
+3. Cuando pega su token, queda como un amigo más y te llega «✅ Darío ya tiene su Vinci».
+
+Hasta que pega un token válido del aula, Vinci no usa el modelo con esa persona: solo un desconocido con cuenta de
+ESPOL llega a tener su Vinci. El enlace dura un día; si vence, la persona escribe `/token` y le llega otro. Vinci
+acepta como máximo `cupo_amigos` amigos (40 si no lo cambias), contando a los que aún no pegan su token; con el cupo
+lleno, le dice que vuelva en unos días. Para sacar a alguien, usa `/amigo quitar`.
+
 **Comandos por WhatsApp.** Tú y cada amigo con su Vinci tienen los mismos comandos, cada uno sobre su propia aula,
 y Vinci los contesta sin gastar tokens:
 

@@ -39,7 +39,7 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import agenda, album, dashboard, health, libros, materias, messages, priority, store, token_form
+from espol_bot import agenda, album, dashboard, health, libros, materias, messages, priority, store, token_form, watch
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -177,7 +177,7 @@ class Bot:
     # -- poll ------------------------------------------------------------------------
 
     def maintenance(self) -> PollResult:
-        """Fast no-agent background work: renew the token."""
+        """Fast no-agent background work: renew the token; on the captain's, the watchdog over every Vinci."""
         result = PollResult()
         now = self.aula.now()
         renewal_error = None
@@ -193,6 +193,7 @@ class Bot:
             result.error = self._fail("renewal", f"No pude renovar el token de Canvas: {exc}. "
                                       "Si la cadena se corta, te mostraré cómo resembrarla.", threshold=1)
         health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error)
+        watch.run(self.cfg, self.conn, lambda text: self.telegram.send(text, []), now)
         return result
 
     def poll(self) -> PollResult:

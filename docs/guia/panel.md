@@ -8,7 +8,7 @@ cada conversación. Solo lee: no usa el modelo, no llama al aula y no cambia nad
 | Parte | Qué ves |
 |---|---|
 | Arriba | Si el gateway de Hermes está vivo y cuántas veces se reinició, si WhatsApp está conectado, los turnos en curso o trabados (más de 5 min), el gasto de hoy y de 7 días, y los errores de las últimas 24 h. |
-| Salud de Vinci | Lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas. |
+| Salud de cada Vinci | Lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas, para tu Vinci y para el de cada amigo. De un amigo ves solo lo que falla. |
 | Gasto por día | Los últimos 14 días, por grupo: Vinci, bots de materia y amigos. Al pasar el mouse sobre un día (o tocarlo en el celular) ves su total frente al promedio, el gasto por grupo y por bot, las llamadas al modelo, los tokens y el costo por llamada. |
 | Gasto por bot | Llamadas al modelo, tokens, costo y el último día de uso de cada perfil y modelo en esos 14 días. |
 | Tareas automáticas | Cada tarea de Hermes (sondeo, mantenimiento, resumen…), el día y la hora en que corrió, cuándo corre de nuevo y si falló. |
@@ -22,7 +22,30 @@ Los costos son los que estima Hermes con su tabla de precios, no la factura de t
 solo total por conversación: si una conversación cruza la medianoche, el panel reparte su gasto entre los días según
 cuántas respuestas dio Vinci en cada uno.
 
-## Encenderlo
+## Avisos por WhatsApp
+
+Cada 10 minutos, tu mantenimiento revisa la salud de cada Vinci, el tuyo y el de cada amigo. Cuando algo pasa a
+fallar (❌), Vinci te escribe una sola vez, por ejemplo «⚠️ Vigilancia · Angel · Token de Canvas: …». Cuando se
+arregla, te escribe «✅ Vigilancia · Angel · Token de Canvas: volvió a estar bien». Lo que solo está para revisar
+(⚠️) no te avisa. Tu propio token tampoco, porque tu Vinci ya te lo dice en su chat.
+
+`espol-bot doctor` también muestra a cada amigo, debajo de tu estado.
+
+## En Coolify
+
+El contenedor ya trae el panel encendido en el puerto 8787. Para verlo:
+
+1. En Coolify, abre la app de Vinci. En **General**, pon el dominio del panel en **Domains** (por ejemplo
+   `https://vinci.tu-dominio.com`) y `8787` en **Ports Exposes**.
+2. Presiona **Redeploy** y espera a que diga **Healthy**.
+3. En la **Terminal** del contenedor, corre `espol-bot panel --nueva-clave`. Imprime el enlace con la clave, con el
+   dominio del paso 1.
+4. Abre ese enlace. El navegador guarda la clave 30 días.
+
+Sin la clave, el dominio responde «no existe». Con la clave ves todo el panel menos el texto de los chats, también los
+tuyos. Para cortar el acceso, corre otra vez `espol-bot panel --nueva-clave`.
+
+## Encenderlo en una PC
 
 `./setup.sh` lo deja encendido como el servicio de usuario `vinci-panel`, que arranca con la sesión. Escucha solo en
 `http://127.0.0.1:8787`: desde la misma máquina, ábrelo en el navegador.

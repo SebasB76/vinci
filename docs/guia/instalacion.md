@@ -172,6 +172,8 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la semana del semestre que muestra el dashboard. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
 | `channels.telegram` | `false` | `false`: Vinci te habla solo por WhatsApp (necesita `WHATSAPP_CAPTAIN`) y lleva todas tus materias en un chat; los bots de materia quedan apagados, sin borrarse. `true`: también Telegram, con un bot por materia |
+| `channels.inscripcion_abierta` | `true` | Solo WhatsApp. `true`: quien le escribe a Vinci por privado sin ser tu amigo recibe solo el enlace para su token del aula, y al pegarlo queda como un amigo más; te llega un aviso de cada uno. `false`: Vinci solo atiende a los que agregas con `/amigo agregar` |
+| `channels.cupo_amigos` | `40` | Cuántos amigos puede tener Vinci, contando a los que aún no pegan su token. Cada uno usa tu modelo y tu servidor |
 | `notificaciones.intervalo_minutos` | `10` | Cada cuánto revisa el aula (mínimo 5) |
 | `notificaciones.recordatorios_horas` | `[24, 3]` | Recordatorios antes de cada entrega no enviada |
 | `notificaciones.resumen_diario` | `"07:00"` | Hora del resumen de la semana |

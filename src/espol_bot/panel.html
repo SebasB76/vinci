@@ -60,7 +60,7 @@ button{background:transparent;color:var(--fg);border:1px solid var(--border);bor
 </header>
 <section class="tiles" id="tiles"></section>
 
-<h2>Salud de Vinci</h2>
+<h2>Salud de cada Vinci</h2>
 <div class="card checks" id="checks"></div>
 
 <h2>Gasto por día · estimado por Hermes</h2>
@@ -153,9 +153,16 @@ function render(d) {
     tile("Errores 24 h", String(errs), `${d.errors.length} tipos con avisos`, errs ? "warn" : "ok"),
   );
 
-  $("checks").replaceChildren(...d.checks.map(c =>
-    el("div", {}, `${ICON[c.level] || ""} `, el("b", {}, c.name), ": ", c.detail,
-       c.fix && c.level !== "ok" ? el("span", {class: "muted"}, ` → ${c.fix}`) : null)));
+  const check = (c, pad = "") => el("div", {style: pad}, `${ICON[c.level] || ""} `, el("b", {}, c.name), ": ", c.detail,
+    c.fix && c.level !== "ok" ? el("span", {class: "muted"}, ` → ${c.fix}`) : null);
+  const worst = cs => cs.some(c => c.level === "fail") ? "fail" : cs.some(c => c.level === "warn") ? "warn" : "ok";
+  const people = d.people || [{name: "Tú", friend: false, checks: d.checks}];
+  $("checks").replaceChildren(...people.flatMap(p => {
+    const bad = p.checks.filter(c => c.level !== "ok");
+    const head = el("div", {}, `${ICON[worst(p.checks)]} `, el("b", {}, p.friend ? `Vinci de ${p.name}` : "Tu Vinci"),
+                    p.friend && !bad.length ? el("span", {class: "muted"}, " · todo en orden") : null);
+    return [head, ...(p.friend ? bad : p.checks).map(c => check(c, "padding-left:22px"))];
+  }));
 
   const days = [...Array(d.days).keys()].map(i => shift(d.today, i - d.days + 1));
   const byDay = {};

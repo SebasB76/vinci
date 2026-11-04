@@ -29,7 +29,8 @@ friend's and in the default one; it acts only on WhatsApp.
   forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
   Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
   says «Vinci» or answers one of its messages goes on; anyone else's is not even heard.
-- Anyone else, in private: nothing.
+- Anyone else, in private: with [channels] inscripcion_abierta, the link for their token, as «/amigo agregar»
+  sends (`espol-bot amigo inscribir`), and the captain hears of it; otherwise nothing.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
   instead, from the names of everyone who has written to Vinci (kept in NAMES), also in the message it quotes.
 - A sticker never reaches a Vinci: Hermes would hand it over as a document it cannot open.
@@ -107,7 +108,7 @@ TRUST_ON_RE = re.compile(r"\b(?:este|el) grupo es de confianza\b")
 NOTICES_ON_RE = re.compile(r"\b(?:activa(?:r)?|manda(?:r)?) (?:los )?avisos\b")
 NOTICES_OFF_RE = re.compile(r"\b(?:desactiva(?:r)?|quita(?:r)?) (?:los )?avisos\b|\bno mandes (?:los )?avisos\b")
 PENDING_DM = ("Para empezar, abre el enlace que te mandé, pega tu token del aula y pégame aquí el texto cifrado que "
-              "te da (empieza con v1.).")
+              "te da (empieza con v1.). Si el enlace ya no abre, escríbeme /token y te mando otro.")
 RAW_TOKEN = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y usa "
              "el enlace que te mandé, que lo cifra en tu celular.")
 RAW_TOKEN_ACTIVE = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y "
@@ -313,7 +314,11 @@ async def _sort(event, source, gateway):
         await _answer(chat, result, reply_to, gateway)
         return _skip("comando del capitán")
 
-    if friend is None:
+    if friend is None:  # [channels] inscripcion_abierta: they get the token link (amigos.signup), no model turn
+        number = _phone(source)
+        if number:
+            name = str(getattr(source, "user_name", "") or "")
+            await _answer(chat, await _run("amigo", "inscribir", number, *name.split()), reply_to, gateway)
         return _skip("desconocido")
     sealed = SEALED_RE.search(text)
     if sealed:
@@ -329,6 +334,9 @@ async def _sort(event, source, gateway):
         return _skip("token sin cifrar")
     if friend.get("estado") == "activo":
         return await _command(text, senders, chat, reply_to, gateway)
+    if text.lower().startswith("/token"):  # the invitation's link lasts a day: a new one
+        await _answer(chat, await _run("amigo", "inscribir", friend["numero"]), reply_to, gateway)
+        return _skip("amigo sin token pide otro enlace")
     await _answer(chat, {"respuesta": PENDING_DM}, reply_to, gateway)
     return _skip("amigo sin token")
 
@@ -492,6 +500,18 @@ def _named(text, names):
 def _own_ids():
     me = _read_dict(os.path.join(SESSION, "creds.json")).get("me") or {}
     return {_bare(me.get("id")), _bare(me.get("lid"))} - {""}
+
+
+def _phone(source):
+    """The sender's phone number: their «…@s.whatsapp.net» id, else the shortest alias, as Hermes picks (a LID is
+    longer); "" when only a LID is known."""
+    raw = [str(getattr(source, k, "") or "") for k in ("user_id", "user_id_alt")]
+    jid = next((r for r in raw if r.endswith("@s.whatsapp.net")), "")
+    if jid:
+        return _bare(jid)
+    aliases = set().union(*(_aliases(r) for r in raw if r)) - {""}
+    found = min(aliases, key=lambda a: (len(a), a)) if aliases else ""
+    return found if re.fullmatch(r"\d{8,15}", found) and not any(r == f"{found}@lid" for r in raw) else ""
 
 
 def _bare(user_id):

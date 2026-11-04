@@ -236,6 +236,36 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
                    "Vinci y te aviso.")
 
 
+def signup(cfg: BotConfig, number: str, name: str, now: datetime) -> Outcome:
+    """Someone who is not a friend wrote Vinci privately: with [channels] inscripcion_abierta, they get the
+    invitation /amigo agregar sends and the captain hears of it. Until their token arrives they cost no model turn.
+    A pending friend asking again gets a fresh link. The answer is empty unless Vinci is full: the invitation goes
+    out on its own."""
+    friends = load(cfg)
+    known = next((f for f in friends if f.numero == whatsapp.normalize_number(number)), None)
+    if known is not None:  # a pending friend's /token: a fresh link, the first one lasts a day
+        if known.estado != ACTIVE:
+            add(cfg, number, known.nombre, now)
+        return Outcome("")
+    if not cfg.open_signup:
+        return Outcome("")
+    if len(friends) >= cfg.friend_cap:
+        log.info("amigo inscribir: cupo lleno (%d)", cfg.friend_cap)
+        return Outcome("👋 Hola, soy Vinci, un asistente del aula virtual de ESPOL. Ahora mismo no tengo cupo para "
+                       "alguien más; vuelve a escribirme en unos días.")
+    name = re.sub(r"[^\w .'-]", "", name or "", flags=re.U).strip() or "Amigo"
+    add(cfg, number, name, now)
+    added = next((f for f in load(cfg) if f.numero == whatsapp.normalize_number(number)), None)
+    try:
+        whatsapp.WhatsApp(captain_number(cfg), cfg.whatsapp_bridge).send(
+            f"🆕 {added.nombre if added else name} le escribió a Vinci y le mandé el enlace para su token. Cuando lo "
+            f"pegue, te aviso. Para sacarlo: /amigo quitar {added.nombre if added else name}")
+    except whatsapp.WhatsAppError as exc:
+        log.warning("no pude avisarle al capitán: %s", exc)
+    log.info("amigo inscribir: %s (pendiente)", added.slug if added else "?")
+    return Outcome("")
+
+
 def _invitation(friend: Friend) -> str:
     return (f"👋 Hola, {friend.nombre}: soy Vinci, un asistente del aula virtual de ESPOL. Te digo qué tienes "
             "pendiente, tus anuncios y tus notas, te aviso lo nuevo por aquí y te ayudo a estudiar con tu material. "

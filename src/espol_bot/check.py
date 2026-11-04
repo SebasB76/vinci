@@ -33,8 +33,8 @@ from pathlib import Path
 
 from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import get_meta
-from espol_bot import dashboard, grades_page, health, materias, relay, whatsapp as wa
-from espol_bot.config import BotConfig, load_bot_config, whatsapp_settings
+from espol_bot import dashboard, grades_page, health, materias, panel, relay, whatsapp as wa
+from espol_bot.config import BotConfig, hermes_root, load_bot_config, whatsapp_settings
 
 TG = Path(os.environ.get("VINCI_TG", "~/.local/share/tg-user/tg")).expanduser()
 HERMES = Path(os.environ.get("HERMES_BIN", "~/.local/bin/hermes")).expanduser()
@@ -63,7 +63,10 @@ class Message:
 
 def _run(cmd: list[str], timeout: float) -> subprocess.CompletedProcess:
     # TG_FULL keeps tg from cutting bot messages at 300 characters.
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env={**os.environ, "TG_FULL": "1"})
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env={**os.environ, "TG_FULL": "1"})
+    except FileNotFoundError:  # the container has no tg and no systemctl
+        return subprocess.CompletedProcess(cmd, 127, "", f"{cmd[0]}: not found")
 
 
 def _parse_tg(output: str) -> list[Message]:
@@ -126,16 +129,17 @@ def _errors_since(started: float) -> str | None:
 
 
 def status(cfg: BotConfig) -> Result:
-    active = _run(["systemctl", "--user", "is-active", "hermes-gateway"], 10).stdout.strip()
+    # Hermes' own state file, not systemd: the container runs the gateway under s6
+    gateway = panel.gateway_state(hermes_root())
+    running = gateway["alive"] and gateway["state"] == "running"
+    active = "active" if running else gateway["state"]
     found = health.checks(cfg, _db(cfg), now_utc())
     failing = [c for c in found if c.level == health.FAIL]
     warns = [c for c in found if c.level == health.WARN]
     lines = [f"gateway: {active}"] + [f"{c.level}: {c.name}: {c.detail}" for c in found]
-    served = next((line for line in _run([str(HERMES), "gateway", "status"], 20).stdout.splitlines()
-                   if line.startswith("Served profiles")), None)
-    if served:
-        lines.insert(1, served)
-    ok = active == "active" and not failing
+    if gateway["served"]:
+        lines.insert(1, f"Served profiles: {', '.join(gateway['served'])}")
+    ok = running and not failing
     fix = ("hermes gateway restart" if active != "active" else
            next((c.fix for c in failing if c.fix), None))
     summary = f"{len(failing)} failing, {len(warns)} warnings" if ok or failing else "gateway not running"
@@ -290,7 +294,9 @@ def vote(cfg: BotConfig, option: str) -> Result:
 
 
 def _chrome() -> str | None:
-    return os.environ.get("CHROME") or next((p for p in map(shutil.which, CHROMES) if p), None)
+    bundled = sorted(Path("/opt/hermes/tools").glob("chromium-*/chrome-linux64/chrome"))  # the Hermes image's own
+    return (os.environ.get("CHROME") or next((p for p in map(shutil.which, CHROMES) if p), None)
+            or (str(bundled[-1]) if bundled else None))
 
 
 def page(cfg: BotConfig, which: str) -> Result:

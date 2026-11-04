@@ -80,7 +80,7 @@ def _alive(pid: int | None) -> bool:
     return True
 
 
-def _gateway(root: Path) -> dict:
+def gateway_state(root: Path) -> dict:
     try:
         state = json.loads((root / "gateway_state.json").read_text())
     except (OSError, ValueError):
@@ -255,7 +255,7 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None, *, guest: 
             group["sample"] = None
     return {"viewer": "guest" if guest else "owner", "now": timefmt.iso(now),
             "today": now.astimezone(tz).date().isoformat(), "days": DAYS,
-            "gateway": _gateway(root), "checks": checks, "people": people, "jobs": jobs, "usage": usage,
+            "gateway": gateway_state(root), "checks": checks, "people": people, "jobs": jobs, "usage": usage,
             "sessions": sessions[:30], "leases": leases,
             "errors": errors,
             "profiles": [{k: p[k] for k in ("name", "kind", "parked")} for p in profiles],

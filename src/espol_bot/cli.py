@@ -510,6 +510,7 @@ def main(argv: list[str] | None = None) -> int:
             return whatsapp.link(args.numero, cfg.whatsapp_bridge)
         if args.cmd == "whatsapp-rele":
             from espol_bot import relay
+            _logging(cfg)  # a token from the page lands here: its canvas-submit and amigo token lines go to bot.log
             with contextlib.redirect_stdout(sys.stderr):  # a token saved here reprovisions, which prints its steps
                 answers = relay.fetch(cfg, now_utc())
             print(json.dumps({"respuestas": answers}, ensure_ascii=False) if args.json else

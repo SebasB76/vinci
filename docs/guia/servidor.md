@@ -11,7 +11,9 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
 ## Crear la app
 
 1. En tu proyecto, pulsa **+ New** → **Public Repository** y pega la dirección de este repo, rama `main`.
-2. En **Build Pack**, elige **Dockerfile**. Vinci no abre ningún puerto: deja vacíos el dominio y los puertos.
+2. En **Build Pack**, elige **Dockerfile**. En **Ports Exposes**, pon `8787`, el puerto del [panel](panel.md). En
+   **Domains**, pon el dominio del panel (por ejemplo `https://vinci.tu-dominio.com`), o déjalo vacío si no lo quieres
+   ver desde fuera.
 3. En **Persistent Storage**, agrega un volumen montado en `/opt/data`.
 4. En **Advanced → Container → Container naming**, elige **Consistent name (no rolling updates)**. En versiones
    anteriores, la opción se llama **Consistent Container Names**. Con un nombre fijo, Coolify apaga el contenedor viejo antes

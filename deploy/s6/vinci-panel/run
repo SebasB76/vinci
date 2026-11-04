@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+# The admin panel (espol_bot/panel.py) on port 8787, as the hermes user. Coolify's proxy publishes it on the app's
+# domain; without the PANEL_KEY link it answers 404 to everyone. s6 restarts it if it stops.
+export HOME=/opt/data
+cd /opt/data || exit 1
+exec s6-setuidgid hermes /opt/vinci/.venv/bin/espol-bot panel --host 0.0.0.0 --puerto 8787

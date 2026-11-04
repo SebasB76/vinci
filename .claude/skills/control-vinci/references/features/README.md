@@ -38,7 +38,8 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | `/token` new Canvas token | Mini App form | guide image + link button, back through the relay; Vinci sends it too (`show_page`) when the token died or he asks | no (from Vinci: yes) | `uso.md` «Token nuevo desde Telegram (`/token`)» |
 | `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
 | Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it, by name, with no unasked reminders; someone without a Vinci gets Vinci as a guest (guest tools only, marked in the turn's header); ignores stickers; starts over after 4 h idle | yes | `whatsapp.md` «Vinci en WhatsApp» |
-| A Vinci per friend (`/amigo agregar`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
+| A Vinci per friend (`/amigo agregar`, or open signup: a stranger's private message gets the token link, `[channels] inscripcion_abierta`) | not available | yes | no (setup), yes (answers) | `whatsapp.md` «Vinci en WhatsApp» |
+| Admin panel and watchdog (health of every Vinci, a WhatsApp alert to the captain when one breaks and when it recovers) | the same | the same | no | `panel.md` |
 | Group notices («@vinci activa los avisos») | not available | yes; a reminder `brief_minutos_antes` before each class (room, virtual, what is due in 7 days), plus new announcements, assignments and due-date changes; no model | yes (`src/espol_bot/avisos.py`) | `whatsapp.md` «Vinci en WhatsApp» |
 | Trusted group («@vinci este grupo es de confianza») | not available | yes; the notices tag who has the subject (same paralelo for a class), say who handed in each task, carry a virtual class's meeting link, and pass on the friends' aula news once | yes (`src/espol_bot/avisos.py`) | `whatsapp.md` «Vinci en WhatsApp» |
 | Chat context in every turn (clock, chat kind, notes that hold in one chat: `chat_note`) | the same, per chat | the same; a group's note never reaches the DM; a DM or group idle 4 h starts a new conversation | no (a script adds it) | `whatsapp.md` «Vinci en WhatsApp» |
@@ -79,7 +80,8 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/` | `vinci-check page token`; `vinci-check status` (chain age) |
 | WhatsApp, groups, polls, voice | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group`; voice: the turn starts with «🎙️» and the transcript |
-| Friends | `src/espol_bot/amigos.py`, `hermes/amigo/` | `vinci-check whatsapp --profile amigo-<name>` (their private chat) |
+| Friends | `src/espol_bot/amigos.py` (`signup` for open signup, called by the `vinci-whatsapp` plugin), `hermes/amigo/` | `vinci-check whatsapp --profile amigo-<name>` (their private chat) |
+| Admin panel, watchdog | `src/espol_bot/panel.py`, `panel.html`, `watch.py` (run by `Bot.maintenance`), `deploy/s6/vinci-panel` | `espol-bot doctor` lists each friend; the panel's «Salud de cada Vinci» |
 | Relay | `src/espol_bot/relay.py`, `relay/worker.js` | `espol-bot whatsapp-rele` shows pending answers |
 | Bot personalities | `hermes/vinci/`, `hermes/materia/`, `hermes/amigo/` (`SOUL.md`, `SKILL.md`) | a short `chat`; read the tone |
 

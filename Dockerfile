@@ -28,13 +28,18 @@ RUN python3 -m venv /tmp/uv && \
     install -m 0755 /opt/vinci/deploy/cont-init.sh /etc/cont-init.d/019-vinci && \
     install -m 0755 /opt/vinci/deploy/as-hermes.sh /usr/local/bin/espol-bot && \
     ln -s espol-bot /usr/local/bin/vinci-move && \
-    ln -s espol-bot /usr/local/bin/vinci-check
+    ln -s espol-bot /usr/local/bin/vinci-check && \
+    cp -r /opt/vinci/deploy/s6/vinci-panel /etc/s6-overlay/s6-rc.d/vinci-panel && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-panel
 
 ENV VINCI_HERMES_ROOT=/opt/data \
     AULA_CONFIG=/opt/data/vinci/config.toml \
     AULA_SECRETS=/opt/data/vinci/secrets.env \
     HERMES_BIN=/opt/hermes/.venv/bin/hermes \
     GATEWAY_ALLOW_ALL_USERS=false
+
+# The admin panel (deploy/s6/vinci-panel): Coolify's proxy publishes this port on the app's domain.
+EXPOSE 8787
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=5m --retries=3 CMD ["/opt/vinci/deploy/healthcheck.sh"]
 

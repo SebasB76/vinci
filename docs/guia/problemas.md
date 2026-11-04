@@ -2,6 +2,11 @@
 
 ## Límites conocidos
 
+- **La vigilancia:** Vinci te avisa por WhatsApp cuando el Vinci de alguien falla, revisando cada 10 minutos. Si el
+  servidor o el WhatsApp de Vinci se caen, no puede avisarte: eso lo ves en Coolify (**Unhealthy**) o en el panel.
+- **El panel desde Coolify:** con el enlace de la clave ves todo menos el texto de los chats, también los tuyos.
+- **Inscripción abierta:** Vinci reconoce a quien le escribe por su número de WhatsApp. Si WhatsApp solo le muestra
+  un identificador interno, no puede mandarle el enlace: agrégalo con `/amigo agregar`.
 - **Correo del profe:** Vinci te da el correo de un profesor o ayudante solo si el aula te lo muestra en
   «Personas»; si lo esconde, te dice su nombre y te manda al buzón del aula. Vinci lee esa lista una vez por semana.
 - **Buzón del aula:** Vinci guarda solo los mensajes de profesores y ayudantes, de las materias en curso y de los

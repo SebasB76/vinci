@@ -53,6 +53,12 @@ zona_horaria = "America/Guayaquil"
 # Telegram quedan apagados, sin borrarse: Vinci lleva tus materias, sus cuadernos y los briefs antes de clase.
 # true: también Telegram, con un bot por materia.
 telegram = false
+# true: quien le escriba a Vinci por privado en WhatsApp sin ser tu amigo recibe solo el enlace para su token del
+# aula y, al pegarlo, queda como un amigo más (te aviso de cada uno). Hasta entonces no usa tu modelo.
+# false: Vinci solo atiende a los que agregas con «/amigo agregar».
+inscripcion_abierta = true
+# Cuántos amigos puede tener Vinci, contando a los que aún no pegan su token: cada uno usa tu modelo y tu servidor.
+cupo_amigos = 40
 
 [notificaciones]
 # Cada cuántos minutos el bot revisa el aula virtual (mínimo 5).

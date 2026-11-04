@@ -69,6 +69,8 @@ class BotConfig:
     handwritten_subjects: tuple[str, ...] = ()  # codes whose assignments the captain does by hand and hands in as a PDF
     friend: str | None = None  # a friend's Vinci (amigos.py): its slug; None for the captain's own
     telegram: bool = True  # False: Vinci talks only on WhatsApp ([channels] telegram; a friend's Vinci always)
+    open_signup: bool = False  # anyone who writes Vinci privately gets their own (amigos.signup)
+    friend_cap: int = 40       # friends at most, pending ones included
     whatsapp_bridge: str = DEFAULT_WHATSAPP_BRIDGE  # Hermes' WhatsApp bridge, where a friend's alerts go out
     portal_url: str = DEFAULT_PORTAL_URL  # ESPOL's Académico (academic_portal.py)
     portal_form_url: str = DEFAULT_PORTAL_FORM_URL
@@ -169,6 +171,10 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not isinstance(telegram, bool):
         raise ConfigError("[channels] telegram debe ser true o false")
     telegram = telegram and not friend
+    open_signup = section(core.raw, "channels").get("inscripcion_abierta", False)
+    friend_cap = section(core.raw, "channels").get("cupo_amigos", 40)
+    if not isinstance(open_signup, bool) or not isinstance(friend_cap, int) or friend_cap < 0:
+        raise ConfigError("[channels] inscripcion_abierta debe ser true o false, y cupo_amigos un número de 0 en adelante")
     bridge = str(section(core.raw, "test").get("whatsapp_puente") or DEFAULT_WHATSAPP_BRIDGE).rstrip("/")
 
     return BotConfig(
@@ -197,6 +203,8 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         handwritten_subjects=tuple(c.strip().upper() for c in handwritten),
         friend=friend,
         telegram=telegram,
+        open_signup=open_signup,
+        friend_cap=friend_cap,
         whatsapp_bridge=bridge,
         portal_url=portal_url,
         portal_form_url=portal_form_url,

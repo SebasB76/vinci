@@ -1,10 +1,11 @@
 """The captain's admin panel: one page with the gateway, the scheduled jobs, model spend and recent turns of every
-Hermes profile. Read-only, no model, no Canvas call. It listens on 127.0.0.1 only; Tailscale Funnel publishes it
-(docs/guia/panel.md).
+Hermes profile, and the health of every Vinci on the install (watch.py). Read-only, no model, no Canvas call. On a PC
+it listens on 127.0.0.1 and Tailscale Funnel publishes it; in the container an s6 service (deploy/s6/vinci-panel)
+listens on 0.0.0.0 behind Coolify's proxy (docs/guia/panel.md).
 
 Two viewers. The captain, on his tailnet (Tailscale's identity headers) or on the machine itself, sees everything.
-Anyone else reaches it through Funnel and gets a 404 unless they bring PANEL_KEY from secrets.env (the link
-`--nueva-clave` prints); with it they see the same panel without any chat text. Friends' chats and WhatsApp groups
+Anyone else gets a 404 unless they bring PANEL_KEY from secrets.env (the link `--nueva-clave` prints); with it they
+see the same panel without any chat text. Through Coolify everyone, the captain too, is this second viewer. Friends' chats and WhatsApp groups
 never show their text, not even to the captain."""
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 from aula_core import timefmt
 from aula_core.config import ConfigError, load_secret_values, update_secret_values
-from espol_bot import health
+from espol_bot import health, watch
 from espol_bot.config import BotConfig, hermes_root
 
 PAGE = Path(__file__).with_name("panel.html")
@@ -34,6 +35,7 @@ LOG_TAIL = 2_000_000               # bytes of each errors.log read; Hermes rotat
 KEY_SECRET = "PANEL_KEY"
 COOKIE = "vinci_panel"
 COOKIE_DAYS = 30
+LOOPBACK = {"127.0.0.1", "::1"}
 LOG_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ (WARNING|ERROR|CRITICAL) ([\w.]+): (.*)")
 
 
@@ -240,13 +242,10 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None, *, guest: 
     if guest:
         for session in sessions:
             session["readable"] = False
-    conn = health.open_readonly(cfg.core.db_path)
-    try:
-        checks = [{"name": c.name, "level": c.level, "detail": c.detail, "fix": c.chat_fix or c.fix}
-                  for c in health.checks(cfg, conn, now)]
-    finally:
-        if conn is not None:
-            conn.close()
+    people = [{"name": p.name, "friend": p.friend,
+               "checks": [{"name": c.name, "level": c.level, "detail": c.detail, "fix": c.chat_fix or c.fix}
+                          for c in p.checks]} for p in watch.survey(cfg, now)]
+    checks = people[0]["checks"]
     logs = [("gateway", root / "logs" / "errors.log"),
             *((p["name"], p["path"] / "logs" / "errors.log") for p in profiles)]
     local_now = now.astimezone().replace(tzinfo=None)  # Hermes logs in the machine's local time
@@ -256,7 +255,7 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None, *, guest: 
             group["sample"] = None
     return {"viewer": "guest" if guest else "owner", "now": timefmt.iso(now),
             "today": now.astimezone(tz).date().isoformat(), "days": DAYS,
-            "gateway": _gateway(root), "checks": checks, "jobs": jobs, "usage": usage,
+            "gateway": _gateway(root), "checks": checks, "people": people, "jobs": jobs, "usage": usage,
             "sessions": sessions[:30], "leases": leases,
             "errors": errors,
             "profiles": [{k: p[k] for k in ("name", "kind", "parked")} for p in profiles],
@@ -298,7 +297,11 @@ def new_key() -> str:
 
 
 def public_url() -> str | None:
-    """This machine's https://<name>.<tailnet>.ts.net, where Funnel serves the panel."""
+    """Where the panel is published: the domain Coolify gives it (COOLIFY_URL), or this machine's
+    https://<name>.<tailnet>.ts.net, where Funnel serves it."""
+    coolify = [u for u in (os.environ.get("COOLIFY_URL") or "").split(",") if u.startswith("https://")]
+    if coolify:
+        return coolify[0].rstrip("/")
     try:
         out = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10).stdout
         name = (json.loads(out).get("Self") or {}).get("DNSName", "").rstrip(".")
@@ -314,10 +317,12 @@ def _current_key() -> str:
         return ""
 
 
-def viewer(headers, cookies: dict[str, str], query_key: str | None) -> str | None:
+def viewer(headers, cookies: dict[str, str], query_key: str | None, client: str = "127.0.0.1") -> str | None:
     """"owner", "guest" or None (not allowed). Tailscale Serve sets the identity headers on tailnet requests and drops
-    any a Funnel client sends; a request with no proxy headers at all came from this machine (or an SSH tunnel)."""
-    if headers.get("Tailscale-Funnel-Request") is None:
+    any a Funnel client sends; a request with no proxy headers at all came from this machine (or an SSH tunnel).
+    Only a loopback client can be the owner: in a container, other services on the network reach the port directly,
+    without headers, and Coolify's proxy always adds X-Forwarded-For."""
+    if client in LOOPBACK and headers.get("Tailscale-Funnel-Request") is None:
         if headers.get("Tailscale-User-Login") or headers.get("X-Forwarded-For") is None:
             return "owner"
     key = _current_key()
@@ -350,7 +355,7 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
             query = parse_qs(url.query)
             cookies = dict(part.strip().split("=", 1) for part in (self.headers.get("Cookie") or "").split(";")
                            if "=" in part)
-            who = viewer(self.headers, cookies, (query.get("k") or [None])[0])
+            who = viewer(self.headers, cookies, (query.get("k") or [None])[0], self.client_address[0])
             if who is None:  # the same answer as a missing page: nothing says a panel lives here
                 self._json({"error": "no existe"}, 404)
             elif "k" in query:  # keep the key out of the address bar and the history

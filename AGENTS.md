@@ -20,8 +20,11 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
-- Not running: the admin panel (`espol-bot panel`, `docs/guia/panel.md`). It ran on `vinci-server`; the image
-  opens no port, so Coolify has none.
+- The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
+  port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The
+  captain's maintenance runs the watchdog (`src/espol_bot/watch.py`): a WhatsApp message to him when any Vinci breaks.
+- Open signup (`[channels] inscripcion_abierta`): anyone who writes Vinci privately gets the token link and becomes a
+  friend once it arrives, up to `cupo_amigos`.
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).
 
 ## Where to start

@@ -26,7 +26,8 @@
    "name": "Rectorado",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/rectorado-5fe0f18a38.bin"
   },
   {
    "id": "biblioteca",
@@ -43,7 +44,8 @@
    "name": "Bosque protector",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/bosque-35a781cb20.bin"
   },
   {
    "id": "fiec",
@@ -114,7 +116,9 @@
    "name": "Coliseo",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/coliseo-c96e5c4d87.bin",
+   "wide": true
   },
   {
    "id": "canchas",
@@ -122,7 +126,9 @@
    "name": "Canchas",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/canchas-024ebfc8b6.bin",
+   "wide": true
   },
   {
    "id": "bus",
@@ -130,7 +136,9 @@
    "name": "Bus ESPOL",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/bus-cf2c7b71b6.bin",
+   "wide": true
   },
   {
    "id": "comedor",
@@ -138,7 +146,8 @@
    "name": "Comedor central",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/comedor-9c460edc08.bin"
   },
   {
    "id": "aula-magna",
@@ -146,7 +155,9 @@
    "name": "Aula magna",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/aula-magna-09fbb31de1.bin",
+   "wide": true
   },
   {
    "id": "graduacion",
@@ -154,7 +165,9 @@
    "name": "Graduación",
    "collection": "espol",
    "group": "Campus",
-   "rarity": "epic"
+   "rarity": "epic",
+   "art": "art/graduacion-f55869f1eb.bin",
+   "wide": true
   },
   {
    "id": "beatles",
@@ -190,7 +203,9 @@
    "name": "Queen",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/queen-16fc908dd9.bin",
+   "wide": true
   },
   {
    "id": "breaking-bad",
@@ -198,7 +213,9 @@
    "name": "Breaking Bad",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/breaking-bad-994863fbb0.bin",
+   "wide": true
   },
   {
    "id": "friends",
@@ -206,7 +223,9 @@
    "name": "Friends",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/friends-581c4d2bb4.bin",
+   "wide": true
   },
   {
    "id": "star-wars",
@@ -222,7 +241,8 @@
    "name": "Harry Potter",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "rare"
+   "rarity": "rare",
+   "art": "art/harry-potter-0282b84b74.bin"
   },
   {
    "id": "simpsons",
@@ -238,7 +258,8 @@
    "name": "Bad Bunny",
    "collection": "iconos",
    "group": "Íconos",
-   "rarity": "com"
+   "rarity": "com",
+   "art": "art/bad-bunny-8efb81532e.bin"
   },
   {
    "id": "grupap",

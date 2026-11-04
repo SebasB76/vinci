@@ -22,6 +22,8 @@ The captain sends photos (in the chat they arrive as attachment paths) and says 
      For a place the captain has no photo of, find one on the web (the faculty sites, espol.edu.ec, ESPOL's Flickr,
      news og:image) and pass it as `--photo`.
    - Codex now and then makes no image (`Codex no generó ninguna imagen`): run that one again, rewording the brief.
+   - If the log says `moderation_blocked` (OpenAI's filter: some public figures and franchise characters), do not
+     reword to get past it: tell the captain, who can send his own image for `add`.
 3. Show the PNG to the captain (Read it, then link the path). Redraw with a sharper brief if a face is off; never ship
    one the captain did not approve.
 4. In a worktree, add it: `AULA_SECRETS=~/Projects/espol-academic-bot/secrets.env uv run scripts/album_card.py add

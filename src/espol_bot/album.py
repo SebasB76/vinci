@@ -180,6 +180,16 @@ def give_welcome(conn: sqlite3.Connection, now: datetime, rng: random.Random | N
     return True
 
 
+def trade(conn: sqlite3.Connection, given: str, got: str, now: datetime) -> None:
+    """One copy of `given` (a repeat) leaves this album and `got` comes in (trades.py)."""
+    left = conn.execute("UPDATE album_cards SET count = count - 1 WHERE card = ? AND count >= 2", (given,)).rowcount
+    if not left:
+        raise ValueError(f"{given} no está repetida")
+    conn.execute("INSERT INTO album_cards(card, count, first_at) VALUES (?, 1, ?) "
+                 "ON CONFLICT(card) DO UPDATE SET count = count + 1", (got, timefmt.iso(now)))
+    conn.commit()
+
+
 def art_key() -> str:
     """The key of the encrypted art (base64url), or "" without one: the page then shows initials. A friend's Vinci
     reads it from the captain's secrets.env, the only one that holds it."""

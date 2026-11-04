@@ -7,8 +7,8 @@ friend's and in the default one; it acts only on WhatsApp.
 - The captain's private chat: «/amigo agregar 0991234567 Angel», «/amigo quitar Angel» and «/amigos» run
   `espol-bot amigo` (amigos.py); anything else goes on to his Vinci.
 - Vinci's own commands, for the captain and every friend with their Vinci, each over their own aula: /start,
-  /estado, /token, /entregas (a link to the dashboard) and /marca (what a tick on it types) run
-  `espol-bot whatsapp-comando` (in a group, all but /start only say to ask in private); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
+  /estado, /token, /entregas (a link to the dashboard), /marca (what a tick on it types) and /cambio (card trades)
+  run `espol-bot whatsapp-comando` (in a group, all but /start and /cambio only say to ask in private); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
   (/new, /usage, /stop, /help) go on to Hermes.
 - A group: only a mention of Vinci gets here (Hermes' require_mention). The captain's «@vinci activa este grupo» /
   «desactiva este grupo» turns it on or off (`espol-bot whatsapp-grupo`); «activa los avisos» / «desactiva los
@@ -97,7 +97,7 @@ CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9
                              r"[A-Za-z0-9]{64}\b")
 MENTION_RE = re.compile(r"@(\d{6,})\b")
 FRIEND_RE = re.compile(r"^/amigos?\b\s*(\S*)\s*(.*)$", re.S)
-COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca)\b\s*(.*)$", re.S | re.I)
+COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca|cambio)\b\s*(.*)$", re.S | re.I)
 PRIVATE_ONLY = ("estado", "token", "entregas", "marca")  # they show or change the sender's own aula
 QUIZ = "Hazme un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material."
 PRIVATE = "Eso te lo contesto por privado: escríbeme /{0} en nuestro chat."
@@ -360,7 +360,7 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     who = CAPTAIN if CAPTAIN in senders else next(f["numero"] for f in _read(REGISTRY, "amigos")
                                                      if f.get("numero") in senders)
     await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
-                                   stdin=rest if name == "marca" else None), reply_to, gateway)
+                                   stdin=rest if name in ("marca", "cambio") else None), reply_to, gateway)
     return _skip(f"/{name}")
 
 

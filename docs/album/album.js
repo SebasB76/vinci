@@ -198,7 +198,7 @@ function showAlbum(data, cards, fresh, tab) {
   tab = tab || collections[0];
   const have = data.have || {};
   const owned = all.filter((c) => have[c.id]).length;
-  const repeats = Object.values(have).reduce((sum, n) => sum + Math.max(0, n - 1), 0);
+  const repeats = all.reduce((sum, c) => sum + Math.max(0, (have[c.id] || 0) - 1), 0);
   const newIds = new Set(fresh && data.pack ? data.pack.cards.filter((e) => e.new).map((e) => e.id) : []);
   const list = all.filter((c) => c.collection === tab).sort((a, b) => a.n - b.n);
   app.innerHTML = head("Tu álbum", `${owned} de ${all.length} cartas`) + `

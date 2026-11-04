@@ -180,14 +180,6 @@
    "wide": true
   },
   {
-   "id": "michael-jackson",
-   "n": 19,
-   "name": "Michael Jackson",
-   "collection": "iconos",
-   "group": "Íconos",
-   "rarity": "epic"
-  },
-  {
    "id": "the-office",
    "n": 20,
    "name": "The Office",
@@ -228,14 +220,6 @@
    "wide": true
   },
   {
-   "id": "star-wars",
-   "n": 24,
-   "name": "Star Wars",
-   "collection": "iconos",
-   "group": "Íconos",
-   "rarity": "rare"
-  },
-  {
    "id": "harry-potter",
    "n": 25,
    "name": "Harry Potter",
@@ -243,14 +227,6 @@
    "group": "Íconos",
    "rarity": "rare",
    "art": "art/harry-potter-0282b84b74.bin"
-  },
-  {
-   "id": "simpsons",
-   "n": 26,
-   "name": "Los Simpson",
-   "collection": "iconos",
-   "group": "Íconos",
-   "rarity": "com"
   },
   {
    "id": "bad-bunny",

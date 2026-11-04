@@ -211,6 +211,7 @@ def whatsapp_link(conn: sqlite3.Connection, cfg: BotConfig, now: datetime) -> di
     page."""
     if not cfg.album_page:
         return None
+    ids = {c["id"] for c in catalog()}  # a card taken out of the catalog no longer counts
     have = collection(conn)
-    return {"text": ALBUM_BUTTON, "url": page_url(cfg, snapshot(conn, now)), "cards": len(have),
-            "total": len(catalog())}
+    return {"text": ALBUM_BUTTON, "url": page_url(cfg, snapshot(conn, now)), "cards": len(ids & have.keys()),
+            "total": len(ids)}

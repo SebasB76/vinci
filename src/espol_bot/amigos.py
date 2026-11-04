@@ -63,7 +63,7 @@ class Friend:
 @dataclass
 class Outcome:
     respuesta: str            # for the chat it came from, WhatsApp-formatted
-    reiniciar: bool = False   # the routes changed: the gateway must restart to serve them
+    profiles_changed: bool = False  # a friend's Vinci came or went: the gateway serves the change now
     button: dict | None = None  # {"text", "url"}: the answer ends in a button that opens that page
     image: str | None = None  # a picture sent before the answer (the token guide)
     menciones: list[str] | None = None  # the JIDs its «@…» tag
@@ -301,7 +301,7 @@ def submit_token(cfg: BotConfig, number: str, data: str, now: datetime) -> Outco
     log.info("amigo token: %s activo (%d materias)", friend.slug, len(names))
     return Outcome(f"✅ Listo, {friend.nombre}: ya veo tus {len(names)} materias ({listed}). Escríbeme aquí, o "
                    "mencióname en el grupo con @vinci, y te contesto con lo tuyo. Lo nuevo del aula y lo que vence "
-                   "te lo aviso por aquí.", reiniciar=True)
+                   "te lo aviso por aquí.", profiles_changed=True)
 
 
 def _first_read(fcfg: BotConfig, now: datetime) -> list[str]:
@@ -341,7 +341,7 @@ def remove(cfg: BotConfig, who: str, now: datetime) -> Outcome:
     log.info("amigo quitar: %s (%d tokens borrados)", friend.slug, revoked)
     tokens = f" y {revoked} token{'s' if revoked != 1 else ''} suyo{'s' if revoked != 1 else ''} del aula" if revoked else ""
     return Outcome(f"Listo: quité a {friend.nombre}. Borré su Vinci, sus datos{tokens}.",
-                   reiniciar=friend.estado == ACTIVE)
+                   profiles_changed=friend.estado == ACTIVE)
 
 
 def listing(cfg: BotConfig) -> Outcome:

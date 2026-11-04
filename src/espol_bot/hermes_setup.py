@@ -612,7 +612,6 @@ class Setup:
         values = {**self.values, "CAPTAIN": wa.captain, "REGISTRY": str(amigos.registry_path(self.cfg)),
                   "GROUPS": str(amigos.groups_path(self.cfg)), "BRIDGE": self.cfg.whatsapp_bridge,
                   "SESSION": str(self.whatsapp_session()),
-                  "RESTART": "" if test.get("whatsapp_sin_reinicio") else "1",
                   "GROUP_IDLE": str(int(test.get("whatsapp_grupo_inactivo_segundos") or GROUP_IDLE_SECONDS))}
         # The gateway runs pre_gateway_dispatch with the plugins of the profile the sender is routed to, so the
         # plugin goes in every profile a WhatsApp route reaches, plus the default for anything unrouted.
@@ -680,6 +679,8 @@ class Setup:
         toolsets, blocked = VINCI_TOOLSETS, BLOCKED_TOOLSETS
         managed = self.base_config(toolsets, blocked, "vinci", ["amigo", "--hermes-home", str(profile)], "amigo")
         managed["mcp_servers"]["vinci"]["env"].update(env)
+        if os.environ.get("AULA_NOW"):  # the E2E's clock: Hermes serves a friend's new Vinci before the test can patch it
+            managed["mcp_servers"]["vinci"]["env"]["AULA_NOW"] = os.environ["AULA_NOW"]
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         self.configured.append((name, "amigo"))
         extra = "".join(f"export {key}='{env[key]}'\n" for key in ("AULA_DATA_DIR", "ESPOL_AMIGO", CAPTAIN_SECRETS))

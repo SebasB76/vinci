@@ -78,7 +78,10 @@ def call(method: str, route: str, params: dict | None = None, body: bytes = b"",
     sign = signature(key, stamp, nonce, method, target, body)
     try:
         response = requests.request(method, url + target, data=body or None, stream=stream, timeout=(15, timeout),
-                                    headers={HEADER: f"t={stamp},n={nonce},s={sign}"}, allow_redirects=False)
+                                    headers={HEADER: f"t={stamp},n={nonce},s={sign}",
+                                             # Coolify's proxy gzips otherwise, and holds a stream to compress it
+                                             **({"Accept-Encoding": "identity"} if stream else {})},
+                                    allow_redirects=False)
     except requests.RequestException as exc:
         raise RemoteError(f"Could not reach {url}: {exc}") from exc
     if response.status_code == 404 and response.headers.get("Content-Type", "").startswith("application/json"):
@@ -94,7 +97,7 @@ def call(method: str, route: str, params: dict | None = None, body: bytes = b"",
 def _lines(response: requests.Response):
     """A streamed body's lines as they arrive: iter_lines waits for a full 512-byte chunk."""
     pending = b""
-    while chunk := response.raw.read1(65536):
+    while chunk := response.raw.read1(65536, decode_content=True):
         pending += chunk
         *done, pending = pending.split(b"\n")
         for line in done:

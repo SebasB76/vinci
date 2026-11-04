@@ -51,6 +51,7 @@ USER = re.compile(r"\b(user(?:_name)?=)(.+?)(?= chat=| user_id=|,|$)")
 WA_ID = re.compile(r"\+?\d{6,}(?=@(?:lid|s\.whatsapp\.net|c\.us|g\.us))")
 STAMP = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d")
 ALL = "all"
+AUDIT = "logs/remote-access.log"  # logs/agent.log is Hermes' own
 PHONE = re.compile(r"(?<![\w.:/-])\+?\d{10,}(?![\w.])")
 
 
@@ -112,8 +113,9 @@ def _names(cfg: BotConfig) -> list[tuple[re.Pattern, str]]:
         full = friend.nombre.strip()
         for part in sorted({full, *full.split()}, key=len, reverse=True):
             if len(part) >= 3:
-                found.append((re.compile(rf"\b{re.escape(part)}\b", re.IGNORECASE), _initials(full)))
-    return found
+                found.append((re.compile(rf"(?<![\w-]){re.escape(part)}(?![\w-])", re.IGNORECASE),
+                              _initials(full)))
+    return sorted(found, key=lambda p: len(p[0].pattern), reverse=True)
 
 
 def redact(line: str, names: list[tuple[re.Pattern, str]]) -> str:
@@ -130,7 +132,7 @@ def redact(line: str, names: list[tuple[re.Pattern, str]]) -> str:
 
 def _audit(root: Path, entry: str) -> None:
     (root / "logs").mkdir(parents=True, exist_ok=True)
-    with (root / "logs" / "agent.log").open("a", encoding="utf-8") as fh:
+    with (root / AUDIT).open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {entry}\n")
 
 
@@ -143,7 +145,7 @@ def _inside(root: Path, given: str) -> Path | None:
 
 def _log_files(cfg: BotConfig, root: Path) -> dict[str, Path]:
     files = {"gateway": root / "logs" / "gateway.log", "errors": root / "logs" / "errors.log",
-             "bot": cfg.core.data_dir / "bot.log", "agent": root / "logs" / "agent.log"}
+             "bot": cfg.core.data_dir / "bot.log", "remote-access": root / AUDIT}
     for path in sorted(root.glob("logs/*.log")) + sorted(root.glob("profiles/*/logs/*.log")):
         name = str(path.relative_to(root))
         files.setdefault(name.removeprefix("logs/").removesuffix(".log")

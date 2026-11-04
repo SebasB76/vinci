@@ -72,8 +72,9 @@ GUEST_TOOLS = json.loads('''{{GUEST_TOOLS}}''')
 MCP_TOOLS = ("mcp__vinci__", "mcp__materia__")  # this project's own tools (mcp_server.py)
 CHANNEL_ARG = "_canal"  # mcp_server.CHANNEL_ARG
 GUEST_BLOCKED = ("Eso es del dueño de este Vinci (su aula, sus notas, sus listas o la memoria de Vinci): solo él "
-                 "puede pedirlo. Explícale a quien lo pidió que para tener lo suyo tiene que pedirle al dueño que lo "
-                 "agregue, y ofrécele lo que sí puedes: el material de los cursos, exámenes anteriores o diapositivas.")
+                 "puede pedirlo. Explícale a quien lo pidió que, para tener lo suyo, me escriba por privado: le llega "
+                 "un enlace para conectar su aula virtual y desde ahí tiene su propio Vinci, sin pedirle permiso a "
+                 "nadie. Ofrécele lo que sí puedes: el material de los cursos, exámenes anteriores o diapositivas.")
 PATTERN = r"^v1:"
 TOKEN_RE = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}\b")
 # ESPOL's aula tokens are 64 letters (both cases) and digits; stock Canvas prefixes "<digits>~". Mixed case keeps

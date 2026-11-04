@@ -199,7 +199,7 @@ def waiting(path: Path, now: datetime) -> bool:
 
 
 def fetch(cfg: BotConfig, now: datetime) -> list[dict]:
-    """Everything the relay holds for an open mailbox, run for its owner: [{"chat", "respuesta", "reiniciar", "button"}].
+    """Everything the relay holds for an open mailbox, run for its owner: [{"chat", "respuesta", "profiles_changed", "button"}].
     The captain's cfg. What no open mailbox claims is dropped; a token mailbox serves once."""
     from espol_bot import amigos, whatsapp
     path = registry_path(cfg)
@@ -241,7 +241,7 @@ def fetch(cfg: BotConfig, now: datetime) -> list[dict]:
                 continue
             outcome = amigos.command(cfg, "marca", box["number"], f"{item} {'ok' if body.get('done') else 'no'}", now)
         answers.append({"chat": whatsapp.jid(box["number"]), "respuesta": outcome.respuesta,
-                        "reiniciar": outcome.reiniciar, "button": outcome.button, "image": outcome.image})
+                        "profiles_changed": outcome.profiles_changed, "button": outcome.button, "image": outcome.image})
     if handled:
         try:
             requests.post(f"{url}/ack", headers=headers, json={"ids": handled}, timeout=TIMEOUT).raise_for_status()

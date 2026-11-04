@@ -14,7 +14,7 @@ friend's and in the default one; it acts only on WhatsApp.
   «desactiva este grupo» turns it on or off (`espol-bot whatsapp-grupo`); «activa los avisos» / «desactiva los
   avisos» do the same for the class reminders and the aula's news there (avisos.py); «este grupo es de confianza»
   makes it a friends' group, where those notices tag people and say who handed in. In a group that is on, the captain and
-  every friend with their own Vinci go on to it (Hermes routes each sender to their profile); a friend still
+  every friend with their own Vinci go on to it (_own_vinci sends each friend to their own profile); a friend still
   without one, or anyone else, reaches Vinci as a guest (GUEST_HEADER): only its guest tools, never the captain's
   data. A group that is off gets nothing.
 - A friend's private chat: the ciphertext the token page gave them goes to `espol-bot amigo token` on stdin, so
@@ -81,7 +81,7 @@ BRIDGE = "{{BRIDGE}}"
 SESSION = "{{SESSION}}"  # the bridge's login: its creds.json says which ids are Vinci's own
 NAMES = os.path.join(os.path.dirname(GROUPS), "whatsapp-nombres.json")
 QUIZ_CLOSES = os.path.join(os.path.dirname(GROUPS), "quiz-cierres.json")
-RESTART = bool("{{RESTART}}")  # empty in the E2E test, which restarts its own gateway
+FRIEND_PROFILE_PREFIX = "amigo-"  # amigos.PROFILE_PREFIX
 GROUP_IDLE = int("{{GROUP_IDLE}}")  # seconds; the E2E test shortens it
 PRIVATE_IDLE = 4 * 3600
 RELAY = "{{RELAY}}"  # relay.py's mailboxes; set only in the default profile's copy, the one that polls
@@ -107,8 +107,8 @@ TRUST_OFF_RE = re.compile(r"\b(?:este|el) grupo (?:ya )?no es de confianza\b")
 TRUST_ON_RE = re.compile(r"\b(?:este|el) grupo es de confianza\b")
 NOTICES_ON_RE = re.compile(r"\b(?:activa(?:r)?|manda(?:r)?) (?:los )?avisos\b")
 NOTICES_OFF_RE = re.compile(r"\b(?:desactiva(?:r)?|quita(?:r)?) (?:los )?avisos\b|\bno mandes (?:los )?avisos\b")
-PENDING_DM = ("Para empezar, abre el enlace que te mandé, pega tu token del aula y pégame aquí el texto cifrado que "
-              "te da (empieza con v1.). Si el enlace ya no abre, escríbeme /token y te mando otro.")
+PENDING_DM = ("Para empezar, conecta tu aula virtual desde el enlace que te mandé: yo solo la leo, no cambio nada. "
+              "Si el enlace ya no abre, escríbeme /token y te mando otro.")
 RAW_TOKEN = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y usa "
              "el enlace que te mandé, que lo cifra en tu celular.")
 RAW_TOKEN_ACTIVE = ("⚠️ Eso parece tu token del aula tal cual: bórralo de este chat (mantenlo presionado → Eliminar) y "
@@ -117,7 +117,7 @@ FAILED = "⚠️ Algo falló de mi lado; inténtalo otra vez en un rato."
 GROUP_HEADER = "[{name} te escribe en un grupo de WhatsApp]"
 # Someone in a group with no Vinci of their own: Vinci answers with only its guest tools (vinci-botones' pre_tool_call).
 GUEST_HEADER = "[{name}, invitado sin su propio Vinci, te escribe en un grupo de WhatsApp]"
-PENDING_HEADER = ("[{name}, invitado: ya lo agregaron y le falta conectar su aula con el enlace que le llegó por "
+PENDING_HEADER = ("[{name}, invitado: ya te escribió y le falta conectar su aula con el enlace que le llegó por "
                   "privado, te escribe en un grupo de WhatsApp]")
 NOT_YOURS = ("(un mensaje de Vinci que no está en tu conversación: es del Vinci de otra persona del grupo, o de hace "
              "rato) ")
@@ -129,7 +129,9 @@ ATTACHMENTS_KEPT = 7 * 86400
 _HEARD = {}  # the last audio heard: a group's audio file is heard to place it, then again for the model
 _TASKS = set()  # asyncio keeps only a weak reference to a task
 _VOTES = asyncio.Lock()
-_GATEWAY = []  # the gateway, as the hook last saw it: a relay answer may need it to restart
+_GATEWAY = []  # the gateway, as the hook last saw it
+_LIVE_ROUTES = {}  # sender → a route to their own Vinci that the boot routes missed (_own_vinci)
+LIVE_ROUTE = "vinci-whatsapp-en-vivo-"
 
 
 def register(ctx):
@@ -256,6 +258,9 @@ async def _sort(event, source, gateway):
             vote = json.dumps({"encuesta": poll, "opcion": text})
             await _answer(chat, await _run("whatsapp-comando", "voto", who, stdin=vote), None, gateway)
         return _skip("voto en una encuesta")
+
+    if friend and friend.get("estado") == "activo" and not captain:
+        await _own_vinci(source, friend, gateway)
 
     if chat.endswith("@g.us"):
         plain = _plain(text)
@@ -571,8 +576,57 @@ async def _run(*args, stdin=None):
 
 async def _answer(chat, result, reply_to, gateway):
     await asyncio.to_thread(_deliver, chat, result, reply_to)
-    if (result or {}).get("reiniciar") and RESTART and gateway is not None:
-        _restart(gateway)
+    if (result or {}).get("profiles_changed") and gateway is not None:
+        await _serve_profiles(gateway)
+
+
+async def _own_vinci(source, friend, gateway):
+    """An active friend's message goes to their own Vinci. Hermes routed it before this hook, by the routes it read at
+    boot: those miss a friend who connected since, and a sender the bridge names only by a LID. A route for this exact
+    sender goes into the live set, which Hermes checks again when it admits the message."""
+    profile = FRIEND_PROFILE_PREFIX + str(friend.get("slug") or "")
+    sender = str(getattr(source, "user_id", "") or "")
+    if gateway is None or not sender or getattr(source, "profile", None) == profile:
+        return
+    try:
+        if profile not in gateway.served_profile_names():
+            await _serve_profiles(gateway)
+        if profile not in gateway.served_profile_names():
+            logger.error("el Vinci de %s todavía no está servido: su mensaje va al de Vinci", friend.get("slug"))
+            return
+        from gateway.profile_routing import ProfileRoute
+        from gateway.session_identity import clear_identity
+        _LIVE_ROUTES[sender] = ProfileRoute(name=f"{LIVE_ROUTE}{friend.get('slug')}", platform="whatsapp",
+                                            profile=profile, user_id=sender)
+        _set_routes(gateway, gateway.config.profile_routes)
+        clear_identity(source)  # drops what the boot routes resolved
+        source.profile = profile
+        logger.info("%s va a su propio Vinci (ruta en vivo)", friend.get("slug"))
+    except Exception:
+        logger.exception("no pude mandar a %s a su propio Vinci", friend.get("slug"))
+
+
+async def _serve_profiles(gateway):
+    """A friend's Vinci came or went: Hermes serves the change now (it rescans profiles/ every 30 s anyway) and takes
+    the routes setup just wrote, with no restart."""
+    try:
+        await gateway.reconcile_served_profiles(reason="vinci-whatsapp")
+        import yaml
+        from gateway.profile_routing import parse_profile_routes
+        from hermes_constants import get_process_hermes_home
+        with open(get_process_hermes_home() / "config.yaml", encoding="utf-8") as fh:
+            written = (yaml.safe_load(fh) or {}).get("gateway", {}).get("profile_routes") or []
+        _set_routes(gateway, parse_profile_routes(written))
+    except Exception:
+        logger.exception("no pude actualizar los Vinci servidos; Hermes lo reintenta solo")
+
+
+def _set_routes(gateway, base):
+    served = set(gateway.served_profile_names())
+    for sender in [s for s, route in _LIVE_ROUTES.items() if route.profile not in served]:
+        del _LIVE_ROUTES[sender]  # a friend removed since
+    routes = [r for r in base if not r.name.startswith(LIVE_ROUTE)] + list(_LIVE_ROUTES.values())
+    gateway.config.profile_routes = sorted(routes, key=lambda r: -r.specificity)  # Hermes takes the first match
 
 
 def _deliver(chat, result, reply_to):
@@ -627,9 +681,7 @@ def _relay_loop(ctx):
                 logger.warning("whatsapp-rele: %s", message[-1] if message else proc.returncode)
                 continue
             for answer in json.loads(proc.stdout.decode() or "{}").get("respuestas") or []:
-                _deliver(answer["chat"], answer, None)
-                if answer.get("reiniciar") and RESTART:
-                    _relay_restart()
+                _deliver(answer["chat"], answer, None)  # a new friend's Vinci: _own_vinci serves it on their first message
         except Exception:
             logger.exception("no pude atender el relé")
 
@@ -705,22 +757,3 @@ def _relay_waiting():
     return False
 
 
-def _relay_restart():
-    if _GATEWAY:
-        _restart(_GATEWAY[0])
-        return
-    try:  # no message yet since the gateway started: ask Hermes, as `hermes gateway restart` would
-        subprocess.Popen([ENV["HERMES_BIN"], "gateway", "restart"], env=_env(), start_new_session=True)
-    except OSError:
-        logger.exception("no pude reiniciar el gateway; hazlo a mano: hermes gateway restart")
-
-
-def _restart(gateway):
-    # As Hermes' own /restart: under systemd or a container, exit for the supervisor; else a detached helper.
-    try:
-        from gateway.restart import is_container_restart_context, is_gateway_supervisor_process
-        via_service = is_gateway_supervisor_process() or is_container_restart_context()
-        gateway.request_restart(detached=not via_service, via_service=via_service)
-        logger.info("rutas de WhatsApp cambiadas: reinicio del gateway pedido")
-    except Exception:
-        logger.exception("no pude reiniciar el gateway; hazlo a mano: hermes gateway restart")

@@ -51,7 +51,7 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   missed by days never goes out; none lost while the bridge is down), and one he asks for in his private chat, sent
   to him alone with a poll that snoozes it to the next day, and its notices (a reminder before a class; trusted, a friend's
   news tagging him, once); his friend Angel invited with a Vinci of his own (his token through
-  the page and Vinci's relay, his week next to the captain's in the group, slides, mentions, an assignment found by
+  the page and Vinci's relay, his week next to the captain's in the group at once, with no gateway restart, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
   that goes idle, a poll for a button, a quiz a guest asks for in the group: one results message once the guest, Angel
   and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands);
@@ -1023,7 +1023,6 @@ def world(tmp_path: Path):
         hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
         config += (f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
                    f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
-                   "whatsapp_sin_reinicio = true  # the test restarts its own gateway\n"
                    f"whatsapp_grupo_inactivo_segundos = {GROUP_IDLE}\n")
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
@@ -2363,7 +2362,7 @@ def test_whatsapp_friend(tmp_path):
         say(GROUP_WA, angel_jid, "@vinci hola", "Angel", group=True)
         waiting = [flatten([m for m in r["messages"] if m.get("role") == "user"][-1].get("content"))
                    for r in llm.requests[calls:] if bot_of(r) == "Vinci"]
-        assert waiting and "[Angel, invitado: ya lo agregaron y le falta conectar su aula" in waiting[0], waiting
+        assert waiting and "[Angel, invitado: ya te escribió y le falta conectar su aula" in waiting[0], waiting
         raw = say(angel_jid, angel_jid, f"este es mi token {ANGEL_TOKEN}", "Angel")
         assert "bórralo de este chat" in text_of(raw)
 
@@ -2415,11 +2414,10 @@ def test_whatsapp_friend(tmp_path):
                       "sus crons, su ruta). El mismo enlace no sirve dos veces, y Vinci descarta lo que llega a un "
                       "buzón que no abrió")
 
-        # 10e. After the restart that loads his route: Angel's own week, in the same group as the captain
-        gateway.stop()
+        # 10e. Angel's own week right away, in the same group as the captain: no gateway restart, though the routes
+        # it read at boot have no Angel (the plugin sends him to his new Vinci, which Hermes serves on the spot)
         patch_profile("amigo-angel")
         pause_crons()  # his own, and any the provisioning resumed
-        start()
         his = text_of(say(GROUP_WA, angel_jid, "@vinci qué tengo esta semana", "Angel", group=True))
         assert "Integrales dobles" in his and "EDO de primer orden" in his, his
         mine = text_of(say(GROUP_WA, captain_jid, "@vinci qué tengo esta semana", "Capitán", group=True))

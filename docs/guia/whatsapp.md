@@ -179,7 +179,8 @@ que agregues a nadie:
 
 1. Alguien que no es tu amigo le escribe a Vinci por privado, con cualquier mensaje.
 2. Vinci le manda solo el mismo enlace de `/amigo agregar`, y a ti te avisa: «🆕 Darío le escribió a Vinci…».
-3. Cuando pega su token, queda como un amigo más y te llega «✅ Darío ya tiene su Vinci».
+3. Cuando conecta su aula, queda como un amigo más y te llega «✅ Darío ya tiene su Vinci». Su siguiente mensaje ya
+   lo contesta su propio Vinci, sin reiniciar nada ni esperar tu permiso.
 
 Hasta que pega un token válido del aula, Vinci no usa el modelo con esa persona: solo un desconocido con cuenta de
 ESPOL llega a tener su Vinci. El enlace dura un día; si vence, la persona escribe `/token` y le llega otro. Vinci
@@ -206,5 +207,5 @@ notas con el esquema que guarda con su voto, y los recordatorios del aula con la
 
 En un grupo activo, Vinci también le contesta a quien todavía no tiene su Vinci, como invitado: charla, explica,
 busca en la web, el material de los cursos, exámenes anteriores, diapositivas, resúmenes en PDF y un quiz en el grupo. No ve su aula ni le muestra nada
-tuyo, y si pide sus tareas o sus notas, le dice que te pida que lo agregues. Esas respuestas usan tu modelo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
+tuyo, y si pide sus tareas o sus notas, le dice que le escriba por privado para conectar su aula. Esas respuestas usan tu modelo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
 `secrets.env`.

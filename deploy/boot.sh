@@ -6,6 +6,14 @@ VINCI=/opt/vinci
 BOT="$VINCI/.venv/bin/espol-bot"
 say() { echo "[vinci] $*"; }
 
+# Coolify's Logs tab is out of an agent's reach: keep each boot's lines in the volume too (`vinci-check remote logs
+# boot`), still on stdout for Coolify. The last 2000 lines are enough for a few boots.
+BOOT_LOG=/opt/data/logs/boot.log
+mkdir -p "$(dirname "$BOOT_LOG")"
+[ -f "$BOOT_LOG" ] && tail -n 2000 "$BOOT_LOG" > "$BOOT_LOG.tmp" && mv "$BOOT_LOG.tmp" "$BOOT_LOG"
+exec > >(tee -a "$BOOT_LOG") 2>&1
+say "boot $(date '+%Y-%m-%d %H:%M:%S')"
+
 mkdir -p "$(dirname "$AULA_CONFIG")"
 # The repo's config.toml on every start, as on the PC (a config change ships with a deploy), with its data inside
 # the volume and no notes folder (it lives on the captain's PC). Nothing writes config.toml at runtime.

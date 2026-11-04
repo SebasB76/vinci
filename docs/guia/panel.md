@@ -66,7 +66,7 @@ tokens, los de tus amigos y sus chats.
 |---|---|
 | `vinci-check remote status` | el gateway, WhatsApp, la salud de cada Vinci, los turnos trabados y cuántos errores hubo |
 | `vinci-check remote errors` | los errores de las últimas 24 h, agrupados, como en el panel |
-| `vinci-check remote logs [nombre] [-n 200] [--grep …] [-f]` | la cola de un log (`gateway`, `errors`, `bot`, `agent`, `vinci/gateway`…); sin nombre, la lista. `all` junta el `gateway.log` de cada perfil, y cada línea dice qué perfil la escribió |
+| `vinci-check remote logs [nombre] [-n 200] [--grep …] [-f]` | la cola de un log (`gateway`, `errors`, `bot`, `agent`, `boot`, `vinci/gateway`…); `boot` son las líneas `[vinci]` de cada arranque; sin nombre, la lista. `all` junta el `gateway.log` de cada perfil, y cada línea dice qué perfil la escribió |
 | `vinci-check remote turns [--profile vinci] [-n 30]` | los últimos turnos de un perfil, con las herramientas que usó |
 | `vinci-check remote run <comando>` | un comando en el contenedor, como el usuario `hermes`, en `/opt/data` |
 | `vinci-check remote doctor` · `restart` | `espol-bot doctor` · `hermes gateway restart` |

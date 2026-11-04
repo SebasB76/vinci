@@ -27,7 +27,8 @@ RUN python3 -m venv /tmp/uv && \
     chmod 0755 /opt/vinci/deploy/boot.sh /opt/vinci/deploy/healthcheck.sh && \
     install -m 0755 /opt/vinci/deploy/cont-init.sh /etc/cont-init.d/019-vinci && \
     install -m 0755 /opt/vinci/deploy/as-hermes.sh /usr/local/bin/espol-bot && \
-    ln -s espol-bot /usr/local/bin/vinci-move
+    ln -s espol-bot /usr/local/bin/vinci-move && \
+    ln -s espol-bot /usr/local/bin/vinci-check
 
 ENV VINCI_HERMES_ROOT=/opt/data \
     AULA_CONFIG=/opt/data/vinci/config.toml \

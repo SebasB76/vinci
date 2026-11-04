@@ -54,7 +54,7 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 4. Ask the captain to press **Redeploy** on Vinci's app in Coolify, and wait for **Healthy**: each boot does what
    `./setup.sh` does.
 5. In the container's **Terminal**: `espol-bot doctor`.
-6. There: `s6-setuidgid hermes env HOME=/opt/data /opt/vinci/.venv/bin/vinci-check smoke` (about 45 s), plus a
+6. There: `vinci-check smoke` (about 45 s), plus a
    `vinci-check say` or `vote` that exercises the change itself.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
 
@@ -119,7 +119,7 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 ## Commands
 
 The commands from `./setup.sh` down to `tail -f` are for an install like the old `vinci-server`. In the Coolify
-container's Terminal, run `espol-bot` and `hermes` as they are (they run as the `hermes` user), and the data lives
+container's Terminal, run `espol-bot`, `vinci-check` and `hermes` as they are (they run as the `hermes` user), and the data lives
 under `/opt/data` (`docs/guia/servidor.md`).
 
 ```bash

@@ -81,7 +81,7 @@ contenedor:
 3. Corre `espol-bot hermes-perfil`. Enciende WhatsApp en el gateway, ahora que hay sesión.
 4. Corre `hermes gateway start`.
 
-Desde la Terminal de Coolify usa siempre `espol-bot`, `vinci-move` y `hermes` tal cual: los tres corren como el
+Desde la Terminal de Coolify usa siempre `espol-bot`, `vinci-check`, `vinci-move` y `hermes` tal cual: los cuatro corren como el
 usuario de Hermes, y así no dejan archivos que el gateway no pueda leer.
 
 ## En una laptop vieja en casa, sin Docker

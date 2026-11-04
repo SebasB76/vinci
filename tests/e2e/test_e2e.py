@@ -58,7 +58,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
-  link on their own (a fresh one with /token), the captain hears of it, and no model turn is spent.
+  link on their own (a fresh one with /token), the captain hears of it, and no model turn is spent; a gift
+  pack reaches them at once.
 
 test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step login, a BotDetect CAPTCHA). The captain
   asks for his GPA with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his chat. On
@@ -2832,9 +2833,18 @@ def test_whatsapp_friend(tmp_path):
         relinked = say(newcomer_jid, newcomer_jid, "/token", "Darío", expect=2)
         assert relinked[-1]["path"] == "send-url-button" and relinked[-1]["url"] != letter[1]["url"], relinked
         assert len(llm.requests) == calls, "alguien sin token no gasta turnos del modelo"
+        # A gift pack reaches him too, at once (no poll runs for him yet), with a nudge to paste his token
+        mark = len(wa.sent)
+        gifted = run([bot, "album-regalo", "Bienvenido"], "2026-09-30T10:00:00-05:00")
+        assert "Darío: ya se lo mandé" in gifted.stdout, gifted.stdout
+        gift = wa.wait_for(lambda b: [m for m in b.messages_to(newcomer_jid, mark)
+                                      if "sobre de regalo" in m.get("message", "")], 30)
+        assert gift and gift[0]["path"] == "send-url-button" and "conecta tu aula virtual" in gift[0]["message"], gift
+        assert "/album/#d=" in gift[0]["url"], gift[0]["url"]
         report.append("Con la inscripción abierta, un número desconocido que le escribe a Vinci por privado recibe solo "
                       "el enlace para su token (y otro con /token, si el primero venció), el capitán se entera, y "
-                      "nada de eso usa el modelo")
+                      "nada de eso usa el modelo; un sobre de regalo le llega al momento, con la invitación a "
+                      "conectar su aula")
 
         (ARTIFACT / "whatsapp-amigo.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "amigo")

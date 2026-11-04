@@ -255,6 +255,14 @@ def announcements(conn: sqlite3.Connection, ids: list[int] | None = None, *, lim
     return result
 
 
+def _feedback(a: sqlite3.Row) -> dict:
+    """The professor's comments and graded rubric; `feedback_read: false` when the aula was not asked yet."""
+    if a["feedback"] is None:
+        return {"feedback_read": False}
+    found = json.loads(a["feedback"])
+    return {"feedback": found} if found else {}
+
+
 def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]:
     extra, params = _course_filter(ids, "c.id")
     result = []
@@ -268,7 +276,8 @@ def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]
             "curso": c["name"], "curso_id": c["id"], "nota_actual": c["current_score"],
             "calificacion_actual": c["current_grade"],
             "tareas": [{"id": a["id"], "tarea": a["name"], "nota": a["score"], "calificacion": a["grade"],
-                        "puntos": a["points_possible"], "calificada": a["graded_at"], "url": a["html_url"]}
+                        "puntos": a["points_possible"], "calificada": a["graded_at"], "url": a["html_url"],
+                        **_feedback(a)}
                        for a in graded],
         })
     return result

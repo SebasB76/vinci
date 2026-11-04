@@ -8,6 +8,8 @@
 - «¿Qué tengo pendiente esta semana y en qué orden lo hago?» · «¿Cómo voy en todo?» · «Hazme un plan para el
   parcial de Física».
 - «¿Qué dijo el profe de Cálculo?» · «¿Qué notas me publicaron?»
+- «¿El profe dejó comentarios en el Avance 1?» → te los cita, con los archivos que adjuntó y la rúbrica
+  calificada por criterio.
 - «¿Cómo voy en notas?» · «¿Cuánto necesito para pasar Estadística?» · «En Física no hay examen en el primer
   parcial: todo son deberes y laboratorio» → te muestra el esquema para que lo guardes.
 - «Tengo esto de Física» + una foto, un PDF o una nota de voz → te dice a qué bot se lo pasó. Si no le queda

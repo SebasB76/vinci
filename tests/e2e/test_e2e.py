@@ -12,7 +12,8 @@ test_canvas, no gateway:
   2. `aula` CLI commands against the first fixture state: the material catalog (a module's subheader, folders, a copy
      from 2025, a big book, a guide only an assignment links to, an announcement's attachment) and its outside links;
      a file and its copy downloaded on demand.
-  3. Vinci's polls, then the fixtures change (new assignment, due-date change, new announcement, posted grade, new
+  3. Vinci's polls, then the fixtures change (new assignment, due-date change, new announcement, posted grade with the
+     professor's comment and its file (never the student's own comment), new
      material, the syllabus, a new module link, a submission), then polls 2-4 and the 07:00 summary (twice: the second
      must not resend; the album's pack of the day comes after it), each in the captain's WhatsApp chat, a reminder's «Ya lo entregué» as a poll. Only syllabi
      download on their own; while poll 2 slowly downloads the new one, `aula cursos --actualizar` must not wait for it.
@@ -1420,6 +1421,15 @@ def test_canvas(tmp_path):
                          "Enlace nuevo en Cálculo de una Variable* · Semana 4: Aplicaciones de la "
                          "derivada · ANTES de clase en vivo"):
             assert expected in texts, f"falta «{expected}» en el sondeo 2:\n{texts}"
+        graded = next(m["text"] for m in poll2 if "Nota publicada" in m["text"])
+        assert "revisa la normalización" in graded and "Profesor E2E" in graded \
+            and "correcciones-tarea1.pdf" in graded, f"la nota llega con el comentario del profe y su adjunto:\n{graded}"
+        assert "versión final" not in graded, "el comentario del propio estudiante no es feedback del profe"
+        notas = json.loads(run([aula, "notas", "--curso", "FÍSICA", "--json"], T_POLL2).stdout)
+        tarea1 = next(t for c in notas for t in c["tareas"] if t["id"] == 3001)
+        assert [c["text"][:13] for c in tarea1["feedback"]["comments"]] == ["Buen trabajo."], tarea1
+        report.append("La nota de la Tarea 1 llega con el comentario del profe y su PDF adjunto, sin el comentario "
+                      "del estudiante, y `aula notas` (lo que lee la herramienta `notas` de los bots) lo devuelve")
         by_title = {m["text"].split("\n")[1]: m["text"] for m in poll2 if "\n" in m["text"]}
         assert "Ya lo leí" in by_title["Sílabo MATG1049 2026-2T.pdf"], "el sílabo se baja y se lee solo"
         assert "Lo bajo y lo leo cuando haga falta" in by_title["Semana 2 - Cinemática.pptx"], \
@@ -1886,7 +1896,9 @@ def test_whatsapp_captain(tmp_path):
         assert polls and polls[0]["question"] == "¿Guardo este esquema de notas?", fail(f"sin encuesta: {wa.sent[mark:]}")
         mark = len(wa.sent)
         wa.vote(captain_jid, captain_jid, polls[0]["messageId"], next(o for o in polls[0]["options"] if "Guardar" in o))
-        assert wa.wait_for(lambda b: b.messages_to(captain_jid, mark), 60), fail("el voto no guardó el esquema")
+        # Its own reply: the proposal's last line can still land after the poll, and would count as this one.
+        assert wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Guardé" in (m.get("message") or "")],
+                           60), fail("el voto no guardó el esquema")
         asked = say(captain_jid, captain_jid, "muéstrame mis notas", "Capitán", expect=2)
         [page] = [m for m in asked if m["path"] == "send-url-button"]
         assert page["buttonText"] == "📊 Ver mis notas", page

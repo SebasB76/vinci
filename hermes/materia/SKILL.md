@@ -21,6 +21,7 @@ misma materia.
 |---|---|
 | La materia de un vistazo (clases, pendientes, anuncios, cuaderno) | `resumen` |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` |
+| Qué comentó el profe de una entrega (comentarios, rúbrica calificada) | `notas`: su «feedback»; cítalo tal cual |
 | Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | Encontrar la tarea que nombra («el taller de vectores»), también entregada o vencida | `tareas` (`buscar`) |
 | Cómo va en notas y cuánto necesita (la calculadora) | `grade_status` (`what_if`, `target`) |

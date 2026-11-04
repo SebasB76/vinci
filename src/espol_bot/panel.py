@@ -1,12 +1,13 @@
 """The captain's admin panel: one page with the gateway, the scheduled jobs, model spend and recent turns of every
-Hermes profile, and the health of every Vinci on the install (watch.py). Read-only, no model, no Canvas call. On a PC
+Hermes profile, and the health of every Vinci on the install (watch.py). The page is read-only, no model, no Canvas call. On a PC
 it listens on 127.0.0.1 and Tailscale Funnel publishes it; in the container an s6 service (deploy/s6/vinci-panel)
 listens on 0.0.0.0 behind Coolify's proxy (docs/guia/panel.md).
 
 Two viewers. The captain, on his tailnet (Tailscale's identity headers) or on the machine itself, sees everything.
 Anyone else gets a 404 unless they bring PANEL_KEY from secrets.env (the link `--nueva-clave` prints); with it they
 see the same panel without any chat text. Through Coolify everyone, the captain too, is this second viewer. Friends' chats and WhatsApp groups
-never show their text, not even to the captain."""
+never show their text, not even to the captain. A third door, /agente/, is for a coding agent on the captain's PC and
+has a key of its own (agent_api.py)."""
 
 from __future__ import annotations
 
@@ -335,6 +336,7 @@ def viewer(headers, cookies: dict[str, str], query_key: str | None, client: str 
 
 
 def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
+    from espol_bot import agent_api
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: bytes, kind: str) -> None:
             self.send_response(status)
@@ -352,6 +354,9 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
 
         def do_GET(self) -> None:  # noqa: N802 (http.server's name)
             url = urlparse(self.path)
+            if url.path.startswith("/agente/"):  # its own key and signature, never the viewer's (agent_api.py)
+                agent_api.handle(self, cfg)
+                return
             query = parse_qs(url.query)
             cookies = dict(part.strip().split("=", 1) for part in (self.headers.get("Cookie") or "").split(";")
                            if "=" in part)
@@ -376,6 +381,14 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
                 self._json(found if found else {"error": "no existe"}, 200 if found else 404)
             else:
                 self._json({"error": "no existe"}, 404)
+
+        def do_POST(self) -> None:  # noqa: N802
+            if urlparse(self.path).path.startswith("/agente/"):
+                agent_api.handle(self, cfg)
+            else:
+                self._json({"error": "no existe"}, 404)
+
+        do_PUT = do_POST
 
         def log_message(self, *args) -> None:  # every refresh would flood the journal
             pass

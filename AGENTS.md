@@ -7,7 +7,7 @@ the university's Canvas (aulavirtual). It has one maintainer, called "the captai
 and docs, and a few friends who each get their own Vinci on WhatsApp. It is a side project:
 shipping speed beats ceremony, and a bug found later is fixed in a new session.
 
-## Status (2026-10-28)
+## Status (2026-11-04)
 
 - Live: the Docker image (`Dockerfile`, `deploy/`) on Coolify, since 2026-10-27, on DeepSeek (`VINCI_PROVIDER`,
   `VINCI_MODEL` and `DEEPSEEK_API_KEY` in Coolify's variables). One container, one Hermes gateway for `vinci` and one
@@ -23,6 +23,10 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The
   captain's maintenance runs the watchdog (`src/espol_bot/watch.py`): a WhatsApp message to him when any Vinci breaks.
+- Live: `vinci-check remote` (`src/espol_bot/remote.py`) reaches the container from the PC through the panel's
+  `/agente/` routes (`agent_api.py`), with its own signed `AGENT_KEY`: logs, errors, turns, shell commands as
+  `hermes`, files under `/opt/data`. A live bug starts there (`control-vinci` skill), not with the captain pasting
+  Terminal output. The Coolify API stays off for the whole instance (TAWS), so Redeploy is still his button.
 - Open signup (`[channels] inscripcion_abierta`): anyone who writes Vinci privately gets the token link and becomes a
   friend once it arrives, up to `cupo_amigos`.
 - The semester ends on 2027-01-15 (`semester_end` in `config.toml`).
@@ -39,7 +43,7 @@ These are entry points. Follow references anywhere the task leads.
   `hermes/plugins/vinci-whatsapp/`.
 - What the E2E covers: the docstring at the top of `tests/e2e/test_e2e.py`.
 - A live problem, or checking a change on the real bots: the `control-vinci` skill
-  (`.claude/skills/control-vinci/SKILL.md`) and its `vinci-check` CLI.
+  (`.claude/skills/control-vinci/SKILL.md`), `vinci-check remote` from the PC and `vinci-check` in the container.
 - Which feature lives where (Telegram vs WhatsApp), its code and how to verify it:
   `.claude/skills/control-vinci/references/features/README.md`.
 - `experiments/` holds spikes, not production code.
@@ -56,9 +60,9 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 3. `gh pr merge <n> --merge --delete-branch` (the repo keeps merge commits).
 4. Ask the captain to press **Redeploy** on Vinci's app in Coolify, and wait for **Healthy**: each boot does what
    `./setup.sh` does.
-5. In the container's **Terminal**: `espol-bot doctor`.
-6. There: `vinci-check smoke` (about 45 s), plus a
-   `vinci-check say` or `vote` that exercises the change itself.
+5. From the PC: `vinci-check remote doctor` (or `espol-bot doctor` in the container's **Terminal**).
+6. `vinci-check remote run vinci-check smoke` (about 45 s), plus a
+   `vinci-check say` or `vote` that exercises the change itself, the same way.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
 
 ## Working rules
@@ -121,11 +125,14 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 
 ## Commands
 
-The commands from `./setup.sh` down to `tail -f` are for an install like the old `vinci-server`. In the Coolify
+The `vinci-check remote` lines run on the PC (`.venv/bin/`, after `vinci-check remote login`). The commands from `./setup.sh` down to `tail -f` are for an install like the old `vinci-server`. In the Coolify
 container's Terminal, run `espol-bot`, `vinci-check` and `hermes` as they are (they run as the `hermes` user), and the data lives
 under `/opt/data` (`docs/guia/servidor.md`).
 
 ```bash
+vinci-check remote status                 # from the PC: the live container's health (also errors, logs, turns, run)
+vinci-check remote logs all --grep "inbound message" -n 50   # every profile's log; masked unless --raw
+vinci-check remote run vinci-check smoke  # any command in the container, as hermes, in /opt/data
 uv sync                                   # dependencies, dev included
 uv run pytest                             # the E2E: 4 tests in parallel (fake Canvas and WhatsApp, real Hermes)
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message

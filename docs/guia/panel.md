@@ -1,7 +1,8 @@
 # El panel de administración
 
 El panel es una página para ti, el dueño de la instalación: muestra si Vinci está vivo, cuánto gasta y qué hizo en
-cada conversación. Solo lee: no usa el modelo, no llama al aula y no cambia nada.
+cada conversación. La página solo lee: no usa el modelo, no llama al aula y no cambia nada. La puerta del agente
+([abajo](#el-agente-desde-tu-pc)) es aparte, con su propia clave.
 
 ## Qué muestra
 
@@ -44,6 +45,44 @@ El contenedor ya trae el panel encendido en el puerto 8787. Para verlo:
 
 Sin la clave, el dominio responde «no existe». Con la clave ves todo el panel menos el texto de los chats, también los
 tuyos. Para cortar el acceso, corre otra vez `espol-bot panel --nueva-clave`.
+
+## El agente desde tu PC
+
+Un agente de código en tu PC (Claude Code, Codex) puede revisar y arreglar el Vinci del servidor sin que copies nada
+de la Terminal de Coolify. Entra por el mismo dominio del panel, con una clave aparte, `AGENT_KEY`. Con ella lee
+los logs, los errores, la salud y los turnos, corre comandos en el contenedor y edita archivos de `/opt/data`.
+
+1. En la **Terminal** del contenedor, corre `espol-bot panel --clave-agente`. Imprime la clave una sola vez.
+2. Copia la clave.
+3. En tu PC, en la carpeta del repo, corre `.venv/bin/vinci-check remote login https://<dominio del panel>`.
+4. Pega la clave cuando la pida. No se ve al escribir, y queda en `~/.config/vinci/remote.env`, que solo tu usuario
+   lee.
+5. Corre `.venv/bin/vinci-check remote status` para probarla.
+
+Pega la clave solo en ese paso, nunca en un chat ni en un archivo del repo. Quien la tenga controla el contenedor: tus
+tokens, los de tus amigos y sus chats.
+
+| Comando | Qué hace |
+|---|---|
+| `vinci-check remote status` | el gateway, WhatsApp, la salud de cada Vinci, los turnos trabados y cuántos errores hubo |
+| `vinci-check remote errors` | los errores de las últimas 24 h, agrupados, como en el panel |
+| `vinci-check remote logs [nombre] [-n 200] [--grep …] [-f]` | la cola de un log (`gateway`, `errors`, `bot`, `agent`, `vinci/gateway`…); sin nombre, la lista. `all` junta el `gateway.log` de cada perfil, y cada línea dice qué perfil la escribió |
+| `vinci-check remote turns [--profile vinci] [-n 30]` | los últimos turnos de un perfil, con las herramientas que usó |
+| `vinci-check remote run <comando>` | un comando en el contenedor, como el usuario `hermes`, en `/opt/data` |
+| `vinci-check remote doctor` · `restart` | `espol-bot doctor` · `hermes gateway restart` |
+| `vinci-check remote get <ruta> [local]` · `put <local> <ruta>` | baja o sube un archivo de `/opt/data` |
+
+Los logs y los turnos ocultan por defecto los números de teléfono (quedan sus 3 últimas cifras), los nombres de tus
+amigos (quedan sus iniciales) y el texto de los mensajes (queda su largo). `--raw` lo muestra todo. De un amigo o de
+un grupo, `turns` muestra el texto solo con `--raw`.
+
+Cada pedido va firmado con la clave y la hora, así que la clave misma nunca viaja, y un pedido copiado no sirve
+dos veces. Sin la firma, `/agente/` responde «no existe», como el resto del panel; la clave del enlace
+(`PANEL_KEY`) no abre esta puerta. Cada comando, subida y bajada queda en `/opt/data/logs/agent.log` (sin su
+salida). La clave vive en `secrets.env`, en el volumen, así que sobrevive a cada **Redeploy**.
+
+Para cortar el acceso, corre `espol-bot panel --quitar-agente` en la Terminal. Para cambiar la clave, corre otra vez
+`--clave-agente` y repite los pasos 3 y 4.
 
 ## Encenderlo en una PC
 

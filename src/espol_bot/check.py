@@ -9,6 +9,8 @@
     vinci-check vote "<option>"              vote on Vinci's latest poll in the captain's WhatsApp chat
     vinci-check page token|dashboard|notas   open the GitHub Pages page in headless Chrome
     vinci-check smoke                        all of the above that is safe, in about a minute
+    vinci-check remote …                     from the PC: logs, errors, turns, commands and files of the live
+                                             container (espol_bot/remote.py; `vinci-check remote --help`)
 
 Every command takes --json and exits 1 when the check fails. chat and press act as the captain's Telegram
 account through the `tg` CLI, and refuse any chat that is not one of his Vinci bots. say and vote reach only the
@@ -381,6 +383,10 @@ def _print(results: list[Result], as_json: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["remote"]:  # runs on the PC, with no config or Hermes of its own
+        from espol_bot import remote
+        return remote.main(argv[1:])
     parser = argparse.ArgumentParser(prog="vinci-check", description=__doc__.splitlines()[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog="\n".join(__doc__.splitlines()[1:]))
@@ -412,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("which", choices=("token", "dashboard", "notas"))
     p = sub.add_parser("smoke", help="status, /estado to Vinci, /start to each subject bot (with Telegram on), both pages")
     p.add_argument("--timeout", type=float, default=90)
+    sub.add_parser("remote", help="from the PC: the live container's logs, turns, commands and files")
     args = parser.parse_args(argv)
 
     try:

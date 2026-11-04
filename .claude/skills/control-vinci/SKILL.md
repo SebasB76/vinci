@@ -1,18 +1,49 @@
 ---
 name: control-vinci
-description: Verify a change to Vinci or the subject bots on the live system, the way the captain would on his phone - send a message to a bot and read the reply, press a button, read what Vinci answered on WhatsApp, open the token form or the dashboard. Use after any change to bot behavior, before saying something works, when the captain reports a bot problem or sends a screenshot of a bot chat, and to find which feature lives where (Telegram vs WhatsApp).
+description: Debug and verify Vinci on the live Coolify container from the PC (`vinci-check remote`: logs, errors, turns, commands, files), and drive the bots the way the captain would on his phone - send a message and read the reply, press a button, read what Vinci answered on WhatsApp, open the token form or the dashboard. Use first when the captain reports a live bug or error, after any change to bot behavior, before saying something works, when he sends a screenshot of a bot chat, and to find which feature lives where (Telegram vs WhatsApp).
 ---
 
 # Control Vinci
 
-`vinci-check` drives the live bots. They run in the Coolify container, so `vinci-check` runs there too: the
-captain types `vinci-check <command>` in the container's **Terminal** (it runs as the `hermes` user, like
-`espol-bot`). Nothing on the PC reaches the container, so ask him to run it and paste the output.
+`vinci-check` drives the live bots. They run in the Coolify container, and `vinci-check remote` reaches it from
+the PC: run every command below as `vinci-check remote run vinci-check <command>`, with no copy-paste from the
+captain. Use `.venv/bin/vinci-check` of the main checkout (`~/Projects/espol-academic-bot`) or of your worktree.
+
+## When the captain reports a live bug, start here
+
+1. `vinci-check remote status`: gateway, WhatsApp, every Vinci's health, stuck turns, error count.
+2. `vinci-check remote errors`: the grouped `errors.log` lines of the last 24 h.
+3. `vinci-check remote logs all --grep "<words>" -n 100`: what the gateway did, from every `gateway.log`. Hermes
+   logs each message in the log of the profile that answers it, so the `[vinci]` or `[amigo-…]` in front of an
+   `inbound message` line says who answered; `gateway` is the root log (startup, WhatsApp bridge).
+4. `vinci-check remote turns --profile <vinci|amigo-…> -n 40`: the turns themselves, with tool calls.
+5. Fix it: in code (a PR, then the Redeploy in `AGENTS.md` "Done means"), or live with `remote run`, `remote put`
+   or `remote restart` when the cause is state in `/opt/data` (say what you changed in the report).
+
+If `remote` says it has no saved access or answers 404, the captain must mint a key (`espol-bot panel
+--clave-agente` in the Coolify Terminal) and run `vinci-check remote login https://<panel domain>` on the PC
+(`docs/guia/panel.md`, «El agente desde tu PC»). Never ask for the key in the chat. Only then fall back to asking
+him to run commands in the Terminal and paste the output.
+
+## Remote access (from the PC)
+
+| Command | Use it to |
+|---|---|
+| `vinci-check remote status` / `errors` | health and the grouped errors, as the panel shows them |
+| `vinci-check remote logs [name] [-n 200] [--grep re] [-f] [--raw]` | tail or follow a log; no name lists them (`all`, `gateway`, `errors`, `bot`, `agent`, `<profile>/<log>`) |
+| `vinci-check remote turns [--profile vinci] [-n 30] [--session id] [--raw]` | recent turns and tool calls of a profile |
+| `vinci-check remote run <command>` | a shell command in the container, as `hermes`, in `/opt/data` (options before the command) |
+| `vinci-check remote doctor` / `restart` | `espol-bot doctor` / `hermes gateway restart` |
+| `vinci-check remote get <path> [local]` / `put <local> <path>` | copy a file under `/opt/data` (`state.db` to query it locally) |
+
+Logs and turns mask phone numbers, WhatsApp ids, friends' names and message text by default. Add `--raw` only when
+the text itself is the bug, and quote no more than needed in the report (initials, last digits). `run` and `get`
+are never masked: grep before you print. Every `run`, `get` and `put` is logged in `/opt/data/logs/agent.log`.
 
 The bots run `main` as of the last **Redeploy**: a behavior change is only live after "Done means" steps 3 and 4 in
 `AGENTS.md` (merge, Redeploy).
 
-## Commands
+## Commands (in the container: through `remote run`)
 
 | Command | Use it to |
 |---|---|

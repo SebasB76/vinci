@@ -86,6 +86,9 @@ contenedor:
 Desde la Terminal de Coolify usa siempre `espol-bot`, `vinci-check`, `vinci-move` y `hermes` tal cual: los cuatro corren como el
 usuario de Hermes, y así no dejan archivos que el gateway no pueda leer.
 
+Desde tu PC, `vinci-check remote` hace lo mismo sin la Terminal: logs, comandos y archivos del contenedor, con una
+clave propia ([«El agente desde tu PC»](panel.md#el-agente-desde-tu-pc)).
+
 ## En una laptop vieja en casa, sin Docker
 
 Una laptop con Omarchy sirve de servidor con la misma instalación que una PC: Hermes, `setup.sh` y el gateway

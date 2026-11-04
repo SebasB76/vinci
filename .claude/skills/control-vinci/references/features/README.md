@@ -11,7 +11,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 
 | Feature | Telegram | WhatsApp | Model | Guide (`docs/guia/`) |
 |---|---|---|---|---|
-| Canvas alerts, reminders, 07:00 summary | Vinci's chat, with buttons | captain's DM, a poll instead of buttons; friends get their own | no | `uso.md` «El resumen de las 7:00» |
+| Canvas alerts (a grade carries the professor's comments; a new comment alone is «💬 Comentario del profe»), reminders, 07:00 summary | Vinci's chat, with buttons | captain's DM, a poll instead of buttons; friends get their own | no | `uso.md` «El resumen de las 7:00» |
 | «🎓 Consultar con …» handoff | button under each alert | not needed: reply to the alert, Vinci answers with that subject | yes | `funciones.md` |
 | «✅ Ya lo entregué» | button | poll | no | `funciones.md` |
 | Work handed in outside the aula (`delivery`: external lab, event in class, unknown) | in every pending list | same; «ya lo hice» / «todavía no» / «se entrega por correo» | no (classification is a script) | `uso.md` «El resumen de las 7:00» |

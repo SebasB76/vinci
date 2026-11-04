@@ -166,6 +166,7 @@ class _Syncer:
         )
         seen = []
         bodies = self.bodies.setdefault(course["id"], [])
+        feedback = self._feedback(course, raw)
         for a in raw:
             if a.get("published") is False:
                 continue
@@ -201,6 +202,9 @@ class _Syncer:
             }
             seen.append(row["id"])
             prev = self.conn.execute("SELECT * FROM assignments WHERE id = ?", (row["id"],)).fetchone()
+            # "{}": read, nothing from the professor; NULL: never read (a row from before this column).
+            row["feedback"] = feedback.get(row["id"], "{}") if feedback is not None else prev and prev["feedback"]
+            new_comments = _new_comments(prev, row["feedback"])
             info = {"tarea": row["name"], "url": row["html_url"], "due_at": row["due_at"],
                     "puntos": row["points_possible"]}
             quiz = self._quiz(course, a, row)
@@ -216,17 +220,21 @@ class _Syncer:
                 has_grade = row["score"] is not None or row["grade"] is not None
                 grade_info = {**info, "nota": row["score"], "calificacion": row["grade"]}
                 if has_grade and not had_grade and not row["excused"]:
-                    self.emit(quiet, "grade_posted", course, row["id"], grade_info)
+                    self.emit(quiet, "grade_posted", course, row["id"],
+                              {**grade_info, "feedback": json.loads(row["feedback"] or "{}") or None})
                 elif has_grade and had_grade and (prev["score"], prev["grade"]) != (row["score"], row["grade"]):
                     self.emit(quiet, "grade_changed", course, row["id"],
-                              {**grade_info, "nota_anterior": prev["score"], "calificacion_anterior": prev["grade"]})
+                              {**grade_info, "nota_anterior": prev["score"], "calificacion_anterior": prev["grade"],
+                               "feedback": {"comments": new_comments} if new_comments else None})
+                elif new_comments:
+                    self.emit(quiet, "comment_posted", course, row["id"], {**info, "feedback": {"comments": new_comments}})
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
                      allowed_extensions, asks_scan, description, material, rubric, sub_state, submitted_at, score, grade,
-                     graded_at, excused, missing, late, group_id, active, first_seen)
+                     graded_at, excused, missing, late, group_id, feedback, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
                      :allowed_extensions, :asks_scan, :description, :material, :rubric, :sub_state, :submitted_at, :score,
-                     :grade, :graded_at, :excused, :missing, :late, :group_id, 1, :now)
+                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, 1, :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
                      submission_types=excluded.submission_types, allowed_extensions=excluded.allowed_extensions,
@@ -234,12 +242,34 @@ class _Syncer:
                      rubric=excluded.rubric, sub_state=excluded.sub_state,
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
-                     late=excluded.late, group_id=excluded.group_id, active=1""",
+                     late=excluded.late, group_id=excluded.group_id, feedback=excluded.feedback, active=1""",
                 {**row, "now": self.now_iso},
             )
         self._deactivate("assignments", course["id"], seen)
         self._groups(course, {a.get("assignment_group_id") for a in raw} - {None})
         self.read.setdefault(course["id"], set()).add("assignments")
+
+    def _feedback(self, course: dict, raw: list[dict]) -> dict[int, str] | None:
+        """What the professor wrote on each of the student's submissions (comments, the graded rubric), as JSON by
+        assignment id. The assignments list leaves comments out. None when it could not be read: keep what was."""
+        if not any((a.get("submission") or {}).get("workflow_state") not in (None, "unsubmitted") for a in raw):
+            return {}
+        try:
+            # Without student_ids, Canvas answers with the caller's own submissions.
+            subs = self.client.get_all(f"courses/{course['id']}/students/submissions",
+                                       {"include[]": ["submission_comments", "rubric_assessment"]})
+        except (InvalidTokenError, ThrottledError):
+            raise
+        except CanvasError as exc:
+            log.warning("comentarios de %s: %s", course["name"], exc)
+            return None
+        rubrics = {a["id"]: a.get("rubric") or [] for a in raw}
+        result = {}
+        for sub in subs:
+            found = _submission_feedback(sub, rubrics.get(sub.get("assignment_id"), []))
+            if found:
+                result[sub["assignment_id"]] = json.dumps(found, ensure_ascii=False)
+        return result
 
     def _groups(self, course: dict, ids: set[int]) -> None:
         """The names of the course's assignment groups («Lecciones», «Exámenes»), read only when one is new."""
@@ -633,6 +663,36 @@ def _rubric(a: dict) -> str | None:
                                    "points": r.get("points")} for r in c.get("ratings") or []]}
                      for c in criteria],
     }, ensure_ascii=False)
+
+
+def _submission_feedback(sub: dict, rubric: list[dict]) -> dict | None:
+    """The professor's side of a submission; the student's own comments stay out."""
+    comments = [{"id": c.get("id"), "author": c.get("author_name"), "at": timefmt.normalize(c.get("created_at")),
+                 "text": (c.get("comment") or "").strip(),
+                 "files": [{"name": f.get("display_name"), "url": f.get("url")} for f in c.get("attachments") or []]}
+                for c in sub.get("submission_comments") or [] if c.get("author_id") != sub.get("user_id")]
+    comments = [c for c in comments if c["text"] or c["files"]]
+    assessed = sub.get("rubric_assessment") or {}
+    criteria = []
+    for c in rubric:
+        mark = assessed.get(c.get("id")) or {}
+        if mark.get("points") is None and not mark.get("comments"):
+            continue
+        level = next((r.get("description") for r in c.get("ratings") or [] if r.get("id") == mark.get("rating_id")),
+                     None)
+        criteria.append({"criterion": c.get("description"), "points": mark.get("points"), "of": c.get("points"),
+                         "level": level, "comment": (mark.get("comments") or "").strip() or None})
+    if not comments and not criteria:
+        return None
+    return {"comments": comments, "rubric": criteria}
+
+
+def _new_comments(prev, feedback: str | None) -> list[dict]:
+    """Comments that were not there at the last read. Never read before: all of it is old news."""
+    if prev is None or prev["feedback"] is None or not feedback:
+        return []
+    before = {c["id"] for c in json.loads(prev["feedback"]).get("comments", [])}
+    return [c for c in json.loads(feedback).get("comments", []) if c["id"] not in before]
 
 
 def sync(conn: sqlite3.Connection, client: CanvasClient, cfg: CoreConfig, now: datetime, *,

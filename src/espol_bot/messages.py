@@ -20,6 +20,7 @@ KIND_TITLE = {
     "new_announcement": "📢 Anuncios nuevos",
     "grade_posted": "✅ Notas publicadas",
     "grade_changed": "✏️ Notas actualizadas",
+    "comment_posted": "💬 Comentarios del profe",
     "new_file": "📚 Material nuevo",
     "file_updated": "📚 Material actualizado",
     "new_link": "🔗 Enlaces nuevos",
@@ -102,11 +103,14 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
         author = f" ({e(ev['autor'])})" if ev.get("autor") else ""
         return f"📢 <b>Nuevo anuncio en {name}</b>{author}\n<b>{e(ev['titulo'])}</b>\n{e(text)}\n{link(ev['url'])}"
     if kind == "grade_posted":
-        return f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n{link(ev['url'])}"
+        return (f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n"
+                f"{_feedback(ev.get('feedback'))}{link(ev['url'])}")
     if kind == "grade_changed":
         return (f"✏️ <b>Nota actualizada</b> — {name}\n{e(ev['tarea'])}: {_score(ev, '')} "
                 f"(antes {_score({**ev, 'nota': ev.get('nota_anterior'), 'calificacion': ev.get('calificacion_anterior')})})\n"
-                f"{link(ev['url'])}")
+                f"{_feedback(ev.get('feedback'))}{link(ev['url'])}")
+    if kind == "comment_posted":
+        return f"💬 <b>Comentario del profe</b> — {name}\n{e(ev['tarea'])}\n{_feedback(ev.get('feedback'))}{link(ev['url'])}"
     if kind in ("new_file", "file_updated"):
         verb = "Nuevo material" if kind == "new_file" else "Material actualizado"
         where = "".join(f" · {e(ev[k])}" for k in ("modulo", "seccion") if ev.get(k))
@@ -132,6 +136,29 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
     return f"{name}: {e(kind)}"
 
 
+def _feedback(found: dict | None) -> str:
+    """The professor's comments and rubric under a grade, one line each; empty without any."""
+    if not found:
+        return ""
+    lines = []
+    for c in found.get("comments") or []:
+        text = c["text"] if len(c["text"]) <= 600 else c["text"][:600].rstrip() + "…"
+        who = f"{e(c['author'])}: " if c.get("author") else ""
+        if text:
+            lines.append(f"💬 {who}<i>{e(text)}</i>")
+        lines += [f"📎 {link(f['url'], f['name'] or 'Archivo adjunto')}" for f in c.get("files") or [] if f.get("url")]
+    for r in found.get("rubric") or []:
+        points = f" {_number(r['points'])}/{_number(r['of'])}" if r.get("points") is not None and r.get("of") else ""
+        level = f" ({e(r['level'])})" if r.get("level") else ""
+        note = f": {e(r['comment'])}" if r.get("comment") else ""
+        lines.append(f"• {e(r['criterion'])}{points}{level}{note}")
+    return "".join(f"{line}\n" for line in lines)
+
+
+def _number(value) -> str:
+    return f"{value:g}" if isinstance(value, (int, float)) else e(value)
+
+
 def _digest_line(ev: dict, tz: ZoneInfo) -> str:
     kind = ev["kind"]
     name = str(ev.get("tarea") or ev.get("titulo") or ev.get("archivo") or ev.get("enlace") or ev["curso"])
@@ -142,6 +169,11 @@ def _digest_line(ev: dict, tz: ZoneInfo) -> str:
             extra += f" ({quiz_facts(ev['quiz'])})"
     elif kind in ("grade_posted", "grade_changed"):
         extra = f" — {_score(ev)}"
+        if (ev.get("feedback") or {}).get("comments"):
+            extra += " · con comentario del profe"
+    elif kind == "comment_posted":
+        text = " ".join(c["text"] for c in ev["feedback"]["comments"])
+        extra = f" — «{e(text[:80].rstrip() + ('…' if len(text) > 80 else ''))}»"
     return f"• {course(ev['curso'])}: {link(ev.get('url'), name) or e(name)}{extra}"
 
 

@@ -20,6 +20,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 |---|---|
 | Vista general: entregas pendientes y atrasadas, en orden de prioridad | `semana` (`dias`) |
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
+| Qué comentó el profe de una entrega (comentarios, rúbrica calificada) | `notas`: su «feedback»; cítalo tal cual |
 | Qué pide una tarea: su consigna, formato y los archivos y enlaces que trae | `ver_tarea` (`tarea_id`, el «id» de `tareas`) |
 | Estudiar con tiempo («tengo 20 minutos») o practicar una exposición con jurado | `study_activity` (`start` `kind: study` o `jury`) |
 | Encontrar la tarea que nombra («el taller de vectores»), también entregada o vencida | `tareas` (`buscar`) |

@@ -551,6 +551,8 @@ class _CanvasHandler(_Quiet):
                               {"X-Rate-Limit-Remaining": "0.0", "Retry-After": "0"})
 
         data = canvas.load(url.path[len("/api/v1/"):], account)
+        if data is None and url.path.endswith("/students/submissions"):
+            data = []  # a course where the professor has written nothing on any submission
         if data is None:
             return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]}, quota)
         if isinstance(data, dict) and "__status" in data:

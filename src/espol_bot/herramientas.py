@@ -1611,6 +1611,9 @@ PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página,
         "8/10 o más en una lección o un examen). "
         "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. Una página por "
         "respuesta como máximo, nunca en un grupo.")
+GRADES_FEEDBACK = ("Cada tarea trae «feedback»: los comentarios que dejó el profe en la entrega (y sus adjuntos) y "
+                   "la rúbrica calificada por criterio. Sin «feedback», el profe no escribió nada; con "
+                   "«feedback_read: false», todavía no lo leí del aula.")
 PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "album", "token"],
                             "description": "deliverables: su panel de entregas; grades: sus notas en todas las "
                                            "materias; album: su álbum de cartas; token: el formulario del token"}}
@@ -2171,7 +2174,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "un SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios,
              {**materia, "n": {"type": "integer", "description": "cuántos (por defecto 5)"}}),
-        Tool("notas", "Notas publicadas por materia.", notas, dict(materia)),
+        Tool("notas", "Notas publicadas por materia. " + GRADES_FEEDBACK, notas, dict(materia)),
         Tool("grade_status", "La calculadora de notas: aplica el esquema de evaluación guardado de una materia (sus "
              "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "
              "en lo que falta para aprobar. Sin «subject», todas. Las cuentas vienen hechas en «summary».", grade_status,
@@ -2595,7 +2598,7 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         Tool("anuncios", "Anuncios recientes de tu materia, con los archivos y enlaces que traen (un Google Doc, un "
              "SharePoint): léelos con leer_archivo. «fechas_del_texto» da el día de la semana de "
              "cada fecha que nombra: usa ese día, nunca lo calcules tú.", anuncios, {"n": {"type": "integer"}}),
-        Tool("notas", "Notas publicadas de tu materia.", notas),
+        Tool("notas", "Notas publicadas de tu materia. " + GRADES_FEEDBACK, notas),
         Tool("grade_status", "La calculadora de notas de tu materia: aplica su esquema de evaluación guardado (los "
              "pesos de este semestre) a sus notas del aula y a las que te dijo, y dice cómo va y qué promedio necesita "
              "en lo que falta para aprobar. Las cuentas vienen hechas en «summary».", grade_status, STATUS_PROPERTIES),

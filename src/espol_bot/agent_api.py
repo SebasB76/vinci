@@ -52,7 +52,7 @@ WA_ID = re.compile(r"\+?\d{6,}(?=@(?:lid|s\.whatsapp\.net|c\.us|g\.us))")
 STAMP = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d")
 ALL = "all"
 AUDIT = "logs/remote-access.log"  # logs/agent.log is Hermes' own
-PHONE = re.compile(r"(?<![\w.:/-])\+?\d{10,}(?![\w.])")
+PHONE = re.compile(r"(?<![\w./-])\+?\d{10,}(?![\w.])")
 
 
 def signature(key: str, stamp: str, nonce: str, method: str, target: str, body: bytes) -> str:

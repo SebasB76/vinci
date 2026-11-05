@@ -19,8 +19,10 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    anteriores, la opción se llama **Consistent Container Names**. Con un nombre fijo, Coolify apaga el contenedor viejo antes
    de encender el nuevo en cada despliegue. Sin eso, los dos corren a la vez un momento sobre el mismo volumen. No
    actives **Preview Deployments**, y deja una sola réplica.
-5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Si Vinci llega al tope, se
-   reinicia solo Vinci y no las otras apps.
+5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Pon el mismo valor en el límite
+   de swap y el swappiness en 0: así Vinci no usa swap. Si Vinci llega al tope, se reinicia solo Vinci, en segundos, y
+   no las otras apps. Con swap se arrastra, congelado, hasta más de una hora, y la cadena del token de Canvas se corta.
+   Para no llegar al tope, los perfiles leen el aula de uno en uno.
 6. En **Environment Variables**, agrega estas:
 
    | Variable | Valor |

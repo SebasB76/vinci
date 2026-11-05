@@ -55,32 +55,44 @@ def survey(cfg: BotConfig, now: datetime) -> list[Person]:
     return people
 
 
-def alerts(conn: sqlite3.Connection, people: list[Person]) -> list[str]:
-    """The messages for what broke and what recovered since the last run; remembers what fails now."""
+def alerts(conn: sqlite3.Connection, people: list[Person]) -> list[tuple[str, bool, str]]:
+    """What broke and what recovered since the last message about it: (key, failing now, text)."""
     failing = {f"{p.name} · {c.name}": c for p in people for c in p.checks
                if c.level == health.FAIL and (p.friend or c.name not in OWN_ALERT)}
+    before = _told(conn)
+    changes = [(key, True, f"⚠️ <b>Vigilancia · {messages.e(key)}</b>: {messages.e(check.detail)}")
+               for key, check in failing.items() if key not in before]
+    changes += [(key, False, f"✅ <b>Vigilancia · {messages.e(key)}</b>: volvió a estar bien.")
+                for key in sorted(before - set(failing))]
+    return changes
+
+
+def _told(conn: sqlite3.Connection) -> set[str]:
     try:
-        before = set(json.loads(get_meta(conn, FAILING) or "[]"))
+        return set(json.loads(get_meta(conn, FAILING) or "[]"))
     except ValueError:
-        before = set()
-    texts = [f"⚠️ <b>Vigilancia · {messages.e(key)}</b>: {messages.e(check.detail)}"
-             for key, check in failing.items() if key not in before]
-    texts += [f"✅ <b>Vigilancia · {messages.e(key)}</b>: volvió a estar bien." for key in sorted(before - set(failing))]
-    set_meta(conn, FAILING, json.dumps(sorted(failing), ensure_ascii=False))
-    conn.commit()
-    return texts
+        return set()
 
 
 def run(cfg: BotConfig, conn: sqlite3.Connection, send, now: datetime) -> list[str]:
-    """The captain's maintenance: survey everyone and send him what changed. Never raises: a broken watchdog must
-    not stop the token renewal it runs next to."""
+    """The captain's maintenance: survey everyone and send him what changed. A change counts as told only once its
+    message went out: with the WhatsApp bridge down (it belongs to the gateway), the next run tells it. Never raises:
+    a broken watchdog must not stop the token renewal it runs next to."""
     if cfg.friend:
         return []
     try:
-        texts = alerts(conn, survey(cfg, now))
-        for text in texts:
-            send(text)
-        return texts
+        told, sent = _told(conn), []
+        for key, failing, text in alerts(conn, survey(cfg, now)):
+            try:
+                send(text)
+            except Exception as exc:  # noqa: BLE001 (the bridge is down: the rest waits too)
+                log.warning("vigilancia: no pude avisar (%s); lo intento en la próxima corrida", exc)
+                break
+            told = told | {key} if failing else told - {key}
+            sent.append(text)
+        set_meta(conn, FAILING, json.dumps(sorted(told), ensure_ascii=False))
+        conn.commit()
+        return sent
     except Exception:  # noqa: BLE001 (see the docstring)
         log.exception("vigilancia: falló")
         return []

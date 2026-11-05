@@ -68,7 +68,7 @@ from aula_core.config import (
     secrets_path,
     update_secret_values,
 )
-from espol_bot import characters, herramientas, materias, quiz, skill_check
+from espol_bot import characters, herramientas, maintenance_service, materias, quiz, skill_check
 from espol_bot.config import (
     BLOCKED_TOOLSETS,
     CAPTAIN_SECRETS,
@@ -507,8 +507,11 @@ class Setup:
         self.remove_jobs(name, ("espol-sondeo", "espol-resumen"))
         self.reconcile_job(name, "vinci-sondeo", poll_schedule(self.cfg.poll_minutes, self.cfg.summary_time.minute),
                            "vinci-sondeo.sh", no_agent=True)
-        self.reconcile_job(name, "vinci-mantenimiento", "2,12,22,32,42,52 * * * *",
-                           "vinci-mantenimiento.sh", no_agent=True)
+        if maintenance_service.enabled():  # the container's s6 service renews every chain, outside the gateway
+            self.remove_jobs(name, ("vinci-mantenimiento",))
+        else:
+            self.reconcile_job(name, "vinci-mantenimiento", "2,12,22,32,42,52 * * * *",
+                               "vinci-mantenimiento.sh", no_agent=True)
         self.reconcile_job(name, "vinci-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
                            "vinci-resumen.sh", no_agent=True)
         self.reconcile_job(name, "vinci-apuntes", "* * * * *", "vinci-apuntes.sh", no_agent=True)
@@ -700,8 +703,11 @@ class Setup:
         print(f"• Vinci de {friend.nombre}: {'instalado' if changed | plugin_changed else 'sin cambios'}")
         self.reconcile_job(name, "amigo-sondeo", poll_schedule(self.cfg.poll_minutes, self.cfg.summary_time.minute),
                            "amigo-sondeo.sh", no_agent=True, deliver="local")
-        self.reconcile_job(name, "amigo-mantenimiento", "2,12,22,32,42,52 * * * *", "amigo-mantenimiento.sh",
-                           no_agent=True, deliver="local")
+        if maintenance_service.enabled():
+            self.remove_jobs(name, ("amigo-mantenimiento",))
+        else:
+            self.reconcile_job(name, "amigo-mantenimiento", "2,12,22,32,42,52 * * * *", "amigo-mantenimiento.sh",
+                               no_agent=True, deliver="local")
         self.reconcile_job(name, "amigo-resumen", f"{self.cfg.summary_time.minute} {self.cfg.summary_time.hour} * * *",
                            "amigo-resumen.sh", no_agent=True, deliver="local")
 

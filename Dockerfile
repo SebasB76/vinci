@@ -30,13 +30,18 @@ RUN python3 -m venv /tmp/uv && \
     ln -s espol-bot /usr/local/bin/vinci-move && \
     ln -s espol-bot /usr/local/bin/vinci-check && \
     cp -r /opt/vinci/deploy/s6/vinci-panel /etc/s6-overlay/s6-rc.d/vinci-panel && \
-    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-panel
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-panel && \
+    cp -r /opt/vinci/deploy/s6/vinci-mantenimiento /etc/s6-overlay/s6-rc.d/vinci-mantenimiento && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-mantenimiento
 
+# VINCI_MAINTENANCE_SERVICE: deploy/s6/vinci-mantenimiento renews every token chain outside the gateway, so
+# hermes_setup drops the *-mantenimiento crons.
 ENV VINCI_HERMES_ROOT=/opt/data \
     AULA_CONFIG=/opt/data/vinci/config.toml \
     AULA_SECRETS=/opt/data/vinci/secrets.env \
     HERMES_BIN=/opt/hermes/.venv/bin/hermes \
-    GATEWAY_ALLOW_ALL_USERS=false
+    GATEWAY_ALLOW_ALL_USERS=false \
+    VINCI_MAINTENANCE_SERVICE=1
 
 # The admin panel (deploy/s6/vinci-panel): Coolify's proxy publishes this port on the app's domain.
 EXPOSE 8787

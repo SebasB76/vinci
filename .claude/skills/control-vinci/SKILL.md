@@ -42,6 +42,10 @@ Logs and turns mask phone numbers, WhatsApp ids, friends' names and message text
 the text itself is the bug, and quote no more than needed in the report (initials, last digits). `run` and `get`
 are never masked: grep before you print. Every `run`, `get` and `put` is logged in `/opt/data/logs/remote-access.log`.
 
+Every profile's tools (`mcp__vinci__*`) come from one process, the s6 service `vinci-mcp` (`espol-bot mcp-http` on
+127.0.0.1:8788, `src/espol_bot/mcp_shared.py`), not a process per profile. When a bot says its tools fail, look for it
+with `remote run sh -c 'ps -eo pid,rss,args | grep mcp-http'`; a tool's own errors go to that profile's `bot.log`.
+
 The bots run `main` as of the last **Redeploy**: a behavior change is only live after "Done means" steps 3 and 4 in
 `AGENTS.md` (merge, Redeploy).
 

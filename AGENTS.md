@@ -23,6 +23,10 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The
   captain's maintenance runs the watchdog (`src/espol_bot/watch.py`): a WhatsApp message to him when any Vinci breaks.
+- The container serves every profile's MCP tools from one process, the s6 service `vinci-mcp` (`espol-bot mcp-http`,
+  127.0.0.1:8788, `VINCI_MCP_URL`): each profile's config.yaml reaches `/mcp/<profile>` with its own token
+  (`<profile>/vinci-mcp.json`), and each request runs in a forked child with that profile's env only. `setup.sh` on a
+  PC keeps one stdio `espol-bot mcp` per profile.
 - Live: `vinci-check remote` (`src/espol_bot/remote.py`) reaches the container from the PC through the panel's
   `/agente/` routes (`agent_api.py`), with its own signed `AGENT_KEY`: logs, errors, turns, shell commands as
   `hermes`, files under `/opt/data`. A live bug starts there (`control-vinci` skill), not with the captain pasting

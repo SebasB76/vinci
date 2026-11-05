@@ -4,6 +4,9 @@
                                      of the scanned pages still waiting, for a few minutes
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
     espol-bot mantenimiento          renew Canvas access (no model)
+    espol-bot mantenimiento --todos [--cada MIN]
+                                     the same for the captain and then each active friend, one at a time, each
+                                     with a time limit; with --cada, forever (the container's s6 service)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
     espol-bot probar                 send a test message from Vinci to your Telegram
     espol-bot album-regalo [MOTIVO]  a gift pack for the captain and each friend, sent by the next poll
@@ -378,7 +381,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
     sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
     sub.add_parser("resumen", help="enviar el resumen de la semana")
-    sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
+    p = sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
+    p.add_argument("--todos", action="store_true", help="el del capitán y luego el de cada amigo activo, uno a uno")
+    p.add_argument("--cada", type=int, metavar="MIN", help="con --todos: repetirlo cada MIN minutos, sin parar")
+    p.add_argument("--limite", type=int, default=None, metavar="SEG",
+                   help="con --todos: segundos que puede tardar cada persona antes de cortarlo")
     p = sub.add_parser("resembrar", help="guardar un token nuevo desde una entrada oculta y reactivar la renovación")
     p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu chat (WhatsApp o Telegram)")
@@ -536,6 +543,14 @@ def main(argv: list[str] | None = None) -> int:
             _logging(cfg)
             return _friends(cfg, args)
         _logging(cfg)
+        if args.cmd == "mantenimiento" and args.todos:
+            from espol_bot import maintenance_service as service
+            limit = args.limite or service.LIMIT
+            if args.cada:
+                service.serve(cfg, args.cada, limit)
+            runs = service.run_all(cfg, limit)
+            print(service.summary(runs))
+            return 1 if any(r.error for r in runs) else 0
         if args.cmd == "resembrar":
             return _reseed(cfg, from_stdin=args.stdin)
         if args.cmd == "agenda":

@@ -61,7 +61,10 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   path with its own token, neither token opens the other's tools even when both ask at once, and no profile starts a
   stdio MCP process;
   voice notes and audio files heard by the real local
-  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
+  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts;
+  the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
+  hangs and is cut at the limit, then Angel's chain renewed, with the WhatsApp bridge down and the watchdog's message
+  sent on the next pass; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
@@ -1019,10 +1022,10 @@ def write_part(name: str, title: str, report: list[str], started: float) -> None
 
 
 @contextlib.contextmanager
-def world(tmp_path: Path):
+def world(tmp_path: Path, env: dict[str, str] | None = None):
     """One install of Vinci in a throwaway HOME with every outside service faked; each test starts its own, so the
     tests run in parallel. Vinci lives on WhatsApp alone (`[channels] telegram = false`, the repo's setting): where
-    the Telegram Bot API would be, a tripwire records any request."""
+    the Telegram Bot API would be, a tripwire records any request. `env` goes to every process, the gateway too."""
     probe_home = tmp_path / "sonda"
     probe_home.mkdir()
     hermes = find_hermes(probe_home)
@@ -1110,6 +1113,7 @@ def world(tmp_path: Path):
             base_env["HERMES_BIN"] = hermes
             if locales := bundled_locales(hermes):
                 base_env["HERMES_BUNDLED_LOCALES"] = locales
+        base_env.update(env or {})
 
         def run(args, now, *, env_extra=None, check=True, stdin="", new_session=False, timeout=300):
             env = {**base_env, "AULA_NOW": now, **(env_extra or {})}
@@ -2330,7 +2334,8 @@ def test_whatsapp_friend(tmp_path):
     dashboard, his commands), voice notes and audio files heard by the real local Whisper (in a group, only one that
     says «Vinci»), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
     started = time.monotonic()
-    with world(tmp_path) as w:
+    # as in the container: the s6 service vinci-mantenimiento renews every chain, not Hermes cron
+    with world(tmp_path, env={"VINCI_MAINTENANCE_SERVICE": "1"}) as w:
         if not w.hermes:
             pytest.skip("Hermes no está instalado aquí")
         w.md += ["# Vinci en WhatsApp: el grupo y el Vinci de Angel\n",
@@ -2511,7 +2516,9 @@ def test_whatsapp_friend(tmp_path):
         assert (f"{ANGEL_WA}@s.whatsapp.net", "amigo-angel") in [(r.get("user_id"), r["profile"]) for r in routes]
         assert (angel_profile / "platforms" / "whatsapp" / "session").readlink() == session
         jobs = {j["name"]: j for j in json.loads((angel_profile / "cron" / "jobs.json").read_text())["jobs"]}
-        assert set(jobs) == {"amigo-sondeo", "amigo-mantenimiento", "amigo-resumen"}
+        assert set(jobs) == {"amigo-sondeo", "amigo-resumen"}, "su mantenimiento lo corre el servicio, no Hermes"
+        vinci_jobs = {j["name"] for j in json.loads((profiles / "vinci" / "cron" / "jobs.json").read_text())["jobs"]}
+        assert "vinci-sondeo" in vinci_jobs and "vinci-mantenimiento" not in vinci_jobs, vinci_jobs
         assert all(j["deliver"] == "local" for j in jobs.values())
         # Angel's poll and tools read the album's art key from the captain's secrets.env, the only one holding it
         captain_secrets = re.search(r"export VINCI_CAPTAIN_SECRETS='([^']+)'",
@@ -2926,11 +2933,52 @@ def test_whatsapp_friend(tmp_path):
                       "grupo lo nuevo del aula de Angel, en un solo mensaje que lo menciona, y no lo repite")
         before = set(parse_env_file(angel_dir / "secrets.env").values())
         canvas.expire(ANGEL_TOKEN)  # ESPOL's hour: the seed, kept as the chain's probe, is dead by 09:45
-        run([bot, "mantenimiento"], "2026-09-30T09:45:00-05:00", env_extra=angel_env)
-        assert parse_env_file(angel_dir / "secrets.env")["CANVAS_TOKEN"] not in before, \
-            "la cadena del token de Angel se renueva sola"
         report.append("El sondeo del Vinci de Angel le avisa por su chat de WhatsApp (formato de WhatsApp, sin "
-                      "HTML) y nunca por el del capitán; su mantenimiento renueva su propia cadena de token")
+                      "HTML) y nunca por el del capitán")
+
+        # 10i''. The renewal service (the container's s6 vinci-mantenimiento): the captain, then each friend, one at a
+        # time. Beto, listed before Angel, hangs on his bot.lock (held here) and is cut at the limit; the WhatsApp
+        # bridge is down for the first pass, so the watchdog's message about Beto waits for the second one.
+        registry = data_dir / "amigos" / "amigos.json"
+        registered = registry.read_text()
+        beto_dir = data_dir / "amigos" / "beto"
+        beto_dir.mkdir(mode=0o700)
+        (beto_dir / "secrets.env").write_text("CANVAS_TOKEN=7~beto-colgado\nWHATSAPP_OWNER=593990000009\n")
+        registry.write_text(json.dumps({"amigos": [{"slug": "beto", "nombre": "Beto", "numero": "593990000009",
+                                                    "estado": "activo", "agregado": ""},
+                                                   *json.loads(registered)["amigos"]]}))
+        def last_run():
+            with contextlib.closing(sqlite3.connect(data_dir / "espol.db")) as conn:
+                return conn.execute("SELECT value FROM meta WHERE key = 'bot_run_maintenance'").fetchone()
+        captain_before = last_run()
+        mark = len(wa.sent)
+        with (beto_dir / "bot.lock").open("w") as beto_lock:
+            fcntl.flock(beto_lock, fcntl.LOCK_EX)
+            wa.failing.add("send")
+            try:
+                down = run([bot, "mantenimiento", "--todos", "--limite", "15"], "2026-09-30T09:45:00-05:00",
+                           check=False)
+            finally:
+                wa.failing.discard("send")
+            assert down.returncode == 1, down.stdout + down.stderr
+            line = down.stdout.strip()
+            assert re.fullmatch(r"mantenimiento --todos: capitán ✓ \d+ s · beto ✗ se pasó de 15 s y lo corté · "
+                                r"angel ✓ \d+ s", line), line
+            assert parse_env_file(angel_dir / "secrets.env")["CANVAS_TOKEN"] not in before, \
+                "la cadena del token de Angel se renueva aunque el de Beto se cuelgue antes"
+            assert last_run() != captain_before, "el mantenimiento del capitán corrió y quedó registrado"
+            assert wa.sent[mark:] == [], "con el puente caído no sale nada"
+            back = run([bot, "mantenimiento", "--todos", "--limite", "15"], "2026-09-30T09:55:00-05:00", check=False)
+            assert "capitán ✓" in back.stdout and "angel ✓" in back.stdout, back.stdout
+        told = [m["message"] for m in wa.messages_to(captain_jid, mark) if "Vigilancia · Beto" in m.get("message", "")]
+        assert told, f"el aviso de la vigilancia sale cuando vuelve el puente: {wa.sent[mark:]}"
+        registry.write_text(registered)
+        shutil.rmtree(beto_dir)
+        md.append(f"→ servicio de renovación, puente caído: `{normalize(line)}`\n")
+        report.append("El servicio de renovación (vinci-mantenimiento, aparte del gateway) corrió el mantenimiento del "
+                      "capitán y luego el de cada amigo, uno por uno: el de Beto, colgado en su candado, se cortó a los "
+                      "15 s y el de Angel renovó su cadena igual. Con el puente de WhatsApp caído la renovación siguió, "
+                      "y el aviso de la vigilancia sobre Beto salió en la vuelta siguiente, con el puente de vuelta")
 
         # 10h'. A friend's Vinci searches only its own past chats, even when told the captain's profile name
         peek = text_of(say(angel_jid, angel_jid, "qué le pidió el capitán a su Vinci", "Angel"))

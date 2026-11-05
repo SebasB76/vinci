@@ -20,6 +20,10 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
 - Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
+- Live: Canvas token renewal runs outside the gateway, as the s6 service `vinci-mantenimiento`
+  (`maintenance_service.py`): every 10 min, the captain and then each active friend, one at a time, so a frozen
+  gateway no longer cuts the chains. `VINCI_MAINTENANCE_SERVICE` (set in the `Dockerfile`) drops the
+  `*-mantenimiento` Hermes crons; a PC install keeps them.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The
   captain's maintenance runs the watchdog (`src/espol_bot/watch.py`): a WhatsApp message to him when any Vinci breaks.
@@ -142,6 +146,7 @@ uv run pytest                             # the E2E: 4 tests in parallel (fake C
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
 .venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
+.venv/bin/espol-bot mantenimiento --todos # one renewal pass: the captain, then each friend (the s6 service's loop)
 .venv/bin/espol-bot album-regalo "<motivo>" # a gift pack for the captain and every friend, sent by the next poll
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 systemctl --user status vinci-panel      # the admin panel on 127.0.0.1:8787 (`tailscale serve status`)

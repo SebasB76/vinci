@@ -42,7 +42,8 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    token de Canvas ahí, así que un reinicio nunca le devuelve uno viejo. Si pasas tu Vinci desde la PC (abajo), no
    agregues ninguna: la mudanza trae tu `secrets.env`.
 7. Pulsa **Deploy**. En cada arranque, la imagen hace lo mismo que `./setup.sh`: crea o actualiza los perfiles, los
-   cron jobs y los plugins.
+   cron jobs y los plugins. La renovación del token de Canvas no es un cron job aquí: la hace el servicio
+   `vinci-mantenimiento` (abajo).
 8. Espera a que Coolify muestre la app como **Healthy**, no solo **Running**. La imagen marca **Unhealthy** si la
    creación de perfiles falló o si el gateway no corre: en ese caso, mira los **Logs** (las líneas `[vinci]`).
    Esas líneas también quedan en `/opt/data/logs/boot.log`, y un agente las lee desde tu PC con
@@ -58,6 +59,24 @@ Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se 
 OpenAI o de Groq (`GROQ_API_KEY`): DeepSeek y los otros modelos chinos no transcriben audio. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
 El servidor usa el `config.toml` del repo: para cambiar algo, haz commit del cambio y redespliega. Así se enciende
 Telegram también (`[channels] telegram = true`), junto con `TELEGRAM_BOT_TOKEN` y `TELEGRAM_USER_ID`.
+
+## La renovación del token, aparte del gateway
+
+ESPOL invalida cada token de Canvas a la hora, y Vinci crea su reemplazo a los 40 minutos. En el servidor eso no lo
+corre el gateway de Hermes sino el servicio `vinci-mantenimiento`, que s6 (el supervisor de procesos de la imagen)
+mantiene encendido. Así, si el gateway se cuelga o se queda sin memoria, ningún token vence.
+
+- Cada 10 minutos (a las :02, :12, :22…) corre `espol-bot mantenimiento` para ti y luego para cada amigo activo, uno
+  por uno. A cada uno le da 5 minutos; si uno falla o se pasa, sigue con el siguiente.
+- También corre en cada arranque del contenedor, apenas termina la preparación.
+- Con el gateway caído, WhatsApp tampoco funciona. El token se renueva igual, y un aviso que no salió sale en una
+  corrida siguiente.
+- Para ver que corre: en la Terminal, `s6-svstat /run/service/vinci-mantenimiento`. Desde tu PC,
+  `vinci-check remote logs bot --grep "mantenimiento --todos"` muestra una línea por corrida, con cada persona y
+  cuánto tardó.
+- Para correr una vuelta a mano: `espol-bot mantenimiento --todos`.
+
+En una PC o una laptop sin Docker, la renovación sigue como un cron job de Hermes, dentro del gateway.
 
 ## Pasar tu Vinci de la PC al servidor
 

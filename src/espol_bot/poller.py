@@ -141,11 +141,11 @@ class Bot:
     def _token_refused(self) -> str:
         """Sends the /token form on its own once per refused token, and again each ALERT_EVERY while none is
         pending (the polls leave Canvas alone until the token changes)."""
-        text = ("⚠️ La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
-                "No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular antes de "
-                "enviarlo (no lo pegues en el chat).")
+        text = ("⚠️ La cadena automática del token de Canvas se cortó (Vinci pudo pasar más de una hora sin "
+                "funcionar). No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular "
+                "antes de enviarlo (no lo pegues en el chat).")
         if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no /token, the form is a link (token_form.py)
-            text = ("⚠️ Tu token del aula dejó de funcionar (la PC de Vinci pudo estar apagada más de una hora). "
+            text = ("⚠️ Tu token del aula dejó de funcionar (Vinci pudo pasar más de una hora sin funcionar). "
                     "Para que vuelva a leer tu aula, crea uno nuevo; no lo pegues tal cual en el chat.")
         refused = self.aula.refused_token()
         if not refused:

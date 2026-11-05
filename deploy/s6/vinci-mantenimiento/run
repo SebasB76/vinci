@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+# Token renewal for the captain and each friend, every 10 min, as the hermes user (espol_bot/maintenance_service.py).
+# Apart from the gateway, so a frozen or dead gateway no longer cuts the chains. s6 restarts it if it stops.
+export HOME=/opt/data
+cd /opt/data || exit 1
+exec s6-setuidgid hermes /opt/vinci/.venv/bin/espol-bot mantenimiento --todos --cada 10

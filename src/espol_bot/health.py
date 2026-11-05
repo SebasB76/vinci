@@ -24,12 +24,12 @@ from aula_core import PAUSED_KEY, REFUSED_KEY, Aula, timefmt, token_fingerprint
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.store import get_meta, set_meta
 from aula_core.sync import last_sync
-from espol_bot import token_renewal
+from espol_bot import maintenance_service, token_renewal
 from espol_bot.config import BotConfig
 
 POLL_RUN = "bot_run_poll"
 MAINTENANCE_RUN = "bot_run_maintenance"
-MAINTENANCE_LATE = timedelta(minutes=25)  # hermes_setup runs it every 10 minutes
+MAINTENANCE_LATE = timedelta(minutes=25)  # it runs every 10 minutes (maintenance_service.EVERY)
 TOKEN_LATE = token_renewal.RENEW_AFTER + timedelta(minutes=10)
 TOKEN_DEAD = timedelta(hours=1)           # ESPOL silently invalidates a personal token after an hour
 
@@ -155,15 +155,18 @@ def _sync(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Che
 def _maintenance(meta: dict[str, str], now: datetime, ago: _Ago) -> Check:
     name = "Mantenimiento"
     at, run = _run(meta, MAINTENANCE_RUN)
+    service = maintenance_service.enabled()
+    runner = (f"el servicio {maintenance_service.SERVICE} (corre aparte del gateway)" if service
+              else "el gateway de Hermes")
+    fix = f"s6-svstat /run/service/{maintenance_service.SERVICE}" if service else "hermes gateway status"
     if at is None and meta.get("initialized"):
-        return Check(name, WARN, "todavía no registra ninguna corrida: la primera llega en menos de 10 min; si "
-                     "no, revisa el gateway de Hermes.")
+        return Check(name, WARN, f"todavía no registra ninguna corrida: la primera llega en menos de 10 min; si "
+                     f"no, revisa {runner}.")
     if at is None:
-        return Check(name, FAIL, "todavía no ha corrido nunca: es el que renueva el token antes de que venza.",
-                     "hermes gateway status")
+        return Check(name, FAIL, "todavía no ha corrido nunca: es el que renueva el token antes de que venza.", fix)
     if now - at > MAINTENANCE_LATE:
         return Check(name, FAIL, f"no corre desde {ago(at)}; debería cada 10 min. Sin él el token de Canvas "
-                     "vence a la hora y la cadena se corta.", "hermes gateway status")
+                     f"vence a la hora y la cadena se corta. Lo corre {runner}.", fix)
     return Check(name, OK, f"corrió {ago(at)}; corre cada 10 min.")
 
 

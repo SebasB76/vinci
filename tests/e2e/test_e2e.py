@@ -55,7 +55,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   the page and Vinci's relay, his week next to the captain's in the group at once, with no gateway restart, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
   that goes idle, a poll for a button, a quiz a guest asks for in the group: one results message once the guest, Angel
-  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands);
+  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands, his poll that skips
+  its turn while another profile reads Canvas);
   voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
@@ -78,6 +79,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import fcntl
 import hashlib
 import html
 import itertools
@@ -2470,6 +2472,15 @@ def test_whatsapp_friend(tmp_path):
                                     (angel_profile / "scripts" / "amigo-sondeo.sh").read_text())
         assert captain_secrets and Path(captain_secrets[1]) != angel_dir / "secrets.env", captain_secrets
         assert "WHATSAPP_CAPTAIN" in parse_env_file(Path(captain_secrets[1])), "apunta al secrets.env del capitán"
+        # Profiles take turns reading Canvas: a poll that finds another profile's run in progress waits, then skips
+        sondeo = angel_profile / "scripts" / "amigo-sondeo.sh"
+        root = Path(re.search(r"export VINCI_HERMES_ROOT='([^']+)'", sondeo.read_text())[1])
+        with open(root / "canvas-jobs.lock", "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            started = time.monotonic()
+            skipped = subprocess.run(["bash", str(sondeo)], env={**os.environ, "VINCI_CANVAS_WAIT": "1"},
+                                     capture_output=True, text=True, timeout=60)
+        assert skipped.returncode == 0 and time.monotonic() - started < 15, (skipped.returncode, skipped.stderr)
         report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con un botón a la "
                       "página (modo WhatsApp, con el relé y un buzón de un uso en el enlace); Angel pulsa «Enviar» y "
                       "el token llega cifrado por el relé, sin pegar nada ni pasar por el modelo: se verifica, "

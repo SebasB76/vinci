@@ -3,7 +3,9 @@
 Vinci también corre en un servidor, encendido todo el día, con la imagen de Docker de este repo (`Dockerfile`). La
 imagen parte de la imagen oficial de Hermes Agent: un solo contenedor con un solo gateway para tu Vinci y el de
 cada amigo, por WhatsApp. Todo lo que cambia (datos del aula, memoria, perfiles, sesión de WhatsApp y `secrets.env`) vive
-en el volumen `/opt/data`. Necesita unos 1,5 GB de RAM y unos 10 GB de disco: la imagen sola ocupa casi 5 GB, y la construcción pide más.
+en el volumen `/opt/data`. Necesita alrededor de 1 GB de RAM y unos 10 GB de disco: la imagen sola ocupa casi 5 GB, y la
+construcción pide más. Las herramientas de todos los bots corren en un solo proceso (`espol-bot mcp-http`, solo
+dentro del contenedor), así que cada amigo nuevo casi no suma memoria.
 
 Corre una sola copia de Vinci a la vez. Dos copias contestan dos veces por WhatsApp y se rompen la cadena del token de
 Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de encender el nuevo (paso 4).

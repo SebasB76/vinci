@@ -21,7 +21,9 @@ Todo lo automático (revisar el aula, avisar, recordar, decidir cuándo toca un 
   armados) o cuando Vinci le pasó algo.
 - **Las herramientas** de cada bot son un servidor MCP propio (`espol-bot mcp vinci|materia`) que lee los datos
   ya sincronizados; el de un bot de materia, además, baja del aula el material que le hace falta. Vinci ve todas
-  las materias y lee los cuadernos; un bot de materia ve solo la suya y escribe solo en su cuaderno.
+  las materias y lee los cuadernos; un bot de materia ve solo la suya y escribe solo en su cuaderno. En el
+  servidor, un solo proceso (`espol-bot mcp-http`) atiende las herramientas de todos los bots: cada bot entra con
+  su propia clave, y cada pedido corre en un proceso aparte que solo ve los datos de ese bot.
 - **El plugin `vinci-botones`** atiende, sin el modelo, los botones, el `/start`, el `/estado` y el `/token` de Vinci
   y cualquier mensaje con un token de bot o del aula, antes de que Hermes los vea, y revisa las citas de cada respuesta antes de que salga
   (`espol-bot citas`). A cada bot de materia, además, le da `ver_pagina`: una página de un PDF como imagen, para

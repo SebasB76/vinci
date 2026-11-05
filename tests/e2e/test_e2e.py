@@ -55,7 +55,11 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   the page and Vinci's relay, his week next to the captain's in the group at once, with no gateway restart, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
   that goes idle, a poll for a button, a quiz a guest asks for in the group: one results message once the guest, Angel
-  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands);
+  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands, his poll that skips
+  its turn while another profile reads Canvas);
+  one shared MCP server (`espol-bot mcp-http`, as in the Docker image) serves both Vincis: each profile reaches its own
+  path with its own token, neither token opens the other's tools even when both ask at once, and no profile starts a
+  stdio MCP process;
   voice notes and audio files heard by the real local
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts;
   the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
@@ -97,6 +101,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -932,6 +937,38 @@ class Gateway:
         return "\n".join(self.log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:])
 
 
+class SharedMcp:
+    """`espol-bot mcp-http`, the Docker image's one MCP server: with VINCI_MCP_URL, setup.sh points every profile here."""
+
+    def __init__(self, env: dict, log: Path):
+        self.log_path = log
+        with log.open("a", encoding="utf-8") as out:
+            self.proc = subprocess.Popen([str(VENV_BIN / "espol-bot"), "mcp-http", "--puerto", "0"], env=env,
+                                         cwd=env["HOME"], stdin=subprocess.DEVNULL, stdout=out,
+                                         stderr=subprocess.STDOUT, start_new_session=True)
+        deadline = time.monotonic() + 30
+        while not (port := re.search(r"escuchando en http://127\.0\.0\.1:(\d+)", log.read_text(encoding="utf-8"))):
+            assert self.proc.poll() is None and time.monotonic() < deadline, log.read_text(encoding="utf-8")
+            time.sleep(0.1)
+        self.url = f"http://127.0.0.1:{port[1]}"
+
+    def stop(self) -> None:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(self.proc.pid, signal.SIGKILL)
+        self.proc.wait()
+
+
+def stdio_mcp(w) -> list[str]:
+    """`espol-bot mcp …` processes of this world's profiles (their --hermes-home lies under its HOME)."""
+    found = []
+    for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
+        with contextlib.suppress(OSError):
+            args = cmdline.read_bytes().decode(errors="replace").split("\0")
+            if "mcp" in args and str(w.home) in " ".join(args):
+                found.append(" ".join(args))
+    return found
+
+
 def entries(data_dir: Path, code: str) -> list[dict]:
     db = data_dir / "cuadernos" / code / "cuaderno.db"
     if not db.exists():
@@ -1105,7 +1142,7 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
             tmp_path=tmp_path, hermes=hermes, home=home, data_dir=data_dir, profiles=home / ".hermes" / "profiles",
             session=session, canvas=canvas, web=web, dspace=dspace, portal=portal, tripwire=tripwire, wa=wa,
             relay=relay, llm=llm, config=config, config_file=config_file, secrets=secrets, base_env=base_env,
-            ocr_off=ocr_off,
+            ocr_off=ocr_off, mcp=None,
             normalize=normalize, run=run, take=take, sent_log=sent_log, books=books, report=[], md=[], gateway=None)
         TRACE.clear()
         TRACE["world"] = w
@@ -1114,6 +1151,8 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
         finally:
             if w.gateway is not None:
                 w.gateway.stop()
+            if w.mcp is not None:
+                w.mcp.stop()
         assert tripwire.requests == [], f"nada va a Telegram: {tripwire.requests}"
 
 
@@ -1130,6 +1169,9 @@ def trace_page(w) -> str:
             lines.append(f"- {bot_of(req)}: {w.normalize(flatten(users[-1].get('content')))[-400:]}")
     if w.gateway is not None:
         lines += ["\n## gateway.log (cola)\n", "```", w.normalize(w.gateway.tail(80)), "```"]
+    if w.mcp is not None:
+        tail = w.mcp.log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
+        lines += ["\n## mcp-http.log (cola)\n", "```", w.normalize("\n".join(tail)), "```"]
     if w.tripwire.requests:
         lines.append(f"\n## Llamadas a Telegram (no debía haber ninguna)\n\n{w.tripwire.requests}")
     return "\n".join(lines) + "\n"
@@ -1146,6 +1188,8 @@ def ready_gateway(w, *, voice: bool = False) -> None:
               "from espol_bot import horario; classes, errors, _ = horario.validate(json.loads(sys.argv[1])); "
               "assert not errors, errors; horario.save(load_config(), classes, datetime.now())")
     run([sys.executable, "-c", script, json.dumps(SCHEDULE_V2)], T_VINCI)
+    w.mcp = SharedMcp(dict(w.base_env), w.tmp_path / "mcp-http.log")
+    w.base_env["VINCI_MCP_URL"] = w.mcp.url  # as in the Docker image: setup.sh, the gateway and its plugins see it
     setup = run(["bash", str(REPO / "setup.sh"), "--skip-deps"], T_VINCI)
     assert "• WhatsApp: tu chat" in setup.stdout, setup.stdout
     w.take("setup.sh y los sondeos")
@@ -1158,7 +1202,10 @@ def ready_gateway(w, *, voice: bool = False) -> None:
                                          "models": ["fake"]}}
         data["model"]["context_length"] = 256_000  # no lookup of the fake model's window on each start
         data.setdefault("stt", {}).update(enabled=voice, **({"provider": "local"} if voice else {}))
-        data["mcp_servers"]["vinci"]["env"]["AULA_NOW"] = T_VINCI
+        spec_file = profiles / name / "vinci-mcp.json"  # the shared server reads it on each request
+        spec = json.loads(spec_file.read_text())
+        spec["env"]["AULA_NOW"] = T_VINCI
+        spec_file.write_text(json.dumps(spec))
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
     def pause_crons() -> None:
@@ -2478,6 +2525,15 @@ def test_whatsapp_friend(tmp_path):
                                     (angel_profile / "scripts" / "amigo-sondeo.sh").read_text())
         assert captain_secrets and Path(captain_secrets[1]) != angel_dir / "secrets.env", captain_secrets
         assert "WHATSAPP_CAPTAIN" in parse_env_file(Path(captain_secrets[1])), "apunta al secrets.env del capitán"
+        # Profiles take turns reading Canvas: a poll that finds another profile's run in progress waits, then skips
+        sondeo = angel_profile / "scripts" / "amigo-sondeo.sh"
+        root = Path(re.search(r"export VINCI_HERMES_ROOT='([^']+)'", sondeo.read_text())[1])
+        with open(root / "canvas-jobs.lock", "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            started = time.monotonic()
+            skipped = subprocess.run(["bash", str(sondeo)], env={**os.environ, "VINCI_CANVAS_WAIT": "1"},
+                                     capture_output=True, text=True, timeout=60)
+        assert skipped.returncode == 0 and time.monotonic() - started < 15, (skipped.returncode, skipped.stderr)
         report.append("«/amigo agregar 099 000 0002 Angel»: Vinci le escribe a Angel por privado con un botón a la "
                       "página (modo WhatsApp, con el relé y un buzón de un uso en el enlace); Angel pulsa «Enviar» y "
                       "el token llega cifrado por el relé, sin pegar nada ni pasar por el modelo: se verifica, "
@@ -2498,6 +2554,35 @@ def test_whatsapp_friend(tmp_path):
         report.append("En el mismo grupo, «@vinci qué tengo esta semana» le contesta a Angel con su aula (Cálculo "
                       "de varias variables, Ecuaciones diferenciales) y al capitán con la suya: ninguna entrega se "
                       "cruza")
+
+        # 10e'. One MCP process serves both Vincis: each profile its own path and token, neither token opens the
+        # other's tools, and eight calls at once each get their own profile's aula
+        specs = {p: json.loads((profiles / p / "vinci-mcp.json").read_text()) for p in ("vinci", "amigo-angel")}
+        entry = yaml.safe_load((angel_profile / "config.yaml").read_text())["mcp_servers"]["vinci"]
+        assert entry["url"] == f"{w.mcp.url}/mcp/amigo-angel" and not {"command", "env"} & set(entry), entry
+        assert entry["headers"] == {"Authorization": f"Bearer {specs['amigo-angel']['token']}"}
+        assert stat.S_IMODE((angel_profile / "vinci-mcp.json").stat().st_mode) == 0o600
+
+        def mcp_post(profile: str, token: str, method: str = "tools/list", params: dict | None = None):
+            return requests.post(f"{w.mcp.url}/mcp/{profile}", timeout=120, headers={"Authorization": f"Bearer {token}"},
+                                 json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}})
+
+        for profile, token in (("amigo-angel", specs["vinci"]["token"]), ("vinci", specs["amigo-angel"]["token"]),
+                               ("amigo-angel", ""), ("..%2Fvinci", specs["vinci"]["token"])):
+            assert mcp_post(profile, token).status_code == 404, (profile, "un perfil, su token")
+        assert requests.get(f"{w.mcp.url}/mcp/vinci", timeout=30).status_code == 405
+        callers = ("vinci", "amigo-angel") * 4
+        with ThreadPoolExecutor(len(callers)) as pool:
+            replies = list(pool.map(lambda p: mcp_post(p, specs[p]["token"], "tools/call",
+                                                       {"name": "semana", "arguments": {}}).json(), callers))
+        for profile, reply in zip(callers, replies):
+            tasks = [t.get("tarea") or "" for t in json.loads(reply["result"]["content"][0]["text"])["pendientes"]]
+            angels = any("Integrales dobles" in t or "EDO de primer orden" in t for t in tasks)
+            assert tasks and angels == (profile == "amigo-angel"), (profile, tasks)
+        assert not stdio_mcp(w), f"ningún perfil arranca su propio servidor MCP: {stdio_mcp(w)}"
+        report.append("Un solo servidor MCP (`espol-bot mcp-http`, como en el contenedor) atiende al Vinci del capitán "
+                      "y al de Angel: cada perfil entra por su ruta con su propio token, el token de uno no abre las "
+                      "herramientas del otro, y ocho llamadas a la vez reciben cada una solo el aula de su perfil")
 
         # 10f. Slides: the file reaches the chat
         mark = len(wa.sent)

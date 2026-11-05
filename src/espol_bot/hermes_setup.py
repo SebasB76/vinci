@@ -12,7 +12,7 @@ Mechanics, checked against Hermes Agent 2026.9 (docs under ~/.hermes/hermes-agen
   its cron jobs from the ticks.
 - Tools: `platform_toolsets.<platform>` lists what each platform may use and
   `agent.disabled_toolsets` removes toolsets everywhere, after everything else; a
-  stdio MCP server in `mcp_servers:` becomes the `mcp-<server>` toolset (tools
+  MCP server in `mcp_servers:` becomes the `mcp-<server>` toolset (tools
   `mcp__<server>__<tool>`), and a plugin's tool its own toolset (ver_pagina: `vinci-paginas`, the one
   way a tool's image reaches the model). Tool Search is turned off so the model sees exactly that list.
   `skills.auto_load` pins a skill fully loaded in every chat session (a cron agent run only loads the
@@ -68,7 +68,7 @@ from aula_core.config import (
     secrets_path,
     update_secret_values,
 )
-from espol_bot import characters, herramientas, maintenance_service, materias, quiz, skill_check
+from espol_bot import characters, herramientas, maintenance_service, materias, mcp_shared, quiz, skill_check
 from espol_bot.config import (
     BLOCKED_TOOLSETS,
     CAPTAIN_SECRETS,
@@ -103,6 +103,10 @@ WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
 TELEGRAM_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
+# Set in the Docker image: every profile's tools come from the one `espol-bot mcp-http` (mcp_shared.py), not a stdio
+# process each. Without it (setup.sh on a PC), stdio as before.
+SHARED_MCP_ENV = "VINCI_MCP_URL"
+MCP_TRANSPORT_KEYS = {"stdio": ("command", "args", "env"), "http": ("url", "headers")}
 # The model's API key (and Groq's, for voice notes) in the Docker image comes from the container's environment
 # (Coolify), but a multiplexed gateway reads each profile's secrets from that profile's .env only: setup copies it.
 MODEL_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "ZAI_API_KEY",
@@ -236,7 +240,11 @@ class Setup:
         keys = {k: os.environ[k] for k in MODEL_KEYS if os.environ.get(k)}
         if "model" in managed and keys and os.environ.get("VINCI_HERMES_ROOT"):
             upsert_env(profile / ".env", keys)
+        self._mcp_transport(profile, managed)
         merged = _deep_merge(copy.deepcopy(current), managed)
+        for name, entry in (managed.get("mcp_servers") or {}).items():  # nothing left of the other transport
+            for key in MCP_TRANSPORT_KEYS["http" if "command" in entry else "stdio"]:
+                merged["mcp_servers"][name].pop(key, None)
         if "model" in managed:
             # `hermes profile create` seeds OpenRouter's base_url, which would send any other provider's calls there.
             merged["model"].pop("base_url", None)
@@ -247,6 +255,19 @@ class Setup:
         if merged == current and config_file.exists():  # Hermes may re-serialize the file: compare values
             return False
         return _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
+
+    @staticmethod
+    def _mcp_transport(profile: Path, managed: dict) -> None:
+        """With SHARED_MCP_ENV, the profile's stdio entry becomes its spec for the shared server plus the URL and
+        token Hermes reaches it with; without it, a spec left from before is removed, and its token with it."""
+        base = os.environ.get(SHARED_MCP_ENV)
+        for entry in (managed.get("mcp_servers") or {}).values():
+            if not base:
+                mcp_shared.drop_spec(profile)
+                continue
+            token = mcp_shared.write_spec(profile, entry.pop("args")[1:], entry.pop("env"))
+            del entry["command"]
+            entry.update(url=mcp_shared.url_for(base, profile.name), headers={"Authorization": f"Bearer {token}"})
 
     def toolset_switches(self, code: str | None, toolsets: list[str], blocked: list[str],
                          label: str) -> tuple[list[str], list[str]]:

@@ -18,6 +18,7 @@
     espol-bot agenda                 without Telegram, Vinci's own: a brief or class notes of any subject
                                      go into the captain's WhatsApp chat with Vinci (prints nothing)
     espol-bot mcp vinci|materia      the tools of Vinci or of one subject bot (stdio MCP server)
+    espol-bot mcp-http               the same tools for every profile from one process (HTTP, 127.0.0.1)
     espol-bot boton <datos>          what one of Vinci's inline buttons does (the plugin calls it)
     espol-bot bot-creado <id>        a bot the captain created for Vinci to manage: fetch its token,
                                      store it and provision its profile (the plugin calls it)
@@ -152,7 +153,8 @@ def _greeting(cfg, code: str | None) -> dict:
         agenda.next_session(cfg, subject, now), cfg.core.tz, now)}
 
 
-def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
+def mcp_tools(cfg, which: str, code: str | None, hermes_home: str | None):
+    """The MCP server of one bot: stdio for `mcp`, one request of `mcp-http` (mcp_shared.py)."""
     from espol_bot import herramientas
     from espol_bot.mcp_server import Server
     ctx = herramientas.Ctx(cfg, Path(hermes_home) if hermes_home else None, code.upper() if code else None)
@@ -169,6 +171,11 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
             raise ConfigError("mcp materia necesita --curso CÓDIGO")
         server = Server("materia", "1.0", herramientas.subject_tools(ctx),
                         f"Herramientas del bot de {code.upper()}: solo esa materia y su cuaderno.", ctx.set_channel)
+    return server
+
+
+def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
+    server = mcp_tools(cfg, which, code, hermes_home)
     logging.info("mcp %s%s: iniciado", which, f" {code}" if code else "")
     return server.serve()
 
@@ -406,6 +413,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("bot", choices=["vinci", "materia", "amigo"])
     p.add_argument("--curso", default=None, help="código de la materia (para «materia»)")
     p.add_argument("--hermes-home", default=None, help="carpeta del perfil de Hermes del bot")
+    p = sub.add_parser("mcp-http", help="un solo servidor MCP para todos los perfiles, por HTTP (lo usa el "
+                                        "contenedor en vez de un proceso por perfil)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--puerto", type=int, default=8788, help="0: uno libre (lo dice la primera línea)")
     p = sub.add_parser("boton", help="procesar un botón de Vinci (lo usa el plugin vinci-botones)")
     p.add_argument("datos")
     p = sub.add_parser("bot-creado", help="configurar un bot creado para Vinci (lo usa el plugin vinci-botones)")
@@ -477,6 +488,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     prefer_ipv4()
+    if args.cmd == "mcp-http":  # before any config: each request loads its own profile's (mcp_shared.py)
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        from espol_bot import mcp_shared
+        return mcp_shared.serve(args.host, args.puerto)
     try:
         cfg = load_bot_config(load_config())
         if args.cmd == "hermes-perfil":

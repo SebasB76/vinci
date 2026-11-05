@@ -3,7 +3,9 @@
 Vinci también corre en un servidor, encendido todo el día, con la imagen de Docker de este repo (`Dockerfile`). La
 imagen parte de la imagen oficial de Hermes Agent: un solo contenedor con un solo gateway para tu Vinci y el de
 cada amigo, por WhatsApp. Todo lo que cambia (datos del aula, memoria, perfiles, sesión de WhatsApp y `secrets.env`) vive
-en el volumen `/opt/data`. Necesita unos 1,5 GB de RAM y unos 10 GB de disco: la imagen sola ocupa casi 5 GB, y la construcción pide más.
+en el volumen `/opt/data`. Necesita alrededor de 1 GB de RAM y unos 10 GB de disco: la imagen sola ocupa casi 5 GB, y la
+construcción pide más. Las herramientas de todos los bots corren en un solo proceso (`espol-bot mcp-http`, solo
+dentro del contenedor), así que cada amigo nuevo casi no suma memoria.
 
 Corre una sola copia de Vinci a la vez. Dos copias contestan dos veces por WhatsApp y se rompen la cadena del token de
 Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de encender el nuevo (paso 4).
@@ -19,8 +21,10 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    anteriores, la opción se llama **Consistent Container Names**. Con un nombre fijo, Coolify apaga el contenedor viejo antes
    de encender el nuevo en cada despliegue. Sin eso, los dos corren a la vez un momento sobre el mismo volumen. No
    actives **Preview Deployments**, y deja una sola réplica.
-5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Si Vinci llega al tope, se
-   reinicia solo Vinci y no las otras apps.
+5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Pon el mismo valor en el límite
+   de swap y el swappiness en 0: así Vinci no usa swap. Si Vinci llega al tope, se reinicia solo Vinci, en segundos, y
+   no las otras apps. Con swap se arrastra, congelado, hasta más de una hora, y la cadena del token de Canvas se corta.
+   Para no llegar al tope, los perfiles leen el aula de uno en uno.
 6. En **Environment Variables**, agrega estas:
 
    | Variable | Valor |

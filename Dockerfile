@@ -43,6 +43,12 @@ ENV VINCI_HERMES_ROOT=/opt/data \
     GATEWAY_ALLOW_ALL_USERS=false \
     VINCI_MAINTENANCE_SERVICE=1
 
+# One MCP server for every profile (deploy/s6/vinci-mcp, on 127.0.0.1 only) instead of a stdio process each:
+# hermes-perfil points each profile's config.yaml at VINCI_MCP_URL.
+RUN cp -r /opt/vinci/deploy/s6/vinci-mcp /etc/s6-overlay/s6-rc.d/vinci-mcp && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-mcp
+ENV VINCI_MCP_URL=http://127.0.0.1:8788
+
 # The admin panel (deploy/s6/vinci-panel): Coolify's proxy publishes this port on the app's domain.
 EXPOSE 8787
 

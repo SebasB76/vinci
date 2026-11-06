@@ -54,7 +54,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Feature | Code | Verify |
 |---|---|---|
 | How each assignment is handed in | `src/aula_core/queries.py` (`delivery`, `pending`), `set_assignment_delivery` in `herramientas.py` | `vinci-check say "¿qué tengo pendiente?"` lists an overdue external lab as late (uses the model) |
-| Alerts, reminders, summary | `src/espol_bot/poller.py`, `priority.py`, `messages.py` | `vinci-check status` (poll age); `espol-bot resumen` sends the summary for real |
+| Alerts, reminders, summary | `src/espol_bot/poller.py`, `priority.py`, `messages.py`; the loop in the container: `poll_service.py`, `deploy/s6/vinci-sondeo` | `vinci-check status` (poll age); `espol-bot resumen` sends the summary for real; `vinci-check remote logs bot --grep "sondeo --todos"` |
 | Buttons (all) | `src/espol_bot/botones.py`, `hermes/plugins/vinci-botones/` | `vinci-check vote "<option>"` on a harmless poll (`press` with Telegram on) |
 | Dashboard | `src/espol_bot/dashboard.py` (`whatsapp_link`), `docs/dashboard/`, `show_page` in `herramientas.py`, `Bot._dashboard_button` in `poller.py` | `vinci-check page dashboard`; `vinci-check say "¿qué tengo pendiente?"` brings the button (uses the model) |
 | To-do list | `src/espol_bot/store.py`, `herramientas.py` | `vinci-check say "¿qué tengo esta semana?"` (uses the model) |

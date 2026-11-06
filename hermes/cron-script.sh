@@ -7,6 +7,8 @@
 export AULA_CONFIG='{{CONFIG}}'
 export AULA_SECRETS='{{SECRETS}}'
 export VINCI_HERMES_ROOT='{{HERMES_ROOT}}'
+# At the memory limit the kernel kills this job (score 1000) before the gateway that runs it.
+{ echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null
 {{ENV_EXTRA}}case '{{COMMAND}}' in
   sondeo|resumen)
     # Every profile reads Canvas (and OCRs) at the same minute; one at a time keeps the container under its memory

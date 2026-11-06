@@ -55,6 +55,9 @@
   el de cada amigo aparte del gateway, así que la cadena sigue aunque el gateway se cuelgue. Un aviso que no pudo
   salir por WhatsApp sale en una corrida siguiente. En una PC, la renovación corre en el gateway: con el gateway
   detenido más de una hora, la cadena se corta.
+- **Avisos en fila en el servidor:** el servicio `vinci-sondeo` revisa el aula de cada persona una tras otra, no
+  todas a la vez. Con muchos amigos, o el día que alguien sube un libro escaneado, el último de la fila recibe su
+  aviso unos minutos después, y el resumen de las 7:00 puede llegar a las 7:10.
 - **Materias sin código ESPOL:** un curso del aula sin un código reconocible (como `MATG1049`) no recibe bot;
   Vinci te lo dice en la tarjeta del equipo.
 - **El aula pide calma:** el sondeo espacia sus consultas, baja solo los sílabos (hasta 50 MB por revisión) y

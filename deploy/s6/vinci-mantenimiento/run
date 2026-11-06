@@ -3,4 +3,5 @@
 # Apart from the gateway, so a frozen or dead gateway no longer cuts the chains. s6 restarts it if it stops.
 export HOME=/opt/data
 cd /opt/data || exit 1
+{ echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null  # killed before the gateway at the memory limit
 exec s6-setuidgid hermes /opt/vinci/.venv/bin/espol-bot mantenimiento --todos --cada 10

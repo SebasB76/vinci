@@ -24,7 +24,7 @@ from aula_core import PAUSED_KEY, REFUSED_KEY, Aula, timefmt, token_fingerprint
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.store import get_meta, set_meta
 from aula_core.sync import last_sync
-from espol_bot import maintenance_service, token_renewal
+from espol_bot import maintenance_service, poll_service, token_renewal
 from espol_bot.config import BotConfig
 
 POLL_RUN = "bot_run_poll"
@@ -97,16 +97,17 @@ def _bot_command(name: str) -> str:
 def _poll(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Check:
     name, every = "Sondeo", timedelta(minutes=cfg.poll_minutes)
     at, run = _run(meta, POLL_RUN)
+    service = poll_service.enabled()
+    runner = f"el servicio {poll_service.SERVICE}" if service else "el gateway de Hermes"
+    fix = f"s6-svstat /run/service/{poll_service.SERVICE}" if service else "hermes gateway status"
     if at is None and meta.get("initialized"):  # just installed, or updated from before runs were recorded
         return Check(name, WARN, f"todavía no registra ninguna corrida: la primera llega en menos de "
-                     f"{cfg.poll_minutes} min; si no, revisa el gateway de Hermes.")
+                     f"{cfg.poll_minutes} min; si no, revisa {runner}.")
     if at is None:
-        return Check(name, FAIL, "todavía no ha corrido nunca: sin él no llegan avisos ni recordatorios.",
-                     "hermes gateway status")
+        return Check(name, FAIL, "todavía no ha corrido nunca: sin él no llegan avisos ni recordatorios.", fix)
     if now - at > 2 * every:
         return Check(name, FAIL, f"no corre desde {ago(at)}; debería cada {cfg.poll_minutes} min. Sin él no te "
-                     "llegan avisos ni recordatorios: ¿la PC estuvo apagada o se detuvo el gateway de Hermes?",
-                     "hermes gateway status")
+                     f"llegan avisos ni recordatorios: ¿Vinci estuvo apagado o se detuvo {runner}?", fix)
     if run.get("error"):
         return Check(name, WARN, f"corrió {ago(at)}, con un problema: {run['error']}")
     return Check(name, OK, f"corrió {ago(at)}; corre cada {cfg.poll_minutes} min.")

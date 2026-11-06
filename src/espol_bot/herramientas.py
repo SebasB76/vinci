@@ -1674,7 +1674,8 @@ def _show_page(ctx: Ctx, args: dict) -> dict:
                       link={"text": found["text"], "url": found["url"]})
             return {"enviado": "un botón «🎴 Ver mi álbum» a su chat privado",
                     "mensaje": "Ya le llegó el botón. Dile en una línea cuántas cartas tiene y que gana sobres al "
-                               "entregar a tiempo y al sacar 8/10 o más en lecciones y exámenes."}
+                               "entregar a tiempo y al sacar 8/10 o más en lecciones y exámenes; sus repetidas las "
+                               "cambia con /cambio."}
         form = token_form.open_form(ctx.cfg, now, whatsapp=True)
         chat.send(form["respuesta"], link=form["button"], image=form.get("image"))
     except (TelegramError, ConfigError) as exc:

@@ -373,7 +373,7 @@ def listing(cfg: BotConfig) -> Outcome:
 
 def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) -> Outcome:
     """Vinci's own slash commands on WhatsApp, for the captain or an active friend, each over their own aula:
-    /start, /estado and /token, plus the ciphertext the captain pastes after his /token, and a vote on one of
+    /start, /estado, /token, /entregas and /cambio (trades.py), plus the ciphertext the captain pastes after his /token, and a vote on one of
     the polls that stand in for a card's buttons (`data`: {"encuesta", "opcion"})."""
     captain = number == captain_number(cfg)
     friend = None if captain else next((f for f in active(cfg) if f.numero == number), None)
@@ -381,6 +381,11 @@ def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) ->
         raise ConfigError("ese número no tiene su Vinci")
     if name == "start":
         return Outcome(_greeting(friend))
+    from espol_bot import trades
+    if name == "cambio":
+        return trades.command(cfg, number, data, now)
+    if name == "voto" and (traded := trades.vote(cfg, number, friend, data, now)) is not None:
+        return traded
     if name in ("voto", "marca", "entregas"):
         act = {"voto": _vote, "marca": _mark, "entregas": _deliverables}[name]
         if friend is None:
@@ -527,6 +532,7 @@ def _greeting(friend: Friend | None) -> str:
              "*Comandos*",
              "/entregas · tu panel de entregas y lo nuevo del aula",
              "/quiz <tema> · un quiz con encuestas",
+             "/cambio · cambiar tus cartas repetidas del álbum",
              "/estado · cómo va la lectura de tu aula",
              "/token · poner un token nuevo del aula",
              "/new · empezar la conversación de cero",

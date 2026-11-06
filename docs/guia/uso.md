@@ -383,6 +383,31 @@ mi álbum?».
 - **No guarda nada:** como «Tus notas», tus cartas van dentro del enlace, después del `#`, y el navegador nunca se
   lo manda a GitHub.
 
+### Cambiar cartas
+
+Por WhatsApp, cambias tus cartas repetidas con el capitán y con cada amigo que tiene su Vinci. Solo se cambian las
+repetidas, así que nunca pierdes una carta de tu álbum.
+
+1. Escribe `/cambio`. Vinci te dice tus repetidas, cuántas te faltan y quién tiene repetidas las que te faltan.
+2. Escribe `/cambio Angel Bosque protector por Lago ESPOL`: primero la persona, después tu repetida y, tras «por», la
+   suya. Basta con una parte del nombre de la carta si no hay otra parecida.
+3. A Angel le llega tu oferta por privado, con una encuesta.
+4. Si Angel vota «✅ Acepto el cambio», Vinci cambia las dos cartas y a los dos les llega el botón «🎴 Ver mi álbum».
+
+La oferta dura 2 días. Si le mandas otra a la misma persona, la nueva reemplaza a la anterior. `/cambio` también
+funciona en un grupo.
+
+También puedes pedir un cambio desde el álbum, sin escribir el comando:
+
+1. Abre la pestaña «🔁 Cambios» del álbum. El botón «🔁 Ver los cambios» de `/cambio` la abre directo, y también
+   «🔁 Cambiar mi repetida», que aparece al final de un sobre que trajo una repetida.
+2. Mira tus repetidas y las cartas que te faltan y otra persona tiene repetidas, con su nombre en la carta.
+3. Toca una carta. Elige a quién se la pides, si la tienen varias, y cuál de tus repetidas das.
+4. Toca «Pedir el cambio en WhatsApp». Se abre tu chat con Vinci con el `/cambio` ya escrito: envíalo.
+
+La pestaña muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
+te lo dice al recibir tu `/cambio`.
+
 ## Tu Académico de ESPOL
 
 El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu promedio general y tu avance en la

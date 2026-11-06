@@ -67,7 +67,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   sent on the next pass; the poll service (s6 vinci-sondeo, also in place of the Hermes crons): the captain's poll
   then Angel's, one at a time, and the summary the same way, sent once a day even when the pass repeats; his Vinci
   never searching the captain's chats, even by his profile's name; the block for whoever is
-  not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
+  not a Vinci's owner; a card trade (/cambio, and the album's «Cambios» tab with Angel's repeats) with the captain,
+  swapped by Angel's vote; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
 
@@ -3019,6 +3020,62 @@ def test_whatsapp_friend(tmp_path):
         assert "Eso es del dueño" in blocked and "Integrales dobles" not in blocked, blocked
         report.append("Si alguien llegara al Vinci de otro (aquí, Angel con su perfil marcado como de otra persona), "
                       "el gancho pre_tool_call del plugin le niega las herramientas con datos del dueño")
+
+        # 10i. Card trades (/cambio): the captain offers a repeat for one of Angel's, and Angel's vote swaps them
+        def album_set(db, counts):
+            conn = sqlite3.connect(db)
+            conn.executemany("DELETE FROM album_cards WHERE card = ?", [(c,) for c in counts])
+            conn.executemany("INSERT INTO album_cards(card, count, first_at) VALUES (?, ?, '2026-09-30T00:00:00Z')",
+                             [(c, n) for c, n in counts.items() if n])
+            conn.commit()
+            conn.close()
+
+        def album_of(db):
+            conn = sqlite3.connect(db)
+            try:
+                return dict(conn.execute("SELECT card, count FROM album_cards"))
+            finally:
+                conn.close()
+
+        album_set(data_dir / "espol.db", {"bosque": 2, "coliseo": 0, "lago": 1})
+        album_set(angel_dir / "espol.db", {"coliseo": 3, "bosque": 0})
+        calls = len(llm.requests)
+        replied = say(captain_jid, captain_jid, "/cambio", "Capitán")
+        overview = text_of(replied)
+        assert "Bosque protector ×2" in overview and "Angel: " in overview and "Coliseo" in overview, overview
+        from espol_bot import dashboard as dashboard_module
+        page = [m for m in replied if m.get("buttonText") == "🔁 Ver los cambios"]
+        assert page and page[0]["url"].endswith("&t=cambios"), replied
+        market = dashboard_module.decode(page[0]["url"].split("#d=", 1)[1].split("&", 1)[0])["trade"]
+        assert [p["cards"].get("coliseo") for p in market["people"] if p["name"] == "Angel"] == [3], market
+        refused = text_of(say(captain_jid, captain_jid, "/cambio Angel lago por coliseo", "Capitán"))
+        assert "No tienes Lago ESPOL repetida" in refused, refused
+        mark = len(wa.sent)
+        offered = text_of(say(captain_jid, captain_jid, "/cambio Angel bosque por coliseo", "Capitán"))
+        assert "Le mandé tu oferta a Angel" in offered, offered
+        polls = wa.wait_for(lambda b: b.polls_to(angel_jid, mark), 30)
+        assert polls and polls[0]["options"] == ["✅ Acepto el cambio", "❌ No, gracias"], wa.sent[mark:]
+        assert "te ofrece *Bosque protector*" in text_of(wa.messages_to(angel_jid, mark)), wa.sent[mark:]
+        mark = len(wa.sent)
+        wa.vote(angel_jid, angel_jid, polls[0]["messageId"], "✅ Acepto el cambio")
+        done = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                      if "Cambio hecho" in m.get("message", "")], 60)
+        assert done and done[0]["buttonText"] == "🎴 Ver mi álbum", wa.sent[mark:]
+        told = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark)
+                                      if "Angel aceptó" in m.get("message", "")], 30)
+        assert told and told[0]["buttonText"] == "🎴 Ver mi álbum", wa.sent[mark:]
+        mine, his = album_of(data_dir / "espol.db"), album_of(angel_dir / "espol.db")
+        assert (mine.get("bosque"), mine.get("coliseo"), his.get("coliseo"), his.get("bosque")) == (1, 1, 2, 1), \
+            (mine, his)
+        wa.vote(angel_jid, angel_jid, polls[0]["messageId"], "✅ Acepto el cambio")
+        assert wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark)
+                                      if "Esa oferta ya no está" in m.get("message", "")], 60), wa.sent[mark:]
+        assert album_of(data_dir / "espol.db").get("bosque") == 1, "un segundo voto no cambia nada"
+        assert len(llm.requests) == calls, "los cambios no usan el modelo"
+        report.append("«/cambio» le muestra al capitán sus repetidas y quién tiene repetidas las que le faltan, con "
+                      "el botón «🔁 Ver los cambios» que abre la pestaña «Cambios» del álbum con las repetidas de Angel; "
+                      "«/cambio Angel bosque por coliseo» le manda a Angel la oferta con una encuesta, y su «✅ Acepto» "
+                      "cambia una repetida de cada uno en los dos álbumes (un segundo voto no hace nada), sin el modelo")
 
         # 10j. The captain lists and removes Angel; then turns the group off
         listed = say(captain_jid, captain_jid, "/amigos", "Capitán")

@@ -18,11 +18,13 @@ RUN cd /opt/hermes/scripts/whatsapp-bridge && \
 
 COPY . /opt/vinci
 # The versions in uv.lock, installed editable as setup.sh does: the code finds its templates (hermes/) next to src/.
+# Vinci's voice (Edge TTS) goes into Hermes' venv: the image lacks it, and Microsoft refuses edge-tts 7.2.7 (403).
 RUN python3 -m venv /tmp/uv && \
     /tmp/uv/bin/pip install --no-cache-dir --disable-pip-version-check uv && \
     cd /opt/vinci && \
     UV_PROJECT_ENVIRONMENT=/opt/vinci/.venv UV_PYTHON=/usr/local/bin/python3 UV_PYTHON_DOWNLOADS=never \
         /tmp/uv/bin/uv sync --frozen --no-dev --no-cache && \
+    /tmp/uv/bin/uv pip install --no-cache --python /opt/hermes/.venv/bin/python edge-tts==7.3.1 && \
     rm -rf /tmp/uv && \
     chmod 0755 /opt/vinci/deploy/boot.sh /opt/vinci/deploy/healthcheck.sh && \
     install -m 0755 /opt/vinci/deploy/cont-init.sh /etc/cont-init.d/019-vinci && \
@@ -39,6 +41,8 @@ RUN python3 -m venv /tmp/uv && \
 # VINCI_MAINTENANCE_SERVICE and VINCI_POLL_SERVICE: deploy/s6/vinci-mantenimiento renews every token chain and
 # deploy/s6/vinci-sondeo runs every poll and 7:00 summary outside the gateway, so hermes_setup drops those crons.
 # MALLOC_ARENA_MAX: glibc's per-thread arenas let the gateway's threads hold freed memory that never shrinks.
+# HERMES_WRITE_SAFE_ROOT: the image allows writes only under /opt/data, but Hermes writes a spoken reply to
+# /tmp/hermes_voice before sending it.
 ENV VINCI_HERMES_ROOT=/opt/data \
     AULA_CONFIG=/opt/data/vinci/config.toml \
     AULA_SECRETS=/opt/data/vinci/secrets.env \
@@ -46,7 +50,8 @@ ENV VINCI_HERMES_ROOT=/opt/data \
     GATEWAY_ALLOW_ALL_USERS=false \
     VINCI_MAINTENANCE_SERVICE=1 \
     VINCI_POLL_SERVICE=1 \
-    MALLOC_ARENA_MAX=2
+    MALLOC_ARENA_MAX=2 \
+    HERMES_WRITE_SAFE_ROOT=/opt/data:/tmp/hermes_voice
 
 # One MCP server for every profile (deploy/s6/vinci-mcp, on 127.0.0.1 only) instead of a stdio process each:
 # hermes-perfil points each profile's config.yaml at VINCI_MCP_URL.

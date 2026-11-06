@@ -45,6 +45,8 @@
   están en el catálogo (`docs/album/cards.json`). El arte cifrado de una carta lo abre cualquiera que tenga un enlace
   de Vinci: si reenvías el enlace de tu sobre, quien lo recibe también ve las caras.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
+- **La voz de Vinci:** Edge TTS usa un servicio gratis de Microsoft que no es oficial. Si Microsoft lo cambia, Vinci
+  contesta tus notas de voz solo con texto hasta que se actualice `edge-tts` en el `Dockerfile`.
 - **WhatsApp no es oficial:** el puente de Hermes es un cliente no oficial de WhatsApp (Baileys). WhatsApp puede
   bloquear el número de Vinci, por eso va en un chip aparte. En WhatsApp no hay botones: los avisos de un amigo
   llegan como texto.

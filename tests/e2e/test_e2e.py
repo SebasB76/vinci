@@ -61,7 +61,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   path with its own token, neither token opens the other's tools even when both ask at once, and no profile starts a
   stdio MCP process;
   voice notes and audio files heard by the real local
-  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts;
+  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at), and a voice
+  note answered with a voice note before the text; his alerts;
   the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
   hangs and is cut at the limit, then Angel's chain renewed, with the WhatsApp bridge down and the watchdog's message
   sent on the next pass; the poll service (s6 vinci-sondeo, also in place of the Hermes crons): the captain's poll
@@ -1183,6 +1184,12 @@ def trace_page(w) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Vinci's spoken answer without Microsoft: a fixed voice note, so the test sees it leave as one.
+TTS_STAND_IN = {"provider": "e2e", "providers": {"e2e": {
+    "type": "command", "command": f"cp {FILES / 'whatsapp-voz-vinci.ogg'} {{output_path}}", "output_format": "ogg",
+    "voice_compatible": True}}}
+
+
 def ready_gateway(w, *, voice: bool = False) -> None:
     """setup.sh once more, now with Hermes, and the gateway serving Vinci's WhatsApp: the data of two polls, the
     schedule saved, the scripted model, the test clock. With `voice`, Hermes' local Whisper is on from the start."""
@@ -1208,11 +1215,17 @@ def ready_gateway(w, *, voice: bool = False) -> None:
                                          "models": ["fake"]}}
         data["model"]["context_length"] = 256_000  # no lookup of the fake model's window on each start
         data.setdefault("stt", {}).update(enabled=voice, **({"provider": "local"} if voice else {}))
+        data["tts"] = TTS_STAND_IN
         spec_file = profiles / name / "vinci-mcp.json"  # the shared server reads it on each request
         spec = json.loads(spec_file.read_text())
         spec["env"]["AULA_NOW"] = T_VINCI
         spec_file.write_text(json.dumps(spec))
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        # The adapter speaks with the gateway's own config, which adding a friend rewrites too.
+        default_file = home / ".hermes" / "config.yaml"
+        default_cfg = yaml.safe_load(default_file.read_text())
+        default_cfg["tts"] = TTS_STAND_IN
+        default_file.write_text(yaml.safe_dump(default_cfg, allow_unicode=True, sort_keys=False))
 
     def pause_crons() -> None:
         """setup.sh resumes every cron; the test runs each poll itself, on its own clock."""
@@ -2355,7 +2368,7 @@ def test_whatsapp_friend(tmp_path):
     """Section 10 for a friend: a group the captain turns on, Angel invited with a Vinci of his own (his token through
     the page and Vinci's relay, his week, slides, a quote, a sticker, a group that goes idle, a poll for a button, his
     dashboard, his commands), voice notes and audio files heard by the real local Whisper (in a group, only one that
-    says «Vinci»), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
+    says «Vinci»; a voice note answered with one), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
     started = time.monotonic()
     # as in the container: the s6 services vinci-mantenimiento and vinci-sondeo renew every chain and run every poll
     # and summary, not Hermes cron
@@ -2895,20 +2908,28 @@ def test_whatsapp_friend(tmp_path):
                 assert not wa.messages_to(chat, mark) and len(llm.requests) == calls, wa.messages_to(chat, mark)
                 md.append("→ (sin respuesta)\n")
                 return ""
-            got = wa.wait_for(lambda b: (lambda m: m if any(not x.get("message", "").startswith("🎙️") for x in m)
+            got = wa.wait_for(lambda b: (lambda m: m if any(x["path"] == "send" and not x.get("message", "")
+                                                            .startswith("🎙️") for x in m)
                                          else None)(b.messages_to(chat, mark)), 180)
             assert got, fail(f"nadie contestó a {fixture}")
             for m in got:
-                md.append(f"→ Vinci: {normalize(m.get('message', ''))}\n")
+                said = "[nota de voz]" if m.get("mediaType") == "audio" else normalize(m.get("message", ""))
+                md.append(f"→ Vinci: {said}\n")
+            spoken.append(got)
             return text_of(got)
 
         audio_ids = itertools.count(1)
+        spoken: list[list[dict]] = []
         calls = len(llm.requests)
         heard = speak(captain_jid, captain_jid, "whatsapp-voz-vinci.ogg", "Capitán")
         assert "Esta semana:" in heard and "qué tengo esta semana" in heard, \
             f"Hermes muestra lo que entendió y Vinci contesta: {heard}"
-        assert "nota de voz que transcribió Whisper" in turn_context(llm.requests[calls:]), \
-            "una nota de voz llega con su aviso: un nombre o un término pudo salir mal escrito"
+        context = turn_context(llm.requests[calls:])
+        assert "nota de voz que transcribió Whisper" in context and "leída en voz alta" in context, \
+            "una nota de voz llega con su aviso: un nombre pudo salir mal escrito, y la respuesta se oirá"
+        kinds = [("voz" if m.get("mediaType") == "audio" else "texto") for m in spoken[-1]
+                 if not m.get("message", "").startswith("🎙️")]
+        assert kinds[:2] == ["voz", "texto"], f"Vinci contesta una nota de voz con otra, y luego con el texto: {kinds}"
         his = speak(GROUP_WA, angel_jid, "whatsapp-voz-vinci.ogg", "Angel", group=True)
         assert "EDO de primer orden" in his, his  # his week; /marca above closed the Taller 2
         speak(GROUP_WA, captain_jid, "whatsapp-voz-charla.ogg", "Capitán", group=True,
@@ -2918,6 +2939,8 @@ def test_whatsapp_friend(tmp_path):
         calls = len(llm.requests)
         file_week = speak(angel_jid, angel_jid, "whatsapp-audio-semana.m4a", "Angel")
         assert "EDO de primer orden" in file_week, file_week
+        assert not any(m.get("mediaType") == "audio" for m in spoken[-1]), \
+            "a un archivo de audio (no una nota de voz) Vinci le contesta solo con texto"
         assert '"Oye, ¿qué tengo esta semana?' in json.dumps(llm.requests[calls:], ensure_ascii=False), \
             "un archivo de audio le llega al modelo transcrito, como una nota de voz"
         calls = len(llm.requests)
@@ -2929,8 +2952,10 @@ def test_whatsapp_friend(tmp_path):
                       "Angel que dice «Vinci» recibe su semana; una charla del capitán sin «Vinci» y la nota de "
                       "alguien sin su Vinci no llegan al modelo (la de ese alguien ni se transcribe). Un archivo de "
                       "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin. Cada nota de voz llega con "
-                      "un aviso en el contexto (un término pudo salir mal escrito); una en silencio, con que no se "
-                      "oyó y no hay que adivinar")
+                      "un aviso en el contexto (un término pudo salir mal escrito, y la respuesta se oirá); una en "
+                      "silencio, con que no se oyó y no hay que adivinar. Vinci contesta la nota de voz del capitán "
+                      "con una nota de voz (Edge TTS, aquí un audio fijo) y luego con el texto; al .m4a, solo con "
+                      "texto")
 
         # 10i. Angel's alerts reach his own chat, never the captain's
         angel_env = {"AULA_SECRETS": str(angel_dir / "secrets.env"), "AULA_DATA_DIR": str(angel_dir),

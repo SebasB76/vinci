@@ -57,7 +57,8 @@ Conserva el arranque de la imagen y no agregues `--init` en **Custom Docker opti
 proceso inicial del contenedor para ejecutar la preparación de Vinci y supervisar el gateway.
 
 Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se transcriben con una key de
-OpenAI o de Groq (`GROQ_API_KEY`): DeepSeek y los otros modelos chinos no transcriben audio. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
+Groq (`GROQ_API_KEY`, gratis en console.groq.com) o de OpenAI: DeepSeek y los otros modelos chinos no transcriben
+audio. Si están las dos, Hermes usa Groq. La voz con la que Vinci contesta (Edge TTS) no necesita key. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
 El servidor usa el `config.toml` del repo: para cambiar algo, haz commit del cambio y redespliega. Así se enciende
 Telegram también (`[channels] telegram = true`), junto con `TELEGRAM_BOT_TOKEN` y `TELEGRAM_USER_ID`.
 

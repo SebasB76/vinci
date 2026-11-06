@@ -25,7 +25,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 - Te dice cuánto necesitas para pasar, materia por materia.
 - Te regala sobres de cartas por entregar a tiempo, por tus buenas notas y uno cada mañana.
 - Entrega tus deberes desde unas fotos.
-- Entiende audios, capturas y fotos de la pizarra.
+- Entiende audios, capturas y fotos de la pizarra, y te contesta tus notas de voz con su voz.
 
 [Todo lo que hace →](docs/guia/funciones.md#qué-hace-vinci)
 

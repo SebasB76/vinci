@@ -103,9 +103,13 @@ solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para
   Lo que dejas más de 3 días ya no te lo recuerda.
 - **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
   respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
-  con faster-whisper (`setup.sh` lo instala en Hermes); en un servidor, con tu key de OpenAI o de Groq. Vinci te muestra primero lo que entendió (🎙️). Si no se
-  oyó (silencio, ruido), Vinci te lo dice y te pide repetirla o escribirla: no adivina. Si se oyó pero un nombre salió
-  raro, lo entiende por el tema y te dice qué entendió; solo pregunta si no sabe qué pides.
+  con faster-whisper (`setup.sh` lo instala en Hermes); en un servidor, con una key de Groq (gratis) o de OpenAI.
+  Vinci te muestra primero lo que entendió (🎙️). Si no se oyó (silencio, ruido), Vinci te lo dice y te pide repetirla
+  o escribirla: no adivina. Si se oyó pero un nombre salió raro, lo entiende por el tema y te dice qué entendió; solo
+  pregunta si no sabe qué pides.
+- **Vinci te contesta con su voz.** A una nota de voz, Vinci responde con otra nota de voz y después con el mismo
+  texto, para que tengas los enlaces y las fechas a mano. Habla con una voz ecuatoriana de Microsoft (Edge TTS,
+  gratis). A un mensaje escrito o a un archivo de audio contesta solo con texto.
 
 **Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
 contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz

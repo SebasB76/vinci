@@ -13,15 +13,18 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from aula_core import timefmt
 from aula_core.catalog import fold
+from aula_core.config import load_secret_values
 from aula_core.store import connect, file_lock
 from espol_bot import album, amigos, whatsapp
-from espol_bot.config import BotConfig
+from espol_bot.config import CAPTAIN_SECRETS, BotConfig, whatsapp_settings
 from espol_bot.store import ensure as store_ensure
 
 log = logging.getLogger(__name__)
@@ -33,6 +36,7 @@ VOTE_RE = re.compile(r"c:([0-9a-f]{6,16}):(ok|no)")
 CAPTAIN_WORDS = ("capitan", "el capitan")
 HOW = "Así: /cambio Angel Bosque protector por Lago ESPOL (tu repetida primero, después la suya)."
 SHOWN = 6  # cards per person in the overview
+TRADES_BUTTON = "🔁 Ver los cambios"
 
 
 @dataclass
@@ -40,17 +44,27 @@ class Person:
     number: str
     name: str
     friend: amigos.Friend | None  # None: the captain
+    db: Path
 
 
 def _people(cfg: BotConfig) -> list[Person]:
-    captain = amigos.captain_number(cfg)
-    try:
-        names = json.loads((amigos.root(cfg) / "whatsapp-nombres.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        names = {}
+    return _roster(amigos.root(cfg).parent, amigos.captain_number(cfg))
+
+
+def _roster(home: Path, captain: str) -> list[Person]:
+    """The captain and each active friend; `home` is the captain's data folder, where amigos/ lives."""
+    def read(name: str) -> dict:
+        try:
+            return json.loads((home / "amigos" / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    names, friends = read("whatsapp-nombres.json"), read("amigos.json").get("amigos") or []
     # a WhatsApp name may start with a dash or an emoji («-Sebastian B»), as in avisos.members
     first = re.sub(r"^\W+", "", str(names.get(captain) or "")).strip() or "Capitán"
-    return [Person(captain, first, None), *(Person(f.numero, f.nombre, f) for f in amigos.active(cfg))]
+    active = [amigos.Friend(**f) for f in friends if f.get("estado") == amigos.ACTIVE]
+    return [Person(captain, first, None, home / "espol.db"),
+            *(Person(f.numero, f.nombre, f, home / "amigos" / f.slug / "espol.db") for f in active)]
 
 
 @contextmanager
@@ -100,6 +114,34 @@ def _repeats(have: dict[str, int]) -> dict[str, int]:
     return {card: n for card, n in have.items() if n >= 2 and card in known}
 
 
+def market(cfg: BotConfig) -> dict:
+    """The album page's «Cambios» tab: Vinci's number and every other person's repeats ({"wa", "people": [{"name",
+    "cards"}]}); {} off WhatsApp or with no friends. `cfg` may be the captain's or a friend's (amigos/<slug>/)."""
+    data_dir = cfg.core.data_dir
+    home = data_dir.parent.parent if data_dir.parent.name == "amigos" else data_dir
+    if not (home / "amigos" / "amigos.json").exists():
+        return {}
+    captain = os.environ.get(CAPTAIN_SECRETS)  # a friend's Vinci reads the captain's number from his secrets.env
+    wa = whatsapp_settings(load_secret_values(Path(captain) if captain else None))
+    if wa is None:
+        return {}
+    people = []
+    for p in _roster(home, wa.captain):
+        if p.db == cfg.core.db_path or not p.db.exists():
+            continue
+        try:
+            conn = sqlite3.connect(f"{p.db.as_uri()}?mode=ro", uri=True)
+            try:
+                cards = _repeats(album.collection(conn))
+            finally:
+                conn.close()
+        except sqlite3.Error:  # an album not started yet
+            continue
+        if cards:
+            people.append({"name": p.name, "cards": cards})
+    return {"wa": whatsapp.own_number(), "people": people}
+
+
 def _load(cfg: BotConfig, now: datetime) -> dict[str, dict]:
     try:
         offers = json.loads((amigos.root(cfg) / OFFERS).read_text(encoding="utf-8")).get("ofertas") or {}
@@ -135,8 +177,9 @@ def command(cfg: BotConfig, number: str, text: str, now: datetime) -> amigos.Out
 
 def _overview(cfg: BotConfig, me: Person, people: list[Person], now: datetime) -> amigos.Outcome:
     known = _names()
-    with _album(cfg, me) as (_, conn):
+    with _album(cfg, me) as (owner, conn):
         mine = album.collection(conn)
+        link = album.whatsapp_link(conn, owner, now)
     repeats = _repeats(mine)
     lines = ["🔁 *Cambio de cartas*", ""]
     if repeats:
@@ -167,7 +210,8 @@ def _overview(cfg: BotConfig, me: Person, people: list[Person], now: datetime) -
                       "contesta en la encuesta que te mandé."]
     if repeats:
         lines += ["", HOW]
-    return amigos.Outcome("\n".join(lines))
+    button = {"text": TRADES_BUTTON, "url": f"{link['url']}&t=cambios"} if link else None
+    return amigos.Outcome("\n".join(lines), button=button)
 
 
 def _offer(cfg: BotConfig, me: Person, people: list[Person], text: str, now: datetime) -> amigos.Outcome:

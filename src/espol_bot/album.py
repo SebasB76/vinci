@@ -215,6 +215,12 @@ def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None =
 
 
 def page_url(cfg: BotConfig, data: dict) -> str:
+    from espol_bot import trades  # trades imports this module
+    try:
+        if found := trades.market(cfg):
+            data = {**data, "trade": found}
+    except Exception:  # an extra: the album opens without its «Cambios» tab
+        log.exception("álbum: no pude leer las repetidas de los demás")
     url = f"{cfg.album_page}#d={encode(data)}"
     if len(url) > MAX_URL:  # a catalog of a few hundred cards still fits; this only guards the phones' webviews
         log.warning("álbum: el enlace mide %d caracteres", len(url))

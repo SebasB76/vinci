@@ -397,6 +397,16 @@ repetidas, así que nunca pierdes una carta de tu álbum.
 La oferta dura 2 días. Si le mandas otra a la misma persona, la nueva reemplaza a la anterior. `/cambio` también
 funciona en un grupo.
 
+También puedes pedir un cambio desde el álbum, sin escribir el comando:
+
+1. Abre la pestaña «🔁 Cambios» del álbum. El botón «🔁 Ver los cambios» de `/cambio` la abre directo.
+2. Mira tus repetidas y las cartas que te faltan y otra persona tiene repetidas, con su nombre en la carta.
+3. Toca una carta. Elige a quién se la pides, si la tienen varias, y cuál de tus repetidas das.
+4. Toca «Pedir el cambio en WhatsApp». Se abre tu chat con Vinci con el `/cambio` ya escrito: envíalo.
+
+La pestaña muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
+te lo dice al recibir tu `/cambio`.
+
 ## Tu Académico de ESPOL
 
 El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu promedio general y tu avance en la

@@ -2,6 +2,7 @@
 // fragment (#d=<base64url of raw DEFLATE JSON>); only the catalog, cards.json, comes from this site. A pack is
 // opened the way of the design system's sheets: pull it up, then swipe each card away. Art with real faces is
 // stored encrypted (scripts/album_card.py); the fragment's `k` opens it, so it never shows without Vinci's link.
+// «Cambios» lists the cards others have repeated (`trade`) and opens WhatsApp with the «/cambio …» that asks for one.
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
 const TAG = { com: "COMUN", rare: "RARA", epic: "EPICA", leg: "★ LEGENDARIA ★" };
@@ -15,9 +16,9 @@ const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const app = document.getElementById("app");
 const SPARK = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>';
 
-export function readFragment(hash) {
+export function readFragment(hash, key = "d") {
   for (const pair of hash.replace(/^#/, "").split(/[&?]/)) {
-    if (pair.startsWith("d=")) return pair.slice(2);
+    if (pair.startsWith(`${key}=`)) return pair.slice(key.length + 1);
   }
   return "";
 }
@@ -41,7 +42,8 @@ export function initials(name) {
 // Only the cards this person owns or is opening: one fetch each, decrypted once per page load.
 async function unlock(data, cards) {
   if (!data.k || !crypto.subtle) return;
-  const wanted = new Set([...Object.keys(data.have || {}), ...(data.pack?.cards || []).map((e) => e.id)]);
+  const offered = (data.trade?.people || []).flatMap((p) => Object.keys(p.cards || {}));
+  const wanted = new Set([...Object.keys(data.have || {}), ...(data.pack?.cards || []).map((e) => e.id), ...offered]);
   try {
     const key = await crypto.subtle.importKey("raw", bytesOf(data.k), "AES-GCM", false, ["decrypt"]);
     await Promise.all([...wanted].map(async (id) => {
@@ -190,17 +192,79 @@ function openPack(data, cards) {
   });
 }
 
+const TRADES = "cambios";
+const RANK = ["com", "rare", "epic", "leg"];
+const byRarity = (dir) => (a, b) => dir * (RANK.indexOf(a.rarity) - RANK.indexOf(b.rarity)) || a.n - b.n;
+
+// The cards this person lacks that someone else has repeated, each with who has it (data.trade, trades.market).
+function wanted(data, cards) {
+  const have = data.have || {}, found = new Map();
+  for (const person of data.trade?.people || []) {
+    for (const id of Object.keys(person.cards || {})) {
+      const c = cards.get(id);
+      if (!c || have[id]) continue;
+      if (!found.has(id)) found.set(id, { c, owners: [] });
+      found.get(id).owners.push(person.name);
+    }
+  }
+  return [...found.values()].sort((a, b) => byRarity(-1)(a.c, b.c));
+}
+
+function tradeTab(data, cards, mine) {
+  const list = wanted(data, cards);
+  const repeats = mine.length
+    ? `<div class="chips">${mine.map((c) => `<span class="pill">${esc(c.name)} ×${data.have[c.id]}</span>`).join("")}</div>`
+    : '<p class="hint">Todavía no tienes repetidas, y solo se cambian las repetidas. Las que te salgan dos veces aparecen aquí.</p>';
+  const grid = list.length
+    ? `<div class="grid">${list.map(({ c, owners }) => {
+        const who = owners.length > 1 ? `${owners.length} personas` : owners[0].split(" ")[0];
+        return `<button class="cell own" type="button" data-want="${esc(c.id)}">${card(c, "s", `<span class="pill hi flag">${esc(plain(who))}</span>`)}</button>`;
+      }).join("")}</div>`
+    : '<p class="empty-state">Nadie tiene repetida una carta que te falte, por ahora.</p>';
+  return `<section class="trade"><h2 class="sub">Tus repetidas</h2>${repeats}
+    <h2 class="sub">Te faltan y alguien las tiene repetidas</h2>${grid}</section>`;
+}
+
+// The sheet for one wanted card: who to ask, which repeat to give, and a WhatsApp chat with «/cambio …» typed.
+function offerSheet(data, cards, mine, id) {
+  const entry = wanted(data, cards).find((w) => w.c.id === id);
+  if (!entry) return;
+  let owner = entry.owners[0], give = mine[0];
+  const sheet = app.querySelector(".offer"), body = sheet.querySelector(".body");
+  const text = () => `/cambio ${owner} ${give.name} por ${entry.c.name}`;
+  const draw = () => {
+    const chips = (items, on, attr) => `<div class="chips">${items.map((x) =>
+      `<button class="chip" type="button" ${attr}="${esc(x.key)}" aria-pressed="${x.key === on}">${esc(x.label)}</button>`).join("")}</div>`;
+    body.innerHTML = `<div class="pick"><div class="mini">${card(entry.c, "s")}</div><div><div class="t">${esc(entry.c.name)}</div>
+        <div class="m"><span class="rp t-${entry.c.rarity}">${RL[entry.c.rarity]}</span></div>
+        <p class="hint">${entry.owners.length > 1 ? "La tienen repetida varias personas: elige a quién pedírsela." : `${esc(owner)} la tiene repetida.`}</p></div></div>
+      ${entry.owners.length > 1 ? `<h3 class="sub">Se la pides a</h3>${chips(entry.owners.map((o) => ({ key: o, label: o })), owner, "data-owner")}` : ""}
+      ${give ? `<h3 class="sub">Das a cambio</h3>${chips(mine.map((c) => ({ key: c.id, label: `${c.name} ×${data.have[c.id]}` })), give.id, "data-give")}
+        ${data.trade.wa ? `<a class="btn btn-accent block" href="https://wa.me/${esc(data.trade.wa)}?text=${encodeURIComponent(text())}">Pedir el cambio en WhatsApp</a>
+        <p class="hint c">Se abre tu chat con Vinci con el mensaje listo: solo envíalo.</p>`
+        : `<p class="hint c">Escríbele a Vinci: <b>${esc(text())}</b></p>`}`
+      : '<p class="hint c">Necesitas una carta repetida para ofrecer a cambio.</p>'}
+      <button class="btn btn-quiet block" type="button" data-close>Cerrar</button>`;
+    body.querySelectorAll("[data-owner]").forEach((b) => b.addEventListener("click", () => { owner = b.dataset.owner; draw(); }));
+    body.querySelectorAll("[data-give]").forEach((b) => b.addEventListener("click", () => { give = cards.get(b.dataset.give); draw(); }));
+    body.querySelector("[data-close]").addEventListener("click", () => sheet.classList.remove("on"));
+  };
+  draw();
+  sheet.classList.add("on");
+}
+
 function showAlbum(data, cards, fresh, tab) {
   document.body.classList.remove("opening");
   const all = [...cards.values()];
   const collections = [...new Set(all.map((c) => c.collection))];
   const names = Object.fromEntries((data.collections || []).map((c) => [c.id, c.name]));
-  tab = tab || collections[0];
+  if (!(collections.includes(tab) || (tab === TRADES && data.trade))) tab = collections[0];
   const have = data.have || {};
   const owned = all.filter((c) => have[c.id]).length;
   const repeats = all.reduce((sum, c) => sum + Math.max(0, (have[c.id] || 0) - 1), 0);
   const newIds = new Set(fresh && data.pack ? data.pack.cards.filter((e) => e.new).map((e) => e.id) : []);
   const list = all.filter((c) => c.collection === tab).sort((a, b) => a.n - b.n);
+  const mine = all.filter((c) => (have[c.id] || 0) > 1).sort(byRarity(1));
   app.innerHTML = head("Tu álbum", `${owned} de ${all.length} cartas`) + `
     <div class="tiles"><div class="tile hi"><div class="n">${owned}</div><div class="l">de ${all.length} cartas</div></div>
       <div class="tile"><div class="n">${newIds.size}</div><div class="l">${newIds.size === 1 ? "nueva hoy" : "nuevas hoy"}</div></div>
@@ -208,17 +272,21 @@ function showAlbum(data, cards, fresh, tab) {
     <div class="tabs" role="tablist">${collections.map((id) => {
       const total = all.filter((c) => c.collection === id), got = total.filter((c) => have[c.id]).length;
       return `<button class="tab" role="tab" type="button" data-t="${esc(id)}" aria-selected="${id === tab}">${esc(names[id] || id)} ${got}/${total.length}</button>`;
-    }).join("")}</div>
-    <div class="grid">${list.map((c) => {
+    }).join("")}${data.trade ? `<button class="tab" role="tab" type="button" data-t="${TRADES}" aria-selected="${tab === TRADES}">🔁 Cambios ${wanted(data, cards).length}</button>` : ""}</div>
+    ${tab === TRADES ? tradeTab(data, cards, mine) : `<div class="grid">${list.map((c) => {
       if (!have[c.id]) return `<div class="cell empty">${pad(c.n)}</div>`;
       const flag = newIds.has(c.id) ? '<span class="pill hi flag">Nueva</span>' : have[c.id] > 1 ? `<span class="pill flag">×${have[c.id]}</span>` : "";
       return `<button class="cell own ${newIds.has(c.id) ? "fresh" : ""}" type="button" data-id="${esc(c.id)}">${card(c, "s", flag)}</button>`;
-    }).join("")}</div>
+    }).join("")}</div>`}
     ${data.pack && !fresh ? '<button class="btn btn-quiet block" type="button" data-again>Abrir el sobre otra vez</button>' : ""}
-    <div class="zoom" aria-hidden="true"><div class="big"></div></div>`;
+    <div class="zoom" aria-hidden="true"><div class="big"></div></div>
+    <div class="offer" role="dialog" aria-label="Pedir un cambio"><div class="body"></div></div>`;
   app.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showAlbum(data, cards, fresh, b.dataset.t)));
+  app.querySelectorAll("[data-want]").forEach((b) => b.addEventListener("click", () => offerSheet(data, cards, mine, b.dataset.want)));
+  const offer = app.querySelector(".offer");
+  offer.addEventListener("click", (e) => { if (e.target === offer) offer.classList.remove("on"); });
   const zoom = app.querySelector(".zoom");
-  app.querySelectorAll(".cell.own").forEach((b) => b.addEventListener("click", () => {
+  app.querySelectorAll(".cell.own[data-id]").forEach((b) => b.addEventListener("click", () => {
     const c = cards.get(b.dataset.id), big = zoom.querySelector(".big");
     big.classList.toggle("wide", Boolean(c.wide && c.src));
     big.innerHTML = card(c);
@@ -244,7 +312,7 @@ async function main() {
   const cards = new Map(catalog.cards.map((c) => [c.id, c]));
   await unlock(data, cards);
   if (data.pack && !opened().has(data.pack.id)) openPack(data, cards);
-  else showAlbum(data, cards, false);
+  else showAlbum(data, cards, false, readFragment(location.hash, "t"));
 }
 
 if (typeof document !== "undefined" && document.getElementById("app")) main();

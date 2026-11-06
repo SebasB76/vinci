@@ -52,6 +52,7 @@ MAX_BUTTONS = 6
 OCR_MINUTES = 10  # of each poll (VINCI_OCR_MINUTES overrides it): a 300-page scanned book is searchable after a few polls
 ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
+OUTAGE = timedelta(hours=1)  # no maintenance this long: Vinci was down, and a cut chain's form goes out again
 OPENING_LEAD = timedelta(minutes=15)
 SHORT_WINDOW = timedelta(hours=12)  # a quiz open longer than this gets the usual reminders only
 
@@ -139,9 +140,10 @@ class Bot:
         self.conn.commit()
         return text
 
-    def _token_refused(self) -> str:
-        """Sends the /token form on its own once per refused token, and again each ALERT_EVERY while none is
-        pending (the polls leave Canvas alone until the token changes)."""
+    def _token_refused(self, back: bool = False) -> str:
+        """Sends the /token form on its own once per refused token, again each ALERT_EVERY while none is pending,
+        and again when Vinci is `back` from an outage, whose chaos may have buried the first one (the polls leave
+        Canvas alone until the token changes)."""
         text = ("⚠️ La cadena automática del token de Canvas se cortó (Vinci pudo pasar más de una hora sin "
                 "funcionar). No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular "
                 "antes de enviarlo (no lo pegues en el chat).")
@@ -153,7 +155,7 @@ class Bot:
             return text
         now = self.aula.now()
         last = timefmt.parse(get_meta(self.conn, "bot_alert_token_at"))
-        due = (get_meta(self.conn, "bot_alert_token") != refused
+        due = (get_meta(self.conn, "bot_alert_token") != refused or back
                or ((last is None or now - last >= ALERT_EVERY) and not token_form.pending(self.conn, now)))
         if due:
             form = token_form.new_form(self.cfg, self.conn, now, text + "\n\n", ttl=token_form.AUTO_FORM_TTL)
@@ -182,10 +184,11 @@ class Bot:
         result = PollResult()
         now = self.aula.now()
         renewal_error = None
+        previous = health.last_run(self.conn, health.MAINTENANCE_RUN)
         try:
             renewal = TokenRenewal(self.cfg.core, self.conn, now).maintain()
             if renewal.chain_cut:
-                result.error = self._token_refused()
+                result.error = self._token_refused(back=previous is not None and now - previous >= OUTAGE)
             elif renewal.server_fixed:
                 delete_meta(self.conn, "bot_fail_count_renewal", "bot_alert_renewal")
                 self.conn.commit()

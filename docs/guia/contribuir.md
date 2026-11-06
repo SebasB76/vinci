@@ -28,12 +28,13 @@ dashboard en un Chrome sin ventana. Solo escribe a tus bots de Vinci. `vinci-che
 
 **La prueba de punta a punta** está en [`tests/e2e/test_e2e.py`](../../tests/e2e/test_e2e.py); su encabezado
 describe cada paso. Son cuatro pruebas que corren en paralelo, cada una con su propia instalación: Canvas y el
-token (sin gateway), el chat del capitán en WhatsApp, el Vinci de un amigo en un grupo, y el Académico. Cada una
+token (sin gateway), el chat del capitán en WhatsApp, el Vinci de un amigo en un grupo, y el Académico. Una quinta,
+en `tests/e2e/test_webview_experiment.py`, prueba el experimento de páginas dentro de WhatsApp. Cada una
 levanta un Canvas falso con datos grabados (`tests/e2e/fixtures/`), un puente de WhatsApp falso y un modelo con
 guion, y corre los comandos reales, el `setup.sh` real y el gateway real de Hermes (si está instalado), en un HOME
 temporal: nunca toca tu `~/.hermes`. Si algo intenta hablar con Telegram, la prueba falla. Deja un reporte
 repetible en `artifacts/e2e/`: `REPORTE.md`, `tiempos.md` (dónde espera cada prueba) y un archivo por tema. Si una
-prueba falla, deja también `fallo-<prueba>.md` con el error y lo último que pasó. Toma unos 3 minutos.
+prueba falla, deja también `fallo-<prueba>.md` con el error y lo último que pasó. Toma unos 6 minutos.
 
 Al contribuir:
 

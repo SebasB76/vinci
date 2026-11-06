@@ -246,6 +246,9 @@ T_RENEW_3 = "2026-09-29T23:03:00-05:00"
 T_RENEW_4 = "2026-09-29T23:33:00-05:00"  # the probe (born 22:22) turns 70 minutes old
 T_RENEW_5 = "2026-09-29T23:43:00-05:00"
 T_RENEW_6 = "2026-09-29T23:59:00-05:00"  # 26 min after the cut: a /token form (15 min) would have expired
+T_CUT_AGAIN = "2026-09-30T00:05:00-05:00"
+T_CUT_NEXT = "2026-09-30T00:10:00-05:00"   # 27 min after the last maintenance (23:43): Vinci was up
+T_CUT_BACK = "2026-09-30T01:30:00-05:00"   # 80 min after it: Vinci was down
 
 QUESTIONS = [
     ("¿Qué es la regla de la cadena?", "Capítulo 3 - Derivadas.pdf", 2),
@@ -1901,6 +1904,23 @@ def test_canvas(tmp_path):
         report.append("`espol-bot resembrar` también leyó un token con entrada oculta, lo verificó y lo dejó activo "
                       "sin imprimirlo ni enviarlo al chat")
 
+        # 6g. The chain is cut while Vinci is down: back after more than an hour, it sends the form again at once,
+        # though the first one is still valid (it may be buried under what came during the outage)
+        def cut_forms(label: str) -> list[dict]:
+            return [m for m in take(label) if "cadena automática del token" in m["text"]]
+        for token in list(canvas.valid_tokens):
+            canvas.expire(token)
+        run([bot, "sondeo"], T_CUT_AGAIN)
+        first = cut_forms("Cadena cortada otra vez")
+        assert len(first) == 1 and first[0]["button"] == "🔑 Abrir formulario", first
+        run([bot, "mantenimiento"], T_CUT_NEXT)
+        assert cut_forms("Mantenimiento siguiente, sin caída") == [], "con Vinci encendido, el aviso no se repite"
+        run([bot, "mantenimiento"], T_CUT_BACK)
+        again = cut_forms("Vinci vuelve de una caída de más de una hora")
+        assert len(again) == 1 and again[0]["url"] != first[0]["url"], again
+        report.append("Con la cadena cortada, Vinci repitió el formulario del token apenas volvió de más de una hora "
+                      "sin mantenimiento, aunque el primero seguía vigente; con Vinci encendido no lo repite")
+
         # Safety: read-only, captain-only, no secrets anywhere ---------------------------------
         mutations = [(method, urlsplit(path).path) for method, path in canvas.requests if method != "GET"]
         assert mutations and all(method in {"POST", "DELETE"} and
@@ -3123,11 +3143,19 @@ def test_whatsapp_friend(tmp_path):
                                       if "sobre de regalo" in m.get("message", "")], 30)
         assert gift and gift[0]["path"] == "send-url-button" and "conecta tu aula virtual" in gift[0]["message"], gift
         assert "/album/#d=" in gift[0]["url"], gift[0]["url"]
+        # A gift for one friend only: nobody else gets it, and an unknown name is refused
+        mark = len(wa.sent)
+        only = run([bot, "album-regalo", "Solo para ti", "--para", "Darío"], "2026-09-30T10:01:00-05:00").stdout
+        assert only.strip().splitlines() == ["🎁 Darío: ya se lo mandé"], only
+        assert wa.wait_for(lambda b: [m for m in b.messages_to(newcomer_jid, mark)
+                                      if "sobre de regalo" in m.get("message", "")], 30)
+        nobody = run([bot, "album-regalo", "x", "--para", "nadie"], "2026-09-30T10:02:00-05:00", check=False)
+        assert nobody.returncode == 1 and "No encuentro a «nadie»" in nobody.stderr, nobody.stderr
         report.append("Con la inscripción abierta, un número desconocido que le escribe a Vinci por privado recibe solo "
                       "el enlace para su token (y otro con /token, si el primero venció) y un sobre de bienvenida para su "
                       "álbum, una sola vez; el capitán se entera, y "
                       "nada de eso usa el modelo; un sobre de regalo le llega al momento, con la invitación a "
-                      "conectar su aula")
+                      "conectar su aula, también uno solo para él (`album-regalo --para`)")
 
         (ARTIFACT / "whatsapp-amigo.md").write_text("\n".join(md), encoding="utf-8")
         assert_no_secrets(w, "amigo")

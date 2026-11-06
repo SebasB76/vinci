@@ -13,7 +13,9 @@
                                      with a time limit; with --cada, forever (the container's s6 service)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
     espol-bot probar                 send a test message from Vinci to your Telegram
-    espol-bot album-regalo [MOTIVO]  a gift pack for the captain and each friend, sent by the next poll
+    espol-bot album-regalo [MOTIVO] [--para AMIGO]
+                                     a gift pack for the captain and each friend (or that friend only), sent by
+                                     the next poll
     espol-bot doctor                 system health: last poll and sync, token chain (read-only;
                                      exits 1 when something is broken)
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
@@ -350,9 +352,9 @@ def _portal(cfg, args) -> int:
     return 0
 
 
-def _album_gift(cfg, reason: str) -> int:
-    """A gift pack for the captain and every friend. A friend still without a token has no poll to send it: their
-    album starts here and the pack goes out at once, with a nudge to finish signing up."""
+def _album_gift(cfg, reason: str, to: str | None = None) -> int:
+    """A gift pack for the captain and every friend, or only for the friend `to` names. A friend still without a token
+    has no poll to send it: their album starts here and the pack goes out at once, with a nudge to finish signing up."""
     from aula_core import store as core_store
     from espol_bot import album, amigos, store, whatsapp
 
@@ -373,8 +375,15 @@ def _album_gift(cfg, reason: str) -> int:
         when = "ya se lo mandé" if number else "le llega en el próximo sondeo"
         print(f"{'🎁' if done else '·'} {who}: {when if done else 'sin álbum todavía'}")
 
-    give(cfg, "tú")
-    for friend in amigos.load(cfg):
+    friends = amigos.load(cfg)
+    if to:
+        chosen = amigos.find(friends, to)
+        if chosen is None:
+            raise ConfigError(f"No encuentro a «{to}» entre tus amigos (espol-bot amigo lista).")
+        friends = [chosen]
+    else:
+        give(cfg, "tú")
+    for friend in friends:
         with amigos.scope(cfg, friend) as fcfg:
             give(fcfg, friend.nombre, None if friend.estado == amigos.ACTIVE else friend.numero)
     return 0
@@ -403,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("doctor", help="ver la salud del sistema: sondeo, sincronización y token (solo lectura)")
     p = sub.add_parser("album-regalo", help="regalar un sobre del álbum a ti y a cada amigo; lo manda el próximo sondeo")
     p.add_argument("motivo", nargs="?", default="Un regalo de Vinci, porque sí")
+    p.add_argument("--para", metavar="AMIGO", help="solo a ese amigo: su nombre o su número")
     p = sub.add_parser("panel", help="el panel de administración en el navegador: gateway, tareas, gasto y turnos "
                                      "(solo lectura)")
     p.add_argument("--puerto", type=int, default=8787)
@@ -532,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd in ("doctor", "estado"):
             return _health(cfg, telegram=args.cmd == "estado")
         if args.cmd == "album-regalo":
-            return _album_gift(cfg, args.motivo)
+            return _album_gift(cfg, args.motivo, args.para)
         if args.cmd == "whatsapp-vincular":
             from espol_bot import whatsapp
             return whatsapp.link(args.numero, cfg.whatsapp_bridge)

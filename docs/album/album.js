@@ -84,17 +84,18 @@ function note(c, entry, have) {
 function openPack(data, cards) {
   const pack = data.pack;
   const pulled = pack.cards.map((entry) => ({ entry, c: cards.get(entry.id) })).filter((p) => p.c);
+  const repeated = Boolean(data.trade) && pulled.some((p) => !p.entry.new);
   document.body.classList.add("opening");
   app.innerHTML = head(pack.gold ? "Tu sobre dorado" : pack.daily ? "Tu sobre del día" : pack.gift ? "Un sobre de regalo" : "Tu sobre", pack.reason) + `<section class="stage"><div class="ghost"></div><div class="sheet">
       <div class="stack">${pulled.map((p, i) => `<div class="slot" data-i="${i}">${card(p.c, "", p.entry.new ? '<span class="pill hi flag">Nueva</span>' : `<span class="pill flag">×${data.have[p.c.id] || 2}</span>`)}</div>`).reverse().join("")}</div>
       <div class="pack"><div class="pk"><div class="mark">V</div><span class="n3">${pulled.length} cartas</span>
         <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">${pack.daily ? "de hoy." : pack.gift ? "de regalo." : "de esta semana."}</span></h2><p class="why">${esc(pack.reason)}</p></div><span class="grab"></span></div>
       <div class="cap"><div class="t">Desliza el sobre hacia arriba</div><div class="h">Tus cartas están debajo.</div></div>
-      <div class="foot"><div class="segs">${pulled.map(() => "<i></i>").join("")}</div><button class="btn btn-accent block" type="button">Pegar en mi álbum</button></div>
+      <div class="foot"><div class="segs">${pulled.map(() => "<i></i>").join("")}</div><button class="btn btn-accent block" type="button">Pegar en mi álbum</button>${repeated ? '<button class="btn btn-quiet block" type="button" data-trade>🔁 Cambiar mi repetida</button>' : ""}</div>
     </div></section>`;
   const packEl = app.querySelector(".pack"), cap = app.querySelector(".cap"), segs = [...app.querySelectorAll(".segs i")];
   const slots = pulled.map((_, i) => app.querySelector(`.slot[data-i="${i}"]`));
-  const button = app.querySelector(".foot .btn");
+  const button = app.querySelector(".foot .btn"), trade = app.querySelector("[data-trade]");
   let top = 0, done = false;
   const pose = (k) => `translateY(${-k * 12}px) scale(${1 - k * 0.05})`;
   const restack = (anim) => slots.forEach((s, i) => {
@@ -184,11 +185,16 @@ function openPack(data, cards) {
       const fresh = pulled.filter((p) => p.entry.new).length;
       cap.innerHTML = `<div class="t rise">${pulled.length} cartas, ${fresh === 1 ? "1 nueva" : `${fresh} nuevas`}</div>`;
       button.classList.add("on");
+      trade?.classList.add("on");
     }
   });
   button.addEventListener("click", () => {
     remember(pack.id);
     showAlbum(data, cards, true);
+  });
+  trade?.addEventListener("click", () => {
+    remember(pack.id);
+    showAlbum(data, cards, true, TRADES);
   });
 }
 

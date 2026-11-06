@@ -399,7 +399,8 @@ funciona en un grupo.
 
 También puedes pedir un cambio desde el álbum, sin escribir el comando:
 
-1. Abre la pestaña «🔁 Cambios» del álbum. El botón «🔁 Ver los cambios» de `/cambio` la abre directo.
+1. Abre la pestaña «🔁 Cambios» del álbum. El botón «🔁 Ver los cambios» de `/cambio` la abre directo, y también
+   «🔁 Cambiar mi repetida», que aparece al final de un sobre que trajo una repetida.
 2. Mira tus repetidas y las cartas que te faltan y otra persona tiene repetidas, con su nombre en la carta.
 3. Toca una carta. Elige a quién se la pides, si la tienen varias, y cuál de tus repetidas das.
 4. Toca «Pedir el cambio en WhatsApp». Se abre tu chat con Vinci con el `/cambio` ya escrito: envíalo.

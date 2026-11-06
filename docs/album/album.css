@@ -30,6 +30,7 @@ body.opening { background: var(--panel); }
 .foot .segs { margin-bottom: 14px; }
 .foot .btn { opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
 .foot .btn.on { opacity: 1; pointer-events: auto; transform: none; }
+.foot .btn + .btn { margin-top: 8px; }
 .btn:active { transform: scale(0.97); }
 .rise { animation: rise .45s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }

@@ -131,6 +131,7 @@ def market(cfg: BotConfig) -> dict:
             continue
         try:
             conn = sqlite3.connect(f"{p.db.as_uri()}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
             try:
                 cards = _repeats(album.collection(conn))
             finally:

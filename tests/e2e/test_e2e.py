@@ -1221,6 +1221,11 @@ def ready_gateway(w, *, voice: bool = False) -> None:
         spec["env"]["AULA_NOW"] = T_VINCI
         spec_file.write_text(json.dumps(spec))
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        # The adapter speaks with the gateway's own config, which adding a friend rewrites too.
+        default_file = home / ".hermes" / "config.yaml"
+        default_cfg = yaml.safe_load(default_file.read_text())
+        default_cfg["tts"] = TTS_STAND_IN
+        default_file.write_text(yaml.safe_dump(default_cfg, allow_unicode=True, sort_keys=False))
 
     def pause_crons() -> None:
         """setup.sh resumes every cron; the test runs each poll itself, on its own clock."""
@@ -1234,7 +1239,6 @@ def ready_gateway(w, *, voice: bool = False) -> None:
     default_file = home / ".hermes" / "config.yaml"
     default_cfg = yaml.safe_load(default_file.read_text())
     default_cfg.setdefault("stt", {}).update(enabled=voice, **({"provider": "local"} if voice else {}))
-    default_cfg["tts"] = TTS_STAND_IN
     default_file.write_text(yaml.safe_dump(default_cfg, allow_unicode=True, sort_keys=False))
     w.gateway = Gateway(w.hermes, {**w.base_env, "AULA_NOW": T_VINCI}, w.tmp_path / "gateway.log")
     w.patch_profile, w.pause_crons = patch_profile, pause_crons

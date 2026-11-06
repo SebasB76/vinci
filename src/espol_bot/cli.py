@@ -3,6 +3,10 @@
     espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes), then OCR
                                      of the scanned pages still waiting, for a few minutes
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
+    espol-bot sondeo|resumen --todos [--servicio]
+                                     the same for the captain and then each active friend, one at a time, each
+                                     with a time limit; `sondeo --todos --servicio` runs both forever, at their
+                                     times (the container's s6 service vinci-sondeo)
     espol-bot mantenimiento          renew Canvas access (no model)
     espol-bot mantenimiento --todos [--cada MIN]
                                      the same for the captain and then each active friend, one at a time, each
@@ -379,8 +383,14 @@ def _album_gift(cfg, reason: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
-    sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
-    sub.add_parser("resumen", help="enviar el resumen de la semana")
+    for name, about in (("sondeo", "revisar el aula virtual y notificar"), ("resumen", "enviar el resumen de la semana")):
+        p = sub.add_parser(name, help=about)
+        p.add_argument("--todos", action="store_true", help="el del capitán y luego el de cada amigo activo, uno a uno")
+        p.add_argument("--limite", type=int, default=None, metavar="SEG",
+                       help="con --todos: segundos que puede tardar cada persona antes de cortarlo")
+        if name == "sondeo":
+            p.add_argument("--servicio", action="store_true",
+                           help="con --todos: sin parar, en cada turno del sondeo y a la hora del resumen")
     p = sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
     p.add_argument("--todos", action="store_true", help="el del capitán y luego el de cada amigo activo, uno a uno")
     p.add_argument("--cada", type=int, metavar="MIN", help="con --todos: repetirlo cada MIN minutos, sin parar")
@@ -543,6 +553,14 @@ def main(argv: list[str] | None = None) -> int:
             _logging(cfg)
             return _friends(cfg, args)
         _logging(cfg)
+        if args.cmd in ("sondeo", "resumen") and args.todos:
+            from espol_bot import maintenance_service, poll_service
+            limit = args.limite or poll_service.LIMIT
+            if args.cmd == "sondeo" and args.servicio:
+                poll_service.serve(cfg, limit)
+            runs = poll_service.run_all(cfg, args.cmd, limit)
+            print(maintenance_service.summary(runs, args.cmd))
+            return 1 if any(r.error for r in runs) else 0
         if args.cmd == "mantenimiento" and args.todos:
             from espol_bot import maintenance_service as service
             limit = args.limite or service.LIMIT

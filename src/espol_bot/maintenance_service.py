@@ -50,16 +50,16 @@ def targets(cfg: BotConfig) -> list[tuple[str, dict[str, str]]]:
     try:
         friends = amigos.active(cfg)
     except (OSError, ValueError, TypeError) as exc:
-        log.error("mantenimiento --todos: no pude leer la lista de amigos: %s", exc)
+        log.error("--todos: no pude leer la lista de amigos: %s", exc)
         friends = []
     return [("capitán", {})] + [(f.slug, amigos.env(cfg, f)) for f in friends]
 
 
-def run_one(who: str, env: dict[str, str], limit: int) -> Run:
+def run_one(who: str, env: dict[str, str], limit: int, command: str = "mantenimiento") -> Run:
     started = time.monotonic()
     error = None
     try:
-        proc = subprocess.run([sys.executable, "-m", "espol_bot.cli", "mantenimiento"], env={**os.environ, **env},
+        proc = subprocess.run([sys.executable, "-m", "espol_bot.cli", command], env={**os.environ, **env},
                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=limit)
         if proc.returncode != 0:
             last = (proc.stderr.strip().splitlines() or proc.stdout.strip().splitlines() or [""])[-1]
@@ -71,19 +71,20 @@ def run_one(who: str, env: dict[str, str], limit: int) -> Run:
     return Run(who, time.monotonic() - started, error)
 
 
-def run_all(cfg: BotConfig, limit: int = LIMIT) -> list[Run]:
+def run_all(cfg: BotConfig, limit: int = LIMIT, command: str = "mantenimiento",
+            extra: dict[str, str] | None = None) -> list[Run]:
     runs = []
     for who, env in targets(cfg):
-        run = run_one(who, env, limit)
+        run = run_one(who, {**env, **(extra or {})}, limit, command)
         if run.error:
-            log.error("mantenimiento de %s: %s", who, run.error)
+            log.error("%s de %s: %s", command, who, run.error)
         runs.append(run)
-    log.info("%s", summary(runs))
+    log.info("%s", summary(runs, command))
     return runs
 
 
-def summary(runs: list[Run]) -> str:
-    return "mantenimiento --todos: " + " · ".join(
+def summary(runs: list[Run], command: str = "mantenimiento") -> str:
+    return f"{command} --todos: " + " · ".join(
         f"{r.who} ✗ {r.error}" if r.error else f"{r.who} ✓ {r.seconds:.0f} s" for r in runs)
 
 

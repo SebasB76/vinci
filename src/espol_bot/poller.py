@@ -30,6 +30,7 @@ the alert is recorded in `avisos` so the button can hand it to that bot.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -48,7 +49,7 @@ log = logging.getLogger(__name__)
 
 MAX_BUTTONS = 6
 
-OCR_MINUTES = 10  # of each poll: a 300-page scanned book is searchable after a few polls
+OCR_MINUTES = 10  # of each poll (VINCI_OCR_MINUTES overrides it): a 300-page scanned book is searchable after a few polls
 ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
 OPENING_LEAD = timedelta(minutes=15)
@@ -399,7 +400,7 @@ class Bot:
 
     def read_scans(self) -> None:
         try:
-            read = self.aula.read_scans(seconds=OCR_MINUTES * 60)
+            read = self.aula.read_scans(seconds=int(os.environ.get("VINCI_OCR_MINUTES") or OCR_MINUTES) * 60)
         except Exception:  # never a failed poll (Hermes would forward it to the captain) over OCR
             log.exception("OCR")
             return

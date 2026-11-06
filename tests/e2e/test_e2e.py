@@ -64,7 +64,9 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts;
   the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
   hangs and is cut at the limit, then Angel's chain renewed, with the WhatsApp bridge down and the watchdog's message
-  sent on the next pass; his Vinci never searching the captain's chats, even by his profile's name; the block for whoever is
+  sent on the next pass; the poll service (s6 vinci-sondeo, also in place of the Hermes crons): the captain's poll
+  then Angel's, one at a time, and the summary the same way, sent once a day even when the pass repeats; his Vinci
+  never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
@@ -2334,8 +2336,9 @@ def test_whatsapp_friend(tmp_path):
     dashboard, his commands), voice notes and audio files heard by the real local Whisper (in a group, only one that
     says «Vinci»), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
     started = time.monotonic()
-    # as in the container: the s6 service vinci-mantenimiento renews every chain, not Hermes cron
-    with world(tmp_path, env={"VINCI_MAINTENANCE_SERVICE": "1"}) as w:
+    # as in the container: the s6 services vinci-mantenimiento and vinci-sondeo renew every chain and run every poll
+    # and summary, not Hermes cron
+    with world(tmp_path, env={"VINCI_MAINTENANCE_SERVICE": "1", "VINCI_POLL_SERVICE": "1"}) as w:
         if not w.hermes:
             pytest.skip("Hermes no está instalado aquí")
         w.md += ["# Vinci en WhatsApp: el grupo y el Vinci de Angel\n",
@@ -2515,11 +2518,12 @@ def test_whatsapp_friend(tmp_path):
         routes = yaml.safe_load((home / ".hermes" / "config.yaml").read_text())["gateway"]["profile_routes"]
         assert (f"{ANGEL_WA}@s.whatsapp.net", "amigo-angel") in [(r.get("user_id"), r["profile"]) for r in routes]
         assert (angel_profile / "platforms" / "whatsapp" / "session").readlink() == session
-        jobs = {j["name"]: j for j in json.loads((angel_profile / "cron" / "jobs.json").read_text())["jobs"]}
-        assert set(jobs) == {"amigo-sondeo", "amigo-resumen"}, "su mantenimiento lo corre el servicio, no Hermes"
-        vinci_jobs = {j["name"] for j in json.loads((profiles / "vinci" / "cron" / "jobs.json").read_text())["jobs"]}
-        assert "vinci-sondeo" in vinci_jobs and "vinci-mantenimiento" not in vinci_jobs, vinci_jobs
-        assert all(j["deliver"] == "local" for j in jobs.values())
+        def job_names(profile: Path) -> set[str]:
+            jobs_file = profile / "cron" / "jobs.json"
+            return {j["name"] for j in json.loads(jobs_file.read_text())["jobs"]} if jobs_file.exists() else set()
+        assert not job_names(angel_profile), "su sondeo, resumen y mantenimiento los corren los servicios, no Hermes"
+        vinci_jobs = job_names(profiles / "vinci")
+        assert not vinci_jobs & {"vinci-sondeo", "vinci-resumen", "vinci-mantenimiento"}, vinci_jobs
         # Angel's poll and tools read the album's art key from the captain's secrets.env, the only one holding it
         captain_secrets = re.search(r"export VINCI_CAPTAIN_SECRETS='([^']+)'",
                                     (angel_profile / "scripts" / "amigo-sondeo.sh").read_text())
@@ -2975,6 +2979,26 @@ def test_whatsapp_friend(tmp_path):
         registry.write_text(registered)
         shutil.rmtree(beto_dir)
         md.append(f"→ servicio de renovación, puente caído: `{normalize(line)}`\n")
+
+        # 10i'''. The poll service (the container's s6 vinci-sondeo): the captain's poll and then each friend's, one at
+        # a time, each its own child; the 7:00 summary the same way, which each Vinci sends once a day
+        def last_poll(db: Path) -> str:
+            with contextlib.closing(sqlite3.connect(db)) as conn:
+                return json.loads(conn.execute("SELECT value FROM meta WHERE key = 'bot_run_poll'").fetchone()[0])["at"]
+        polled = run([bot, "sondeo", "--todos"], "2026-09-30T10:05:00-05:00").stdout.strip()
+        assert re.fullmatch(r"sondeo --todos: capitán ✓ \d+ s · angel ✓ \d+ s", polled), polled
+        assert last_poll(data_dir / "espol.db") == last_poll(angel_dir / "espol.db") == "2026-09-30T15:05:00Z"
+        mark = len(wa.sent)
+        summed = run([bot, "resumen", "--todos"], "2026-09-30T10:10:00-05:00").stdout.strip()
+        assert re.fullmatch(r"resumen --todos: capitán ✓ \d+ s · angel ✓ \d+ s", summed), summed
+        summaries = lambda jid: [m for m in wa.messages_to(jid, mark) if "Resumen de tu semana" in m.get("message", "")]
+        assert len(summaries(angel_jid)) == 1, wa.sent[mark:]
+        run([bot, "resumen", "--todos"], "2026-09-30T10:20:00-05:00")
+        assert len(summaries(angel_jid)) == 1, "el resumen sale una vez al día, aunque la pasada se repita"
+        md.append(f"→ servicio del sondeo: `{normalize(polled)}`\n")
+        report.append("El servicio del sondeo (vinci-sondeo, aparte del gateway) corrió el sondeo del capitán y luego "
+                      "el de Angel, uno por uno, y el resumen de las 7:00 de la misma forma: a Angel le llegó una vez, "
+                      "aunque la pasada se repitió")
         report.append("El servicio de renovación (vinci-mantenimiento, aparte del gateway) corrió el mantenimiento del "
                       "capitán y luego el de cada amigo, uno por uno: el de Beto, colgado en su candado, se cortó a los "
                       "15 s y el de Angel renovó su cadena igual. Con el puente de WhatsApp caído la renovación siguió, "

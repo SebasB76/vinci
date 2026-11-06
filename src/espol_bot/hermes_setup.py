@@ -101,6 +101,8 @@ COMPRESSION_THRESHOLD_TOKENS = 80_000
 GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "clarify"]
 WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
+# A voice note gets the answer as a voice note too, then as text: Edge TTS (free) with an Ecuadorian voice.
+VOICE_REPLY = {"tts": {"provider": "edge", "edge": {"voice": "es-EC-LuisNeural"}}, "voice": {"auto_tts": True}}
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
 TELEGRAM_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
 # Set in the Docker image: every profile's tools come from the one `espol-bot mcp-http` (mcp_shared.py), not a stdio
@@ -340,6 +342,7 @@ class Setup:
                         "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
+            **copy.deepcopy(VOICE_REPLY),
             # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
             "onboarding": {"profile_build": "off"},
             # By default the gateway drops what a bot got while it was not serving it: whatever the captain sent
@@ -620,10 +623,11 @@ class Setup:
                 section["bridge_script"] = str(launcher)
             else:
                 section.pop("bridge_script", None)
-        # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
+        # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci. The
+        # adapter takes its voice-reply default from here too.
         _deep_merge(merged, {"display": {"suppress_warning_notifications": True,
                                          "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
-                             "stt": {"language": "es"}})
+                             "stt": {"language": "es"}, **copy.deepcopy(VOICE_REPLY)})
         plugins = _section(merged, "plugins")
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]

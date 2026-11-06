@@ -82,6 +82,10 @@ class _Ago:
         return f"{when} ({clock})"
 
 
+def last_run(conn: sqlite3.Connection, key: str) -> datetime | None:
+    return _run({key: get_meta(conn, key) or ""}, key)[0]
+
+
 def _run(meta: dict[str, str], key: str) -> tuple[datetime | None, dict]:
     try:
         run = json.loads(meta.get(key) or "{}")

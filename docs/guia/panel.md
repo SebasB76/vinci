@@ -12,7 +12,7 @@ cada conversación. La página solo lee: no usa el modelo, no llama al aula y no
 | Salud de cada Vinci | Lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas, para tu Vinci y para el de cada amigo. De un amigo ves solo lo que falla. |
 | Gasto por día | Los últimos 14 días, por grupo: Vinci, bots de materia y amigos. Al pasar el mouse sobre un día (o tocarlo en el celular) ves su total frente al promedio, el gasto por grupo y por bot, las llamadas al modelo, los tokens y el costo por llamada. |
 | Gasto por bot | Llamadas al modelo, tokens, costo y el último día de uso de cada perfil y modelo en esos 14 días. |
-| Tareas automáticas | Cada tarea de Hermes (sondeo, resumen…), el día y la hora en que corrió, cuándo corre de nuevo y si falló. En el servidor, el mantenimiento no es una tarea de Hermes: corre aparte, y su última corrida sale en «Salud de cada Vinci». |
+| Tareas automáticas | Cada tarea de Hermes, el día y la hora en que corrió, cuándo corre de nuevo y si falló. En una PC son el sondeo, el mantenimiento, el resumen, la agenda y los apuntes. En el servidor solo quedan la agenda y los apuntes: el sondeo, el resumen y el mantenimiento corren aparte, como servicios, y su última corrida sale en «Salud de cada Vinci». |
 | Conversaciones recientes | Cada chat con sus mensajes, herramientas, tokens, costo y cuánto tardó la última respuesta. Al tocar una fila ves sus pasos con el tiempo entre cada uno: ahí ves dónde se trabó. |
 | Errores y avisos | Las líneas de `errors.log` de Hermes, agrupadas por tipo, con cuántas veces salieron. |
 

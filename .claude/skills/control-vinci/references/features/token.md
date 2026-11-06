@@ -15,6 +15,10 @@ model never sees a token.
 | 4. Back to the laptop | Telegram hands the ciphertext to the plugin | the page posts to the relay; the laptop polls it every 3 s while the link is open. Without relay: ciphertext to paste in the chat |
 | 5. Result | Vinci checks it with Canvas, saves it, resumes the chain, confirms in chat | same |
 
+When the chain breaks, Vinci sends the form by itself once per refused token, again every 24 h while none is
+pending, and again on the first maintenance after more than an hour without one (`poller.OUTAGE`: Vinci was down,
+and the first form may be buried under the outage).
+
 Limits: a form works once; 15 min from `/token`, 24 h when Vinci sent it by itself. A replay, an
 older form or an expired one is refused and a new form is sent. A token pasted in any chat is
 deleted unused.

@@ -190,6 +190,7 @@ uno nuevo no hace falta abrir `secrets.env` ni escribir nada:
 
 1. Abre el aviso de Vinci «La cadena automática del token de Canvas se cortó». Trae un enlace a tu perfil del aula
    y un botón «🔑 Pegar token». Si no lo encuentras, mándale `/token` a Vinci y te llega el mismo formulario.
+   Vinci repite el aviso cada 24 horas, y también apenas vuelve después de pasar más de una hora sin funcionar.
 2. Toca «🔑 Pegar token»: se abre un formulario dentro de Telegram.
 3. Toca «Abrir», junto a «Abre el aula virtual». En el aula, toca «+ Nuevo token de acceso» y copia el token.
 4. Vuelve al formulario, pega el token y toca «Enviar cifrado a Vinci».
@@ -363,7 +364,8 @@ Cuando alguien le escribe a Vinci por primera vez, recibe un **sobre de bienveni
 conectar su aula. Lo puede abrir antes de conectarla, y sus cartas siguen en su álbum cuando lo haga.
 
 El capitán también puede regalar un **sobre de regalo** a todos los que tienen Vinci. En la Terminal del servidor,
-corre `espol-bot album-regalo "Porque sí"`, con el motivo entre comillas. A cada uno le llega en la siguiente
+corre `espol-bot album-regalo "Porque sí"`, con el motivo entre comillas. Para regalarle solo a un amigo, agrega su
+nombre o su número: `espol-bot album-regalo "Gracias" --para Angel`. A cada uno le llega en la siguiente
 revisión del aula, en menos de 10 minutos. A quien le escribió a Vinci pero todavía no conecta su aula, le llega al
 momento, con una invitación a conectarla: sus cartas siguen en su álbum cuando lo haga.
 

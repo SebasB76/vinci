@@ -89,7 +89,7 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
   GitHub Pages and WhatsApp cache them.
 - The live install is the Coolify container, built from `main`: never deploy a branch there. On the PC, work in a
   git worktree of `~/Projects/espol-academic-bot`, and never run `setup.sh` on the PC.
-- E2E (four tests in parallel, about 3 minutes): never run it at the start of a session or to
+- E2E (five tests in parallel, about 6 minutes): never run it at the start of a session or to
   "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
   WhatsApp messages and model turns, the gateway log): read it before rerunning anything. Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
   behavior change, run it once at the end, and never rerun it for a one-line fix. The captain
@@ -146,13 +146,13 @@ vinci-check remote status                 # from the PC: the live container's he
 vinci-check remote logs all --grep "inbound message" -n 50   # every profile's log; masked unless --raw
 vinci-check remote run vinci-check smoke  # any command in the container, as hermes, in /opt/data
 uv sync                                   # dependencies, dev included
-uv run pytest                             # the E2E: 4 tests in parallel (fake Canvas and WhatsApp, real Hermes)
+uv run pytest                             # the E2E: 5 tests in parallel (fake Canvas and WhatsApp, real Hermes)
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message
 ./setup.sh --skip-deps --sin-pruebas      # same, without touching .venv or calling Canvas/Telegram
 .venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
 .venv/bin/espol-bot mantenimiento --todos # one renewal pass: the captain, then each friend (the s6 service's loop)
 .venv/bin/espol-bot sondeo --todos       # one poll pass the same way (also `resumen --todos`; vinci-sondeo's loop)
-.venv/bin/espol-bot album-regalo "<motivo>" # a gift pack for the captain and every friend, sent by the next poll
+.venv/bin/espol-bot album-regalo "<motivo>" # a gift pack for the captain and every friend (`--para <friend>`: only them)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 systemctl --user status vinci-panel      # the admin panel on 127.0.0.1:8787 (`tailscale serve status`)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins

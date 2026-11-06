@@ -1,0 +1,7 @@
+#!/command/with-contenv sh
+# Every profile's MCP tools from one process (espol_bot/mcp_shared.py), as the hermes user, on 127.0.0.1 only: each
+# profile's config.yaml reaches it at VINCI_MCP_URL with its own token. s6 restarts it if it stops.
+export HOME=/opt/data
+cd /opt/data || exit 1
+{ echo 500 > /proc/self/oom_score_adj; } 2>/dev/null  # after a poll, before the gateway, at the memory limit
+exec s6-setuidgid hermes /opt/vinci/.venv/bin/espol-bot mcp-http --host 127.0.0.1 --puerto 8788

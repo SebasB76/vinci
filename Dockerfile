@@ -30,13 +30,29 @@ RUN python3 -m venv /tmp/uv && \
     ln -s espol-bot /usr/local/bin/vinci-move && \
     ln -s espol-bot /usr/local/bin/vinci-check && \
     cp -r /opt/vinci/deploy/s6/vinci-panel /etc/s6-overlay/s6-rc.d/vinci-panel && \
-    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-panel
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-panel && \
+    cp -r /opt/vinci/deploy/s6/vinci-mantenimiento /etc/s6-overlay/s6-rc.d/vinci-mantenimiento && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-mantenimiento && \
+    cp -r /opt/vinci/deploy/s6/vinci-sondeo /etc/s6-overlay/s6-rc.d/vinci-sondeo && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-sondeo
 
+# VINCI_MAINTENANCE_SERVICE and VINCI_POLL_SERVICE: deploy/s6/vinci-mantenimiento renews every token chain and
+# deploy/s6/vinci-sondeo runs every poll and 7:00 summary outside the gateway, so hermes_setup drops those crons.
+# MALLOC_ARENA_MAX: glibc's per-thread arenas let the gateway's threads hold freed memory that never shrinks.
 ENV VINCI_HERMES_ROOT=/opt/data \
     AULA_CONFIG=/opt/data/vinci/config.toml \
     AULA_SECRETS=/opt/data/vinci/secrets.env \
     HERMES_BIN=/opt/hermes/.venv/bin/hermes \
-    GATEWAY_ALLOW_ALL_USERS=false
+    GATEWAY_ALLOW_ALL_USERS=false \
+    VINCI_MAINTENANCE_SERVICE=1 \
+    VINCI_POLL_SERVICE=1 \
+    MALLOC_ARENA_MAX=2
+
+# One MCP server for every profile (deploy/s6/vinci-mcp, on 127.0.0.1 only) instead of a stdio process each:
+# hermes-perfil points each profile's config.yaml at VINCI_MCP_URL.
+RUN cp -r /opt/vinci/deploy/s6/vinci-mcp /etc/s6-overlay/s6-rc.d/vinci-mcp && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/vinci-mcp
+ENV VINCI_MCP_URL=http://127.0.0.1:8788
 
 # The admin panel (deploy/s6/vinci-panel): Coolify's proxy publishes this port on the app's domain.
 EXPOSE 8787

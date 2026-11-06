@@ -3,7 +3,9 @@
 Vinci también corre en un servidor, encendido todo el día, con la imagen de Docker de este repo (`Dockerfile`). La
 imagen parte de la imagen oficial de Hermes Agent: un solo contenedor con un solo gateway para tu Vinci y el de
 cada amigo, por WhatsApp. Todo lo que cambia (datos del aula, memoria, perfiles, sesión de WhatsApp y `secrets.env`) vive
-en el volumen `/opt/data`. Necesita unos 1,5 GB de RAM y unos 10 GB de disco: la imagen sola ocupa casi 5 GB, y la construcción pide más.
+en el volumen `/opt/data`. Necesita alrededor de 1 GB de RAM y unos 10 GB de disco: la imagen sola ocupa casi 5 GB, y la
+construcción pide más. Las herramientas de todos los bots corren en un solo proceso (`espol-bot mcp-http`, solo
+dentro del contenedor), así que cada amigo nuevo casi no suma memoria.
 
 Corre una sola copia de Vinci a la vez. Dos copias contestan dos veces por WhatsApp y se rompen la cadena del token de
 Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de encender el nuevo (paso 4).
@@ -19,8 +21,11 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    anteriores, la opción se llama **Consistent Container Names**. Con un nombre fijo, Coolify apaga el contenedor viejo antes
    de encender el nuevo en cada despliegue. Sin eso, los dos corren a la vez un momento sobre el mismo volumen. No
    actives **Preview Deployments**, y deja una sola réplica.
-5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Si Vinci llega al tope, se
-   reinicia solo Vinci y no las otras apps.
+5. En **Resource Limits**, pon 2 GB de memoria, si el servidor tiene esa memoria libre. Pon el mismo valor en el límite
+   de swap y el swappiness en 0: así Vinci no usa swap. Si Vinci llega al tope, se reinicia solo Vinci, en segundos, y
+   no las otras apps. Con swap se arrastra, congelado, hasta más de una hora, y la cadena del token de Canvas se corta.
+   Para no llegar al tope, los perfiles leen el aula de uno en uno (el servicio `vinci-sondeo`, abajo). Si igual
+   llega, el sistema corta primero una revisión del aula y no el gateway, que atiende los chats.
 6. En **Environment Variables**, agrega estas:
 
    | Variable | Valor |
@@ -38,7 +43,8 @@ Canvas una a la otra. Por eso Coolify debe apagar el contenedor viejo antes de e
    token de Canvas ahí, así que un reinicio nunca le devuelve uno viejo. Si pasas tu Vinci desde la PC (abajo), no
    agregues ninguna: la mudanza trae tu `secrets.env`.
 7. Pulsa **Deploy**. En cada arranque, la imagen hace lo mismo que `./setup.sh`: crea o actualiza los perfiles, los
-   cron jobs y los plugins.
+   cron jobs y los plugins. La renovación del token de Canvas, las revisiones del aula y el resumen de las 7:00 no
+   son cron jobs aquí: los hacen los servicios `vinci-mantenimiento` y `vinci-sondeo` (abajo).
 8. Espera a que Coolify muestre la app como **Healthy**, no solo **Running**. La imagen marca **Unhealthy** si la
    creación de perfiles falló o si el gateway no corre: en ese caso, mira los **Logs** (las líneas `[vinci]`).
    Esas líneas también quedan en `/opt/data/logs/boot.log`, y un agente las lee desde tu PC con
@@ -54,6 +60,43 @@ Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se 
 OpenAI o de Groq (`GROQ_API_KEY`): DeepSeek y los otros modelos chinos no transcriben audio. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
 El servidor usa el `config.toml` del repo: para cambiar algo, haz commit del cambio y redespliega. Así se enciende
 Telegram también (`[channels] telegram = true`), junto con `TELEGRAM_BOT_TOKEN` y `TELEGRAM_USER_ID`.
+
+## La renovación del token, aparte del gateway
+
+ESPOL invalida cada token de Canvas a la hora, y Vinci crea su reemplazo a los 40 minutos. En el servidor eso no lo
+corre el gateway de Hermes sino el servicio `vinci-mantenimiento`, que s6 (el supervisor de procesos de la imagen)
+mantiene encendido. Así, si el gateway se cuelga o se queda sin memoria, ningún token vence.
+
+- Cada 10 minutos (a las :02, :12, :22…) corre `espol-bot mantenimiento` para ti y luego para cada amigo activo, uno
+  por uno. A cada uno le da 5 minutos; si uno falla o se pasa, sigue con el siguiente.
+- También corre en cada arranque del contenedor, apenas termina la preparación.
+- Con el gateway caído, WhatsApp tampoco funciona. El token se renueva igual, y un aviso que no salió sale en una
+  corrida siguiente.
+- Para ver que corre: en la Terminal, `s6-svstat /run/service/vinci-mantenimiento`. Desde tu PC,
+  `vinci-check remote logs bot --grep "mantenimiento --todos"` muestra una línea por corrida, con cada persona y
+  cuánto tardó.
+- Para correr una vuelta a mano: `espol-bot mantenimiento --todos`.
+
+En una PC o una laptop sin Docker, la renovación sigue como un cron job de Hermes, dentro del gateway.
+
+## Las revisiones del aula y el resumen, aparte del gateway
+
+En el servidor, el servicio `vinci-sondeo` revisa el aula y manda el resumen de las 7:00, para ti y para cada amigo.
+Antes eran cron jobs de Hermes dentro del gateway, y todos leían el aula en el mismo minuto: la memoria se llenaba.
+
+- En cada turno de la revisión (cada `intervalo_minutos`, a las :05, :15, :25… con 10 minutos) corre
+  `espol-bot sondeo` para ti y luego para cada amigo activo, uno por uno. A cada uno le da 10 minutos, de los
+  que 3 como mucho son para leer páginas escaneadas; si uno falla o se pasa, sigue con el siguiente.
+- A la hora de `resumen_diario` hace lo mismo con el resumen, que revisa el aula antes de escribirlo. Si el
+  contenedor se reinició justo a esa hora, el resumen sale en el siguiente turno, hasta 2 horas después. Cada
+  persona lo recibe una sola vez al día.
+- Al arrancar, espera al primer turno: el puente de WhatsApp tarda en conectarse.
+- Para ver que corre: en la Terminal, `s6-svstat /run/service/vinci-sondeo`. Desde tu PC,
+  `vinci-check remote logs bot --grep "sondeo --todos"` muestra una línea por vuelta, con cada persona y cuánto
+  tardó.
+- Para correr una vuelta a mano: `espol-bot sondeo --todos` o `espol-bot resumen --todos`.
+
+En una PC o una laptop sin Docker, la revisión y el resumen siguen como cron jobs de Hermes.
 
 ## Pasar tu Vinci de la PC al servidor
 

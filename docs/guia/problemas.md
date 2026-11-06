@@ -51,6 +51,13 @@
 - **Tu PC tiene que estar encendida:** con la PC apagada o el gateway detenido no hay avisos ni briefs. Lo que le
   escribas a un bot mientras tanto te lo responde al volver, y los cambios del aula llegan en la siguiente revisión;
   el brief de una clase que ya empezó no se manda.
+- **Token de Canvas con el gateway caído:** en el servidor, el servicio `vinci-mantenimiento` renueva el token tuyo y
+  el de cada amigo aparte del gateway, así que la cadena sigue aunque el gateway se cuelgue. Un aviso que no pudo
+  salir por WhatsApp sale en una corrida siguiente. En una PC, la renovación corre en el gateway: con el gateway
+  detenido más de una hora, la cadena se corta.
+- **Avisos en fila en el servidor:** el servicio `vinci-sondeo` revisa el aula de cada persona una tras otra, no
+  todas a la vez. Con muchos amigos, o el día que alguien sube un libro escaneado, el último de la fila recibe su
+  aviso unos minutos después, y el resumen de las 7:00 puede llegar a las 7:10.
 - **Materias sin código ESPOL:** un curso del aula sin un código reconocible (como `MATG1049`) no recibe bot;
   Vinci te lo dice en la tarjeta del equipo.
 - **El aula pide calma:** el sondeo espacia sus consultas, baja solo los sílabos (hasta 50 MB por revisión) y

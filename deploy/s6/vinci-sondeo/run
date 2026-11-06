@@ -1,0 +1,8 @@
+#!/command/with-contenv sh
+# The poll and the 7:00 summary for the captain and each friend, one at a time, as the hermes user
+# (espol_bot/poll_service.py). Apart from the gateway, so its threads no longer read every aula at once. s6 restarts it
+# if it stops. At the container's memory limit the kernel kills a poll (score 1000) before the gateway.
+export HOME=/opt/data
+cd /opt/data || exit 1
+{ echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null
+exec s6-setuidgid hermes /opt/vinci/.venv/bin/espol-bot sondeo --todos --servicio

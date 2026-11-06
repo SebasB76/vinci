@@ -30,6 +30,7 @@ the alert is recorded in `avisos` so the button can hand it to that bot.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -48,7 +49,7 @@ log = logging.getLogger(__name__)
 
 MAX_BUTTONS = 6
 
-OCR_MINUTES = 10  # of each poll: a 300-page scanned book is searchable after a few polls
+OCR_MINUTES = 10  # of each poll (VINCI_OCR_MINUTES overrides it): a 300-page scanned book is searchable after a few polls
 ALERT_AFTER = 3                  # consecutive failures before telling the captain
 ALERT_EVERY = timedelta(hours=24)
 OPENING_LEAD = timedelta(minutes=15)
@@ -141,11 +142,11 @@ class Bot:
     def _token_refused(self) -> str:
         """Sends the /token form on its own once per refused token, and again each ALERT_EVERY while none is
         pending (the polls leave Canvas alone until the token changes)."""
-        text = ("⚠️ La cadena automática del token de Canvas se cortó (la PC pudo estar apagada más de una hora). "
-                "No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular antes de "
-                "enviarlo (no lo pegues en el chat).")
+        text = ("⚠️ La cadena automática del token de Canvas se cortó (Vinci pudo pasar más de una hora sin "
+                "funcionar). No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular "
+                "antes de enviarlo (no lo pegues en el chat).")
         if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no /token, the form is a link (token_form.py)
-            text = ("⚠️ Tu token del aula dejó de funcionar (la PC de Vinci pudo estar apagada más de una hora). "
+            text = ("⚠️ Tu token del aula dejó de funcionar (Vinci pudo pasar más de una hora sin funcionar). "
                     "Para que vuelva a leer tu aula, crea uno nuevo; no lo pegues tal cual en el chat.")
         refused = self.aula.refused_token()
         if not refused:
@@ -399,7 +400,7 @@ class Bot:
 
     def read_scans(self) -> None:
         try:
-            read = self.aula.read_scans(seconds=OCR_MINUTES * 60)
+            read = self.aula.read_scans(seconds=int(os.environ.get("VINCI_OCR_MINUTES") or OCR_MINUTES) * 60)
         except Exception:  # never a failed poll (Hermes would forward it to the captain) over OCR
             log.exception("OCR")
             return

@@ -185,7 +185,7 @@ solo lo contesta Vinci, y solo a ti.
 
 ## Token nuevo desde Telegram (`/token`)
 
-Si la PC estuvo apagada más de una hora, el token del aula vence y la cadena de renovación se corta. Para ponerle
+Si Vinci pasó más de una hora sin funcionar, el token del aula vence y la cadena de renovación se corta. Para ponerle
 uno nuevo no hace falta abrir `secrets.env` ni escribir nada:
 
 1. Abre el aviso de Vinci «La cadena automática del token de Canvas se cortó». Trae un enlace a tu perfil del aula

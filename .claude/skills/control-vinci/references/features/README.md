@@ -55,7 +55,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Feature | Code | Verify |
 |---|---|---|
 | How each assignment is handed in | `src/aula_core/queries.py` (`delivery`, `pending`), `set_assignment_delivery` in `herramientas.py` | `vinci-check say "¿qué tengo pendiente?"` lists an overdue external lab as late (uses the model) |
-| Alerts, reminders, summary | `src/espol_bot/poller.py`, `priority.py`, `messages.py` | `vinci-check status` (poll age); `espol-bot resumen` sends the summary for real |
+| Alerts, reminders, summary | `src/espol_bot/poller.py`, `priority.py`, `messages.py`; the loop in the container: `poll_service.py`, `deploy/s6/vinci-sondeo` | `vinci-check status` (poll age); `espol-bot resumen` sends the summary for real; `vinci-check remote logs bot --grep "sondeo --todos"` |
 | Buttons (all) | `src/espol_bot/botones.py`, `hermes/plugins/vinci-botones/` | `vinci-check vote "<option>"` on a harmless poll (`press` with Telegram on) |
 | Dashboard | `src/espol_bot/dashboard.py` (`whatsapp_link`), `docs/dashboard/`, `show_page` in `herramientas.py`, `Bot._dashboard_button` in `poller.py` | `vinci-check page dashboard`; `vinci-check say "¿qué tengo pendiente?"` brings the button (uses the model) |
 | To-do list | `src/espol_bot/store.py`, `herramientas.py` | `vinci-check say "¿qué tengo esta semana?"` (uses the model) |
@@ -79,7 +79,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
 | PDF summaries | `src/espol_bot/resumen.py`, `visuales.py` (diagrams and mockups), `crear_resumen` in `herramientas.py` | `vinci-check say "hazme un resumen en pdf de <tema>"`; the PDF reaches the captain's chat (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
-| `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/` | `vinci-check page token`; `vinci-check status` (chain age) |
+| `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/`; the renewal loop in the container: `maintenance_service.py`, `deploy/s6/vinci-mantenimiento` | `vinci-check page token`; `vinci-check status` (chain age); `vinci-check remote logs bot --grep "mantenimiento --todos"` |
 | WhatsApp, groups, polls, voice | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group`; voice: the turn starts with «🎙️» and the transcript |
 | Friends | `src/espol_bot/amigos.py` (`signup` for open signup, called by the `vinci-whatsapp` plugin), `hermes/amigo/` | `vinci-check whatsapp --profile amigo-<name>` (their private chat) |
 | Admin panel, watchdog | `src/espol_bot/panel.py`, `panel.html`, `watch.py` (run by `Bot.maintenance`), `deploy/s6/vinci-panel` | `espol-bot doctor` lists each friend; the panel's «Salud de cada Vinci» |

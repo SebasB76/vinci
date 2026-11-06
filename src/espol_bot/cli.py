@@ -3,7 +3,14 @@
     espol-bot sondeo                 poll + notify (Vinci's no-agent cron, every N minutes), then OCR
                                      of the scanned pages still waiting, for a few minutes
     espol-bot resumen                daily week summary (Vinci's no-agent cron, at resumen_diario)
+    espol-bot sondeo|resumen --todos [--servicio]
+                                     the same for the captain and then each active friend, one at a time, each
+                                     with a time limit; `sondeo --todos --servicio` runs both forever, at their
+                                     times (the container's s6 service vinci-sondeo)
     espol-bot mantenimiento          renew Canvas access (no model)
+    espol-bot mantenimiento --todos [--cada MIN]
+                                     the same for the captain and then each active friend, one at a time, each
+                                     with a time limit; with --cada, forever (the container's s6 service)
     espol-bot resembrar              securely replace a broken Canvas token from a hidden prompt
     espol-bot probar                 send a test message from Vinci to your Telegram
     espol-bot album-regalo [MOTIVO]  a gift pack for the captain and each friend, sent by the next poll
@@ -15,6 +22,7 @@
     espol-bot agenda                 without Telegram, Vinci's own: a brief or class notes of any subject
                                      go into the captain's WhatsApp chat with Vinci (prints nothing)
     espol-bot mcp vinci|materia      the tools of Vinci or of one subject bot (stdio MCP server)
+    espol-bot mcp-http               the same tools for every profile from one process (HTTP, 127.0.0.1)
     espol-bot boton <datos>          what one of Vinci's inline buttons does (the plugin calls it)
     espol-bot bot-creado <id>        a bot the captain created for Vinci to manage: fetch its token,
                                      store it and provision its profile (the plugin calls it)
@@ -149,7 +157,8 @@ def _greeting(cfg, code: str | None) -> dict:
         agenda.next_session(cfg, subject, now), cfg.core.tz, now)}
 
 
-def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
+def mcp_tools(cfg, which: str, code: str | None, hermes_home: str | None):
+    """The MCP server of one bot: stdio for `mcp`, one request of `mcp-http` (mcp_shared.py)."""
     from espol_bot import herramientas
     from espol_bot.mcp_server import Server
     ctx = herramientas.Ctx(cfg, Path(hermes_home) if hermes_home else None, code.upper() if code else None)
@@ -166,6 +175,11 @@ def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
             raise ConfigError("mcp materia necesita --curso CÓDIGO")
         server = Server("materia", "1.0", herramientas.subject_tools(ctx),
                         f"Herramientas del bot de {code.upper()}: solo esa materia y su cuaderno.", ctx.set_channel)
+    return server
+
+
+def _mcp(cfg, which: str, code: str | None, hermes_home: str | None) -> int:
+    server = mcp_tools(cfg, which, code, hermes_home)
     logging.info("mcp %s%s: iniciado", which, f" {code}" if code else "")
     return server.serve()
 
@@ -369,9 +383,19 @@ def _album_gift(cfg, reason: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="espol-bot", description="Vinci y los bots de materia de ESPOL.")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="comando")
-    sub.add_parser("sondeo", help="revisar el aula virtual y notificar")
-    sub.add_parser("resumen", help="enviar el resumen de la semana")
-    sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
+    for name, about in (("sondeo", "revisar el aula virtual y notificar"), ("resumen", "enviar el resumen de la semana")):
+        p = sub.add_parser(name, help=about)
+        p.add_argument("--todos", action="store_true", help="el del capitán y luego el de cada amigo activo, uno a uno")
+        p.add_argument("--limite", type=int, default=None, metavar="SEG",
+                       help="con --todos: segundos que puede tardar cada persona antes de cortarlo")
+        if name == "sondeo":
+            p.add_argument("--servicio", action="store_true",
+                           help="con --todos: sin parar, en cada turno del sondeo y a la hora del resumen")
+    p = sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
+    p.add_argument("--todos", action="store_true", help="el del capitán y luego el de cada amigo activo, uno a uno")
+    p.add_argument("--cada", type=int, metavar="MIN", help="con --todos: repetirlo cada MIN minutos, sin parar")
+    p.add_argument("--limite", type=int, default=None, metavar="SEG",
+                   help="con --todos: segundos que puede tardar cada persona antes de cortarlo")
     p = sub.add_parser("resembrar", help="guardar un token nuevo desde una entrada oculta y reactivar la renovación")
     p.add_argument("--stdin", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("probar", help="enviar un mensaje de prueba a tu chat (WhatsApp o Telegram)")
@@ -399,6 +423,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("bot", choices=["vinci", "materia", "amigo"])
     p.add_argument("--curso", default=None, help="código de la materia (para «materia»)")
     p.add_argument("--hermes-home", default=None, help="carpeta del perfil de Hermes del bot")
+    p = sub.add_parser("mcp-http", help="un solo servidor MCP para todos los perfiles, por HTTP (lo usa el "
+                                        "contenedor en vez de un proceso por perfil)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--puerto", type=int, default=8788, help="0: uno libre (lo dice la primera línea)")
     p = sub.add_parser("boton", help="procesar un botón de Vinci (lo usa el plugin vinci-botones)")
     p.add_argument("datos")
     p = sub.add_parser("bot-creado", help="configurar un bot creado para Vinci (lo usa el plugin vinci-botones)")
@@ -471,6 +499,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     prefer_ipv4()
+    if args.cmd == "mcp-http":  # before any config: each request loads its own profile's (mcp_shared.py)
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        from espol_bot import mcp_shared
+        return mcp_shared.serve(args.host, args.puerto)
     try:
         cfg = load_bot_config(load_config())
         if args.cmd == "hermes-perfil":
@@ -522,6 +554,22 @@ def main(argv: list[str] | None = None) -> int:
             _logging(cfg)
             return _friends(cfg, args)
         _logging(cfg)
+        if args.cmd in ("sondeo", "resumen") and args.todos:
+            from espol_bot import maintenance_service, poll_service
+            limit = args.limite or poll_service.LIMIT
+            if args.cmd == "sondeo" and args.servicio:
+                poll_service.serve(cfg, limit)
+            runs = poll_service.run_all(cfg, args.cmd, limit)
+            print(maintenance_service.summary(runs, args.cmd))
+            return 1 if any(r.error for r in runs) else 0
+        if args.cmd == "mantenimiento" and args.todos:
+            from espol_bot import maintenance_service as service
+            limit = args.limite or service.LIMIT
+            if args.cada:
+                service.serve(cfg, args.cada, limit)
+            runs = service.run_all(cfg, limit)
+            print(service.summary(runs))
+            return 1 if any(r.error for r in runs) else 0
         if args.cmd == "resembrar":
             return _reseed(cfg, from_stdin=args.stdin)
         if args.cmd == "agenda":

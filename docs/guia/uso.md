@@ -373,10 +373,15 @@ Te llega un mensaje con el botón «🎴 Abrir mi sobre». En la página subes e
 para ver la siguiente y al final las pegas en tu álbum. Para verlo sin un sobre nuevo, pídeselo a Vinci: «¿cómo va
 mi álbum?».
 
-- **Las cartas:** la colección ESPOL (Polito, el campus y GrupAP) y la de Íconos (series, películas y artistas).
-  Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos una rara. Las cartas son de
-  pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado. Al tocar una carta, se abre en
-  grande.
+- **Las cartas:** Polito, el campus y la gente de ESPOL, Ecuador (Julio Jaramillo, Barcelona, Emelec), música,
+  series, juegos, tecnología e IA. Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos
+  una rara. Las cartas son de pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado.
+- **El álbum es una sola lista:** todas las cartas por número. Las que te faltan salen como silueta con «?» en el
+  marco de su rareza. Los cuatro anillos de arriba muestran cuántas tienes de cada rareza: toca uno para ver solo esas.
+  El buscador encuentra una carta tuya por su nombre, y puedes ordenar por número, por rareza o ver solo tus
+  repetidas. El botón de la cuadrícula cambia entre 3 y 4 columnas, y tu teléfono lo recuerda.
+- **Al tocar una carta:** si la tienes, se abre en grande. Si te falta y alguien la tiene repetida, puedes pedirle el
+  cambio; si nadie la tiene, Vinci te dice cómo ganar sobres.
 - **Las caras no son públicas:** el arte de una carta con personas reales está cifrado en GitHub. Solo lo abre la
   clave que va dentro del enlace de Vinci; sin ese enlace, la carta muestra sus iniciales.
 - **Solo lo nuevo cuenta:** el álbum empieza el día que tu Vinci lo estrena; lo que entregaste o te calificaron antes
@@ -401,13 +406,13 @@ funciona en un grupo.
 
 También puedes pedir un cambio desde el álbum, sin escribir el comando:
 
-1. Abre la pestaña «🔁 Cambios» del álbum. El botón «🔁 Ver los cambios» de `/cambio` la abre directo, y también
+1. Toca el botón «🔁 Cambios», arriba en el álbum. El botón «🔁 Ver los cambios» de `/cambio` lo abre directo, y también
    «🔁 Cambiar mi repetida», que aparece al final de un sobre que trajo una repetida.
 2. Mira tus repetidas y las cartas que te faltan y otra persona tiene repetidas, con su nombre en la carta.
 3. Toca una carta. Elige a quién se la pides, si la tienen varias, y cuál de tus repetidas das.
 4. Toca «Pedir el cambio en WhatsApp». Se abre tu chat con Vinci con el `/cambio` ya escrito: envíalo.
 
-La pestaña muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
+«Cambios» muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
 te lo dice al recibir tu `/cambio`.
 
 ## Tu Académico de ESPOL

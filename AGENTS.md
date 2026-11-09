@@ -154,6 +154,7 @@ uv run pytest                             # the E2E: 5 tests in parallel (fake C
 .venv/bin/espol-bot sondeo --todos       # one poll pass the same way (also `resumen --todos`; vinci-sondeo's loop)
 .venv/bin/espol-bot album-regalo "<motivo>" # a gift pack for the captain and every friend (`--para <friend>`: only them)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
+.venv/bin/espol-bot calendario-espol      # read ESPOL's official calendar page now; list the next 60 days
 systemctl --user status vinci-panel      # the admin panel on 127.0.0.1:8787 (`tailscale serve status`)
 .venv/bin/espol-bot --help                # every subcommand; most are called by the plugins
 .venv/bin/vinci-check smoke               # status, /estado, both pages (and /start to each subject bot with Telegram)

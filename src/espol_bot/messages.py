@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from aula_core import timefmt
 from aula_core.catalog import KIND_LABEL, PUBLIC, WHY_LINK_ONLY
 from aula_core.materials import READABLE
-from espol_bot import grades
+from espol_bot import espol_calendar, grades
 from espol_bot.materias import short_name
 
 KIND_TITLE = {
@@ -57,6 +57,19 @@ def _score(ev: dict, prefix: str = "") -> str:
     if grade and grade != f"{score:g}":
         text += f" ({grade})"
     return e(text)
+
+
+def _course_stats(ev: dict) -> str:
+    """«📊 El curso: promedio 5.8 · la más alta 9.5 · la más baja 2»; nothing when the professor hides it."""
+    stats = ev.get("curso_stats") or {}
+    if stats.get("mean") is None:
+        return ""
+    parts = [f"promedio {round(stats['mean'], 1):g}"]
+    if stats.get("max") is not None:
+        parts.append(f"la más alta {stats['max']:g}")
+    if stats.get("min") is not None:
+        parts.append(f"la más baja {stats['min']:g}")
+    return f"📊 El curso: {' · '.join(parts)}\n"
 
 
 HIDE_RESULTS = {"always": "no muestra resultados", "until_after_last_attempt": "resultados tras el último intento"}
@@ -112,12 +125,12 @@ def event_message(ev: dict, tz: ZoneInfo, now: datetime, index_status: str | Non
     if kind == "grade_posted":
         late = (f"⏰ Te bajaron {_number(ev['points_deducted'])} por entregar tarde.\n"
                 if ev.get("points_deducted") else "")
-        return (f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n{late}"
+        return (f"✅ <b>Nota publicada</b> — {name}\n{e(ev['tarea'])}: <b>{_score(ev)}</b>\n{_course_stats(ev)}{late}"
                 f"{_feedback(ev.get('feedback'))}{link(ev['url'])}")
     if kind == "grade_changed":
         return (f"✏️ <b>Nota actualizada</b> — {name}\n{e(ev['tarea'])}: {_score(ev, '')} "
                 f"(antes {_score({**ev, 'nota': ev.get('nota_anterior'), 'calificacion': ev.get('calificacion_anterior')})})\n"
-                f"{_feedback(ev.get('feedback'))}{link(ev['url'])}")
+                f"{_course_stats(ev)}{_feedback(ev.get('feedback'))}{link(ev['url'])}")
     if kind == "comment_posted":
         return f"💬 <b>Comentario del profe</b> — {name}\n{e(ev['tarea'])}\n{_feedback(ev.get('feedback'))}{link(ev['url'])}"
     if kind == "new_message":
@@ -227,6 +240,8 @@ def _digest_line(ev: dict, tz: ZoneInfo) -> str:
             extra += f" ({quiz_facts(ev['quiz'])})"
     elif kind in ("grade_posted", "grade_changed"):
         extra = f" — {_score(ev)}"
+        if (ev.get("curso_stats") or {}).get("mean") is not None:
+            extra += f" (promedio del curso {round(ev['curso_stats']['mean'], 1):g})"
         if (ev.get("feedback") or {}).get("comments"):
             extra += " · con comentario del profe"
     elif kind in ("new_event", "event_changed") and ev.get("inicio"):
@@ -349,10 +364,11 @@ TIER_TITLE = {"urgent": "Vence en menos de 24 h", "weighted": "Después, lo que 
 
 def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
                    tz: ZoneInfo, now: datetime, undated_todos: list[dict] = (), stale=None,
-                   calendar: dict | None = None) -> str:
+                   calendar: dict | None = None, espol: list[dict] = ()) -> str:
     """`entries`: the week's deliverables and the overdue ones, in priority.ordered's order. `stale`
     (health.Stale): the aula could not be read lately, so what is pending is how it was then. `calendar`:
-    queries.calendar for the week (its events and the peer reviews still to do)."""
+    queries.calendar for the week (its events and the peer reviews still to do). `espol`: the week's entries of
+    ESPOL's official calendar (espol_calendar.between)."""
     today = now.astimezone(tz).date()
     end = today + timedelta(days=6)
     head = (f"☀️ <b>Resumen de tu semana</b>\n"
@@ -385,6 +401,9 @@ def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
             f"• {course(ev['course'])}: {link(ev['url'], ev['title'])} — "
             f"{_event_time({'inicio': ev['start'], 'fin': ev['end'], 'todo_el_dia': ev['all_day']}, tz)}"
             + (f" · {e(ev['location'])}" if ev["location"] else "") for ev in events))
+    if espol:
+        blocks.append(f"<b>🏛️ En ESPOL esta semana</b>\n" + "\n".join(
+            f"• {e(espol_calendar.when(x))} — {e(x['what'])}" for x in espol))
     if reviews:
         blocks.append(f"<b>🔍 Revisiones entre pares por hacer ({len(reviews)})</b>\n" + "\n".join(
             f"• {course(r['course'])}: {link(r['url'], r['title'])}"

@@ -198,6 +198,7 @@ class FakeWeb(_Server):
         self.requests: list[tuple[str, str]] = []
         self.headers: list[dict[str, str]] = []  # each request's headers, in the order of `requests`
         self.lock = threading.Lock()
+        self.espol_calendar: str | None = None  # ESPOL's calendar page; None answers 500, as the site did once
 
 
 class _Quiet(BaseHTTPRequestHandler):
@@ -630,6 +631,11 @@ class _WebHandler(_Quiet):
             web.requests.append(("GET", self.path))
             web.headers.append(dict(self.headers))
         if self._shared(urlsplit(self.path).path, dict(parse_qsl(urlsplit(self.path).query))):
+            return
+        if urlsplit(self.path).path == "/es/vida-politecnica/calendario-grado":
+            page = web.espol_calendar
+            self._send(200 if page else 500, (page or "The website encountered an unexpected error.").encode(),
+                       "text/html; charset=utf-8")
             return
         path = (FIXTURES / "web" / unquote(urlsplit(self.path).path).lstrip("/")).resolve()
         if not path.is_relative_to((FIXTURES / "web").resolve()) or not path.is_file():

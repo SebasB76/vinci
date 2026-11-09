@@ -1628,8 +1628,9 @@ def _academic_record(ctx: Ctx, args: dict) -> dict:
         sent = portal_login.request(ctx.cfg, _channel(ctx), topic, question, ctx.now())
     except portal_login.LoginError as exc:
         raise ToolError(str(exc)) from None
+    where = "their private chat (you are in a group: say so there)" if _group_chat(ctx) else "this chat"
     return {"connect": "button on its way",
-            "mensaje": ("I am sending the student a «🎓 Conectar Académico» button in this chat (it may take a few "
+            "mensaje": (f"I am sending the student a «🎓 Conectar Académico» button in {where} (it may take a few "
                         "seconds). Tell them in one or two lines to open it and sign in there with their ESPOL user, "
                         f"password and the code in the picture; it expires in {sent['minutes']} min. Their password "
                         "never goes through the chat. When they finish, their question comes back to you with the "
@@ -1643,7 +1644,7 @@ PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página,
         "«album»: su álbum de cartas (las que tiene y las que le faltan; gana sobres al entregar a tiempo y al sacar "
         "8/10 o más en una lección o un examen). "
         "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. Una página por "
-        "respuesta como máximo, nunca en un grupo.")
+        "respuesta como máximo. Pedida en un grupo, también va a su chat privado.")
 PEOPLE = ("Los profesores y ayudantes de cada materia (nombre, rol «teacher» o «ta», y correo cuando el aula lo "
           "muestra; null si lo esconde) y sus grupos del aula con quién está en cada uno.")
 INBOX = ("Lo que le escribieron los profesores y ayudantes por el buzón del aula (mensajes directos o a la clase), lo "
@@ -1839,12 +1840,16 @@ def _send_study_page(ctx: Ctx, args: dict) -> dict:
 
 
 def _show_page(ctx: Ctx, args: dict) -> dict:
+    sent = _send_page(ctx, args)
+    if _group_chat(ctx):  # the page holds their data: the button goes to their private chat even from a group
+        sent["mensaje"] += " Estás en un grupo: dile ahí, en la misma línea, que se lo mandaste por privado."
+    return sent
+
+
+def _send_page(ctx: Ctx, args: dict) -> dict:
     page = args.get("page")
     if page not in PAGE_PROPERTIES["page"]["enum"]:
         raise ToolError("page es deliverables, grades, album o token.")
-    if _group_chat(ctx):
-        raise ToolError("En un grupo no mando páginas: tienen sus datos. Dile que te escriba por privado o que use "
-                        "/entregas allá.")
     chat = _whatsapp_chat(ctx)
     if chat is None:
         raise ToolError("En Telegram el panel está en el botón «📋 Entregas» del menú, y /token abre el formulario.")

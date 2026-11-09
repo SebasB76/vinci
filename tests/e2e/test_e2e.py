@@ -58,7 +58,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   the page and Vinci's relay, his week next to the captain's in the group at once, with no gateway restart, slides, mentions, an assignment found by
   its words and searched in its own attachments first, a PDF summary that refuses a citation of an unread page, a quote, a sticker, a group
   that goes idle, a poll for a button, a quiz a guest asks for in the group: one results message once the guest, Angel
-  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands, his poll that skips
+  and the captain answered it all, and another quiz that closes after its 15 minutes; his dashboard, his commands (asked in the group, the page or
+  form goes to his private chat), his poll that skips
   its turn while another profile reads Canvas);
   one shared MCP server (`espol-bot mcp-http`, as in the Docker image) serves both Vincis: each profile reaches its own
   path with its own token, neither token opens the other's tools even when both ask at once, and no profile starts a
@@ -599,6 +600,12 @@ class Script:
     def pending(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """Física's pending list with how each is handed in; «ya hice …» marks the lab done, «todavía no» undoes it,
         and «se entrega por correo» says how the unclear one is handed in."""
+        if "mándame el panel" in text:
+            if not called:
+                return _call("mcp__vinci__show_page", page="deliverables")
+            sent = _json(results[-1])
+            return {"content": "Te lo mandé por privado." if isinstance(sent, dict) and "por privado" in
+                    sent.get("mensaje", "") else _problem(results[-1])}
         if "muéstrame mis notas" in text:
             if not called:
                 return _call("mcp__vinci__show_page", page="grades")
@@ -3092,12 +3099,23 @@ def test_whatsapp_friend(tmp_path):
         marked = text_of(say(angel_jid, angel_jid, f"/marca {taller['id']} ok · {taller['title']}", "Angel"))
         assert "cuenta como entregada" in marked, marked
         assert len(llm.requests) == calls, "/entregas y /marca no pasan por el modelo"
+        mark = len(wa.sent)
         private = text_of(say(GROUP_WA, angel_jid, "@vinci /entregas", "Angel", group=True))
-        assert "por privado" in private, private
+        assert private == "Te lo mandé por privado.", private
+        assert [m["buttonText"] for m in wa.sent[mark:] if m["path"] == "send-url-button"
+                and m["chatId"] == angel_jid] == ["📋 Ver mis entregas"], wa.sent[mark:]
+        assert len(llm.requests) == calls, "/entregas en un grupo tampoco pasa por el modelo"
+        mark = len(wa.sent)
+        asked = text_of(say(GROUP_WA, captain_jid, "@vinci mándame el panel", "Capitán", group=True))
+        assert "por privado" in asked, asked
+        assert [m for m in wa.sent[mark:] if m["path"] == "send-url-button" and m["chatId"] == captain_jid
+                and m["buttonText"] == "📋 Ver mis entregas"], wa.sent[mark:]
+        assert not [m for m in wa.messages_to(GROUP_WA, mark) if m["path"] == "send-url-button"], "su panel, no al grupo"
         report.append("/entregas le da a Angel un botón a su panel de entregas, que en el iPhone "
                       "abre dentro de WhatsApp: marcar una llega a Vinci por el relé y Vinci la cuenta como entregada "
-                      "sin el modelo, igual que «/marca s… ok» escrito en el chat; en un grupo, /entregas pide ir "
-                      "por privado")
+                      "sin el modelo, igual que «/marca s… ok» escrito en el chat. En un grupo, /entregas y «@vinci "
+                      "mándame el panel» (show_page) mandan el botón a su chat privado, y el grupo lee «Te lo mandé "
+                      "por privado»")
 
         # 10g. Vinci's commands on WhatsApp, each over the sender's own aula; Hermes' own pass through
         calls = len(llm.requests)
@@ -3105,14 +3123,17 @@ def test_whatsapp_friend(tmp_path):
         assert "Hola, Angel" in hello and "/estado" in hello and "/amigo" not in hello, hello
         health = text_of(say(angel_jid, angel_jid, "/estado", "Angel"))
         assert "Estado de Vinci" in health and "<b>" not in health, health
+        mark = len(wa.sent)
         private = text_of(say(GROUP_WA, angel_jid, "@vinci /token", "Angel", group=True))
-        assert "por privado" in private, private
+        assert private == "Te lo mandé por privado.", private
+        assert [m for m in wa.sent[mark:] if m["path"] == "send-url-button" and m["chatId"] == angel_jid], \
+            f"el formulario del token va a su privado: {wa.sent[mark:]}"
         assert len(llm.requests) == calls, "/start, /estado y /token no pasan por el modelo"
         say(angel_jid, angel_jid, "/quiz integrales dobles", "Angel")
         assert "quiz corto de integrales dobles" in json.dumps(llm.requests[-1], ensure_ascii=False), \
             "«/quiz tema» le llega al modelo como pedido de un quiz"
         report.append("Los comandos de Vinci van sobre el aula de quien escribe y sin el modelo: /start (con los "
-                      "comandos, sin los de /amigo), /estado y /token (en un grupo, piden ir por privado). «/quiz "
+                      "comandos, sin los de /amigo), /estado y /token (en un grupo, la respuesta va a su privado). «/quiz "
                       "integrales dobles» llega al modelo como pedido de un quiz, que Vinci manda como encuestas "
                       "(send_quiz)")
 

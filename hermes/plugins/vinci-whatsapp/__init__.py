@@ -8,7 +8,8 @@ friend's and in the default one; it acts only on WhatsApp.
   `espol-bot amigo` (amigos.py); anything else goes on to his Vinci.
 - Vinci's own commands, for the captain and every friend with their Vinci, each over their own aula: /start,
   /estado, /token, /entregas (a link to the dashboard), /marca (what a tick on it types), /cambio (card trades), /canje (3 repeats for a pack) and /ranking (the album ranking)
-  run `espol-bot whatsapp-comando` (in a group, all but /start, /cambio and /ranking only say to ask in private); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
+  run `espol-bot whatsapp-comando` (in a group, /estado, /token, /entregas, /marca and /canje answer in the sender's
+  private chat, and the group reads «Te lo mandé por privado»); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
   (/new, /usage, /stop, /help) go on to Hermes.
 - A group: only a mention of Vinci gets here (Hermes' require_mention). The captain's «@vinci activa este grupo» /
   «desactiva este grupo» turns it on or off (`espol-bot whatsapp-grupo`); «activa los avisos» / «desactiva los
@@ -102,7 +103,7 @@ FRIEND_RE = re.compile(r"^/amigos?\b\s*(\S*)\s*(.*)$", re.S)
 COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca|cambio|canje|ranking)\b\s*(.*)$", re.S | re.I)
 PRIVATE_ONLY = ("estado", "token", "entregas", "marca", "canje")  # they show or change the sender's own aula or album
 QUIZ = "Hazme un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material."
-PRIVATE = "Eso te lo contesto por privado: escríbeme /{0} en nuestro chat."
+PRIVATE = "Te lo mandé por privado."
 ON_RE = re.compile(r"\bactiva(?:r|te)? (?:este|el) grupo\b")
 OFF_RE = re.compile(r"\bdesactiva(?:r|te)? (?:este|el) grupo\b")
 TRUST_OFF_RE = re.compile(r"\b(?:este|el) grupo (?:ya )?no es de confianza\b")
@@ -383,13 +384,15 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     name, rest = match[1].lower(), match[2].strip()
     if name == "quiz":
         return {"action": "rewrite", "text": QUIZ.format(tema=f" de {rest}" if rest else "")}
-    if group and name in PRIVATE_ONLY:
-        await _answer(chat, {"respuesta": PRIVATE.format(name)}, reply_to, gateway)
-        return _skip(f"/{name} en un grupo")
     who = CAPTAIN if CAPTAIN in senders else next(f["numero"] for f in _read(REGISTRY, "amigos")
                                                      if f.get("numero") in senders)
-    await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
-                                   stdin=rest if name in ("marca", "cambio", "ranking") else None), reply_to, gateway)
+    result = await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
+                        stdin=rest if name in ("marca", "cambio", "ranking") else None)
+    if group and name in PRIVATE_ONLY:  # the answer is a page or a form of their own: it goes to their chat
+        await _answer(f"{who}@s.whatsapp.net", result, None, gateway)
+        await _answer(chat, {"respuesta": PRIVATE}, reply_to, gateway)
+        return _skip(f"/{name} en un grupo, por privado")
+    await _answer(chat, result, reply_to, gateway)
     return _skip(f"/{name}")
 
 

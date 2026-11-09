@@ -466,7 +466,7 @@ Si nadie quiere tus repetidas, las canjeas con Vinci: 3 repetidas te dan un sobr
 3. Toca «🎴 Abrir mi sobre» para abrir el sobre del canje.
 
 Vinci nunca entrega tu última copia de una carta. Si tienes menos de 3 repetidas, Vinci te dice cuántas tienes y no
-cambia nada. `/canje` funciona solo por privado.
+cambia nada. Si escribes `/canje` en un grupo, el sobre te llega por privado.
 
 ### El ranking del álbum
 

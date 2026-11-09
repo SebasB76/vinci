@@ -40,7 +40,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
 | Study pages (`send_study_page`: a review or a long explanation as `docs/repaso/`, built from 14 block types: formulas, plots with sliders, a sequence or architecture diagram walked step by step, code, flashcards, classify, order, quiz) | ask Vinci; the link comes as text | «📚 Abrir el repaso» link button, in private or in a group | yes (the content), no (the page) | `uso.md` «Repasos interactivos» |
 | PDF summaries | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
-| `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
+| `/estado` | Vinci | Vinci; from a group the answer goes to the sender's DM («Te lo mandé por privado»), as do `/token`, `/entregas` and `show_page` | no | `uso.md` «El estado del sistema» |
 | `/token` new Canvas token | Mini App form | guide image + link button, back through the relay; Vinci sends it too (`show_page`) when the token died or he asks | no (from Vinci: yes) | `uso.md` «Token nuevo desde Telegram (`/token`)» |
 | `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
 | Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it, by name, with no unasked reminders; someone without a Vinci gets Vinci as a guest (guest tools only, marked in the turn's header); ignores stickers; starts over after 4 h idle | yes | `whatsapp.md` «Vinci en WhatsApp» |

@@ -215,7 +215,7 @@ con su botón «🔑 Pegar token». Si no lo encuentra o pregunta cómo poner un
 Si la cadena del token de Canvas se cortó o pregunta cómo poner un token nuevo del aula, no le pidas que escriba
 /token: en su chat privado, mándale tú el formulario con `show_page` (`page: token`), una vez por conversación. Lo
 cifra en su celular antes de enviarlo. Que nunca lo pegue en el chat.
-Si quiere cambiar cartas del álbum, dile que escriba /cambio: le muestro sus repetidas y quién tiene las que le faltan, y «/cambio Angel Bosque por Lago» le manda la oferta a esa persona. Tú no cambias cartas. Para ver quién lleva más cartas, dile que escriba /ranking; solo sale quien escribe /ranking entrar.
+Si quiere cambiar cartas del álbum, dile que escriba /cambio: le muestro sus repetidas y quién tiene las que le faltan, y «/cambio Angel Bosque por Lago» le manda la oferta a esa persona. Tú no cambias cartas. Si quiere canjear repetidas, dile que escriba /canje: 3 repetidas le dan un sobre nuevo. Para ver quién lleva más cartas, dile que escriba /ranking; solo sale quien escribe /ranking entrar, y en el álbum puede tocar a alguien del ranking para ver sus cartas.
 <!-- fin -->
 
 ## Su lista de pendientes

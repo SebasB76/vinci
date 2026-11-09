@@ -19,7 +19,8 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   Hermes's unofficial bridge, keeps every subject in one chat, with its notebook and the brief before each class.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
-- Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
+- Live: `docs/token/`, `docs/dashboard/`, `docs/academico/`, `docs/notas/`, `docs/album/` and `docs/repaso/` on GitHub
+  Pages; `relay/` on Cloudflare Workers.
 - Live: Canvas token renewal runs outside the gateway, as the s6 service `vinci-mantenimiento`
   (`maintenance_service.py`): every 10 min, the captain and then each active friend, one at a time, so a frozen
   gateway no longer cuts the chains. `VINCI_MAINTENANCE_SERVICE` (set in the `Dockerfile`) drops the

@@ -43,7 +43,9 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
   poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
-  first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
+  first asks what it judges; «explícame bien two-phase commit» becomes a study page (send_study_page refuses
+  a quiz answer that is not an option, the corrected page arrives as a button and draws in a real headless Chromium:
+  KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
   masked logs, turns and files, and runs commands, each one in remote-access.log.
@@ -217,6 +219,20 @@ SLIDES = {"titulo": "Integrales dobles", "subtitulo": "Cálculo de varias variab
 SUMMARY = {"titulo": "Taller 2: Integrales dobles", "subtitulo": "Cálculo de varias variables",
            "introduccion": "Lo que pide el taller, para repasar antes de resolverlo."}
 SUMMARY_STEPS = ["Copia el enunciado", "Resuelve en su hoja", "Junta todo en un PDF"]
+# The study page the captain asks for (send_study_page): a protocol walked step by step, a formula and a quiz.
+STUDY_PAGE = {"title": "Two-phase commit", "subject": "Sistemas Distribuidos", "blocks": [
+    {"type": "text", "title": "La idea", "body": "O **todos** los nodos confirman, o **ninguno**."},
+    {"type": "sequence", "actors": ["Coordinador", "Nodo A"], "scenarios": [
+        {"name": "Todo bien", "messages": [
+            {"from": "Coordinador", "to": "Nodo A", "label": "PREPARE", "note": "El coordinador pregunta si puede."},
+            {"from": "Nodo A", "to": "Coordinador", "label": "SÍ", "note": "A promete confirmar."}]},
+        {"name": "A falla", "messages": [
+            {"from": "Nodo A", "to": "Coordinador", "label": "NO", "note": "Basta un no.", "fail": True}]}]},
+    {"type": "formula", "latex": "P(\\text{commit}) = \\prod_{i=1}^{n} p_i",
+     "legend": [{"symbol": "$p_i$", "meaning": "la probabilidad de que el nodo i vote sí"}]},
+    {"type": "quiz", "questions": [{"question": "¿Qué pasa si un nodo vota NO?",
+                                    "options": ["Se confirma igual", "Se aborta en todos"],
+                                    "answer": "Se aborta en todos", "explanation": "2PC exige unanimidad."}]}]}
 SUMMARY_FAKE_CITE = "📄 [Capítulo 9 - Inventado.pdf, página 99](https://aulavirtual.espol.edu.ec/courses/1/files/9)"
 VENV_BIN = Path(sys.executable).parent
 FILES = HERE / "fixtures" / "files"
@@ -717,6 +733,18 @@ class Script:
             data = _json(results[-1])
             return {"content": f"📝 Te mandé el quiz: {data['questions']} preguntas como encuestas."
                     if isinstance(data, dict) and data.get("quiz") else _problem(results[-1])}
+        if "explícame bien two-phase commit" in text:
+            # The first try gives a quiz answer that is not one of its options; the tool says what to fix.
+            tries = called.count("mcp__vinci__send_study_page")
+            if tries == 0:
+                wrong = json.loads(json.dumps(STUDY_PAGE))
+                wrong["blocks"][-1]["questions"][0]["answer"] = "Se reintenta"
+                return _call("mcp__vinci__send_study_page", **wrong)
+            if tries == 1 and "debe ser una de las opciones" in str(_json(results[-1])):
+                return _call("mcp__vinci__send_study_page", **STUDY_PAGE)
+            data = _json(results[-1])
+            return {"content": "📚 Te mandé el repaso: empieza por el diagrama y termina con el quiz."
+                    if isinstance(data, dict) and data.get("enviado") else _problem(results[-1])}
         if "tengo 20 minutos para Cálculo" in text:
             if not called:
                 return _call("mcp__vinci__study_activity", action="start", kind="study", materia="cálculo", minutes=20,
@@ -2292,6 +2320,46 @@ def test_whatsapp_captain(tmp_path):
         assert "El jurado pregunta sobre algo concreto" in jury, jury
         md.append(f"**Capitán**: tengo 20 minutos para Cálculo → Vinci: {normalize(planned)}; «me costó el 0/0»; "
                   f"«listo, guarda lo que me costó» → {normalize(saved)}\n")
+
+        # 10m4. A long explanation becomes a study page: the model's first try is refused with what to fix, the
+        # corrected one arrives as a «📚 Abrir el repaso» button, and the page draws it (in a real headless Chromium)
+        asked = say(captain_jid, captain_jid, "explícame bien two-phase commit", "Capitán", expect=2)
+        assert "Te mandé el repaso" in text_of(asked), asked
+        [study_button] = [m for m in asked if m["path"] == "send-url-button"]
+        assert study_button["buttonText"] == "📚 Abrir el repaso" and "/repaso/#d=" in study_button["url"], study_button
+        assert "Two-phase commit" in study_button["text"] and "quiz" in study_button["text"], study_button
+        from espol_bot import dashboard as dashboard_module
+        study = dashboard_module.decode(study_button["url"].split("#d=", 1)[1])
+        assert [b["type"] for b in study["blocks"]] == ["text", "sequence", "formula", "quiz"], study
+        assert study["blocks"][1]["scenarios"][0]["messages"][1]["from"] == 1, study["blocks"][1]
+        assert study["blocks"][3]["questions"][0]["answer"] == 1, study["blocks"][3]
+        study_seen = "sin Chromium: no abrí la página"
+        if NODE:
+            from test_webview_experiment import CHROMIUM, Browser
+            if CHROMIUM:
+                browser = Browser()
+                with FakePages(REPO / "docs", w.relay.base) as pages:
+                    page = browser.open(f"{pages.base}/repaso/#d={study_button['url'].split('#d=', 1)[1]}")
+                    ready = "document.getElementById('app').dataset.ready === '1' && !!document.querySelector('.katex')"
+                    end = time.time() + 20
+                    while not browser.eval(page, ready) and time.time() < end:
+                        time.sleep(0.2)
+                    assert browser.eval(page, ready), browser.eval(page, "document.body.innerText")
+                    assert browser.eval(page, "document.querySelectorAll('[data-block]:not([data-block=score])').length") == 4
+                    browser.eval(page, "const n = document.querySelector('[data-block=sequence] .row2 .btn:last-child');"
+                                       "n.click(); n.click(); true")
+                    browser.wait_text(page, "[data-block=sequence] .say", "A promete confirmar.")
+                    browser.eval(page, "[...document.querySelectorAll('.opt')].find(o => o.textContent === "
+                                       "'Se aborta en todos').click(); true")
+                    browser.wait_text(page, "[data-block=score] .big", "1 de 1")
+                    browser.close(page)
+                browser.quit()
+                study_seen = ("en Chromium la página dibuja los 4 bloques con KaTeX, avanza el diagrama de secuencia "
+                              "y cuenta el quiz respondido")
+        report.append("«explícame bien two-phase commit»: send_study_page rechaza una respuesta de quiz que no es una "
+                      "de sus opciones, el modelo la corrige y llega el botón «📚 Abrir el repaso»; " + study_seen)
+        md.append(f"**Capitán**: explícame bien two-phase commit → botón «📚 Abrir el repaso»: "
+                  f"{normalize(study_button['text'])}\n")
 
         # 10m''. What became of a PDF comes from the table the vote writes, in every private turn
         db = sqlite3.connect(data_dir / "espol.db")

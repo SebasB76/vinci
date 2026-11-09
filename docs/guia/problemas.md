@@ -2,6 +2,8 @@
 
 ## Límites conocidos
 
+- **Repasos interactivos:** el repaso va dentro del enlace, así que trae de 2 a 12 bloques, y Vinci acorta lo que no
+  cabe. Lo que respondes no se guarda: si recargas la página, el quiz empieza de cero.
 - **La vigilancia:** Vinci te avisa por WhatsApp cuando el Vinci de alguien falla, revisando cada 10 minutos. Si el
   servidor o el WhatsApp de Vinci se caen, no puede avisarte: eso lo ves en Coolify (**Unhealthy**) o en el panel.
 - **El panel desde Coolify:** con el enlace de la clave ves todo menos el texto de los chats, también los tuyos.

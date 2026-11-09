@@ -38,6 +38,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Schedule from a screenshot | screenshot to Vinci → «Guardar» | screenshot to Vinci → «✅ Guardar horario» poll | yes (reading), no (saving) | `instalacion.md` «8. Mándale tu horario a Vinci» |
 | Class notes folder (`//vinci`) | answers and summaries in the subject bot chat | answers and summaries in Vinci's DM | yes | `uso.md` «Tus apuntes de clase» |
 | Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
+| Study pages (`send_study_page`: a review or a long explanation as `docs/repaso/`, built from 14 block types: formulas, plots with sliders, a sequence or architecture diagram walked step by step, code, flashcards, classify, order, quiz) | ask Vinci; the link comes as text | «📚 Abrir el repaso» link button, in private or in a group | yes (the content), no (the page) | `uso.md` «Repasos interactivos» |
 | PDF summaries | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
 | `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
 | `/token` new Canvas token | Mini App form | guide image + link button, back through the relay; Vinci sends it too (`show_page`) when the token died or he asks | no (from Vinci: yes) | `uso.md` «Token nuevo desde Telegram (`/token`)» |
@@ -86,6 +87,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Focus and activities | `conversation.py` (`note_turn`, `open_activities`), `materias.mentioned`, `study_activity` and `send_quiz` in `herramientas.py`, `quiz.resend` | `vinci-check say "estamos en <materia>"`, then `vinci-check whatsapp --chat dm`: «Materia en foco» in the next turn |
 | Class notes | `src/espol_bot/notes.py` | `bot.log` in the data folder (the E2E no longer covers it) |
 | Slides | `src/espol_bot/diapositivas.py` | ask for a short deck through `chat` (uses the model) |
+| Study pages | `src/espol_bot/study_page.py` (checks each block), `send_study_page` in `herramientas.py`, `docs/repaso/` (draws them; KaTeX in `docs/repaso/katex/`) | `vinci-check say "explícame bien <tema> con un repaso"`; the reply carries «📚 Abrir el repaso» (uses the model); `vinci-check whatsapp --chat dm` shows the URL |
 | PDF summaries | `src/espol_bot/resumen.py`, `visuales.py` (diagrams and mockups), `crear_resumen` in `herramientas.py` | `vinci-check say "hazme un resumen en pdf de <tema>"`; the PDF reaches the captain's chat (uses the model) |
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/`; the renewal loop in the container: `maintenance_service.py`, `deploy/s6/vinci-mantenimiento` | `vinci-check page token`; `vinci-check status` (chain age); `vinci-check remote logs bot --grep "mantenimiento --todos"` |

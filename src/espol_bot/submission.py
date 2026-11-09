@@ -1,5 +1,5 @@
-"""Hand in a handwritten activity: the captain's photos become one PDF, and the PDF goes to an
-assignment of the aula virtual only when the captain presses «Entregar» under it.
+"""Hand in work to an assignment of the aula virtual: the student's photos become one PDF, or the files they sent
+(a PDF, a Word, a ZIP, code) go as they are, and only when the student votes or presses «Entregar».
 
 This is the only place that writes course data to Canvas. CanvasClient stays GET-only; the upload
 here follows Canvas's three steps for a submission file (ask for an upload slot, upload the file,
@@ -9,6 +9,8 @@ submit it), and the token goes only to the aula's own host, never to the file st
 from __future__ import annotations
 
 import io
+import mimetypes
+import re
 import shutil
 import uuid
 from datetime import datetime
@@ -25,6 +27,17 @@ from aula_core.materials import safe_filename
 
 IMAGE_TYPES = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_PAGES = 30
+MAX_FILES = 10
+# The WhatsApp bridge caches a document as doc_<12 hex>_<its name>; Telegram's cache keeps a similar prefix.
+CACHE_PREFIX = re.compile(r"^(?:doc|img|vid)_[0-9a-f]{12}_")
+# Python's own table misses these on some systems, and the aula shows a file by its type.
+CONTENT_TYPES = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".doc": "application/msword", ".xls": "application/vnd.ms-excel", ".ppt": "application/vnd.ms-powerpoint",
+    ".zip": "application/zip", ".rar": "application/vnd.rar", ".pdf": "application/pdf", ".ipynb": "application/x-ipynb+json",
+}
 MAX_SIDE = 2400   # pixels of a page's long side: legible handwriting, a few hundred KB per page
 PAGE_INCHES = 11.69  # the long side of A4, so the PDF prints at a normal size
 THUMB_SIDE = 320  # Telegram's limit for a document thumbnail
@@ -67,8 +80,30 @@ def build_pdf(images: list[Path], dest: Path) -> tuple[int, bytes]:
     return len(pages), _thumbnail(pages[0])
 
 
+def take_files(sources: list[Path], dest: Path) -> tuple[int, bytes | None]:
+    """The files the student sent, as they are, into the folder `dest` under their own names; the pages and a
+    thumbnail of the first page when it is a single PDF."""
+    dest.mkdir(parents=True, exist_ok=True)
+    names = set()
+    for source in sources:
+        name = sent_name(source)
+        stem, n = Path(name).stem, 2
+        while name.lower() in names:  # two files called the same: the aula would keep both, but say which is which
+            name, n = f"{stem} ({n}){Path(name).suffix}", n + 1
+        names.add(name.lower())
+        if len(sources) == 1 and source.suffix.lower() == ".pdf":
+            return take_pdf(source, dest / name)
+        shutil.copy2(source, dest / name)
+    return 0, None
+
+
+def sent_name(path: Path) -> str:
+    """The name the student gave the file, without the chat cache's prefix."""
+    return safe_filename(CACHE_PREFIX.sub("", path.name))[:120] or path.name
+
+
 def take_pdf(source: Path, dest: Path) -> tuple[int, bytes]:
-    """A PDF the captain sent as it is; returns its page count and a thumbnail of its first page."""
+    """A PDF the student sent as it is; returns its page count and a thumbnail of its first page."""
     import pypdfium2 as pdfium
 
     try:
@@ -96,15 +131,29 @@ def _thumbnail(page: Image.Image) -> bytes:
     return out.getvalue()
 
 
-def new_pdf_path(cfg: CoreConfig, code: str, assignment_id: int, now: datetime) -> Path:
-    return folder(cfg, code) / f"{now.astimezone(cfg.tz):%Y%m%d-%H%M%S}-{assignment_id}-{uuid.uuid4().hex[:6]}.pdf"
+def new_folder(cfg: CoreConfig, code: str, assignment_id: int, now: datetime) -> Path:
+    """Where one proposal keeps what goes up, each file under the name the aula will show."""
+    return folder(cfg, code) / f"{now.astimezone(cfg.tz):%Y%m%d-%H%M%S}-{assignment_id}-{uuid.uuid4().hex[:6]}"
 
 
 def upload_name(assignment_name: str) -> str:
     return safe_filename(assignment_name)[:100] + ".pdf"
 
 
-def check(cfg: CoreConfig, course_id: int, assignment_id: int, since: datetime) -> dict:
+def files_of(stored: Path) -> list[Path]:
+    """What a proposal uploads: the files in its folder (a proposal made before folders: its one PDF)."""
+    if stored.is_dir():
+        return sorted(p for p in stored.iterdir() if p.is_file())
+    return [stored] if stored.is_file() else []
+
+
+def refused(names: list[str], allowed: list[str]) -> list[str]:
+    """The names whose extension the assignment does not take (`allowed` empty: it takes any)."""
+    allowed = [ext.lower().lstrip(".") for ext in allowed if ext]
+    return [n for n in names if allowed and Path(n).suffix.lower().lstrip(".") not in allowed]
+
+
+def check(cfg: CoreConfig, course_id: int, assignment_id: int, since: datetime, names: list[str]) -> dict:
     """The assignment as the aula has it right now; refuses what Canvas would refuse anyway, and raises
     AlreadySubmitted when it got a submission after `since` (an earlier press whose answer was lost)."""
     aula = Aula(cfg, explicit=True)
@@ -118,9 +167,10 @@ def check(cfg: CoreConfig, course_id: int, assignment_id: int, since: datetime) 
         aula.close()
     if "online_upload" not in (data.get("submission_types") or []):
         raise SubmitError("esta tarea no recibe archivos en el aula.", final=True)
-    allowed = [ext.lower().lstrip(".") for ext in data.get("allowed_extensions") or []]
-    if allowed and "pdf" not in allowed:
-        raise SubmitError(f"el aula solo acepta {', '.join(allowed)} en esta tarea, no PDF.", final=True)
+    allowed = data.get("allowed_extensions") or []
+    if refused(names, allowed):
+        raise SubmitError(f"el aula solo acepta {', '.join(allowed)} en esta tarea, no {', '.join(refused(names, allowed))}.",
+                          final=True)
     if data.get("locked_for_user"):
         raise SubmitError("el aula ya cerró esta tarea.", final=True)
     sub = data.get("submission") or {}
@@ -133,8 +183,8 @@ def check(cfg: CoreConfig, course_id: int, assignment_id: int, since: datetime) 
     return data
 
 
-def submit(cfg: CoreConfig, course_id: int, assignment_id: int, pdf: Path, name: str) -> dict:
-    """Upload `pdf` as `name` and submit it to the assignment; returns Canvas's submission."""
+def submit(cfg: CoreConfig, course_id: int, assignment_id: int, files: list[Path]) -> dict:
+    """Upload each file under its own name and submit them together to the assignment; returns Canvas's submission."""
     host = urlsplit(cfg.canvas_url).netloc
     base = f"{cfg.canvas_url.rstrip('/')}/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions"
     session = requests.Session()
@@ -153,27 +203,33 @@ def submit(cfg: CoreConfig, course_id: int, assignment_id: int, pdf: Path, name:
             raise SubmitError(f"el aula respondió {resp.status_code}: {_canvas_message(resp)}")
         return resp.json()
 
-    try:
-        slot = call("POST", f"{base}/self/files", data={"name": name, "size": pdf.stat().st_size,
-                                                        "content_type": "application/pdf"})
+    def upload(path: Path) -> str:
+        kind = (CONTENT_TYPES.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0]
+                or "application/octet-stream")
+        slot = call("POST", f"{base}/self/files", data={"name": path.name, "size": path.stat().st_size,
+                                                        "content_type": kind})
         upload_url = slot.get("upload_url")
         if not upload_url:
             raise SubmitError("el aula no me dio dónde subir el archivo.")
         # The upload slot carries its own signature: the token never goes with the file.
-        with pdf.open("rb") as fh:
+        with path.open("rb") as fh:
             resp = requests.post(upload_url, data=slot.get("upload_params") or {},
-                                 files={slot.get("file_param") or "file": (name, fh, "application/pdf")},
+                                 files={slot.get("file_param") or "file": (path.name, fh, kind)},
                                  headers={"User-Agent": USER_AGENT}, allow_redirects=False, timeout=TIMEOUT)
         if resp.status_code >= 400:
-            raise SubmitError(f"no pude subir el PDF ({resp.status_code}).")
+            raise SubmitError(f"no pude subir «{path.name}» ({resp.status_code}).")
         uploaded = resp.json() if 200 <= resp.status_code < 300 and resp.content else {}
         if 300 <= resp.status_code < 400 or "id" not in uploaded:
             location = resp.headers.get("Location") or uploaded.get("location")
             if not location:
                 raise SubmitError("el aula no confirmó el archivo subido.")
             uploaded = call("GET", urljoin(upload_url, location))
+        return str(uploaded["id"])
+
+    try:
+        ids = [upload(path) for path in files]
         return call("POST", base, data=[("submission[submission_type]", "online_upload"),
-                                         ("submission[file_ids][]", str(uploaded["id"]))])
+                                         *(("submission[file_ids][]", i) for i in ids)])
     except (ValueError, KeyError):
         raise SubmitError("el aula respondió algo que no entiendo.") from None
     finally:

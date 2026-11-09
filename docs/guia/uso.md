@@ -100,6 +100,8 @@ pero nunca pulsarlo.
 
 ## Entregar una actividad hecha a mano
 
+(Y cualquier archivo: mira [Entregar tus archivos](#entregar-tus-archivos), más abajo.)
+
 1. Tómale una foto a cada hoja, con la cámara de Telegram o del celular. No hace falta escanear.
 2. Mándale las fotos al bot de la materia, de una vez, en un álbum. Si quieres, agrega qué tarea es («deber 3»).
 3. El bot busca la tarea entre tus pendientes que reciben archivos. Si hay dos o más posibles, te pregunta cuál.
@@ -117,6 +119,14 @@ endereza las fotos: sale lo que mandaste, así que tómalas con buena luz.
 Antes de subir, Vinci revisa en el aula que la tarea reciba PDF, que siga abierta y que te queden intentos. Si ya
 tenías una entrega, la tarjeta te avisa que esta sería un nuevo intento. Si algo falla en el camino (la red, el
 token), el botón sigue ahí para volver a intentarlo, y un doble toque no entrega dos veces.
+
+### Entregar tus archivos
+
+¿Hiciste el informe en Word o el proyecto en un ZIP? Mándale el archivo a Vinci por WhatsApp (o varios, hasta 10) y
+dile en qué tarea va: «entrégalo en el informe del sprint». Los archivos van tal cual, con el nombre que les pusiste.
+Antes de mostrártelos, Vinci revisa que la tarea reciba archivos de ese tipo (si solo acepta PDF, no te ofrece
+entregar un Word). Te llegan con la encuesta «📤 Entregar / Cancelar» y se suben al aula solo con tu voto, con los
+mismos cuidados que las fotos: la tarea abierta, tus intentos y un voto que no entrega dos veces.
 
 ## El dashboard de entregas
 

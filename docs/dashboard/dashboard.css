@@ -1,12 +1,9 @@
 /* Only what «Tu semana» adds to ../vinci/vinci.css. */
 button { font: inherit; color: inherit; }
-.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 main { gap: 20px; padding-top: 16px; }
 
-/* Each row takes its subject's two tones; your own to-dos are grey. */
-.k0 { --k: var(--k0); --c: var(--c0); } .k1 { --k: var(--k1); --c: var(--c1); } .k2 { --k: var(--k2); --c: var(--c2); }
-.k3 { --k: var(--k3); --c: var(--c3); } .k4 { --k: var(--k4); --c: var(--c4); }
+/* Your own to-dos (no subject) are grey. */
 .mine { --k: var(--ink-4); --c: var(--line-soft); }
 
 /* The summary sheet. */

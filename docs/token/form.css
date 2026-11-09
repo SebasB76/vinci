@@ -1,5 +1,49 @@
-/* Only what the token page adds to ../vinci/vinci.css. */
-#form { display: grid; gap: 12px; }
+/* Only what the token page adds to ../vinci/vinci.css. The block up to #form is the same in ../academico/portal.css. */
+main { gap: 20px; padding-top: 16px; }
+.blk { display: grid; grid-template-columns: minmax(0, 1fr); }
+
+/* The summary sheet: where the page sends you, its name, one line of context. */
+.sheet .ttl { margin: 6px 0 0; font: 500 21px/1.2 var(--display); letter-spacing: -0.015em; }
+.sheet .lede { margin-top: 6px; font-size: 15px; line-height: 1.4; color: var(--ink-2); text-wrap: pretty; }
+
+.steps { padding: 2px 16px; }
+.steps li { color: var(--ink); font-size: 15px; line-height: 1.3; }
+.num { background: var(--strip); font: 500 12px var(--mono); }
+
+.prompt { box-shadow: var(--shadow); }
+.prompt:focus-within { box-shadow: var(--shadow), inset 0 0 0 1.5px rgb(19 112 79 / .5), 0 0 0 4px rgb(122 243 194 / .28); }
+.lbl { font: 400 11.5px var(--mono); letter-spacing: .03em; }
+.strip .btn { flex: none; }
+.strip .hint { flex: 1; min-width: 0; }
+
+/* The status line: plain while it guides, a soft tinted card once it reports an error or a success. */
+.status { margin: 10px 0 0; padding: 0 6px; line-height: 1.4; overflow-wrap: anywhere; }
+.status[data-kind="error"], .status[data-kind="ok"] { padding: 11px 14px; border-radius: 16px; }
+.status[data-kind="error"] { background: var(--late-bg); }
+.status[data-kind="ok"] { background: var(--done-bg); color: var(--deep); }
+
+/* The privacy rows: quiet cards with the icon in a soft circle. */
+.trust { margin: 0; }
+.trust li { align-items: center; gap: 12px; padding: 12px 14px; background: rgb(255 255 255 / .6); box-shadow: none;
+            font-size: 14px; color: var(--ink-2); }
+.trust .ic { width: 32px; height: 32px; border-radius: 50%; flex: none; display: grid; place-items: center;
+             background: var(--strip); color: var(--ink-2); }
+.trust .ic svg.i { margin: 0; }
+
+/* Only the first load lifts the blocks in, one after another, under 200 ms in all. */
+.lift { animation: lift 280ms var(--ease-out) both; }
+.lift:nth-child(2) { animation-delay: 50ms; } .lift:nth-child(3) { animation-delay: 100ms; }
+.lift:nth-child(n + 4) { animation-delay: 150ms; }
+@keyframes lift { from { opacity: 0; transform: translateY(8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lift { animation-name: fade; }
+  @keyframes fade { from { opacity: 0; } }
+}
+
+#form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+/* The form's two blocks follow the sheet. */
+#form > .lift:nth-child(1) { animation-delay: 50ms; } #form > .lift:nth-child(2) { animation-delay: 100ms; }
 
 #sealed {
   display: block;
@@ -16,4 +60,4 @@
 }
 
 #copy-why:empty { display: none; }
-#copy-why { color: var(--ink-2); }
+#copy-why { font: 400 14px/1.4 var(--sans); letter-spacing: 0; color: var(--ink-2); }

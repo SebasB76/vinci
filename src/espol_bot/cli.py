@@ -201,7 +201,7 @@ def _friend_outcome(cfg, args):
     from espol_bot.whatsapp import normalize_number as whatsapp_number
     now = now_utc()
     if args.cmd == "whatsapp-comando":
-        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca", "cambio") else ""
+        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca", "cambio", "ranking") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
     if args.cmd == "whatsapp-grupo" and args.accion == "voto":
         return amigos.group_vote(cfg, args.grupo, sys.stdin.read(), now)
@@ -490,10 +490,10 @@ def main(argv: list[str] | None = None) -> int:
                         "un quiz de ese grupo, leído por stdin; cierre: los resultados de sus quiz que ya vencieron")
     p.add_argument("grupo", help="el ID del grupo (…@g.us)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
-    p = sub.add_parser("whatsapp-comando", help="/start, /estado, /token y /cambio por WhatsApp, del capitán o de un amigo "
+    p = sub.add_parser("whatsapp-comando", help="/start, /estado, /token, /cambio y /ranking por WhatsApp, del capitán o de un amigo "
                                                 "(lo usa el plugin vinci-whatsapp)")
     p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado", "voto", "marca", "entregas",
-                                      "cambio"])
+                                      "cambio", "ranking"])
     p.add_argument("numero", help="quién lo escribió (593…)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-rele", help="lo que el formulario del token y el dashboard mandaron por el relé de "
@@ -501,6 +501,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("portal-worker", help="un ingreso al Académico desde su página (lo inicia whatsapp-rele)")
     p.add_argument("mailbox")
+    p = sub.add_parser("calendario-espol", help="el calendario oficial de ESPOL: lo lee de la web y muestra lo próximo")
+    p.add_argument("--dias", type=int, default=60, help="cuántos días hacia adelante mostrar (60)")
     p = sub.add_parser("academico", help="qué guarda la copia del Académico; con --conectar, entra desde la terminal")
     p.add_argument("--conectar", action="store_true", help="entrar al Académico y guardar una copia nueva")
     p.add_argument("--html", default=None, metavar="CARPETA",
@@ -560,6 +562,21 @@ def main(argv: list[str] | None = None) -> int:
             return portal_login.run_worker(cfg, args.mailbox, now_utc())
         if args.cmd == "academico":
             return _portal(cfg, args)
+        if args.cmd == "calendario-espol":
+            from datetime import timedelta
+
+            from espol_bot import espol_calendar
+            now = now_utc()
+            saved = espol_calendar.refresh(cfg, now, force=True)
+            copy = espol_calendar.load(cfg)
+            if not saved:
+                print(f"⚠️ No pude leer {espol_calendar.URL}: {(copy or {}).get('error')}. Sigo con la copia anterior.")
+            today = now.astimezone(cfg.core.tz).date()
+            upcoming = espol_calendar.between(copy, today, today + timedelta(days=args.dias))
+            print(f"{len((copy or {}).get('entries') or [])} fechas guardadas; las de los próximos {args.dias} días:")
+            for entry in upcoming:
+                print(f"  {espol_calendar.when(entry)} — {entry['what']}")
+            return 0 if saved else 1
         if args.cmd in ("amigo", "whatsapp-grupo", "whatsapp-comando"):
             _logging(cfg)
             return _friends(cfg, args)

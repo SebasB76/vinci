@@ -277,7 +277,8 @@ def grades(conn: sqlite3.Connection, ids: list[int] | None = None) -> list[dict]
             "calificacion_actual": c["current_grade"],
             "tareas": [{"id": a["id"], "tarea": a["name"], "nota": a["score"], "calificacion": a["grade"],
                         "puntos": a["points_possible"], "calificada": a["graded_at"], "url": a["html_url"],
-                        **({"late_penalty": a["points_deducted"]} if a["points_deducted"] else {}), **_feedback(a)}
+                        **({"late_penalty": a["points_deducted"]} if a["points_deducted"] else {}),
+                        **({"curso": json.loads(a["stats"])} if a["stats"] else {}), **_feedback(a)}
                        for a in graded],
         })
     return result

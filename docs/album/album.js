@@ -4,6 +4,7 @@
 // stored encrypted (scripts/album_card.py); the fragment's `k` opens it, so it never shows without Vinci's link.
 // The album is one list of every card by number, filtered by rarity or a search; a missing card is a silhouette in
 // its rarity's frame. «Cambios» lists the cards others have repeated (`trade`) and opens WhatsApp with the «/cambio …».
+// «Ranking» lists who has the most cards among those who joined it (`rank`, espol_bot/ranking.py).
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
 const TAG = { com: "COMUN", rare: "RARA", epic: "EPICA", leg: "★ LEGENDARIA ★" };
@@ -199,7 +200,7 @@ function openPack(data, cards) {
   });
 }
 
-const TRADES = "cambios";
+const TRADES = "cambios", RANKING = "ranking";
 const RANK = ["com", "rare", "epic", "leg"];
 const byRarity = (dir) => (a, b) => dir * (RANK.indexOf(a.rarity) - RANK.indexOf(b.rarity)) || a.n - b.n;
 
@@ -306,6 +307,24 @@ function showTrades(data, cards, fresh, mine) {
   offer.addEventListener("click", (e) => { if (e.target === offer) offer.classList.remove("on"); });
 }
 
+// Who has the most cards, among those who wrote «/ranking entrar»; joining opens WhatsApp with it typed.
+function showRanking(data, cards, fresh) {
+  document.body.classList.remove("opening");
+  const { people = [], wa } = data.rank, total = cards.size;
+  const medal = ["🥇", "🥈", "🥉"];
+  const rows = people.map((p, i) => `<li class="${p.me ? "me" : ""}"><span class="pos">${medal[i] || i + 1}</span>
+      <span class="who">${esc(p.name)}${p.me ? " <b>(tú)</b>" : ""}</span>
+      <span class="sc">${p.n}<small>/${total}</small>${p.leg ? ` <span class="pill">${p.leg} ★</span>` : ""}</span></li>`).join("");
+  const join = (word) => wa
+    ? `<a class="btn ${word === "entrar" ? "btn-accent" : "btn-quiet"} block" href="https://wa.me/${esc(wa)}?text=${encodeURIComponent(`/ranking ${word}`)}">${word === "entrar" ? "Entrar al ranking" : "Salir del ranking"}</a>`
+    : `<p class="hint c">Escríbele a Vinci: <b>/ranking ${word}</b></p>`;
+  app.innerHTML = head("Ranking", people.length === 1 ? "1 persona" : `${people.length} personas`) + `
+    <button class="btn btn-quiet block" type="button" data-back>← Volver a tu álbum</button>
+    ${rows ? `<ol class="board">${rows}</ol>` : '<p class="empty-state">Todavía nadie entró al ranking.</p>'}
+    ${data.rank.in ? join("salir") : `<p class="hint c">No sales en el ranking: entra solo quien quiere.</p>${join("entrar")}`}`;
+  app.querySelector("[data-back]").addEventListener("click", () => showAlbum(data, cards, fresh));
+}
+
 // Every card in one list, by number: what you have with its art, what you lack as a silhouette in its rarity's frame.
 function showAlbum(data, cards, fresh, tab) {
   document.body.classList.remove("opening");
@@ -313,6 +332,7 @@ function showAlbum(data, cards, fresh, tab) {
   const have = data.have || {};
   const mine = all.filter((c) => (have[c.id] || 0) > 1).sort(byRarity(1));
   if (tab === TRADES && data.trade) return showTrades(data, cards, fresh, mine);
+  if (tab === RANKING && data.rank) return showRanking(data, cards, fresh);
   const owned = all.filter((c) => have[c.id]).length;
   const repeats = all.reduce((sum, c) => sum + Math.max(0, (have[c.id] || 0) - 1), 0);
   const newIds = new Set(fresh && data.pack ? data.pack.cards.filter((e) => e.new).map((e) => e.id) : []);
@@ -325,7 +345,7 @@ function showAlbum(data, cards, fresh, tab) {
   }).join("");
   app.innerHTML = head("Tu álbum", `${owned} de ${all.length} cartas`) + `
     <div class="progress"><i></i></div>
-    ${data.trade ? `<button class="btn btn-quiet block" type="button" data-trades>🔁 Cambios${market.length ? ` · ${market.length} ${market.length === 1 ? "que te falta" : "que te faltan"}` : ""}</button>` : ""}
+    ${data.trade || data.rank ? `<div class="pair">${data.trade ? `<button class="btn btn-quiet" type="button" data-trades>🔁 Cambios${market.length ? ` · ${market.length}` : ""}</button>` : ""}${data.rank ? '<button class="btn btn-quiet" type="button" data-ranking>🏆 Ranking</button>' : ""}</div>` : ""}
     <div class="rars">${rings}</div>
     <input class="search" type="search" placeholder="Busca una carta tuya" enterkeyhint="search" autocomplete="off" aria-label="Busca una carta tuya">
     <div class="tools"><div class="seg" role="group" aria-label="Orden">${[["n", "Número"], ["r", "Rareza"], ["rep", `Repetidas ${repeats}`]].map(([k, label]) =>
@@ -368,6 +388,7 @@ function showAlbum(data, cards, fresh, tab) {
   dens.addEventListener("click", () => { view.cols = view.cols === 3 ? 4 : 3; keep(view); draw(); });
   app.querySelector(".search").addEventListener("input", (e) => { view.q = e.target.value; draw(); });
   app.querySelector("[data-trades]")?.addEventListener("click", () => showTrades(data, cards, fresh, mine));
+  app.querySelector("[data-ranking]")?.addEventListener("click", () => showRanking(data, cards, fresh));
   const offer = app.querySelector(".offer"), zoom = app.querySelector(".zoom");
   offer.addEventListener("click", (e) => { if (e.target === offer) offer.classList.remove("on"); });
   grid.addEventListener("click", (e) => {

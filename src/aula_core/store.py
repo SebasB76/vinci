@@ -314,7 +314,7 @@ ADDED_COLUMNS = {
     "courses": ["term_start TEXT", "term_end TEXT"],
     "assignments": ["allowed_extensions TEXT", "asks_scan INTEGER NOT NULL DEFAULT 0", "description TEXT", "material TEXT",
                     "rubric TEXT", "group_id INTEGER", "feedback TEXT", "points_deducted REAL",
-                    "peer_reviews INTEGER NOT NULL DEFAULT 0"],
+                    "peer_reviews INTEGER NOT NULL DEFAULT 0", "stats TEXT"],
     "announcements": ["material TEXT"],
     "links": ["checked_at TEXT", "problem TEXT"],
     "files": ["folder TEXT", "section TEXT", "source TEXT", "created_at TEXT", "language TEXT",

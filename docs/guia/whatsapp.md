@@ -200,6 +200,7 @@ y Vinci los contesta sin gastar tokens:
 | `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). También llega al final del resumen de las 7:00 y cuando preguntas «¿qué tengo pendiente?». Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
 | `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo, y los resultados de todos llegan cuando todos responden o a los 15 minutos |
 | `/cambio` | Tus cartas repetidas del álbum, y quién tiene repetidas las que te faltan. `/cambio Angel Bosque protector por Lago ESPOL` le ofrece a Angel tu repetida por la suya: le llega una encuesta y, si acepta, Vinci cambia las dos cartas. El botón «🔁 Ver los cambios» abre «Cambios» en el álbum, donde eliges el cambio con un toque. [Más sobre los cambios](uso.md#cambiar-cartas) |
+| `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
 En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas de tus tarjetas

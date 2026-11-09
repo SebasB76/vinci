@@ -465,6 +465,15 @@ def set_manual_grade(conn: sqlite3.Connection, subject: str, period: str, compon
 # A press whose process died mid-upload leaves its proposal «submitting»; after this long it may be pressed again.
 STUCK_SUBMISSION_MINUTES = 10
 
+# A hand-in's lifecycle: the only moves set_submission_state makes. pending: its card waits for a vote; submitting: a
+# press claimed it and is uploading; it goes back to pending on an error worth retrying, or to replaced when a newer
+# PDF came meanwhile. The other four are final.
+SUBMISSION_MOVES = {
+    "pending": {"submitting", "cancelled", "replaced"},
+    "submitting": {"pending", "submitted", "failed", "replaced"},
+    "submitted": set(), "failed": set(), "cancelled": set(), "replaced": set(),
+}
+
 
 def new_submission_proposal(conn: sqlite3.Connection, subject: str, course_id: int, assignment_id: int,
                             assignment_name: str, pdf: str, pages: int, now: datetime,
@@ -496,14 +505,18 @@ def claim_submission(conn: sqlite3.Connection, proposal_id: int, now: datetime) 
     return cur.rowcount == 1
 
 
-def set_submission_state(conn: sqlite3.Connection, proposal_id: int, state: str, now: datetime,
-                         only_from: str | None = None) -> bool:
-    sql = "UPDATE submission_proposals SET state = ?, updated_at = ? WHERE id = ?"
-    params = [state, timefmt.iso(now), proposal_id]
-    if only_from:
-        sql += " AND state = ?"
-        params.append(only_from)
-    cur = conn.execute(sql, params)
+def set_submission_state(conn: sqlite3.Connection, proposal_id: int, state: str, now: datetime) -> bool:
+    """Move a proposal to `state` only from a state SUBMISSION_MOVES allows; False when it was elsewhere. Back to
+    pending is refused once a newer PDF for the same assignment exists: two live cards could hand it in twice."""
+    sources = [s for s, moves in SUBMISSION_MOVES.items() if state in moves]
+    if not sources:
+        raise ValueError(f"unknown submission state: {state}")
+    sql = (f"UPDATE submission_proposals SET state = ?, updated_at = ? WHERE id = ? "
+           f"AND state IN ({', '.join('?' * len(sources))})")
+    if state == "pending":
+        sql += (" AND NOT EXISTS (SELECT 1 FROM submission_proposals AS newer WHERE newer.assignment_id = "
+                "submission_proposals.assignment_id AND newer.id > submission_proposals.id)")
+    cur = conn.execute(sql, [state, timefmt.iso(now), proposal_id, *sources])
     conn.commit()
     return cur.rowcount == 1
 

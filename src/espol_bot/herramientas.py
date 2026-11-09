@@ -1246,7 +1246,7 @@ def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
         raise ToolError(str(exc)) from None
     files = submission.files_of(dest)
     proposal_id = store.new_submission_proposal(ctx.conn, code, row["course_id"], assignment_id, name,
-                                                str(dest), pages, now)
+                                                str(dest), pages, now, group_chat=_group_chat(ctx))
     card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
                                     has_submission=bool(row["done"]), from_photos=bool(photos),
                                     files=[f.name for f in files])
@@ -1998,10 +1998,11 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         except TelegramError as exc:
             store.set_submission_state(ctx.conn, proposal_id, "cancelled", ctx.now())
             raise ToolError(f"No pude mandarle la entrega por WhatsApp: {exc}") from None
+        where = ("Dile en una línea, en el grupo, que se lo mandaste por privado para que lo revise y vote, y que "
+                 "aviso aquí cuando quede entregado." if _group_chat(ctx) else "Dile en una línea que lo revise y vote.")
         return {"proposal": proposal_id, "assignment": name, "files": [f.name for f in files], "pages": pages,
                 "message": "Le mandé a su chat privado de WhatsApp lo que se va a entregar, con una encuesta «Entregar "
-                           "/ Cancelar». Se entrega solo cuando vote Entregar; tú no puedes entregarlo. Dile en una "
-                           "línea que lo revise y vote (si estás en un grupo, que se lo mandaste por privado)."}
+                           f"/ Cancelar». Se entrega solo cuando vote Entregar; tú no puedes entregarlo. {where}"}
 
     def study_activity(args):
         session = _channel(ctx).get("sesion", "")

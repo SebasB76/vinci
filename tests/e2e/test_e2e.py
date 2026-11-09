@@ -351,7 +351,7 @@ GPA_ASK = "cuánto me sube el promedio si saco 9 en Sistemas Distribuidos"  # ho
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
 DOCUMENT_RE = re.compile(r"\[The user sent a (?:text )?document: '[^']*'\. (?:It|The file) is (?:also )?saved at: (\S+?)(?:\.\s|\])")
 # «entrégalo en …» → the assignment the scripted model hands a file in to
-HAND_IN = {"entrégalo en el informe de laboratorio": 3002}
+HAND_IN = {"entrégalo en el informe de laboratorio": 3002, "sube esto al informe de laboratorio": 3002}
 REPLY_RE = re.compile(r'\[Replying to[^:]*: "(.+?)"\]', re.S)
 QUIZ_SKILL = 'invoked the "quiz" skill'
 QUIZ_TOPIC = re.compile(r"instruction alongside the skill invocation: (.+)$", re.M)
@@ -657,7 +657,7 @@ class Script:
         if documents and hand_in and not called:
             return _call("mcp__vinci__prepare_submission", assignment_id=hand_in, files=documents)
         if "mcp__vinci__prepare_submission" in called and results:
-            return {"content": "Te lo mandé: revísalo y vota «Entregar»." if '"proposal"' in results[-1]
+            return {"content": "Te lo mandé: revísalo y vota «Entregar»." if "proposal" in results[-1]
                     else f"No lo preparé: {results[-1].split('</untrusted_tool_result>')[0][-300:]}"}
         flow = (self.plan(text, called, results) or self.portal(text, called, results)
                 or self.exams("vinci", text, called, results)
@@ -1349,9 +1349,10 @@ def ready_gateway(w, *, voice: bool = False) -> None:
     md = w.md
 
     def say(chat: str, sender: str, text: str, name: str, *, group: bool = False, expect: int = 1,
-            timeout: float = 120, mentions: list[str] | None = None, quote: str | None = None) -> list[dict]:
+            timeout: float = 120, mentions: list[str] | None = None, quote: str | None = None,
+            quote_file: tuple[str, str, Path] | None = None) -> list[dict]:
         mark = len(w.wa.sent)
-        w.wa.say(chat, sender, text, name=name, group=group, mentions=mentions, quote=quote)
+        w.wa.say(chat, sender, text, name=name, group=group, mentions=mentions, quote=quote, quote_file=quote_file)
         shown = ("[el texto cifrado que dio la página]" if text.startswith("v1.")
                  else text.replace(ANGEL_TOKEN, "<el token de Angel>"))
         md.append(f"**{name}** ({'grupo' if group else 'privado'}): {shown}\n")
@@ -2600,6 +2601,39 @@ def test_whatsapp_friend(tmp_path):
         report.append("Un grupo apagado no recibe nada; con «@vinci activa este grupo» el capitán lo enciende, y a "
                       "quien no tiene su Vinci le contesta Vinci como invitado: el modelo sabe que es un invitado y el "
                       "gancho pre_tool_call le niega los datos del capitán")
+
+        # 10b'. Group work: a teammate's file, sent with no mention, reaches no Vinci; the captain's reply to it hands
+        # it in to his assignment, on his vote in private, and the group hears it went up
+        shared = home / ".hermes" / "cache" / "documents" / f"doc_{uuid.uuid4().hex[:12]}_informe-grupal.docx"
+        shared.parent.mkdir(parents=True, exist_ok=True)
+        shared.write_bytes(b"PK\x03\x04 informe del grupo")
+        mark = len(wa.sent)
+        file_id = wa.document(GROUP_WA, stranger_jid, shared, "ahí está el informe", name="Alguien", group=True)
+        md.append("**Alguien** (grupo): [archivo informe-grupal.docx] ahí está el informe\n")
+        time.sleep(4)
+        assert not wa.messages_to(GROUP_WA, mark), "un archivo sin mención no le llega a Vinci"
+        asked = say(GROUP_WA, captain_jid, "@vinci sube esto al informe de laboratorio", "Capitán", group=True,
+                    quote_file=(file_id, stranger_jid, shared))
+        assert "vota «Entregar»" in text_of(asked), text_of(asked)
+        private = wa.sent[mark:]
+        assert [m.get("fileName") for m in private if m["path"] == "send-media" and m["chatId"] == captain_jid] == \
+            ["informe-grupal.docx"], private
+        poll = next(m for m in private if m["path"] == "send-poll")
+        assert poll["chatId"] == captain_jid and not wa.polls_to(GROUP_WA, mark), "solo él vota, por privado"
+        assert not canvas.submissions, "nada se sube antes del voto"
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, poll["messageId"], next(o for o in poll["options"] if "Entregar" in o))
+        told = wa.wait_for(lambda b: [m for m in b.messages_to(GROUP_WA, mark) if "Quedó entregado" in m.get("message", "")],
+                           60)
+        assert told and "informe-grupal.docx" in text_of(told), fail(f"el grupo no supo de la entrega: {wa.sent[mark:]}")
+        assert [m for m in wa.messages_to(captain_jid, mark) if "Entregué" in m.get("message", "")], wa.sent[mark:]
+        assert [s["assignment"] for s in canvas.submissions] == [3002], canvas.submissions
+        md.append(f"→ [informe-grupal.docx y la encuesta, al privado del capitán] → vota «Entregar» → grupo: "
+                  f"{normalize(text_of(told))}\n")
+        report.append("Trabajo en grupo: el archivo que un compañero manda sin mencionar a Vinci no le llega; el "
+                      "capitán le responde «@vinci sube esto al informe de laboratorio», Hermes trae el archivo citado, "
+                      "la encuesta va a su privado, y al votar «Entregar» se sube a su aula y el grupo lee que quedó "
+                      "entregado")
 
         # 10b''. What holds in one chat stays there: the group asks to be spoken to in plural (chat_note). Every turn
         # ends with the clock and that chat's notes; the captain's private chat gets the clock, not the group's note.

@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS album_cards (
 ADDED_COLUMNS = {
     "class_notes": ["checked_digest TEXT"],
     "group_reminders": ["claimed_at TEXT", "snoozed_from INTEGER"],
+    "submission_proposals": ["group_chat TEXT"],
 }
 # Tables whose key gained a column: made again from scratch, since what they hold matters only for a few hours.
 REKEYED = {"shown_pages": "session"}
@@ -466,13 +467,16 @@ STUCK_SUBMISSION_MINUTES = 10
 
 
 def new_submission_proposal(conn: sqlite3.Connection, subject: str, course_id: int, assignment_id: int,
-                            assignment_name: str, pdf: str, pages: int, now: datetime) -> int:
-    """A newer PDF for the same assignment replaces the pending one: its card stops working."""
+                            assignment_name: str, pdf: str, pages: int, now: datetime,
+                            group_chat: str | None = None) -> int:
+    """A newer PDF for the same assignment replaces the pending one: its card stops working. `group_chat`: the
+    WhatsApp group it was asked from, told once it is handed in."""
     conn.execute("UPDATE submission_proposals SET state = 'replaced', updated_at = ? "
                  "WHERE assignment_id = ? AND state = 'pending'", (timefmt.iso(now), assignment_id))
     cur = conn.execute(
-        "INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)", (subject, course_id, assignment_id, assignment_name, pdf, pages, timefmt.iso(now)))
+        "INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, created_at, "
+        "group_chat) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (subject, course_id, assignment_id, assignment_name, pdf, pages, timefmt.iso(now), group_chat))
     conn.commit()
     return int(cur.lastrowid)
 

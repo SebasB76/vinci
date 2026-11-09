@@ -90,7 +90,8 @@ solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para
 - **Entregar una tarea.** Mándale las fotos de tu deber hecho a mano, o tus archivos (PDF, Word, Excel, ZIP,
   código), y dile de qué tarea es («entrégalo en el deber 3»). Con fotos arma un PDF; los archivos van tal cual. Te
   llega lo que va a entregar con la encuesta «📤 Entregar / Cancelar», y se sube al aula solo con tu voto. Si la
-  tarea no acepta ese tipo de archivo, te lo dice antes.
+  tarea no acepta ese tipo de archivo, te lo dice antes. En un grupo, responde al archivo de un compañero con
+  «@vinci sube esto al deber 3»: la encuesta te llega por privado y, al entregar, Vinci avisa en el grupo.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
   te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
   contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al

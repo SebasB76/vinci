@@ -252,12 +252,18 @@ class FakeWhatsApp(_Server):
         return hashlib.sha256(self.script.read_bytes()).hexdigest()[:16]
 
     def say(self, chat: str, sender: str, text: str, *, name: str = "", group: bool = False,
-            mentions: list[str] | None = None, quote: str | None = None) -> str:
+            mentions: list[str] | None = None, quote: str | None = None,
+            quote_file: tuple[str, str, Path] | None = None) -> str:
         """A message someone writes: in a private chat (`chat` is the sender's JID) or a group (…@g.us); with
-        `quote`, a reply to that text of a message Vinci's account sent."""
+        `quote`, a reply to that text of a message Vinci's account sent; with `quote_file` (its id, its author, its
+        cached path), a reply to someone's file, which bridge.js resolves from its download cache."""
         message_id = f"E2E{next(self._ids):06d}"
         quoted = ({"hasQuotedMessage": True, "quotedMessageId": f"BOT{next(self._ids):06d}", "quotedText": quote,
                    "quotedParticipant": self.BOT, "quotedRemoteJid": chat} if quote else {})
+        if quote_file:
+            quoted = {"hasQuotedMessage": True, "quotedMessageId": quote_file[0], "quotedText": "",
+                      "quotedParticipant": quote_file[1], "quotedRemoteJid": chat,
+                      "quotedMediaUrls": [str(quote_file[2])], "quotedMediaType": "document"}
         with self.lock:
             if group:
                 self.members.setdefault(chat, set()).add(sender)
@@ -298,13 +304,16 @@ class FakeWhatsApp(_Server):
                                "timestamp": int(time.time()), "fromMe": False})
         return message_id
 
-    def document(self, chat: str, sender: str, path: Path, caption: str, *, name: str = "") -> str:
-        """A file sent in a private chat as bridge.js reports it: already in Hermes' document cache, named
+    def document(self, chat: str, sender: str, path: Path, caption: str, *, name: str = "", group: bool = False) -> str:
+        """A file sent in a private chat or a group as bridge.js reports it: already in Hermes' document cache, named
         doc_<hex>_<its name>, with what the student wrote as its caption."""
         message_id = f"E2E{next(self._ids):06d}"
         with self.lock:
+            if group:
+                self.members.setdefault(chat, set()).add(sender)
             self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
-                               "senderName": name or sender.split("@")[0], "chatName": name, "isGroup": False,
+                               "senderName": name or sender.split("@")[0],
+                               "chatName": "Grupo" if group else name, "isGroup": group,
                                "body": caption, "hasMedia": True, "mediaType": "document",
                                "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
                                "nativeType": "documentMessage", "mediaUrls": [str(path)], "mentionedIds": [],

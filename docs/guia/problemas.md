@@ -2,6 +2,9 @@
 
 ## Límites conocidos
 
+- **Entregar desde un grupo:** Vinci toma el archivo al que respondes solo si llegó al grupo después del último
+  reinicio de Vinci (el puente de WhatsApp los guarda en memoria). Si es más viejo, pide que lo reenvíen y responde
+  a ese.
 - **Repasos interactivos:** el repaso va dentro del enlace, así que trae de 2 a 12 bloques, y Vinci acorta lo que no
   cabe. Lo que respondes no se guarda: si recargas la página, el quiz empieza de cero.
 - **La vigilancia:** Vinci te avisa por WhatsApp cuando el Vinci de alguien falla, revisando cada 10 minutos. Si el

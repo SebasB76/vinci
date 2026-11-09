@@ -35,6 +35,10 @@ from aula_core.canvas import CanvasError
 from aula_core.config import ConfigError
 
 
+class UsageError(Exception):
+    pass
+
+
 def _common() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="salida JSON (para agentes)")
@@ -382,19 +386,22 @@ def run(args, aula: Aula) -> int:
             _out(queries.files(conn, ids, args.nombre), as_json, lambda r: render_files(r, aula.cfg.max_file_mb))
         elif args.accion == "leer":
             if len(args.ids) != 1:
-                raise SystemExit("Uso: aula archivos leer <id> [--paginas 3-5]")
+                raise UsageError("Uso: aula archivos leer <id> [--paginas 3-5]")
             first, last = _parse_range(args.paginas)
             _out(queries.read_pages(conn, args.ids[0], first, last), as_json, render_read)
         else:
-            targets = [queries.file_by_id(conn, i) for i in args.ids] if args.ids else (
+            targets = [{"id": i} for i in args.ids] if args.ids else (
                 queries.files(conn, ids, args.nombre) if (args.curso or args.nombre) else [])
             if not targets:
-                raise SystemExit("Uso: aula archivos bajar <id>...  o  aula archivos bajar --curso X --nombre Y")
+                raise UsageError("Uso: aula archivos bajar <id>...  o  aula archivos bajar --curso X --nombre Y")
             results = []
             for f in targets:
                 try:
+                    f = queries.file_by_id(conn, f["id"])
                     path = aula.download(f["id"])
                     results.append({**queries.file_by_id(conn, f["id"]), "ruta_local": str(path)})
+                except queries.NotFound as exc:  # an unknown id does not stop the others
+                    results.append({"id": f["id"], "archivo": str(f["id"]), "ruta_local": None, "error": str(exc)})
                 except CanvasError as exc:
                     results.append({**f, "ruta_local": None, "error": str(exc)})
             _out(results, as_json, render_downloads)
@@ -408,8 +415,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         aula = Aula(explicit=True)
         return run(args, aula)
-    except (ConfigError, CanvasError, queries.NotFound) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+    except (ConfigError, CanvasError, queries.NotFound, UsageError) as exc:
+        if getattr(args, "json", False):  # an agent parses stdout: the error comes as JSON too
+            _out({"error": str(exc)}, True, None)
+        else:
+            print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
         if aula is not None:

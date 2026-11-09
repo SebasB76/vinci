@@ -1282,7 +1282,8 @@ class _PortalHandler(_Quiet):
 class FakePages(_Server):
     """docs/ as GitHub Pages serves it, to a real browser; `relay` joins each page's connect-src."""
 
-    TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
+    TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png",
+             ".woff2": "font/woff2"}
 
     def __init__(self, root: Path, relay: str):
         super().__init__(_PagesHandler)

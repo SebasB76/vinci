@@ -195,26 +195,49 @@ function prose(text, cls = "prose") {
 
 // -- the page's running score: every quiz question, case to classify and list to order counts once -------------
 
-const score = { right: 0, done: 0, total: 0, card: null };
-function counts(n) { score.total += n; }
-function answered(right) {
+let score, watcher;
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function counts(c, n) {
+  score.total += n;
+  score.parts.push({ card: c, total: n, done: 0, missed: 0 });
+}
+function goTo(target) {
+  target.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+  if (!reduceMotion()) target.animate([{ boxShadow: "0 0 0 3px #7AF3C2" }, { boxShadow: "0 0 0 3px rgb(122 243 194 / 0)" }],
+                                      { duration: 900, delay: 350, easing: "ease-out" });
+}
+function nextOpen() {
+  return score.parts.find((p) => p.done < p.total)?.card || score.card;
+}
+function answered(c, right) {
+  const part = score.parts.find((p) => p.card === c);
+  part.done += 1;
+  if (!right) part.missed += 1;
   score.done += 1;
   if (right) score.right += 1;
-  if (!score.card) return;
-  score.card.hidden = false;
-  score.card.querySelector(".big").textContent = `${score.right} de ${score.total}`;
-  score.card.querySelector(".meter i").style.width = `${(score.done / score.total) * 100}%`;
+  try { navigator.vibrate?.(right ? 10 : [18, 50, 18]); } catch { /* no vibration here */ }
   const all = score.done === score.total, share = score.right / score.total;
-  score.card.querySelector(".say-end").textContent = !all ? `Te faltan ${score.total - score.done} por responder.`
+  score.bar.querySelector(".pill").textContent = all ? `${score.right} de ${score.total} bien` : `${score.done} de ${score.total}`;
+  score.bar.querySelector(".pill").className = all && share === 1 ? "pill ok" : "pill";
+  score.bar.querySelector(".go").textContent = all ? "Resultado" : "Siguiente";
+  score.bar.querySelector(".meter i").style.width = `${(score.done / score.total) * 100}%`;
+  const s = score.card;
+  s.hidden = false;
+  s.querySelector(".big").textContent = `${score.right} de ${score.total}`;
+  s.querySelector(".meter i").style.width = `${(score.right / score.total) * 100}%`;
+  s.querySelector(".say-end").textContent = !all ? `Te faltan ${score.total - score.done} por responder.`
     : share === 1 ? "Todo bien. Ya lo dominas." : share >= 0.6 ? "Bien. Vuelve a mirar las que fallaste."
-    : "Repasa la explicación de arriba y vuelve a intentarlo: recarga la página.";
+    : "Vuelve a leer la explicación y hazlo otra vez.";
+  s.classList.toggle("all", all && share === 1);
+  s.querySelector(".acts").hidden = !all;
+  s.querySelector(".missed").hidden = share === 1;
 }
 
 function card(title, kind, extra) {
   const c = el("section", "card");
   c.dataset.block = kind;
-  const head = el("div", "lab");
-  head.append(el("span", null, title || ""));
+  const head = el("div", "lab hd");
+  head.append(el("h2", null, title || ""));
   if (extra) head.append(extra);
   if (title || extra) c.append(head);
   return c;
@@ -351,7 +374,7 @@ const BLOCKS = {
       li.append(el("span", "num", last ? "✓" : String(shown + 1)), inline(last ? b.answer : b.steps[shown], el("div")));
       ol.append(li);
       shown += 1;
-      next.disabled = shown >= total;
+      next.hidden = shown >= total;
       next.textContent = shown >= total ? "Listo" : shown === b.steps.length ? "Ver la respuesta" : `Siguiente paso (${shown + 1} de ${b.steps.length})`;
     });
     c.append(next);
@@ -386,7 +409,7 @@ const BLOCKS = {
     const tally = el("span", "pill", `0 de ${b.questions.length}`);
     const c = card(b.title || "Ponte a prueba", "quiz", tally);
     let right = 0, done = 0;
-    counts(b.questions.length);
+    counts(c, b.questions.length);
     b.questions.forEach((q, qi) => {
       c.append(inline(`${qi + 1}. ${q.question}`, el("p", "qq")));
       const opts = el("div", "opts");
@@ -394,8 +417,8 @@ const BLOCKS = {
       for (const oi of shuffled(q.options, false)) {
         const opt = button("opt", null, () => {
           const ok = oi === q.answer;
-          buttons.forEach(([o, k]) => { o.disabled = true; if (k === q.answer) o.classList.add("ok"); });
-          if (!ok) opt.classList.add("bad");
+          buttons.forEach(([o, k]) => { o.disabled = true; o.classList.add(k === q.answer ? "ok" : "off"); });
+          if (!ok) opt.classList.replace("off", "bad");
           right += ok ? 1 : 0;
           done += 1;
           const why = el("p", "why appear");
@@ -403,7 +426,7 @@ const BLOCKS = {
           opts.after(why);
           tally.textContent = `${right} de ${b.questions.length}`;
           if (done === b.questions.length && right === done) tally.className = "pill ok";
-          answered(ok);
+          answered(c, ok);
         });
         opt.append(inline(q.options[oi]));
         buttons.push([opt, oi]);
@@ -440,21 +463,19 @@ const BLOCKS = {
   classify(b) {
     const tally = el("span", "pill", `0 de ${b.cases.length}`);
     const c = card(b.title || "Clasifica", "classify", tally);
-    counts(b.cases.length);
-    const stage = el("div", "card-inner");
-    stage.style.display = "grid";
-    stage.style.gap = "10px";
+    counts(c, b.cases.length);
+    const stage = el("div", "stage");
     c.append(stage);
     let i = 0, right = 0;
     function show() {
       const cs = b.cases[i];
-      const chips = el("div", "chips");
+      const chips = el("div", "chips fill");
       const all = [];
       b.options.forEach((o, oi) => {
         const chip = button("chip", null, () => {
           const ok = oi === cs.answer;
-          all.forEach(([ch, k]) => { ch.disabled = true; if (k === cs.answer) ch.classList.add("ok"); });
-          if (!ok) chip.classList.add("bad");
+          all.forEach(([ch, k]) => { ch.disabled = true; ch.classList.add(k === cs.answer ? "ok" : "off"); });
+          if (!ok) chip.classList.replace("off", "bad");
           right += ok ? 1 : 0;
           tally.textContent = `${right} de ${b.cases.length}`;
           const why = el("p", "why appear");
@@ -462,7 +483,7 @@ const BLOCKS = {
           stage.append(why);
           if (i < b.cases.length - 1) stage.append(button("btn btn-quiet sm", "Siguiente caso", () => { i += 1; show(); }));
           else if (right === b.cases.length) tally.className = "pill ok";
-          answered(ok);
+          answered(c, ok);
         });
         chip.append(inline(o));
         all.push([chip, oi]);
@@ -476,10 +497,8 @@ const BLOCKS = {
 
   order(b) {
     const c = card(b.title || "Ordena", "order", el("span", "pill", "toca en orden"));
-    counts(1);
-    const slots = el("ol", "slots"), chips = el("div", "chips"), after = el("div");
-    after.style.display = "grid";
-    after.style.gap = "10px";
+    counts(c, 1);
+    const slots = el("ol", "slots"), chips = el("div", "chips"), after = el("div", "stage");
     c.append(slots, chips, after);
     let picked = [], pool = [];
     function build() {
@@ -493,12 +512,14 @@ const BLOCKS = {
       slots.replaceChildren(...b.items.map((_, k) => {
         const v = picked[k];
         const li = el("li");
-        const slot = button(`slot${v != null ? " f" : ""}${full ? (v === k ? " ok" : " bad") : ""}`, null, () => {
+        const state = v != null ? " f" : k === picked.length ? " next" : "";
+        const slot = button(`slot${state}${full ? (v === k ? " ok" : " bad") : ""}`, null, () => {
           pool.push(...picked.splice(k));
           draw();
         });
         slot.disabled = v == null || full;
-        slot.append(el("span", "num", String(k + 1)), v != null ? inline(b.items[v], el("span")) : el("span", null, "…"));
+        slot.append(el("span", "num", String(k + 1)), v != null ? inline(b.items[v], el("span"))
+          : el("span", null, k === picked.length ? "Toca el que va aquí" : "…"));
         li.append(slot);
         return li;
       }));
@@ -512,7 +533,7 @@ const BLOCKS = {
         const why = el("p", "why appear");
         why.append(el("b", null, ok ? "Exacto. " : "No del todo. "), inline(b.explanation));
         after.append(why);
-        if (!c.dataset.scored) { c.dataset.scored = "1"; answered(ok); }
+        if (!c.dataset.scored) { c.dataset.scored = "1"; answered(c, ok); }
         if (!ok) after.append(button("btn btn-quiet sm", "Intentar de nuevo", build));
       }
     }
@@ -547,12 +568,15 @@ const BLOCKS = {
 };
 
 function slider(label, min, max, step, value, onInput) {
-  const row = el("label", "sl");
+  const row = el("label", "sl"), top = el("span", "sl-top");
   const input = el("input");
   Object.assign(input, { type: "range", min, max, step, value });
   const out = el("output", null, fmt(value));
-  input.addEventListener("input", () => { out.textContent = fmt(Number(input.value)); onInput(Number(input.value)); });
-  row.append(inline(label, el("span")), input, out);
+  const fill = () => input.style.setProperty("--p", String((Number(input.value) - min) / (max - min || 1)));
+  input.addEventListener("input", () => { out.textContent = fmt(Number(input.value)); fill(); onInput(Number(input.value)); });
+  fill();
+  top.append(inline(label, el("span")), out);
+  row.append(top, input);
   return row;
 }
 
@@ -683,7 +707,7 @@ function sequence(b) {
   b.actors.forEach((a) => actors.append(el("span", null, a)));
   const box = el("div"), say = el("p", "say");
   const prev = button("btn btn-quiet", "Atrás", () => { i -= 1; draw(); });
-  const next = button("btn btn-accent", "Empezar", () => { i += 1; draw(); });
+  const next = button("btn btn-accent", "Empezar", () => { i = i === b.scenarios[sc].messages.length ? 0 : i + 1; draw(); });
   const nav = el("div", "row2");
   nav.append(prev, next);
   if (b.scenarios.length > 1) c.append(seg);
@@ -695,7 +719,7 @@ function sequence(b) {
     xs.forEach((x) => svg.append(svgEl("line", { x1: x, x2: x, y1: 0, y2: H, stroke: LINE, "stroke-dasharray": "3 4" })));
     msgs.forEach((m, k) => {
       const y = TOP + k * ROW + 22, color = m.fail ? LATE : INK, on = k < i, current = k === i - 1;
-      const g = svgEl("g", { opacity: on ? (current ? 1 : 0.38) : 0.08 });
+      const g = svgEl("g", { opacity: on ? (current ? 1 : 0.45) : i ? 0.14 : 0.3 });
       if (m.from === m.to) {
         const x = xs[m.from], right = m.from < n - 1 || n === 1;
         g.append(svgEl("circle", { cx: x, cy: y - 4, r: current ? 5 : 4, fill: color }));
@@ -710,9 +734,9 @@ function sequence(b) {
     });
     box.replaceChildren(svg);
     say.replaceChildren(i ? inline(msgs[i - 1].note) : inline("Toca **Empezar** y avanza mensaje por mensaje."));
-    prev.disabled = i === 0;
-    next.disabled = i === msgs.length;
-    next.textContent = i === 0 ? "Empezar" : i === msgs.length ? "Fin" : `Paso ${i + 1} de ${msgs.length}`;
+    prev.hidden = i === 0;
+    next.className = i === msgs.length ? "btn btn-quiet" : "btn btn-accent";
+    next.textContent = i === 0 ? "Empezar" : i === msgs.length ? "Ver de nuevo" : `Paso ${i + 1} de ${msgs.length}`;
     seg.replaceChildren(...b.scenarios.map((s, k) => {
       const tab = button("", s.name || `Escenario ${k + 1}`, () => { sc = k; i = 0; draw(); });
       tab.setAttribute("role", "tab");
@@ -784,6 +808,7 @@ function diagram(b) {
     defs.append(m);
   }
   svg.append(defs);
+  const labels = svgEl("g", { class: "el" });
   const edgeGs = b.edges.map((e) => {
     const g = svgEl("g", { class: "el" });
     const s = pos[e.from], t = pos[e.to];
@@ -804,14 +829,18 @@ function diagram(b) {
     }
     const path = svgEl("path", { d, fill: "none", stroke: INK3, "stroke-width": 1.4, "marker-end": `url(#a${id})` });
     g.append(path);
+    let tag = null;
     if (e.label) {
-      const w = e.label.length * 5.6 + 8;
-      g.append(svgEl("rect", { x: mx - w / 2, y: my - 8, width: w, height: 14, rx: 7, fill: "#FFFFFF" }));
-      g.append(svgEl("text", { x: mx, y: my + 2.5, "text-anchor": "middle" }, e.label));
+      const w = e.label.length * 5.6 + 10;
+      tag = svgEl("g");
+      tag.append(svgEl("rect", { x: mx - w / 2, y: my - 8, width: w, height: 15, rx: 7.5, fill: "#FFFFFF" }));
+      tag.append(svgEl("text", { x: mx, y: my + 3, "text-anchor": "middle" }, e.label));
+      labels.append(tag);
     }
     svg.append(g);
-    return { g, path, e };
+    return { g, path, e, tag };
   });
+  svg.append(labels);
   const nodeGs = b.nodes.map((node, v) => {
     const p = pos[v], g = svgEl("g");
     const rect = svgEl("rect", { class: "box", x: p.x - p.w / 2, y: p.y, width: p.w, height: p.h, rx: 12, fill: "#F1EDE7", stroke: LINE });
@@ -825,7 +854,7 @@ function diagram(b) {
   const say = el("p", "say"), nav = el("div", "row2");
   let i = 0;
   const prev = button("btn btn-quiet", "Atrás", () => { i -= 1; draw(); });
-  const next = button("btn btn-accent", "Recorrerlo", () => { i += 1; draw(); });
+  const next = button("btn btn-accent", "Recorrerlo", () => { i = i === b.tour.length ? 0 : i + 1; draw(); });
   nav.append(prev, next);
   c.append(say, nav);
   function draw() {
@@ -835,17 +864,18 @@ function diagram(b) {
       rect.setAttribute("fill", on?.has(v) ? ACCENT : "#F1EDE7");
       rect.setAttribute("stroke", on?.has(v) ? INK : LINE);
     });
-    edgeGs.forEach(({ g, path, e }) => {
+    edgeGs.forEach(({ g, path, e, tag }) => {
       const lit = on && on.has(e.from) && on.has(e.to);
       g.setAttribute("opacity", !on || lit ? 1 : 0.25);
+      tag?.setAttribute("opacity", !on || lit ? 1 : 0.25);
       path.setAttribute("stroke", lit ? INK : INK3);
       path.setAttribute("stroke-width", lit ? 2.2 : 1.4);
       path.setAttribute("marker-end", `url(#${lit ? "h" : "a"}${id})`);
     });
     say.replaceChildren(i ? inline(b.tour[i - 1].note) : inline("Toca **Recorrerlo** para seguir el camino paso a paso."));
-    prev.disabled = i === 0;
-    next.disabled = i === b.tour.length;
-    next.textContent = i === 0 ? "Recorrerlo" : i === b.tour.length ? "Fin" : `Paso ${i + 1} de ${b.tour.length}`;
+    prev.hidden = i === 0;
+    next.className = i === b.tour.length ? "btn btn-quiet" : "btn btn-accent";
+    next.textContent = i === 0 ? "Recorrerlo" : i === b.tour.length ? "Ver de nuevo" : `Paso ${i + 1} de ${b.tour.length}`;
   }
   draw();
   return c;
@@ -870,23 +900,59 @@ function empty(app, title, line) {
   app.replaceChildren(box);
 }
 
+function progressBar(data) {
+  const bar = el("div", "bar");
+  bar.setAttribute("aria-hidden", "true");
+  const inner = el("button", "bar-in");
+  inner.type = "button";
+  inner.tabIndex = -1;
+  const row = el("span", "bar-row"), meter = el("span", "meter");
+  meter.append(el("i"));
+  row.append(el("span", "bar-t", data.title || "Repaso"), el("span", "go", "Siguiente"), el("span", "pill", `0 de ${score.total}`));
+  inner.append(row, meter);
+  inner.addEventListener("click", () => goTo(nextOpen()));
+  bar.append(inner);
+  return bar;
+}
+
+function resultCard(app, data) {
+  const s = card("Tu resultado", "score");
+  s.classList.add("score");
+  s.hidden = true;
+  const meter = el("div", "meter"), acts = el("div", "acts");
+  meter.append(el("i"));
+  const missed = button("btn btn-accent missed", "Repasar lo que fallé", () => {
+    const first = score.parts.find((p) => p.missed);
+    if (first) goTo(first.card);
+  });
+  const again = button("btn btn-quiet", "Hacerlo otra vez", () => {
+    render(app, data);
+    scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
+  });
+  acts.append(missed, again);
+  acts.hidden = true;
+  s.append(el("div", "big", ""), meter, el("p", "say-end prose"), acts);
+  return s;
+}
+
 export function render(app, data) {
   document.title = data.title || "Repaso";
-  const parts = [header(data)];
+  score = { right: 0, done: 0, total: 0, card: null, bar: null, parts: [] };
+  watcher?.disconnect();
+  const head = header(data);
+  const parts = [head];
   for (const block of data.blocks || []) {
     const make = BLOCKS[block.type];
     if (!make) continue;
     try { parts.push(make(block)); } catch (err) { console.error("block", block.type, err); }
   }
   if (score.total) {
-    const s = card("Tu resultado", "score");
-    s.classList.add("score");
-    s.hidden = true;
-    const meter = el("div", "meter");
-    meter.append(el("i"));
-    s.append(el("div", "big", ""), meter, el("p", "say-end prose"));
-    score.card = s;
-    parts.push(s);
+    score.card = resultCard(app, data);
+    score.bar = progressBar(data);
+    parts.push(score.card, score.bar);
+    const bar = score.bar;
+    watcher = new IntersectionObserver(([entry]) => bar.classList.toggle("on", !entry.isIntersecting && entry.boundingClientRect.top < 0));
+    watcher.observe(head);
   }
   if (data.sources?.length) {
     const s = card("De dónde sale", "sources");

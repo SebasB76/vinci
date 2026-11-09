@@ -288,8 +288,9 @@ sirve para ese tema:
 - **Conceptos y procesos** (Ingeniería de Software, Dirección de Proyectos): código explicado línea por línea, una
   tabla que compara, casos para clasificar, pasos para ordenar y tarjetas para memorizar.
 
-Al final hay un quiz con tu resultado y las fuentes del material. Lo que respondes se queda en la página: Vinci no
-lo ve. Una pregunta corta la contesta en el chat, y si quieres algo para imprimir, pídele un resumen en PDF. En un
+Al final hay un quiz con tu resultado y las fuentes del material. Cuando bajas, una barra arriba cuenta cuántas
+preguntas respondiste; tócala para saltar a la siguiente. Al terminar, **Repasar lo que fallé** te lleva a la primera
+que fallaste y **Hacerlo otra vez** reinicia la página. Lo que respondes se queda en la página: Vinci no lo ve. Una pregunta corta la contesta en el chat, y si quieres algo para imprimir, pídele un resumen en PDF. En un
 grupo el botón llega al grupo, y el repaso sale solo del material del curso.
 
 ## Exámenes anteriores (DSpace)

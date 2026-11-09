@@ -3,6 +3,9 @@ Hermes profile, and the health of every Vinci on the install (watch.py). The pag
 it listens on 127.0.0.1 and Tailscale Funnel publishes it; in the container an s6 service (deploy/s6/vinci-panel)
 listens on 0.0.0.0 behind Coolify's proxy (docs/guia/panel.md).
 
+With Google sign-in on (`--google`), the domain shows a «Entrar con Google» page: only the captain's Google account
+gets in, as the owner, and the PANEL_KEY link stops opening it.
+
 Two viewers. The captain, on his tailnet (Tailscale's identity headers) or on the machine itself, sees everything.
 Anyone else gets a 404 unless they bring PANEL_KEY from secrets.env (the link `--nueva-clave` prints); with it they
 see the same panel without any chat text. Through Coolify everyone, the captain too, is this second viewer. Friends' chats and WhatsApp groups
@@ -11,6 +14,7 @@ has a key of its own (agent_api.py)."""
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -23,12 +27,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import requests
+
 from aula_core import timefmt
 from aula_core.config import ConfigError, load_secret_values, update_secret_values
 from espol_bot import watch
 from espol_bot.config import BotConfig, hermes_root
 
 PAGE = Path(__file__).with_name("panel.html")
+LOGIN_PAGE = Path(__file__).with_name("panel-login.html")
+GOOGLE_CLIENT = "PANEL_GOOGLE_CLIENT_ID"  # the OAuth web client of the captain's Google Cloud project
+GOOGLE_EMAIL = "PANEL_GOOGLE_EMAIL"       # the one Google account that may open the panel
+SESSION_SECRET = "PANEL_SESSION_SECRET"   # signs the session cookie after a Google sign-in
+SESSION_COOKIE = "vinci_sesion"
+TOKENINFO = "https://oauth2.googleapis.com/tokeninfo"
+GOOGLE_ISSUERS = ("accounts.google.com", "https://accounts.google.com")
 STUCK = timedelta(minutes=5)       # a turn still holding its lease after this is reported as stuck
 DAYS = 14
 ERROR_WINDOW = timedelta(hours=24)
@@ -359,13 +372,60 @@ def public_url() -> str | None:
 
 
 def _current_key() -> str:
+    return _secret(KEY_SECRET)
+
+
+def _secret(name: str) -> str:
     try:
-        return load_secret_values().get(KEY_SECRET, "")
+        return load_secret_values().get(name, "")
     except ConfigError:
         return ""
 
 
-def viewer(headers, cookies: dict[str, str], query_key: str | None, client: str = "127.0.0.1") -> str | None:
+def google() -> tuple[str, str] | None:
+    """(client id, email) when Google sign-in guards the panel."""
+    client, email = _secret(GOOGLE_CLIENT).strip(), _secret(GOOGLE_EMAIL).strip().lower()
+    return (client, email) if client and email else None
+
+
+def set_google(email: str, client: str) -> None:
+    """Turns Google sign-in on; a fresh session secret logs out every browser that was in."""
+    update_secret_values({GOOGLE_EMAIL: email.strip().lower(), GOOGLE_CLIENT: client.strip(),
+                          SESSION_SECRET: secrets.token_urlsafe(32)})
+
+
+def _signature(email: str, expires: int) -> str:
+    return hmac.new(_secret(SESSION_SECRET).encode(), f"{email}|{expires}".encode(), hashlib.sha256).hexdigest()
+
+
+def session_cookie(email: str, now: datetime) -> str:
+    expires = int(now.timestamp()) + COOKIE_DAYS * 86400
+    return f"{expires}.{_signature(email, expires)}"
+
+
+def _session_ok(value: str | None, email: str, now: datetime) -> bool:
+    expires, _, signature = (value or "").partition(".")
+    if not expires.isdigit() or int(expires) < now.timestamp() or not _secret(SESSION_SECRET):
+        return False
+    return hmac.compare_digest(signature, _signature(email, int(expires)))
+
+
+def google_login(credential: str, client: str, email: str) -> bool:
+    """Google's tokeninfo checks the ID token's signature and expiry; here, that it is for this panel and this
+    person."""
+    if credential.count(".") != 2:
+        return False
+    try:
+        response = requests.get(TOKENINFO, params={"id_token": credential}, timeout=10)
+        claims = response.json() if response.status_code == 200 else {}
+    except (requests.RequestException, ValueError):
+        return False
+    return (claims.get("aud") == client and claims.get("iss") in GOOGLE_ISSUERS
+            and str(claims.get("email_verified")).lower() == "true" and (claims.get("email") or "").lower() == email)
+
+
+def viewer(headers, cookies: dict[str, str], query_key: str | None, client: str = "127.0.0.1",
+           now: datetime | None = None) -> str | None:
     """"owner", "guest" or None (not allowed). Tailscale Serve sets the identity headers on tailnet requests and drops
     any a Funnel client sends; a request with no proxy headers at all came from this machine (or an SSH tunnel).
     Only a loopback client can be the owner: in a container, other services on the network reach the port directly,
@@ -373,6 +433,10 @@ def viewer(headers, cookies: dict[str, str], query_key: str | None, client: str 
     if client in LOOPBACK and headers.get("Tailscale-Funnel-Request") is None:
         if headers.get("Tailscale-User-Login") or headers.get("X-Forwarded-For") is None:
             return "owner"
+    signed_in = google()
+    if signed_in:  # the key link no longer opens the panel: only the captain's Google account
+        return "owner" if _session_ok(cookies.get(SESSION_COOKIE), signed_in[1], now or datetime.now(timezone.utc)) \
+            else None
     key = _current_key()
     if not key:
         return None
@@ -408,7 +472,10 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
             cookies = dict(part.strip().split("=", 1) for part in (self.headers.get("Cookie") or "").split(";")
                            if "=" in part)
             who = viewer(self.headers, cookies, (query.get("k") or [None])[0], self.client_address[0])
-            if who is None:  # the same answer as a missing page: nothing says a panel lives here
+            if who is None and url.path == "/" and google():
+                page = LOGIN_PAGE.read_text().replace("{{CLIENT_ID}}", google()[0])
+                self._send(200, page.encode(), "text/html; charset=utf-8")
+            elif who is None:  # the same answer as a missing page: nothing says a panel lives here
                 self._json({"error": "no existe"}, 404)
             elif "k" in query:  # keep the key out of the address bar and the history
                 self.send_response(303)
@@ -430,8 +497,27 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
                 self._json({"error": "no existe"}, 404)
 
         def do_POST(self) -> None:  # noqa: N802
-            if urlparse(self.path).path.startswith("/agente/"):
+            path = urlparse(self.path).path
+            if path.startswith("/agente/"):
                 agent_api.handle(self, cfg)
+            elif path == "/entrar" and google():
+                client, email = google()
+                try:
+                    body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 8192)))
+                except ValueError:
+                    body = {}
+                if not google_login(str(body.get("credential") or ""), client, email):
+                    self._json({"error": "esa cuenta no puede entrar"}, 403)
+                    return
+                payload = b'{"ok": true}'
+                self.send_response(200)
+                self.send_header("Set-Cookie", f"{SESSION_COOKIE}={session_cookie(email, datetime.now(timezone.utc))}; "
+                                               f"Max-Age={COOKIE_DAYS * 86400}; Path=/; HttpOnly; Secure; SameSite=Lax")
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
             else:
                 self._json({"error": "no existe"}, 404)
 

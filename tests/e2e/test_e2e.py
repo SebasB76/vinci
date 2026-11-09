@@ -2603,6 +2603,20 @@ def test_whatsapp_captain(tmp_path):
             run([bot, "panel", "--quitar-agente"], T_VINCI)
             assert run([vc, "remote", "status"], T_VINCI, check=False, **remote_env).returncode == 1, \
                 "sin AGENT_KEY no hay puerta"
+
+            # Google sign-in: the domain shows «Entrar con Google», a bad ID token gets nowhere, the key link stops
+            client_id = "1234-abc.apps.googleusercontent.com"
+            run([bot, "panel", "--google", "Capitan@Example.com", client_id], T_VINCI)
+            assert parse_env_file(secrets)["PANEL_GOOGLE_EMAIL"] == "capitan@example.com"
+            door = requests.get(base, headers=funnel, timeout=10)
+            assert door.status_code == 200 and client_id in door.text and "accounts.google.com/gsi" in door.text
+            panel_key = parse_env_file(secrets)["PANEL_KEY"]
+            assert requests.get(f"{base}/api/estado", headers=funnel, cookies={"vinci_panel": panel_key},
+                                timeout=10).status_code == 404, "con Google, el enlace con la clave ya no abre"
+            assert requests.post(f"{base}/entrar", json={"credential": "no.es.un-token"}, headers=funnel,
+                                 timeout=20).status_code == 403
+            assert requests.get(f"{base}/api/estado", headers=funnel, cookies={"vinci_sesion": "9999999999.falsa"},
+                                timeout=10).status_code == 404, "una cookie de sesión inventada no entra"
         finally:
             panel.terminate()
             panel.wait(10)

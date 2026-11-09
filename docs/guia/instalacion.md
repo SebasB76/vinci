@@ -88,7 +88,9 @@ WHATSAPP_CAPTAIN=…        # tu número de WhatsApp (con telegram = false; ver 
 enlace al [panel](panel.md), la crea `espol-bot panel --nueva-clave`. `ALBUM_ART_KEY`, la clave que abre el arte
 cifrado del álbum (las cartas con caras de personas reales), la crea `uv run scripts/album_card.py key`.
 `AGENT_KEY`, la clave con la que un agente en tu PC entra al contenedor ([«El agente desde tu PC»](panel.md#el-agente-desde-tu-pc)),
-la crea `espol-bot panel --clave-agente`.
+la crea `espol-bot panel --clave-agente`. `PANEL_GOOGLE_EMAIL`, `PANEL_GOOGLE_CLIENT_ID` y `PANEL_SESSION_SECRET`, para
+entrar al panel con tu cuenta de Google ([«Entrar con Google»](panel.md#entrar-con-google)), los pone
+`espol-bot panel --google`.
 
 ### 5. Corre el setup
 

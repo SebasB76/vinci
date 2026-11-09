@@ -50,6 +50,21 @@ El contenedor ya trae el panel encendido en el puerto 8787. Para verlo:
 Sin la clave, el dominio responde «no existe». Con la clave ves todo el panel menos el texto de los chats, también los
 tuyos. Para cortar el acceso, corre otra vez `espol-bot panel --nueva-clave`.
 
+## Entrar con Google
+
+Con esto, solo tu cuenta de Google abre el panel, y el enlace con la clave deja de servir:
+
+1. En [Google Cloud](https://console.cloud.google.com), crea un proyecto. En **Google Auth Platform**, configura la
+   pantalla de consentimiento como «Usuarios externos» y agrega tu cuenta en **Público → Usuarios de prueba**.
+2. En **Clientes**, crea un ID de cliente de tipo «Aplicación web». En «Orígenes autorizados de JavaScript», pon el
+   dominio del panel.
+3. En la **Terminal** del contenedor, corre `espol-bot panel --google tu@gmail.com <ID de cliente>`.
+
+Desde ese momento, el dominio muestra «Entrar con Google». Al entrar con esa cuenta ves todo el panel, también el
+texto de tus chats privados, y el navegador te recuerda 30 días. Con otra cuenta, el panel responde «esa cuenta no
+puede entrar». Correr el comando otra vez cierra la sesión en todos los navegadores. `vinci-check remote` no cambia:
+usa su propia clave.
+
 ## El agente desde tu PC
 
 Un agente de código en tu PC (Claude Code, Codex) puede revisar y arreglar el Vinci del servidor sin que copies nada

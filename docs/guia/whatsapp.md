@@ -191,6 +191,8 @@ Vinci los programa: el Vinci de un amigo no puede escribir en el grupo por su cu
 
 Desde ahí, «@vinci qué tengo esta semana» le contesta a Angel con lo suyo y a ti con lo tuyo, en el mismo grupo o
 por privado. Su Vinci le avisa de sus tareas nuevas por su chat de WhatsApp y renueva su token como el tuyo.
+Si su token se corta, su Vinci le pide reconectar su aula con el botón del formulario, una vez al día y solo
+entre las 8:00 y las 21:00. El panel lo muestra en «Personas».
 `/amigos` te muestra la lista y `/amigo quitar Angel` borra su Vinci, sus datos y los tokens que creó su cadena.
 
 **Inscripción abierta.** Con `inscripcion_abierta = true` en `[channels]` de `config.toml` (así viene), no hace falta

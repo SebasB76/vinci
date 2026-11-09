@@ -31,8 +31,6 @@ friend's and in the default one; it acts only on WhatsApp.
   forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
   Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
   says «Vinci» or answers one of its messages goes on; anyone else's is not even heard.
-- Vinci answers a voice note with a voice note too, then the text (voice.auto_tts, set up by hermes_setup). Hermes
-  would also speak the answer to a typed message under that setting: _speak_only_to_voice stops it.
 - Anyone else, in private: with [channels] inscripcion_abierta, the link for their token, as «/amigo agregar»
   sends (`espol-bot amigo inscribir`), and the captain hears of it; otherwise nothing.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
@@ -143,32 +141,12 @@ LIVE_ROUTE = "vinci-whatsapp-en-vivo-"
 
 
 def register(ctx):
-    _speak_only_to_voice()
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
     ctx.register_platform_handler("whatsapp", _wire)
     if RELAY:
         threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
     elif PROFILE:
         threading.Thread(target=_turns_loop, args=(ctx,), name=f"vinci-turnos-{PROFILE}", daemon=True).start()
-
-
-def _speak_only_to_voice():
-    """With voice.auto_tts the gateway runner speaks every answer, and the adapter speaks the one to a voice note:
-    keep only the adapter's. Each profile's copy of this plugin runs this, so it wraps once."""
-    try:
-        from gateway.run_voice import GatewayVoiceMixin
-    except ImportError:
-        return
-    original = GatewayVoiceMixin._should_send_voice_reply
-    if getattr(original, "vinci_voice_only", False):
-        return
-
-    def should_send_voice_reply(self, event, *args, **kwargs):
-        heard = getattr(getattr(event, "message_type", None), "value", None) == "voice"
-        return heard and original(self, event, *args, **kwargs)
-
-    should_send_voice_reply.vinci_voice_only = True
-    GatewayVoiceMixin._should_send_voice_reply = should_send_voice_reply
 
 
 async def _dispatch(event=None, gateway=None, session_store=None, **_):

@@ -105,8 +105,8 @@ vienen por Telegram; y, cuando un bot usa el modelo, tu mensaje, lo que le manda
 leyeron para responderte (tareas, notas, anuncios, partes del material, entradas del cuaderno) van al proveedor
 del modelo a través de Hermes. Vinci también puede buscar en la web con el buscador de tu Hermes, un bot abre un
 enlace del aula (sin tu cuenta) cuando le hace falta, y busca y baja exámenes de DSpace cuando se los pides. En un servidor, tus notas de voz van a Groq o a OpenAI para
-transcribirse. Cuando Vinci te contesta una nota de voz con su voz, el texto de esa respuesta va a Microsoft (Edge
-TTS) para convertirse en audio. Los datos guardados se quedan en tu PC.
+transcribirse. Cuando le pides una respuesta en audio, el texto de esa respuesta va a Microsoft (Edge TTS) para
+convertirse en audio. Los datos guardados se quedan en tu PC.
 
 Si encuentras un problema de seguridad, no lo publiques en un issue con detalles: avísale primero al dueño del
 repositorio en privado. Y nunca pegues tokens ni datos personales en un issue.
@@ -135,7 +135,7 @@ ESTG1034 = ["web"]               # un solo bot de materia (se suma a `materias`)
 | `delegation` | Lanzar sub-agentes con las mismas herramientas | Multiplica el gasto de tokens y el alcance de las demás herramientas |
 | `cronjob` | Crear y cambiar tareas programadas | Pueden correr sin ti, gastar tokens y escribirte por Telegram |
 | `kanban` | Tablero de tareas para agentes | Encola trabajo para agentes de Hermes que corre sin que estés en el chat |
-| `vision`, `video`, `image_gen`, `video_gen`, `tts` | Analizar y generar imágenes, video y voz | Mandan contenido a proveedores externos y cobran aparte |
+| `vision`, `video`, `image_gen`, `video_gen`, `tts` | Analizar y generar imágenes, video y voz (Vinci ya trae `tts` para mandar un audio cuando se lo pides) | Mandan contenido a proveedores externos y cobran aparte |
 | `todo` | Lista de pasos de una tarea | Ninguno relevante |
 | `connections` | Conectores a cuentas y servicios remotos | Puede autorizar y usar cuentas externas |
 | `homeassistant`, `spotify` | Casa inteligente y Spotify | Actúan sobre esas cuentas o dispositivos |

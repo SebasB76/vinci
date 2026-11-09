@@ -89,7 +89,9 @@ SKILLS_CATEGORY = "vinci"
 TEMPLATES = REPO_ROOT / "hermes"
 
 # `skills` is what makes skills.auto_load pin each bot's own skill (see the docstring).
-VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-vinci", "vinci-paginas"]
+# tts: Vinci answers with a voice note when the student asks for one (text_to_speech).
+VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-vinci", "vinci-paginas", "tts"]
+VINCI_BLOCKED = [t for t in BLOCKED_TOOLSETS if t not in VINCI_TOOLSETS]
 SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "skills", "mcp-materia", "vinci-paginas"]
 APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
 # Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
@@ -101,8 +103,8 @@ COMPRESSION_THRESHOLD_TOKENS = 80_000
 GUEST_HERMES_TOOLS = ["web_search", "web_extract", "skills_list", "skill_view", "clarify"]
 WHATSAPP_ROUTE_PREFIX = "vinci-whatsapp-"
 WHATSAPP_PLUGIN = "vinci-whatsapp"
-# A voice note gets the answer as a voice note too, then as text: Edge TTS (free) with an Ecuadorian voice.
-VOICE_REPLY = {"tts": {"provider": "edge", "edge": {"voice": "es-EC-LuisNeural"}}, "voice": {"auto_tts": True}}
+# The voice of a spoken answer: Edge TTS (free) with an Ecuadorian voice.
+VOICE = {"tts": {"provider": "edge", "edge": {"voice": "es-EC-LuisNeural"}}}
 GROUP_IDLE_SECONDS = 4 * 3600  # a group's conversation starts over after this long without a message
 TELEGRAM_ENV = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_HOME_CHANNEL")
 # Set in the Docker image: every profile's tools come from the one `espol-bot mcp-http` (mcp_shared.py), not a stdio
@@ -304,11 +306,11 @@ class Setup:
         extra = self.cfg.extra_toolsets(None)
         if not extra:
             soul = ("No tienes terminal ni acceso a archivos del computador, y no los necesitas: tus herramientas son\n"
-                    "  las de Vinci (`mcp__vinci__*`), la búsqueda web y tu memoria.")
+                    "  las de Vinci (`mcp__vinci__*`), la búsqueda web, tu memoria y la voz.")
         else:
             lacking = self._closed(None, "acceso a archivos del computador")
             soul = ((f"No tienes {_join_ni(lacking)}. " if lacking else "")
-                    + "Tus herramientas son las de Vinci (`mcp__vinci__*`), la búsqueda web, tu memoria y las que el "
+                    + "Tus herramientas son las de Vinci (`mcp__vinci__*`), la búsqueda web, tu memoria, la voz y las que el "
                     f"estudiante activó en config.toml ({', '.join(extra)}).")
         skill = f"- Sin {denied}; no leas" if closed else "- No leas"
         return {"SIN_HERRAMIENTAS": soul, "LIMITE_HERRAMIENTAS": skill}
@@ -319,7 +321,7 @@ class Setup:
             "model": {"provider": self.cfg.hermes_provider, "default": self.cfg.hermes_model},
             "timezone": str(self.cfg.core.tz),
             "platform_toolsets": {"telegram": toolsets, "whatsapp": toolsets, "cli": toolsets,
-                                  "cron": [t for t in toolsets if t not in ("clarify", "session_search")]},
+                                  "cron": [t for t in toolsets if t not in ("clarify", "session_search", "tts")]},
             "agent": {"disabled_toolsets": blocked},
             "tools": {"tool_search": {"enabled": "off"}},
             "skills": {"auto_load": [skill], "project_discovery": False},
@@ -343,7 +345,7 @@ class Setup:
                         "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
-            **copy.deepcopy(VOICE_REPLY),
+            **copy.deepcopy(VOICE),
             # No generic «shall I build a profile of you?» in a bot's first reply: each bot knows its job.
             "onboarding": {"profile_build": "off"},
             # By default the gateway drops what a bot got while it was not serving it: whatever the captain sent
@@ -490,7 +492,7 @@ class Setup:
         self.migrate_legacy()
         profile = self.ensure_profile(name, "Vinci: tu bot principal de ESPOL (avisos del aula, consultas generales, "
                                             "reparte cosas a los bots de cada materia).", alias=True)
-        toolsets, blocked = self.toolset_switches(None, VINCI_TOOLSETS, BLOCKED_TOOLSETS, "Vinci")
+        toolsets, blocked = self.toolset_switches(None, VINCI_TOOLSETS, VINCI_BLOCKED, "Vinci")
         managed = self.base_config(toolsets, blocked, "vinci", ["vinci", "--hermes-home", str(profile)], "vinci")
         changed = self.managed_config(profile, managed, plugins=[PLUGIN])
         self.configured.append((name, "vinci"))
@@ -625,11 +627,11 @@ class Setup:
             else:
                 section.pop("bridge_script", None)
         # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
-        # busy_ack_enabled is read once per gateway, from this root config. The adapter takes its voice-reply default
-        # from here too.
+        # busy_ack_enabled is read once per gateway, from this root config. The voice too, in case the gateway reads it
+        # here: without it Hermes speaks with an English one.
         _deep_merge(merged, {"display": {"suppress_warning_notifications": True, "busy_ack_enabled": False,
                                          "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
-                             "stt": {"language": "es"}, **copy.deepcopy(VOICE_REPLY)})
+                             "stt": {"language": "es"}, **copy.deepcopy(VOICE)})
         plugins = _section(merged, "plugins")
         enabled = plugins.get("enabled") if isinstance(plugins.get("enabled"), list) else []
         plugins["enabled"] = enabled + [p for p in [WHATSAPP_PLUGIN] if p not in enabled]
@@ -711,7 +713,7 @@ class Setup:
         name = amigos.profile_name(friend)
         profile = self.ensure_profile(name, f"El Vinci de {friend.nombre}: su aula de ESPOL por WhatsApp.", alias=False)
         env = amigos.env(self.cfg, friend)
-        toolsets, blocked = VINCI_TOOLSETS, BLOCKED_TOOLSETS
+        toolsets, blocked = VINCI_TOOLSETS, VINCI_BLOCKED
         managed = self.base_config(toolsets, blocked, "vinci", ["amigo", "--hermes-home", str(profile)], "amigo")
         managed["mcp_servers"]["vinci"]["env"].update(env)
         if os.environ.get("AULA_NOW"):  # the E2E's clock: Hermes serves a friend's new Vinci before the test can patch it

@@ -61,8 +61,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   path with its own token, neither token opens the other's tools even when both ask at once, and no profile starts a
   stdio MCP process;
   voice notes and audio files heard by the real local
-  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at), and a voice
-  note answered with a voice note before the text; his alerts;
+  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at), answered
+  with text, and a voice note only when he asks for one; his alerts;
   the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
   hangs and is cut at the limit, then Angel's chain renewed, with the WhatsApp bridge down and the watchdog's message
   sent on the next pass; the poll service (s6 vinci-sondeo, also in place of the Hermes crons): the captain's poll
@@ -616,6 +616,10 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
+        if "mándame eso en audio" in text:
+            if not called:
+                return _call("text_to_speech", text="Esta semana tienes el Taller 2 de Cálculo.")
+            return {"content": "Te lo mandé en audio. Esta semana: Taller 2 de Cálculo."}
         task = re.search(r"\[Tarea del sistema para (.+?) \(", text)
         if task and "TAREA: brief_de_clase" in text:  # Telegram off: the brief comes to Vinci's chat as a task
             return {"content": f"📚 Brief de {task[1]}: repasa lo de la clase anterior y revisa lo que vence."}
@@ -1269,7 +1273,7 @@ def ready_gateway(w, *, voice: bool = False) -> None:
         spec["env"]["AULA_NOW"] = T_VINCI
         spec_file.write_text(json.dumps(spec))
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
-        # The adapter speaks with the gateway's own config, which adding a friend rewrites too.
+        # The gateway may read the voice from its own config too, which adding a friend rewrites.
         default_file = home / ".hermes" / "config.yaml"
         default_cfg = yaml.safe_load(default_file.read_text())
         default_cfg["tts"] = TTS_STAND_IN
@@ -2431,7 +2435,7 @@ def test_whatsapp_friend(tmp_path):
     """Section 10 for a friend: a group the captain turns on, Angel invited with a Vinci of his own (his token through
     the page and Vinci's relay, his week, slides, a quote, a sticker, a group that goes idle, a poll for a button, his
     dashboard, his commands), voice notes and audio files heard by the real local Whisper (in a group, only one that
-    says «Vinci»; a voice note answered with one), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
+    says «Vinci»; a voice note only when asked for), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
     started = time.monotonic()
     # as in the container: the s6 services vinci-mantenimiento and vinci-sondeo renew every chain and run every poll
     # and summary, not Hermes cron
@@ -2987,12 +2991,12 @@ def test_whatsapp_friend(tmp_path):
         heard = speak(captain_jid, captain_jid, "whatsapp-voz-vinci.ogg", "Capitán")
         assert "Esta semana:" in heard and "qué tengo esta semana" in heard, \
             f"Hermes muestra lo que entendió y Vinci contesta: {heard}"
-        context = turn_context(llm.requests[calls:])
-        assert "nota de voz que transcribió Whisper" in context and "leída en voz alta" in context, \
-            "una nota de voz llega con su aviso: un nombre pudo salir mal escrito, y la respuesta se oirá"
-        kinds = [("voz" if m.get("mediaType") == "audio" else "texto") for m in spoken[-1]
-                 if not m.get("message", "").startswith("🎙️")]
-        assert kinds[:2] == ["voz", "texto"], f"Vinci contesta una nota de voz con otra, y luego con el texto: {kinds}"
+        assert "nota de voz que transcribió Whisper" in turn_context(llm.requests[calls:]), \
+            "una nota de voz llega con su aviso: un nombre o un término pudo salir mal escrito"
+        assert not any(m.get("mediaType") == "audio" for m in spoken[-1]), "a una nota de voz Vinci contesta con texto"
+        aloud = say(captain_jid, captain_jid, "mándame eso en audio", "Capitán", expect=2)
+        assert [m.get("mediaType") == "audio" for m in aloud].count(True) == 1 and "Taller 2" in text_of(aloud), \
+            f"pedido en audio, Vinci manda una nota de voz y el texto: {aloud}"
         his = speak(GROUP_WA, angel_jid, "whatsapp-voz-vinci.ogg", "Angel", group=True)
         assert "EDO de primer orden" in his, his  # his week; /marca above closed the Taller 2
         speak(GROUP_WA, captain_jid, "whatsapp-voz-charla.ogg", "Capitán", group=True,
@@ -3002,8 +3006,6 @@ def test_whatsapp_friend(tmp_path):
         calls = len(llm.requests)
         file_week = speak(angel_jid, angel_jid, "whatsapp-audio-semana.m4a", "Angel")
         assert "EDO de primer orden" in file_week, file_week
-        assert not any(m.get("mediaType") == "audio" for m in spoken[-1]), \
-            "a un archivo de audio (no una nota de voz) Vinci le contesta solo con texto"
         assert '"Oye, ¿qué tengo esta semana?' in json.dumps(llm.requests[calls:], ensure_ascii=False), \
             "un archivo de audio le llega al modelo transcrito, como una nota de voz"
         calls = len(llm.requests)
@@ -3015,10 +3017,9 @@ def test_whatsapp_friend(tmp_path):
                       "Angel que dice «Vinci» recibe su semana; una charla del capitán sin «Vinci» y la nota de "
                       "alguien sin su Vinci no llegan al modelo (la de ese alguien ni se transcribe). Un archivo de "
                       "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin. Cada nota de voz llega con "
-                      "un aviso en el contexto (un término pudo salir mal escrito, y la respuesta se oirá); una en "
-                      "silencio, con que no se oyó y no hay que adivinar. Vinci contesta la nota de voz del capitán "
-                      "con una nota de voz (Edge TTS, aquí un audio fijo) y luego con el texto; al .m4a, solo con "
-                      "texto")
+                      "un aviso en el contexto (un término pudo salir mal escrito); una en silencio, con que no se "
+                      "oyó y no hay que adivinar. Vinci contesta las notas de voz con texto, y manda una nota de voz "
+                      "(Edge TTS, aquí un audio fijo) solo cuando el capitán la pide: «mándame eso en audio»")
 
         # 10i. Angel's alerts reach his own chat, never the captain's
         angel_env = {"AULA_SECRETS": str(angel_dir / "secrets.env"), "AULA_DATA_DIR": str(angel_dir),

@@ -306,9 +306,7 @@ def voice(message: str) -> str | None:
                 "escriba.")
     return ("Su mensaje es una nota de voz que transcribió Whisper: un nombre, una sigla o un término técnico "
             "puede salir mal escrito. Si una palabra no encaja, entiéndela por el tema y, si importa, di qué "
-            "entendiste («entendí L'Hôpital»). Pregunta solo si no sabes qué pide y eso cambia lo que harías. Tu "
-            "respuesta también le llega leída en voz alta: frases cortas, sin tablas ni listas largas, y los días "
-            "con su nombre («el jueves», no «jue»).")
+            "entendiste («entendí L'Hôpital»). Pregunta solo si no sabes qué pide y eso cambia lo que harías.")
 
 
 def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> str | None:

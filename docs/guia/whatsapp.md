@@ -111,9 +111,9 @@ solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para
   Vinci te muestra primero lo que entendió (🎙️). Si no se oyó (silencio, ruido), Vinci te lo dice y te pide repetirla
   o escribirla: no adivina. Si se oyó pero un nombre salió raro, lo entiende por el tema y te dice qué entendió; solo
   pregunta si no sabe qué pides.
-- **Vinci te contesta con su voz.** A una nota de voz, Vinci responde con otra nota de voz y después con el mismo
-  texto, para que tengas los enlaces y las fechas a mano. Habla con una voz ecuatoriana de Microsoft (Edge TTS,
-  gratis). A un mensaje escrito o a un archivo de audio contesta solo con texto.
+- **Respuestas en audio.** Vinci contesta con texto, también a tus notas de voz. Si quieres oír la respuesta, pídela:
+  «mándame un audio», «respóndeme por voz» o «léemelo», por escrito o por nota de voz. Te llega una nota de voz y
+  el texto, con sus enlaces. Habla con una voz ecuatoriana de Microsoft (Edge TTS, gratis).
 
 **Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
 contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz

@@ -13,8 +13,9 @@ url = "https://aulavirtual.espol.edu.ec"
 # si son más viejos, vuelve a leer el aula virtual antes de responder.
 cache_minutos = 10
 # Pausa mínima entre dos consultas del sondeo al aula virtual (segundos), para que su tráfico
-# nunca parezca abuso. Lo que le preguntas a un bot en Telegram no espera esta pausa.
-request_interval_seconds = 1.0
+# nunca parezca abuso: una página del aula en el navegador pide más por segundo. Lo que le preguntas a un bot
+# no espera esta pausa.
+request_interval_seconds = 0.5
 # El formulario de /token (docs/token/ publicado en GitHub Pages). No guarda nada, así que cualquier instalación
 # puede usar esta copia; cámbialo solo si publicas la tuya.
 token_form_url = "https://sebasb76.github.io/vinci/token/"

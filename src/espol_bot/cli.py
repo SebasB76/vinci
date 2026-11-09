@@ -400,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
         if name == "sondeo":
             p.add_argument("--servicio", action="store_true",
                            help="con --todos: sin parar, en cada turno del sondeo y a la hora del resumen")
+    p = sub.add_parser("ocr", help="leer las páginas escaneadas que faltan (vinci-sondeo lo corre después de los sondeos)")
+    p.add_argument("--segundos", type=int, default=None, help="parar después de N segundos")
     p = sub.add_parser("mantenimiento", help="renovar el token, sin usar el modelo")
     p.add_argument("--todos", action="store_true", help="el del capitán y luego el de cada amigo activo, uno a uno")
     p.add_argument("--cada", type=int, metavar="MIN", help="con --todos: repetirlo cada MIN minutos, sin parar")
@@ -581,6 +583,12 @@ def main(argv: list[str] | None = None) -> int:
             _logging(cfg)
             return _friends(cfg, args)
         _logging(cfg)
+        if args.cmd == "ocr":
+            from aula_core import Aula
+            read = Aula(cfg.core, background=True).read_scans(seconds=args.segundos)
+            if read:
+                logging.info("OCR: %d página(s) escaneada(s) leída(s)", read)
+            return 0
         if args.cmd in ("sondeo", "resumen") and args.todos:
             from espol_bot import maintenance_service, poll_service
             limit = args.limite or poll_service.LIMIT

@@ -408,8 +408,11 @@ class Bot:
             self.conn.commit()
 
     def read_scans(self) -> None:
+        minutes = int(os.environ.get("VINCI_OCR_MINUTES") or OCR_MINUTES)
+        if minutes <= 0:  # vinci-sondeo reads everyone's scans after all the polls (`espol-bot ocr`)
+            return
         try:
-            read = self.aula.read_scans(seconds=int(os.environ.get("VINCI_OCR_MINUTES") or OCR_MINUTES) * 60)
+            read = self.aula.read_scans(seconds=minutes * 60)
         except Exception:  # never a failed poll (Hermes would forward it to the captain) over OCR
             log.exception("OCR")
             return

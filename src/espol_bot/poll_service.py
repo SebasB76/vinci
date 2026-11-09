@@ -8,6 +8,8 @@ time limit (maintenance_service.run_one); at the summary time, the same with the
 summary missed by a restart goes out at the next slot within SUMMARY_WINDOW; Bot.summary sends it once a day.
 A pass also runs BOOT_WAIT after each start, and a pass that runs past a slot starts the next one at once: with one
 person after another a pass can last over 10 minutes, and waiting for the following slot left 30-minute holes.
+The polls run with no OCR: once everyone's alerts are out, `espol-bot ocr` reads each person's scanned pages in the
+time left before the next slot, so a scanned book never holds back a friend's poll.
 
 With VINCI_POLL_SERVICE set (the Dockerfile sets it) hermes_setup removes the `*-sondeo` and `*-resumen` crons;
 without it (a PC install) Hermes cron keeps running them.
@@ -27,8 +29,9 @@ log = logging.getLogger(__name__)
 
 ENV = "VINCI_POLL_SERVICE"
 SERVICE = "vinci-sondeo"
-LIMIT = 600           # seconds per person: a Canvas sync plus OCR_MINUTES of scanned pages
-OCR_MINUTES = 3       # per person and pass (poller.OCR_MINUTES alone): a scanned book still gets read over a few polls
+LIMIT = 600           # seconds per person: a Canvas sync (a first one reads every course)
+OCR_MINUTES = 3       # per person and pass at most: a scanned book still gets read over a few passes
+OCR_MARGIN = 60       # seconds the OCR leaves free before the next slot
 SUMMARY_WINDOW = timedelta(hours=2)
 BOOT_WAIT = timedelta(minutes=3)  # the gateway's WhatsApp bridge is up about a minute after the container starts
 
@@ -37,8 +40,25 @@ def enabled() -> bool:
     return os.environ.get(ENV, "") not in ("", "0")
 
 
-def run_all(cfg: BotConfig, command: str, limit: int = LIMIT) -> list[maintenance_service.Run]:
-    return maintenance_service.run_all(cfg, limit, command, {"VINCI_OCR_MINUTES": str(OCR_MINUTES)})
+def run_all(cfg: BotConfig, command: str, limit: int = LIMIT,
+            until: datetime | None = None) -> list[maintenance_service.Run]:
+    """Everyone's poll (or summary), then everyone's OCR until `until` (the next slot); the polls' runs."""
+    runs = maintenance_service.run_all(cfg, limit, command, {"VINCI_OCR_MINUTES": "0"})
+    read_scans(cfg, until)
+    return runs
+
+
+def read_scans(cfg: BotConfig, until: datetime | None) -> None:
+    runs = []
+    for who, env in maintenance_service.targets(cfg):
+        seconds = OCR_MINUTES * 60
+        if until is not None:
+            seconds = min(seconds, int((until - datetime.now(until.tzinfo)).total_seconds()) - OCR_MARGIN)
+        if seconds < 30:
+            break
+        runs.append(maintenance_service.run_one(who, env, seconds + 60, f"ocr --segundos {seconds}"))
+    if runs:
+        log.info("%s", maintenance_service.summary(runs, "ocr"))
 
 
 def next_poll(now: datetime, every: int, summary_minute: int) -> datetime:
@@ -81,7 +101,7 @@ def serve(cfg: BotConfig, limit: int) -> None:
         due = next_wake(now, cfg) + timedelta(seconds=1)  # past the slot, never just before
         command = "resumen" if summary_due(now, cfg, done) else "sondeo"
         try:
-            print(maintenance_service.summary(run_all(cfg, command, limit), command), flush=True)
+            print(maintenance_service.summary(run_all(cfg, command, limit, due), command), flush=True)
         except Exception:  # noqa: BLE001 (the loop is what keeps every alert coming)
             log.exception("%s --todos: falló una pasada", command)
         if command == "resumen":

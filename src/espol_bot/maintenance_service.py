@@ -59,7 +59,7 @@ def run_one(who: str, env: dict[str, str], limit: int, command: str = "mantenimi
     started = time.monotonic()
     error = None
     try:
-        proc = subprocess.run([sys.executable, "-m", "espol_bot.cli", command], env={**os.environ, **env},
+        proc = subprocess.run([sys.executable, "-m", "espol_bot.cli", *command.split()], env={**os.environ, **env},
                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=limit)
         if proc.returncode != 0:
             last = (proc.stderr.strip().splitlines() or proc.stdout.strip().splitlines() or [""])[-1]

@@ -54,6 +54,7 @@ ASKS_SCAN = re.compile(r"escane|scann|a mano|manuscrit|fotograf", re.IGNORECASE)
 HIDDEN = (401, 403, 404)  # a tab or a file this student cannot see: not a failure
 PAGE_REFRESH = timedelta(days=1)  # a Page read through a link, when the course hides its Pages list
 UNREACHABLE_RETRY = timedelta(days=7)
+MODULE_FILES_RECHECK = timedelta(days=1)  # a file a module lists, already in the catalog: re-read once a day
 
 
 @dataclass
@@ -394,6 +395,11 @@ class _Syncer:
         module_pages: dict[str, dict] = {}
         outline: list[tuple] = []
         modules_ok = True
+        # A course that hides its Files tab costs one read per file its modules list. A replaced file gets a new id,
+        # so a known id is re-read only once a day (for a rename or a move to another module).
+        rechecked = _resource_key("checked", cid, "module_files")
+        last_check = timefmt.parse(get_meta(self.conn, rechecked))
+        reuse = last_check is not None and self.now - last_check < MODULE_FILES_RECHECK
         try:
             for module in self.client.iter_pages(f"courses/{cid}/modules", {"include[]": ["items"]}):
                 items = module.get("items")
@@ -408,7 +414,11 @@ class _Syncer:
                         section = clean_title(item.get("title"))
                     elif kind == "File" and item.get("content_id"):
                         fid = item["content_id"]
-                        if fid not in found:
+                        known = self.conn.execute("SELECT * FROM files WHERE id = ? AND course_id = ?",
+                                                  (fid, cid)).fetchone() if reuse and fid not in found else None
+                        if known is not None:
+                            found[fid] = {"known": known, "quiet": quiet}
+                        elif fid not in found:
                             try:
                                 found[fid] = {"file": self.client.get(f"courses/{cid}/files/{fid}"), "quiet": quiet}
                             except InvalidTokenError:
@@ -434,6 +444,8 @@ class _Syncer:
         if not listing_ok and not modules_ok:
             raise CanvasError("no tengo acceso a Archivos ni a Módulos", 403)
         if modules_ok:
+            if not reuse:
+                set_meta(self.conn, rechecked, self.now_iso)
             self.conn.execute("DELETE FROM module_items WHERE course_id = ?", (cid,))
             self.conn.executemany("INSERT INTO module_items(course_id, seq, module, section, kind, title, content_id,"
                                   " html_url, external_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", outline)

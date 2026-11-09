@@ -27,7 +27,7 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   `*-mantenimiento` Hermes crons; a PC install keeps them.
 - Live: the polls and the 07:00 summary run outside the gateway too, as the s6 service `vinci-sondeo`
   (`poll_service.py`): at each poll slot the captain and then each active friend, one at a time, each with 10 min at
-  most and 3 min of OCR; a pass also runs 3 min after each start, and right away when the last one ran past its slot. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
+  most; then each one's OCR (`espol-bot ocr`, 3 min at most) in the time left before the next slot. A pass also runs 3 min after each start, and right away when the last one ran past its slot. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
   a raised `oom_score_adj`, so at the memory limit the kernel kills a poll before the gateway.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The
@@ -166,6 +166,7 @@ uv run pytest                             # the E2E: 5 tests in parallel (fake C
 .venv/bin/espol-bot doctor                # poller, Canvas sync and token chain (read-only)
 .venv/bin/espol-bot mantenimiento --todos # one renewal pass: the captain, then each friend (the s6 service's loop)
 .venv/bin/espol-bot sondeo --todos       # one poll pass the same way (also `resumen --todos`; vinci-sondeo's loop)
+.venv/bin/espol-bot ocr --segundos 180    # read this Vinci's waiting scanned pages (vinci-sondeo runs it after the polls)
 .venv/bin/espol-bot album-regalo "<motivo>" # a gift pack for the captain and every friend (`--para <friend>`: only them)
 .venv/bin/espol-bot academico             # what the Académico copy holds (read-only)
 .venv/bin/espol-bot calendario-espol      # read ESPOL's official calendar page now; list the next 60 days

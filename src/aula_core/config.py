@@ -95,7 +95,7 @@ def load_config(path: Path | None = None) -> CoreConfig:
         material_extensions=tuple(str(e).lower().lstrip(".") for e in material.get("extensiones", ["pdf", "pptx", "docx", "doc", "xlsx"])),
         max_file_mb=float(material.get("tamano_maximo_mb", 200)),
         max_mb_per_sync=max(0.0, float(material.get("max_mb_per_sync", 50))),
-        request_interval=max(0.0, float(canvas.get("request_interval_seconds", 1.0))),
+        request_interval=max(0.0, float(canvas.get("request_interval_seconds", 0.5))),
         data_dir=Path(os.path.expanduser(os.environ.get("AULA_DATA_DIR")
                                          or str(storage.get("carpeta_datos", "~/.local/share/espol-academic-bot")))),
         config_path=path,

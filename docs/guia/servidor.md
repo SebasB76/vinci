@@ -86,8 +86,9 @@ En el servidor, el servicio `vinci-sondeo` revisa el aula y manda el resumen de 
 Antes eran cron jobs de Hermes dentro del gateway, y todos leían el aula en el mismo minuto: la memoria se llenaba.
 
 - En cada turno de la revisión (cada `intervalo_minutos`, a las :05, :15, :25… con 10 minutos) corre
-  `espol-bot sondeo` para ti y luego para cada amigo activo, uno por uno. A cada uno le da 10 minutos, de los
-  que 3 como mucho son para leer páginas escaneadas; si uno falla o se pasa, sigue con el siguiente.
+  `espol-bot sondeo` para ti y luego para cada amigo activo, uno por uno. A cada uno le da 10 minutos; si uno
+  falla o se pasa, sigue con el siguiente. Cuando todos recibieron sus avisos, `espol-bot ocr` lee las páginas
+  escaneadas de cada uno (3 minutos como mucho por persona) con el tiempo que queda antes del siguiente turno.
 - A la hora de `resumen_diario` hace lo mismo con el resumen, que revisa el aula antes de escribirlo. Si el
   contenedor se reinició justo a esa hora, el resumen sale en el siguiente turno, hasta 2 horas después. Cada
   persona lo recibe una sola vez al día.

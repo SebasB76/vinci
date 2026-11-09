@@ -265,6 +265,24 @@ disco ni el contexto del modelo:
 - **Documentos que le mandas:** un PDF, DOCX o PPTX del curso que le mandas al bot pasa a su material y se puede
   buscar; lo que es tuyo (un deber resuelto, tus apuntes) va al cuaderno.
 
+## Repasos interactivos
+
+Cuando le pides a Vinci repasar un tema o una explicación larga («explícame bien two-phase commit», «ármame un
+repaso de la distribución normal para la lección»), te manda un botón **📚 Abrir el repaso**. La página trae lo que
+sirve para ese tema:
+
+- **Números y fórmulas** (Estadística, Cálculo, Física): la fórmula con qué significa cada símbolo, un gráfico con
+  deslizadores (una función, la normal, la binomial o la de Poisson, con la probabilidad pintada) y un ejercicio
+  resuelto que se revela paso a paso.
+- **Protocolos y sistemas** (Sistemas Distribuidos, Redes): los mensajes entre nodos uno por uno, con un escenario
+  donde todo sale bien y otro con una falla, y un diagrama de arquitectura que recorres.
+- **Conceptos y procesos** (Ingeniería de Software, Dirección de Proyectos): código explicado línea por línea, una
+  tabla que compara, casos para clasificar, pasos para ordenar y tarjetas para memorizar.
+
+Al final hay un quiz con tu resultado y las fuentes del material. Lo que respondes se queda en la página: Vinci no
+lo ve. Una pregunta corta la contesta en el chat, y si quieres algo para imprimir, pídele un resumen en PDF. En un
+grupo el botón llega al grupo, y el repaso sale solo del material del curso.
+
 ## Exámenes anteriores (DSpace)
 
 [DSpace](https://www.dspace.espol.edu.ec) es el repositorio público de ESPOL. Tiene unos 20 000 exámenes de todas

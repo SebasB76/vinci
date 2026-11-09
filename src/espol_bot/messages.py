@@ -402,7 +402,7 @@ def weekly_summary(entries: list, submitted: int, announcements_24h: list[dict],
             f"{_event_time({'inicio': ev['start'], 'fin': ev['end'], 'todo_el_dia': ev['all_day']}, tz)}"
             + (f" · {e(ev['location'])}" if ev["location"] else "") for ev in events))
     if espol:
-        blocks.append(f"<b>🏛️ En ESPOL esta semana</b>\n" + "\n".join(
+        blocks.append("<b>🏛️ En ESPOL esta semana</b>\n" + "\n".join(
             f"• {e(espol_calendar.when(x))} — {e(x['what'])}" for x in espol))
     if reviews:
         blocks.append(f"<b>🔍 Revisiones entre pares por hacer ({len(reviews)})</b>\n" + "\n".join(

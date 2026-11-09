@@ -1,0 +1,21 @@
+name: checks
+
+on:
+  pull_request:
+    # edited: fixing the PR body's "Docs:" line reruns the docs check
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - name: Lint
+        run: uvx ruff check --output-format github .
+      - name: Docs in sync
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 scripts/docs_check.py --base "origin/${{ github.base_ref }}" --pr-body "$PR_BODY"

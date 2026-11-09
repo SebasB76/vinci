@@ -69,13 +69,28 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
    conventional commit title.
 2. If behavior changed, extend `tests/e2e/test_e2e.py` and run `uv run pytest` once, after
    all changes.
-3. `gh pr merge <n> --merge --delete-branch` (the repo keeps merge commits).
+3. Wait until `gh pr checks <n>` passes (lint and the docs check), then
+   `gh pr merge <n> --merge --delete-branch --admin` (the repo keeps merge commits). `main` requires a
+   review the captain never gives, and `--admin` also skips the checks: never merge a red PR.
 4. Ask the captain to press **Redeploy** on Vinci's app in Coolify, and wait for **Healthy**: each boot does what
    `./setup.sh` does.
 5. From the PC: `vinci-check remote doctor` (or `espol-bot doctor` in the container's **Terminal**).
 6. `vinci-check remote run vinci-check smoke` (about 45 s), plus a
    `vinci-check say` or `vote` that exercises the change itself, the same way.
 7. Report only what still needs the captain's phone: WhatsApp replies and iPhone webviews.
+
+## Ways to hurt yourself
+
+Each of these breaks the live bots or leaks the captain's data. Do the safe thing instead.
+
+1. **Deploying a branch.** The live install is the Coolify container, built from `main`: never deploy a branch
+   there. Merge to `main`, then ask for **Redeploy**.
+2. **Running Vinci on the PC.** On the PC, work in a git worktree of `~/Projects/espol-academic-bot`. Never run
+   `setup.sh` there, and never start a gateway with the profiles parked in `~/.hermes/vinci-en-servidor/`.
+3. **Leaking a secret.** Never print or copy `secrets.env`, `~/.local/share/tg-user/credentials.env` or
+   `captain.session`. To get a new secret, use a hidden prompt (`read -s`), never the chat.
+4. **Real data in the repo.** No real data in fixtures, screenshots or issues: no tokens, grades, schedules or
+   names.
 
 ## Working rules
 
@@ -87,13 +102,13 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
   `var(--ease-out)` and under 300 ms, `prefers-reduced-motion` honored, `:active` on every control, inputs at 16px,
   `:hover` only inside `@media (hover: hover)`. Bump the `?v=` of every changed file in each page's `index.html`:
   GitHub Pages and WhatsApp cache them.
-- The live install is the Coolify container, built from `main`: never deploy a branch there. On the PC, work in a
-  git worktree of `~/Projects/espol-academic-bot`, and never run `setup.sh` on the PC.
 - E2E (five tests in parallel, about 6 minutes): never run it at the start of a session or to
   "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
   WhatsApp messages and model turns, the gateway log): read it before rerunning anything. Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
   behavior change, run it once at the end, and never rerun it for a one-line fix. The captain
-  asked for this 12 times; `docs/guia/contribuir.md` is for outside contributors.
+  asked for this 12 times, so `tests/conftest.py` enforces it: it refuses a run with no change against `main`, a
+  rerun with nothing changed, and a rerun after 3 changed lines or fewer. Only the captain overrides it, with
+  `E2E_FORCE="<reason>" uv run pytest`. `docs/guia/contribuir.md` is for outside contributors.
 - No unit tests and no extra review rounds.
 - "Improve the project" means features the student notices, not refactors.
 - For a new feature idea, restate the goal and the user flow in 3 to 5 lines, then build it.
@@ -101,16 +116,14 @@ Do steps 3 to 6 without asking. A PR is not done until the bots run it.
 - Test with the real bots through `vinci-check`. The captain allows test messages to his own
   chat with Vinci; `vinci-check` refuses any other chat. When he sends a screenshot of
   a bot chat, also read that chat (`vinci-check whatsapp`) for the full thread.
-- Never print or copy `secrets.env`, `~/.local/share/tg-user/credentials.env` or
-  `captain.session`. To get a new secret, use a hidden prompt (`read -s`), never the chat.
-- No real data in fixtures, screenshots or issues: no tokens, grades, schedules or names.
 - Explain an outside tool (Coolify, Wrangler, Fly.io) in one line the first time.
 
 ## Keep docs in sync
 
 A PR that changes behavior updates every doc it makes wrong, in the same PR. The PR body ends
 with `Docs:` and lists what it updated, or says why nothing needed it.
-`python3 scripts/docs_check.py` flags code changed without its docs; it only warns.
+`python3 scripts/docs_check.py` flags code changed without its docs. On the PC it only warns; in CI
+(`.github/workflows/checks.yml`) a warning fails the PR when its body has no `Docs:` line.
 
 | If you change… | Update |
 |---|---|
@@ -161,6 +174,7 @@ systemctl --user status vinci-panel      # the admin panel on 127.0.0.1:8787 (`t
 .venv/bin/vinci-check say "<text>"        # a message to Vinci in the captain's WhatsApp chat, and its reply
 .venv/bin/vinci-check --help              # chat, press, whatsapp, page… (see the control-vinci skill)
 python3 scripts/docs_check.py             # code changed without its docs, before a PR
+uvx ruff check .                          # lint, bugs only (undefined names, unused imports); CI blocks on it
 hermes gateway status                     # also: start, stop, restart
 vinci cron list                           # Vinci's poll, maintenance and 07:00 summary
 tail -f ~/.hermes/logs/gateway.log        # gateway log
@@ -188,6 +202,7 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
 - `relay/`: Cloudflare Worker that passes encrypted webview results back to the laptop.
 - `tests/e2e/`: the E2E with its fake servers, Hermes harness and fixtures.
 - `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README demo).
+- `.github/workflows/checks.yml`: CI on every PR, `ruff` and the docs check.
 - `.claude/skills/control-vinci/`: how agents verify on the live bots, and the feature map.
 
 ## Language

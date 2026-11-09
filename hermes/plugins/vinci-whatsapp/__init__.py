@@ -369,6 +369,7 @@ async def _sort(event, source, gateway):
         return _skip("token sin cifrar")
     if friend.get("estado") == "activo":
         return await _command(text, senders, chat, reply_to, gateway)
+    _note_pending(friend)
     if text.lower().startswith("/token"):  # the invitation's link lasts a day: a new one
         await _answer(chat, await _run("amigo", "inscribir", friend["numero"]), reply_to, gateway)
         return _skip("amigo sin token pide otro enlace")
@@ -553,6 +554,20 @@ def _phone(source):
 
 def _bare(user_id):
     return re.sub(r"[:@].*$", "", str(user_id or ""))
+
+
+def _note_pending(friend):
+    """How often a friend without a token wrote, and when last: the panel's «Personas» (panel.PENDING_LOG)."""
+    path = os.path.join(os.path.dirname(REGISTRY), friend.get("slug") or "_", "sin-token.json")
+    seen = _read_dict(path)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w", encoding="utf-8") as fh:
+            json.dump({"messages": int(seen.get("messages") or 0) + 1,
+                       "last": datetime.now(timezone.utc).isoformat(timespec="seconds")}, fh)
+        os.replace(path + ".tmp", path)
+    except OSError:
+        logger.warning("no pude anotar el mensaje de un amigo sin token")
 
 
 def _read_dict(path):

@@ -37,6 +37,7 @@ KEY_SECRET = "PANEL_KEY"
 COOKIE = "vinci_panel"
 COOKIE_DAYS = 30
 LOOPBACK = {"127.0.0.1", "::1"}
+PENDING_LOG = "sin-token.json"  # in a friend's folder: their messages before the token (vinci-whatsapp)
 LOG_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ (WARNING|ERROR|CRITICAL) ([\w.]+): (.*)")
 
 
@@ -256,7 +257,8 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None, *, guest: 
             group["sample"] = None
     return {"viewer": "guest" if guest else "owner", "now": timefmt.iso(now),
             "today": now.astimezone(tz).date().isoformat(), "days": DAYS,
-            "gateway": gateway_state(root), "checks": checks, "people": people, "jobs": jobs, "usage": usage,
+            "gateway": gateway_state(root), "checks": checks, "people": people, "roster": roster(cfg),
+            "jobs": jobs, "usage": usage,
             "sessions": sessions[:30], "leases": leases,
             "errors": errors,
             "profiles": [{k: p[k] for k in ("name", "kind", "parked")} for p in profiles],
@@ -288,6 +290,51 @@ def session_detail(cfg: BotConfig, profile_name: str, session_id: str, root: Pat
                       "calls": [c for c in calls if c], "chars": len(text),
                       "text": (text[:1500] if role != "tool" else text[:400]) if readable else None})
     return {"profile": profile_name, "id": session_id, "readable": readable, "steps": steps}
+
+
+def _meta(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
+    conn = _db(path)
+    if conn is None:
+        return {}
+    try:
+        return dict(conn.execute(f"SELECT key, value FROM meta WHERE key IN ({','.join('?' * len(keys))})",
+                                 keys).fetchall())
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+
+
+def roster(cfg: BotConfig) -> list[dict]:
+    """Where each person stands on the way to a working Vinci: the captain, then everyone in amigos.json, pending
+    ones too. «funciona», «cortado» (Canvas refused the token: only a new one revives it) or «sin token»."""
+    from aula_core import REFUSED_KEY
+    from espol_bot import amigos, token_form, whats_new
+    from espol_bot.token_renewal import CURRENT_CREATED
+    keys = (REFUSED_KEY, CURRENT_CREATED, "bot_alert_token_at", "bot_alert_token_count", token_form.EXPIRES,
+            whats_new.SEEN)
+    try:
+        friends = amigos.load(cfg)
+    except (ConfigError, OSError, ValueError, TypeError):
+        friends = []
+    entries = [("Tú", None, amigos.ACTIVE, None, cfg.core.db_path.parent, cfg.core.db_path)]
+    entries += [(f.nombre, f.numero, f.estado, f.agregado or None, amigos.folder(cfg, f),
+                 amigos.folder(cfg, f) / "espol.db") for f in friends]
+    rows = []
+    for name, number, joined, since, folder, db in entries:
+        meta = _meta(db, keys)
+        try:
+            wrote = json.loads((folder / PENDING_LOG).read_text())
+        except (OSError, ValueError):
+            wrote = {}
+        state = ("sin token" if joined != amigos.ACTIVE else "cortado" if meta.get(REFUSED_KEY) else "funciona")
+        rows.append({"name": name, "phone": f"···{number[-3:]}" if number else None, "friend": number is not None,
+                     "state": state, "since": since, "renewed": meta.get(CURRENT_CREATED),
+                     "reminders": int(meta.get("bot_alert_token_count") or 0),
+                     "reminded_at": meta.get("bot_alert_token_at"), "form_until": meta.get(token_form.EXPIRES),
+                     "news": bool(meta.get(whats_new.SEEN)), "wrote": int(wrote.get("messages") or 0),
+                     "wrote_at": wrote.get("last")})
+    return rows
 
 
 def new_key() -> str:

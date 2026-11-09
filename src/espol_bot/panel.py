@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, urlparse
 
 from aula_core import timefmt
 from aula_core.config import ConfigError, load_secret_values, update_secret_values
-from espol_bot import health, watch
+from espol_bot import watch
 from espol_bot.config import BotConfig, hermes_root
 
 PAGE = Path(__file__).with_name("panel.html")

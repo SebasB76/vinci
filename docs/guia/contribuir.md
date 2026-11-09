@@ -20,7 +20,12 @@ uv sync                          # dependencias, con las de desarrollo
 uv run pytest                    # la prueba de punta a punta
 .venv/bin/vinci-check smoke      # prueba tus bots en vivo, como lo harías desde el celular (unos 45 s)
 python3 scripts/docs_check.py    # te avisa si cambiaste código sin su documentación
+uvx ruff check .                 # busca errores como nombres sin definir o imports que no se usan
 ```
+
+Cada PR pasa por dos revisiones automáticas en GitHub: `ruff` y la de documentación. La de documentación solo
+bloquea si cambiaste código sin su documentación y la descripción del PR no tiene una línea `Docs:` que explique por
+qué.
 
 `vinci-check` es la herramienta con la que un agente (o tú) comprueba un cambio en los bots reales: les escribe
 desde tu cuenta de Telegram con `tg`, lee lo que Vinci contestó por WhatsApp, abre el formulario del token y el

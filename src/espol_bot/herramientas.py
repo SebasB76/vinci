@@ -1195,38 +1195,52 @@ PORTAL_PROPERTIES = {
 
 
 def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
-    """Checks that the aula takes files for the assignment `row` and builds its PDF from the photos (or the PDF) the
-    student sent; (name, proposal id, pdf, pages, thumbnail, card) for the bot to show with «Entregar»."""
+    """Checks that the aula takes files (of these kinds) for the assignment `row`, and gets what goes up ready: one PDF
+    from the photos the student sent, or their files as they are; (name, proposal id, folder, files, pages,
+    thumbnail, card) for the bot to show with «Entregar»."""
     assignment_id, name, now = row["id"], row["name"], ctx.now()
     if not row["active"]:
         raise ToolError(f"«{name}» ya no está en el aula.")
     types = set((row["submission_types"] or "").split(",")) - {""}
     if "online_upload" not in types:
         raise ToolError(f"«{name}» no recibe archivos en el aula (se entrega: {', '.join(sorted(types)) or 'nada'}). "
-                        "Díselo; no armes el PDF.")
+                        "Díselo; no prepares nada.")
     lock = timefmt.parse(row["lock_at"])
     if lock and lock < now:
         raise ToolError(f"El aula cerró «{name}» el {timefmt.human(lock, ctx.cfg.core.tz)}. Díselo.")
     if not isinstance(paths, list) or not paths or not all(isinstance(f, str) and f.strip() for f in paths):
-        raise ToolError("«files» es la lista de rutas de las fotos, en el orden de las páginas (o la de un PDF).")
-    if len(paths) > submission.MAX_PAGES:
-        raise ToolError(f"Son muchas fotos: armo PDF de hasta {submission.MAX_PAGES} páginas.")
+        raise ToolError("«files» es la lista de rutas de las fotos, en el orden de las páginas, o la de sus archivos.")
     sources = [_document(ctx, str(f)) for f in paths]
-    pdfs = [f for f in sources if f.suffix.lower() == ".pdf"]
-    if pdfs and len(sources) > 1:
-        raise ToolError("Un PDF va solo, sin fotos: o me pasas sus fotos, o su PDF.")
-    if not pdfs and any(f.suffix.lower() not in submission.IMAGE_TYPES for f in sources):
-        raise ToolError("Armo el PDF solo con fotos (JPG, PNG o WEBP), o tomo un PDF que te mandó.")
-    dest = submission.new_pdf_path(ctx.cfg.core, code, assignment_id, now)
+    photos = [f for f in sources if f.suffix.lower() in submission.IMAGE_TYPES]
+    if photos and len(photos) < len(sources):
+        raise ToolError("Mezclaste fotos con archivos: las fotos van en un PDF y los archivos tal cual, en entregas "
+                        "aparte. Pregúntale cuál de las dos entrega.")
+    if photos and len(photos) > submission.MAX_PAGES:
+        raise ToolError(f"Son muchas fotos: armo PDF de hasta {submission.MAX_PAGES} páginas.")
+    if not photos and len(sources) > submission.MAX_FILES:
+        raise ToolError(f"Son muchos archivos: entrego hasta {submission.MAX_FILES} juntos. Que te mande un ZIP.")
+    names = [submission.upload_name(name)] if photos else [submission.sent_name(f) for f in sources]
+    allowed = sorted(set((row["allowed_extensions"] or "").split(",")) - {""})
+    refused = submission.refused(names, allowed)
+    if refused:
+        raise ToolError(f"«{name}» solo acepta {', '.join(allowed)} en el aula, y esto es {', '.join(refused)}. "
+                        "Díselo; no prepares nada.")
+    dest = submission.new_folder(ctx.cfg.core, code, assignment_id, now)
     try:
-        pages, thumb = submission.take_pdf(pdfs[0], dest) if pdfs else submission.build_pdf(sources, dest)
+        if photos:
+            pages, thumb = submission.build_pdf(sources, dest / names[0])
+        else:
+            pages, thumb = submission.take_files(sources, dest)
     except submission.SubmitError as exc:
+        shutil.rmtree(dest, ignore_errors=True)
         raise ToolError(str(exc)) from None
+    files = submission.files_of(dest)
     proposal_id = store.new_submission_proposal(ctx.conn, code, row["course_id"], assignment_id, name,
                                                 str(dest), pages, now)
     card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
-                                    has_submission=bool(row["done"]), from_photos=not pdfs)
-    return name, proposal_id, dest, pages, thumb, card
+                                    has_submission=bool(row["done"]), from_photos=bool(photos),
+                                    files=[f.name for f in files])
+    return name, proposal_id, dest, files, pages, thumb, card
 
 
 def _press(ctx: Ctx, data: str) -> dict:
@@ -1859,18 +1873,20 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
             raise ToolError("No conozco esa tarea: busca su «id» con tareas.")
         subject = materias.for_course(ctx.subjects(), row["course_id"], row["course_code"])
         code = subject.code if subject else materias.base_code(row["course_code"]) or f"C{row['course_id']}"
-        name, proposal_id, dest, pages, _, card = _submission(ctx, row, code, args.get("files"))
+        name, proposal_id, dest, files, pages, _, card = _submission(ctx, row, code, args.get("files"))
         try:
-            chat.send_document(dest, submission.upload_name(name), card,
+            for f in files[:-1]:
+                chat.send_document(f, f.name, "")
+            chat.send_document(files[-1], files[-1].name, card,
                                [(messages.submit_button(name), f"v1:u:{proposal_id}:ok"),
                                 (messages.SUBMIT_CANCEL_BUTTON, f"v1:u:{proposal_id}:no")])
         except TelegramError as exc:
             store.set_submission_state(ctx.conn, proposal_id, "cancelled", ctx.now())
-            raise ToolError(f"No pude mandarle el PDF por WhatsApp: {exc}") from None
-        return {"proposal": proposal_id, "assignment": name, "pages": pages,
-                "message": "Le mandé el PDF a su chat privado de WhatsApp con una encuesta «Entregar / Cancelar». Se "
-                           "entrega solo cuando vote Entregar; tú no puedes entregarlo. Dile en una línea que lo revise "
-                           "y vote (si estás en un grupo, que se lo mandaste por privado)."}
+            raise ToolError(f"No pude mandarle la entrega por WhatsApp: {exc}") from None
+        return {"proposal": proposal_id, "assignment": name, "files": [f.name for f in files], "pages": pages,
+                "message": "Le mandé a su chat privado de WhatsApp lo que se va a entregar, con una encuesta «Entregar "
+                           "/ Cancelar». Se entrega solo cuando vote Entregar; tú no puedes entregarlo. Dile en una "
+                           "línea que lo revise y vote (si estás en un grupo, que se lo mandaste por privado)."}
 
     def study_activity(args):
         session = _channel(ctx).get("sesion", "")
@@ -2234,13 +2250,15 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "(entry_id); la cita la pongo yo. En Telegram, el quiz lo hace el bot de la materia.", send_quiz,
              {"materia": {"type": "string"}, "topic": {"type": "string", "description": "el tema, corto"},
               "questions": QUIZ_QUESTIONS}, ["materia", "topic", "questions"], read_only=False),
-        Tool("prepare_submission", "En WhatsApp: arma el PDF de una actividad hecha a mano con las fotos que te mandó "
-             "(una página por foto, en su orden; o toma su PDF) y se lo manda a su chat privado con una encuesta "
-             "«Entregar / Cancelar». Se sube al aula solo si vota Entregar. En Telegram, pásale las fotos al bot de "
-             "la materia.", prepare_submission,
+        Tool("prepare_submission", "En WhatsApp: prepara una entrega en el aula, con el PDF que armas de las fotos de "
+             "una actividad hecha a mano (una página por foto, en su orden) o con los archivos que te mandó tal cual "
+             "(PDF, Word, Excel, ZIP, código…), y se la manda a su chat privado con una encuesta «Entregar / "
+             "Cancelar». Se sube al aula solo si vota Entregar. En Telegram, pásale las fotos al bot de la materia.",
+             prepare_submission,
              {"assignment_id": {"type": "integer", "description": "el «id» de la tarea en tareas"},
               "files": {"type": "array", "items": {"type": "string"},
-                        "description": "las rutas de las fotos (o de un PDF), en el orden de las páginas"}},
+                        "description": "las rutas de las fotos, en el orden de las páginas, o las de sus archivos "
+                                       "(saved at: …)"}},
              ["assignment_id", "files"], read_only=False),
         Tool("study_activity", STUDY_ACTIVITY, study_activity, STUDY_PROPERTIES, ["action"], read_only=False),
         Tool("marcar_entregada", MARK_SUBMITTED, marcar_entregada,
@@ -2692,19 +2710,21 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
         if row is None or row["course_id"] not in course_ids():
             raise ToolError("Esa tarea no es de tu materia: busca su «id» con tareas.")
         subject = ctx.subject()
-        name, proposal_id, dest, pages, thumb, card = _submission(ctx, row, subject.code, args.get("files"))
+        name, proposal_id, dest, files, pages, thumb, card = _submission(ctx, row, subject.code, args.get("files"))
         try:
-            Telegram(load_telegram_secrets(subject.code), api=ctx.cfg.telegram_api).send_document(
-                dest, submission.upload_name(name), card,
-                [(messages.submit_button(name), f"v1:u:{proposal_id}:ok"),
-                 (messages.SUBMIT_CANCEL_BUTTON, f"v1:u:{proposal_id}:no")], thumbnail=thumb)
+            telegram = Telegram(load_telegram_secrets(subject.code), api=ctx.cfg.telegram_api)
+            for f in files[:-1]:
+                telegram.send_document(f, f.name, "")
+            telegram.send_document(files[-1], files[-1].name, card,
+                                   [(messages.submit_button(name), f"v1:u:{proposal_id}:ok"),
+                                    (messages.SUBMIT_CANCEL_BUTTON, f"v1:u:{proposal_id}:no")], thumbnail=thumb)
         except (TelegramError, ConfigError) as exc:
             store.set_submission_state(ctx.conn, proposal_id, "cancelled", ctx.now())
-            raise ToolError(f"No pude mandarle el PDF por Telegram: {exc}") from None
-        return {"proposal": proposal_id, "assignment": name, "pages": pages,
-                "message": f"Le mandé el PDF con «{messages.submit_button(name)}» y «{messages.SUBMIT_CANCEL_BUTTON}». "
-                           "Se entrega solo cuando pulse Entregar; tú no puedes entregarlo. Dile en una línea que lo "
-                           "revise y lo entregue con el botón."}
+            raise ToolError(f"No pude mandarle la entrega por Telegram: {exc}") from None
+        return {"proposal": proposal_id, "assignment": name, "files": [f.name for f in files], "pages": pages,
+                "message": f"Le mandé lo que se va a entregar con «{messages.submit_button(name)}» y "
+                           f"«{messages.SUBMIT_CANCEL_BUTTON}». Se entrega solo cuando pulse Entregar; tú no puedes "
+                           "entregarlo. Dile en una línea que lo revise y lo entregue con el botón."}
 
     return _noting_stale(ctx, [
         Tool("resumen", "Tu materia de un vistazo: próximas clases, pendientes, anuncios y tu cuaderno.", resumen),
@@ -2785,14 +2805,15 @@ def subject_tools(ctx: Ctx) -> list[Tool]:
               "transcripcion": {"type": "string", "description": "texto de la nota de voz, si lo tienes"},
               "fecha_clase": {"type": "string", "description": "AAAA-MM-DD de la clase, si aplica"}},
              ["tipo", "resumen"], read_only=False),
-        Tool("prepare_submission", "Arma un PDF con las fotos de una actividad hecha a mano (una página por foto, en "
-             "el orden en que llegaron) o toma un PDF que te mandó, y se lo muestra en su chat con «📤 Entregar en "
-             "<tarea>» y «✖️ Cancelar». Solo se entrega en el aula cuando pulsa Entregar. La tarea tiene que recibir "
-             "archivos («online_upload»).", prepare_submission,
+        Tool("prepare_submission", "Prepara una entrega en el aula: arma un PDF con las fotos de una actividad hecha a "
+             "mano (una página por foto, en el orden en que llegaron) o toma tal cual los archivos que te mandó (PDF, "
+             "Word, Excel, ZIP, código…), y se lo muestra en su chat con «📤 Entregar en <tarea>» y «✖️ Cancelar». "
+             "Solo se entrega en el aula cuando pulsa Entregar. La tarea tiene que recibir archivos («online_upload») "
+             "de ese tipo.", prepare_submission,
              {"assignment_id": {"type": "integer", "description": "el «id» de la tarea (de tareas)"},
               "files": {"type": "array", "items": {"type": "string"},
                         "description": "las rutas de las fotos (Image attached at: …) en el orden de las páginas, o "
-                                       "la de un PDF (saved at: …)"}},
+                                       "las de sus archivos (saved at: …)"}},
              ["assignment_id", "files"], read_only=False),
         Tool("send_quiz", "Manda un quiz corto (/quiz) al chat del estudiante: una encuesta tipo quiz de Telegram por "
              "pregunta, que le muestra la respuesta correcta y tu explicación recién al responder; al terminar le llega "

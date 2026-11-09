@@ -310,7 +310,7 @@ def voice(message: str) -> str | None:
 
 
 def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> str | None:
-    """The PDFs waiting for the student's vote and what became of the recent ones, from the table the vote writes:
+    """The hand-ins waiting for the student's vote and what became of the recent ones, from the table the vote writes:
     what Vinci says it did has to match this, not what the conversation remembers."""
     rows = conn.execute("SELECT assignment_name, pages, state, created_at, updated_at FROM submission_proposals "
                         "WHERE state IN ('pending', 'submitting') OR (state IN ('submitted', 'failed', 'cancelled') AND updated_at >= ?) "
@@ -318,13 +318,14 @@ def submissions(conn: sqlite3.Connection, core: CoreConfig, now: datetime) -> st
     said = []
     for r in rows:
         at = f"{timefmt.parse(r['updated_at'] or r['created_at']).astimezone(core.tz):%H:%M}"
-        said.append({"pending": f"el PDF de «{r['assignment_name']}» ({r['pages']} pág.) espera su voto «Entregar»: "
-                                "todavía NO está entregado",
+        waiting = f"el PDF de «{r['assignment_name']}» ({r['pages']} pág.)" if r["pages"] else \
+            f"lo que preparaste para «{r['assignment_name']}»"
+        said.append({"pending": f"{waiting} espera su voto «Entregar»: todavía NO está entregado",
                      "submitting": f"«{r['assignment_name']}» se está subiendo al aula ahora, con su voto",
                      "submitted": f"«{r['assignment_name']}» se entregó en el aula a las {at}, con su voto",
                      "failed": f"la entrega de «{r['assignment_name']}» falló a las {at}: NO está entregada",
                      "cancelled": f"canceló la entrega de «{r['assignment_name']}» a las {at}"}[r["state"]])
-    return ("Entregas con PDF (lo que de verdad pasó; no digas otra cosa): " + " · ".join(said) + ".") if said else None
+    return ("Entregas en el aula (lo que de verdad pasó; no digas otra cosa): " + " · ".join(said) + ".") if said else None
 
 
 def context(conn: sqlite3.Connection, core: CoreConfig, now: datetime, *, chat: str, chat_type: str,

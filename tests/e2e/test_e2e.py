@@ -1429,7 +1429,8 @@ def test_canvas(tmp_path):
             assert vcfg["timezone"] == "America/Guayaquil" and vcfg["model"]["provider"] == "fakellm"
             assert vcfg["model"]["default"] == "fake", "the config.toml model substitution no longer matches"
             assert set(vcfg["platform_toolsets"]["whatsapp"]) == {"web", "memory", "session_search", "clarify",
-                                                                  "skills", "mcp-vinci", "vinci-paginas"}
+                                                                  "skills", "mcp-vinci", "vinci-paginas", "tts"}
+            assert "tts" not in vcfg["agent"]["disabled_toolsets"], "Vinci manda un audio cuando se lo piden"
             assert set(vcfg["platform_toolsets"]["cli"]) == set(vcfg["platform_toolsets"]["whatsapp"])
             assert set(vcfg["platform_toolsets"]["cron"]) == {"web", "memory", "skills", "mcp-vinci", "vinci-paginas"}
             assert {"terminal", "file", "code_execution", "delegation", "cronjob"} <= \

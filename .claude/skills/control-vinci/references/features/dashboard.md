@@ -11,7 +11,8 @@ the `#`. No server holds the captain's data.
 
 Parts of the page («Tu semana», on `docs/vinci/vinci.css`): three tiles (due this week, overdue, week of the
 semester), then two tabs. Entregas: pending deliverables grouped (Atrasadas, Hoy, Esta semana, Más adelante, Sin
-fecha), each with its subject's initials in a fixed pastel, its due pill and its weight in the grade when known.
+fecha), each with its subject's initials in a fixed pastel, its due pill and its weight in the grade when known (`vale 25 %`), on one line that ends in an ellipsis. Más
+adelante shows its first 3 and folds the rest under «Ver N más adelante».
 Novedades: the last 7 days of Canvas news, with an unread dot.
 
 Code: `src/espol_bot/dashboard.py` (`snapshot`, `page_url`, `publish`, `whatsapp_link`),

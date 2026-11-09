@@ -10,8 +10,9 @@ test_canvas, no gateway:
   1. setup.sh twice: a legacy «espol» profile becomes Vinci with its memory; the second run changes nothing; a toolset
      switched on in config.toml leaves the blocked list and a typo is refused.
   2. `aula` CLI commands against the first fixture state: the material catalog (a module's subheader, folders, a copy
-     from 2025, a big book, a guide only an assignment links to, an announcement's attachment) and its outside links;
-     a file and its copy downloaded on demand.
+     from 2025, a big book, a guide only an assignment links to and the Files listing hides («solo disponible con
+     enlace»), an announcement's attachment) and its outside links; a file, its copy and that guide downloaded on
+     demand; an unknown file id is an error in JSON.
   3. Vinci's polls, then the fixtures change (new assignment, due-date change, new announcement, posted grade with the
      professor's comment and its file (never the student's own comment), new
      material, the syllabus, a new module link, a submission), then polls 2-4 and the 07:00 summary (twice: the second
@@ -1464,11 +1465,13 @@ def test_canvas(tmp_path):
             ["archivos", "bajar", "5001", "--json"],
             ["archivos", "bajar", "5005", "--json"],
             ["archivos", "leer", "5001", "--paginas", "2"],
+            ["archivos", "bajar", "5006", "999999", "--json"],
+            ["archivos", "leer", "999999", "--json"],
         ]
         cli_md = ["# Salida del comando `aula` (estado 1 del aula virtual)\n"]
         cli_json = {}
         for args in cli_runs:
-            proc = run([aula, *args], T_SETUP)
+            proc = run([aula, *args], T_SETUP, check="999999" not in args)
             cli_md.append(f"## `aula {' '.join(args)}`\n\n```\n{normalize(proc.stdout).rstrip()}\n```\n")
             if "--json" in args:
                 cli_json[" ".join(args)] = json.loads(proc.stdout)
@@ -1487,6 +1490,10 @@ def test_canvas(tmp_path):
         assert guide["origen"] == "Tarea «Taller 3: Derivadas»" and formulario["origen"] == "Anuncio «Bienvenidos al curso»"
         assert catalog[5301]["curso"].endswith("Práctico")
         assert cli_json["archivos bajar 5005 --json"][0]["indexado"] == "ok"
+        hidden_guide, unknown = cli_json["archivos bajar 5006 999999 --json"]
+        assert Path(hidden_guide["ruta_local"]).is_file(), "un archivo «solo con enlace» de una tarea se baja"
+        assert unknown["ruta_local"] is None and "999999" in unknown["error"], unknown
+        assert "999999" in cli_json["archivos leer 999999 --json"]["error"], "con --json, el error también es JSON"
         assert take("aula CLI") == [], "la CLI nunca envía mensajes"
 
         # 3. polls -----------------------------------------------------------------------
@@ -2005,7 +2012,7 @@ def test_canvas(tmp_path):
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
-        assert downloaded == {5001, 5005, 5010, 5301, 5101}, \
+        assert downloaded == {5001, 5005, 5006, 5010, 5301, 5101}, \
             f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
 
         notif = ["# Mensajes de WhatsApp al capitán (en orden)\n",

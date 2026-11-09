@@ -236,7 +236,8 @@ disco ni el contexto del modelo:
 
 - **El catálogo** reúne cada documento que muestra el aula: la pestaña Archivos (con sus carpetas), los Módulos (con
   las secciones de cada semana, como «ANTES de clase»), las Páginas, el «Programa del curso», los adjuntos y enlaces
-  de los anuncios y los enlaces dentro de las tareas. Las copias del mismo archivo se muestran una vez, y el material de un
+  de los anuncios y los enlaces dentro de las tareas, también los archivos que el profesor deja «solo disponibles
+  con enlace» y que la pestaña Archivos no muestra. Las copias del mismo archivo se muestran una vez, y el material de un
   semestre anterior (por ejemplo `Slides/2021`) va al final.
 - **Qué se baja:** solo el sílabo de cada curso se baja por su cuenta. Lo demás lo baja el bot de la materia cuando le hace
   falta para responderte, y ya bajado se queda.

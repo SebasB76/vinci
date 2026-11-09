@@ -74,7 +74,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 PAGE_SIZE = 2
 DOWNLOADS = {5001: "capitulo-3-derivadas.pdf", 5005: "capitulo-3-derivadas.pdf", 5101: "semana-2-cinematica.pptx",
              5010: "silabo-matg1049.pdf", 5301: "silabo-matg1049.pdf", 5102: "lectura-vectores-escaneada.pdf",
-             6101: "taller-2-especificacion.pdf", 6102: "plantilla-taller.doc"}
+             6101: "taller-2-especificacion.pdf", 6102: "plantilla-taller.doc",
+             5006: "taller-2-especificacion.pdf"}
 THROTTLE_ONCE = "/api/v1/courses/102/assignments"
 # Lists most fixtures leave out: no comments on a submission, no forums, an empty calendar, inbox or group list.
 EMPTY_UNLESS_GIVEN = re.compile(r"courses/\d+/(students/submissions|users|forums)|calendar_events|conversations"

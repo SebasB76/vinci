@@ -17,6 +17,8 @@ password never reaches the chat, the model, a log or a file.
 Who does what: the model's tool opens a relay mailbox (`portal_login.request`);
 `espol-bot whatsapp-rele` (every 3 s) starts `espol-bot portal-worker <mailbox>`; the worker sends
 the button, drives the portal and saves the copy. Without the relay the flow cannot start.
+The worker logs to `bot.log` and, if it dies before its logging starts, to `portal-worker.log` in the
+same data folder: read both when a button never arrives.
 
 Limits: one sign-in per person (a new button replaces the last); the button lasts
 `portal_login_minutes` (15); 5 tries. The GPA is the portal's figure, never computed from grades.

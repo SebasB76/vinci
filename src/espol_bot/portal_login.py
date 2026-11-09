@@ -50,6 +50,7 @@ POLL_SECONDS = 1.0
 MAX_TRIES = 5
 TURN_TTL = timedelta(minutes=10)
 RELAY_DOWN_SECONDS = 120  # the relay unreachable this long: give the sign-in up
+WORKER_LOG = "portal-worker.log"  # the worker's stdout and stderr, in the data folder
 
 
 class LoginError(ConfigError):
@@ -99,9 +100,12 @@ def launch(cfg: BotConfig, path: Path, now: datetime) -> None:
         if box["kind"] != relay.PORTAL or box.get("state") != "requested":
             continue
         relay.update(path, mailbox, now, state="starting")
-        subprocess.Popen([sys.executable, "-m", "espol_bot", "portal-worker", mailbox], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
-                         env={k: v for k, v in os.environ.items() if k not in ("AULA_DATA_DIR", "ESPOL_AMIGO")})
+        # a crash before its own logging starts (an import, the config) still leaves a trace
+        trace = cfg.core.data_dir / WORKER_LOG
+        with open(os.open(trace, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as err:
+            subprocess.Popen([sys.executable, "-m", "espol_bot", "portal-worker", mailbox], stdin=subprocess.DEVNULL,
+                             stdout=err, stderr=err, start_new_session=True,
+                             env={k: v for k, v in os.environ.items() if k not in ("AULA_DATA_DIR", "ESPOL_AMIGO")})
         log.info("academico: proceso de ingreso iniciado")
 
 
@@ -161,6 +165,10 @@ class Worker:
 
     def run(self) -> int:
         if self.box is None or self.box.get("state") != "starting" or not self.url or not self.key_:
+            why = ("el buzón no está abierto" if self.box is None else f"el buzón está en {self.box.get('state')}"
+                   if self.box.get("state") != "starting" else "falta la URL del relé" if not self.url
+                   else "falta la clave del relé")
+            log.warning("academico: el proceso de ingreso no arranca: %s", why)
             return 0
         relay.update(self.path, self.mailbox, self.now, state="running")
         self.private = rsa.generate_private_key(public_exponent=65537, key_size=2048)

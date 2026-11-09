@@ -57,7 +57,8 @@ Conserva el arranque de la imagen y no agregues `--init` en **Custom Docker opti
 proceso inicial del contenedor para ejecutar la preparación de Vinci y supervisar el gateway.
 
 Para cambiar el modelo, cambia `VINCI_MODEL` y redespliega. Las notas de voz se transcriben con una key de
-OpenAI o de Groq (`GROQ_API_KEY`): DeepSeek y los otros modelos chinos no transcriben audio. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
+Groq (`GROQ_API_KEY`, gratis en console.groq.com) o de OpenAI: DeepSeek y los otros modelos chinos no transcriben
+audio. Si están las dos, Hermes usa Groq. La voz con la que Vinci contesta (Edge TTS) no necesita key. El lector de tu carpeta de apuntes (`[notes]`) no corre en el servidor, porque esa carpeta vive en tu PC.
 El servidor usa el `config.toml` del repo: para cambiar algo, haz commit del cambio y redespliega. Así se enciende
 Telegram también (`[channels] telegram = true`), junto con `TELEGRAM_BOT_TOKEN` y `TELEGRAM_USER_ID`.
 
@@ -90,7 +91,9 @@ Antes eran cron jobs de Hermes dentro del gateway, y todos leían el aula en el 
 - A la hora de `resumen_diario` hace lo mismo con el resumen, que revisa el aula antes de escribirlo. Si el
   contenedor se reinició justo a esa hora, el resumen sale en el siguiente turno, hasta 2 horas después. Cada
   persona lo recibe una sola vez al día.
-- Al arrancar, espera al primer turno: el puente de WhatsApp tarda en conectarse.
+- Al arrancar, espera 3 minutos a que el puente de WhatsApp se conecte y corre una vuelta, sin esperar el turno.
+- Si una vuelta dura más que el intervalo (un libro escaneado, muchos amigos), la siguiente empieza apenas
+  termina, sin saltarse el turno.
 - Para ver que corre: en la Terminal, `s6-svstat /run/service/vinci-sondeo`. Desde tu PC,
   `vinci-check remote logs bot --grep "sondeo --todos"` muestra una línea por vuelta, con cada persona y cuánto
   tardó.

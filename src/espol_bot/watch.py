@@ -2,8 +2,9 @@
 `espol-bot doctor`, and a WhatsApp message to the captain when one of them breaks and again when it recovers.
 
 It runs in the captain's maintenance, every 10 minutes, so it also notices his own poll stopping. Only failures
-(health.FAIL) alert, once per incident: the set failing now is kept in meta and compared on the next run. The
-captain's own Canvas token is left out: his Vinci already tells him when Canvas refuses it (poller._token_refused).
+(health.FAIL) alert, once per incident: the set failing now is kept in meta and compared on the next run. The same
+check breaking or recovering for several people is one message: a stopped poll service fails for everyone at once.
+The captain's own Canvas token is left out: his Vinci already tells him when Canvas refuses it (poller._token_refused).
 """
 
 from __future__ import annotations
@@ -55,15 +56,31 @@ def survey(cfg: BotConfig, now: datetime) -> list[Person]:
     return people
 
 
-def alerts(conn: sqlite3.Connection, people: list[Person]) -> list[tuple[str, bool, str]]:
-    """What broke and what recovered since the last message about it: (key, failing now, text)."""
-    failing = {f"{p.name} · {c.name}": c for p in people for c in p.checks
+def _names(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} y {names[-1]}"
+
+
+def alerts(conn: sqlite3.Connection, people: list[Person]) -> list[tuple[set[str], bool, str]]:
+    """What broke and what recovered since the last message about it, one message per check: (keys, failing now,
+    text). With several people, the detail is the first one's (the captain, or the friend polled first)."""
+    failing = {f"{p.name} · {c.name}": (p.name, c) for p in people for c in p.checks
                if c.level == health.FAIL and (p.friend or c.name not in OWN_ALERT)}
     before = _told(conn)
-    changes = [(key, True, f"⚠️ <b>Vigilancia · {messages.e(key)}</b>: {messages.e(check.detail)}")
-               for key, check in failing.items() if key not in before]
-    changes += [(key, False, f"✅ <b>Vigilancia · {messages.e(key)}</b>: volvió a estar bien.")
-                for key in sorted(before - set(failing))]
+    broke: dict[str, list[tuple[str, str, health.Check]]] = {}
+    for key, (name, check) in failing.items():
+        if key not in before:
+            broke.setdefault(check.name, []).append((key, name, check))
+    healed: dict[str, list[tuple[str, str]]] = {}
+    order = {p.name: i for i, p in enumerate(people)}
+    for key in sorted(before - set(failing), key=lambda k: (order.get(k.rpartition(" · ")[0], len(order)), k)):
+        name, _, check = key.rpartition(" · ")
+        healed.setdefault(check, []).append((key, name))
+    changes = [({key for key, _, _ in group}, True,
+                f"⚠️ <b>Vigilancia · {messages.e(_names([n for _, n, _ in group]))} · {messages.e(check)}</b>: "
+                f"{messages.e(group[0][2].detail)}") for check, group in broke.items()]
+    changes += [({key for key, _ in group}, False,
+                 f"✅ <b>Vigilancia · {messages.e(_names([n for _, n in group]))} · {messages.e(check)}</b>: "
+                 f"volvió a estar bien.") for check, group in healed.items()]
     return changes
 
 
@@ -82,13 +99,13 @@ def run(cfg: BotConfig, conn: sqlite3.Connection, send, now: datetime) -> list[s
         return []
     try:
         told, sent = _told(conn), []
-        for key, failing, text in alerts(conn, survey(cfg, now)):
+        for keys, failing, text in alerts(conn, survey(cfg, now)):
             try:
                 send(text)
             except Exception as exc:  # noqa: BLE001 (the bridge is down: the rest waits too)
                 log.warning("vigilancia: no pude avisar (%s); lo intento en la próxima corrida", exc)
                 break
-            told = told | {key} if failing else told - {key}
+            told = told | keys if failing else told - keys
             sent.append(text)
         set_meta(conn, FAILING, json.dumps(sorted(told), ensure_ascii=False))
         conn.commit()

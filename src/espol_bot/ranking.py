@@ -1,6 +1,7 @@
 """The album ranking on WhatsApp among the people with a Vinci who joined it, with no model.
 
-«/ranking» shows who has the most cards (distinct cards of the catalog; legendaries, then epics break a tie).
+«/ranking» shows who has the most cards (distinct cards of the catalog; legendaries, then epics break a tie); on the
+album page, a tap on someone shows which cards they have.
 Nobody is in it until they write «/ranking entrar»; «/ranking salir» takes them out. The list of who joined lives in
 the captain's amigos/ranking.json; each album is read from that person's espol.db, as trades.py does.
 """
@@ -46,7 +47,8 @@ def _save(home: Path, numbers: list[str]) -> None:
 
 
 def _score(db: Path) -> dict | None:
-    """{"n": distinct cards, "leg": legendaries, "epic": epics}; None for an album not started yet."""
+    """{"n": distinct cards, "leg": legendaries, "epic": epics, "cards": their ids}; None for an album not started
+    yet."""
     if not db.exists():
         return None
     rarity = {c["id"]: c["rarity"] for c in album.catalog()}
@@ -59,11 +61,12 @@ def _score(db: Path) -> dict | None:
             conn.close()
     except sqlite3.Error:
         return None
-    return {"n": len(have), "leg": sum(rarity[c] == "leg" for c in have), "epic": sum(rarity[c] == "epic" for c in have)}
+    return {"n": len(have), "leg": sum(rarity[c] == "leg" for c in have), "epic": sum(rarity[c] == "epic" for c in have),
+            "cards": have}
 
 
 def table(home: Path, captain: str) -> list[dict]:
-    """Who joined, best first: [{"name", "number", "n", "leg", "epic"}]."""
+    """Who joined, best first: [{"name", "number", "n", "leg", "epic", "cards"}]."""
     joined = set(_joined(home))
     rows = []
     for p in trades._roster(home, captain):
@@ -73,8 +76,8 @@ def table(home: Path, captain: str) -> list[dict]:
 
 
 def page(cfg: BotConfig) -> dict:
-    """The album page's «Ranking» view: {"wa", "in", "people": [{"name", "n", "leg", "me"?}]}; {} off WhatsApp or with
-    no friends."""
+    """The album page's «Ranking» view: {"wa", "in", "people": [{"name", "n", "leg", "c", "me"?}]}, where "c" lists the
+    catalog numbers of their cards (shorter in the link than the ids); {} off WhatsApp or with no friends."""
     home = _home(cfg)
     if not (home / "amigos" / "amigos.json").exists():
         return {}
@@ -83,8 +86,9 @@ def page(cfg: BotConfig) -> dict:
     if wa is None:
         return {}
     me = next((p.number for p in trades._roster(home, wa.captain) if p.db == cfg.core.db_path), None)
-    people = [{"name": r["name"], "n": r["n"], "leg": r["leg"], **({"me": 1} if r["number"] == me else {})}
-              for r in table(home, wa.captain)]
+    number = {c["id"]: c["n"] for c in album.catalog()}
+    people = [{"name": r["name"], "n": r["n"], "leg": r["leg"], "c": sorted(number[c] for c in r["cards"]),
+               **({"me": 1} if r["number"] == me else {})} for r in table(home, wa.captain)]
     return {"wa": whatsapp.own_number(), "in": me in _joined(home), "people": people}
 
 
@@ -97,7 +101,8 @@ def command(cfg: BotConfig, number: str, text: str, now: datetime) -> amigos.Out
     if word in ("entrar", "unirme", "si"):
         if number not in joined:
             _save(home, joined := [*joined, number])
-        note = "✅ Listo: sales en el ranking del álbum. Para salir, escribe /ranking salir.\n\n"
+        note = ("✅ Listo: sales en el ranking del álbum, y los demás del ranking pueden ver tus cartas. Para salir, "
+                "escribe /ranking salir.\n\n")
     elif word in ("salir", "no"):
         if number in joined:
             _save(home, joined := [n for n in joined if n != number])
@@ -116,7 +121,8 @@ def command(cfg: BotConfig, number: str, text: str, now: datetime) -> amigos.Out
     if mine is not None and mine >= SHOWN:
         lines.append(f"…\n{mine + 1}. Tú: {rows[mine]['n']} de {total}")
     if number not in joined:
-        lines += ["", "No sales en el ranking: entra solo quien quiere. Para entrar, escribe /ranking entrar."]
+        lines += ["", "No sales en el ranking: entra solo quien quiere, y quien entra muestra sus cartas a los demás del "
+                      "ranking. Para entrar, escribe /ranking entrar."]
     person = next(p for p in trades._people(cfg) if p.number == number)
     with trades._album(cfg, person) as (owner, conn):
         link = album.whatsapp_link(conn, owner, now)

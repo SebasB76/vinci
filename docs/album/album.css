@@ -177,9 +177,12 @@ body.opening { background: var(--panel); }
 .pair { display: flex; gap: 8px; }
 .pair .btn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.board li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--r-sm); background: var(--card);
-  box-shadow: inset 0 0 0 1px var(--line); }
+.board li { border-radius: var(--r-sm); background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
 .board li.me { box-shadow: inset 0 0 0 2px var(--ink); }
+.board button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 0; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; transition: transform 140ms var(--ease-out); }
+.board button:active { transform: scale(0.98); }
+.board .go { flex: none; color: var(--ink-3); font-size: 18px; line-height: 1; }
 .board .pos { flex: none; width: 26px; text-align: center; font-weight: 500; color: var(--ink-3); }
 .board .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board .sc { flex: none; display: flex; align-items: center; gap: 6px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -187,5 +190,5 @@ body.opening { background: var(--panel); }
 
 @media (prefers-reduced-motion: reduce) {
   .rise, .cell.fresh { animation: none; }
-  .offer, .offer .body, .chip, .cell, .rar, .seg button, .dens { transition: none; }
+  .offer, .offer .body, .chip, .cell, .rar, .seg button, .dens, .board button { transition: none; }
 }

@@ -44,6 +44,7 @@ The Canvas token stays inside this process: no tool ever returns it.
 from __future__ import annotations
 
 import base64
+import html
 import io
 import json
 import logging
@@ -66,7 +67,7 @@ from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
 from espol_bot import (academic_portal, agenda, album, citations, conversation, dashboard, diapositivas, espol_calendar,
                        grades, grades_page, health, horario, libros, materias, messages, plan, portal_login, priority,
-                       quiz, resumen, store, submission, token_form, visuales)
+                       quiz, resumen, store, study_page, submission, token_form, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -197,7 +198,7 @@ SUMMARY_PROPERTIES = {
 GUEST_TOOLS: dict[str, frozenset[str]] = {
     name: frozenset() for name in (
         "archivos", "modulos", "buscar_material", "leer_archivo", "find_past_exams", "open_past_exam", "crear_diapositivas",
-        "crear_resumen", "send_quiz")
+        "crear_resumen", "send_quiz", "send_study_page")
 } | {"libro_principal": frozenset({"titulo"})}
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
         "entrega, puntos, la rúbrica con la que la califican, las fechas ya en hora de Ecuador («vence»; «cierra»: "
@@ -272,7 +273,7 @@ FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
-    "set_assignment_delivery", "study_activity", "show_page", "plan_carrera", "guardar_malla", "calendario_espol"})
+    "set_assignment_delivery", "study_activity", "show_page", "plan_carrera", "guardar_malla", "calendario_espol", "send_study_page"})
 
 
 @dataclass
@@ -1724,6 +1725,100 @@ def _save_curriculum(ctx: Ctx, args: dict) -> dict:
     return {"saved": len(saved["subjects"]), "next": "Call plan_carrera to tell them what they can take now."}
 
 
+STUDY_PAGE = ("Le manda un repaso interactivo: una página que se abre desde un botón en el chat (en un grupo, al grupo). Úsalo "
+         "cuando te pide repasar un tema, prepararse para una lección o una explicación larga; una pregunta corta se "
+         "contesta en el chat. Tú no escribes HTML: armas de 4 a 8 «blocks», cada uno con su «type» y sus campos, y la "
+         "página los dibuja. En los textos: **negrita**, `código` y fórmulas entre $…$ (LaTeX). Tipos:\n"
+         "- text {body}: la explicación, en párrafos cortos separados por una línea en blanco.\n"
+         "- callout {kind: tip | warning | key, body}: un consejo, un error común o lo que no puede olvidar.\n"
+         "- formula {latex, legend: [{symbol, meaning}]}: una fórmula grande con qué significa cada símbolo.\n"
+         "- function_plot {curves: [{expr, label}], x: [min, max], y?: [min, max], params: [{name, min, max, value, "
+         "label}]}: curvas en x con deslizadores; expr con + - * / ^, sin cos tan exp ln log sqrt abs, pi, e y los "
+         "«name» de params; cada multiplicación con * (2*x).\n"
+         "- distribution {dist: normal (mu, sigma) | binomial (n, p) | poisson (lambda), query: {kind: less | greater "
+         "| between, a, b?}}: la distribución con deslizadores y la probabilidad pintada.\n"
+         "- steps {problem, steps: [...], answer}: un ejercicio resuelto que se revela paso a paso.\n"
+         "- sequence {actors: [2 a 4 nombres], scenarios: [{name, messages: [{from, to, label, note, fail?}]}]}: "
+         "un protocolo o intercambio de mensajes paso a paso (2PC, Raft, TCP, una llamada REST); label corto "
+         "(PREPARE, ACK), note explica el paso; from = to es un evento local; fail: true lo pinta en rojo. Varios "
+         "escenarios para comparar (todo bien / un nodo falla).\n"
+         "- diagram {nodes: [{id, label}], edges: [{from, to, label?}], tour?: [{nodes: [ids], note}]}: una "
+         "arquitectura o un flujo de cajas y flechas (cliente → balanceador → réplicas), con un recorrido opcional.\n"
+         "- compare {columns: [2 o 3], rows: [{aspect, values: [uno por columna]}]}: una tabla lado a lado.\n"
+         "- code {language, code, walkthrough: [{lines: [números desde 1], note}]}: código que se explica línea por "
+         "línea (un patrón, un code smell).\n"
+         "- flashcards {cards: [{front, back}]}: tarjetas para memorizar definiciones.\n"
+         "- classify {options: [...], cases: [{text, answer, explanation}]}: casos que el estudiante clasifica "
+         "(¿qué principio SOLID se rompe?, ¿qué patrón es?).\n"
+         "- order {items: [en el orden correcto], explanation}: pasos que debe ordenar (yo los mezclo).\n"
+         "- quiz {questions: [{question, options, answer, explanation}]}: answer es una de las options, escrita igual.\n"
+         "Todo sale del material que leíste (buscar_material, leer_archivo), y sus «cita» van en «sources». Si algo "
+         "está mal te digo qué corregir: arréglalo y vuelve a llamarme.")
+STUDY_PAGE_BLOCK = {"type": "object", "description": "un bloque; sus campos según «type» (ver la descripción)",
+               "properties": {"type": {"type": "string", "enum": list(study_page.BLOCKS)},
+                              "title": {"type": "string", "description": "el título de la tarjeta, corto (opcional)"}},
+               "required": ["type"], "additionalProperties": True}
+STUDY_PAGE_PROPERTIES = {
+    "title": {"type": "string", "description": "el tema, corto («Two-phase commit», «Distribución normal»)"},
+    "subject": {"type": "string", "description": "la materia"},
+    "blocks": {"type": "array", "minItems": study_page.MIN_BLOCKS, "maxItems": study_page.MAX_BLOCKS,
+               "items": STUDY_PAGE_BLOCK},
+    "sources": {"type": "array", "items": {"type": "string"},
+                "description": "las «cita» de las páginas del material de donde sale, copiadas tal cual"},
+}
+STUDY_PAGE_KINDS = {"text": "explicación", "callout": "", "formula": "fórmulas", "function_plot": "gráficos",
+               "distribution": "gráficos", "steps": "ejercicio resuelto", "flashcards": "tarjetas", "quiz": "quiz",
+               "sequence": "diagrama paso a paso", "compare": "tabla", "classify": "casos para clasificar",
+               "order": "pasos para ordenar", "code": "código explicado", "diagram": "diagrama"}
+
+
+def _checked_citations(ctx: Ctx, value, wrong: list[str]):
+    """`value` with every citation in its texts checked, as crear_resumen does: the page skips the plugin's check."""
+    if isinstance(value, str):
+        if "📄" not in value:
+            return value
+        text, changes = citations.check(ctx.conn, ctx.bot, ctx.session, None, value, ctx.now())
+        wrong += [c["cita"] for c in changes if not c["cambio"].startswith("enlace")]
+        return text
+    if isinstance(value, list):
+        return [_checked_citations(ctx, v, wrong) for v in value]
+    if isinstance(value, dict):
+        return {k: _checked_citations(ctx, v, wrong) for k, v in value.items()}
+    return value
+
+
+def _send_study_page(ctx: Ctx, args: dict) -> dict:
+    if not ctx.cfg.study_page:
+        raise ToolError("Los repasos están apagados en esta instalación: explícaselo en el chat.")
+    wrong: list[str] = []
+    args = _checked_citations(ctx, args, wrong)
+    if wrong:
+        raise ToolError("Estas citas no salen de páginas que leíste: " + "; ".join(f"«{c}»" for c in wrong)
+                        + ". Léelas con leer_archivo o buscar_material y copia su «cita», o quítalas.")
+    try:
+        data = study_page.build(args)
+        url = study_page.page_url(ctx.cfg, data)
+    except study_page.StudyPageError as exc:
+        raise ToolError(f"No armé el repaso. Corrige esto y vuelve a llamarme: {exc}.") from None
+    group = _group_chat(ctx)
+    chat = WhatsApp(group, ctx.cfg.whatsapp_bridge) if group else _whatsapp_chat(ctx)
+    result = {"bloques": len(data["blocks"]), "minutos": data["minutes"]}
+    if chat is None:
+        return {**result, "url": url, "mensaje": "Pon este enlace solo, en una línea aparte, y antes una frase con "
+                                                 "lo que trae el repaso."}
+    kinds = list(dict.fromkeys(k for b in data["blocks"] if (k := STUDY_PAGE_KINDS[b["type"]])))
+    what = ", ".join(kinds[:-1]) + f" y {kinds[-1]}" if len(kinds) > 1 else kinds[0]
+    about = f" ({html.escape(data['subject'])})" if data["subject"] else ""
+    try:
+        chat.send(f"📚 <b>{html.escape(data['title'])}</b>{about}: {what}. Unos {data['minutes']} min.",
+                  link={"text": study_page.BUTTON, "url": url})
+    except (TelegramError, ConfigError) as exc:
+        raise ToolError(f"No pude mandarle el repaso: {exc}") from None
+    return {**result, "enviado": f"un botón «{study_page.BUTTON}» " + ("al grupo" if group else "a su chat privado"),
+            "mensaje": "Ya le llegó el botón con el repaso. Escribe una o dos líneas: qué trae y por dónde empezar. No "
+                       "repitas en el chat lo que dice el repaso."}
+
+
 def _show_page(ctx: Ctx, args: dict) -> dict:
     sent = _send_page(ctx, args)
     if _group_chat(ctx):  # the page holds their data: the button goes to their private chat even from a group
@@ -2382,6 +2477,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         Tool("guardar_malla", CURRICULUM, lambda args: _save_curriculum(ctx, args), CURRICULUM_PROPERTIES,
              ["materias"], read_only=False),
         Tool("show_page", PAGE, lambda args: _show_page(ctx, args), PAGE_PROPERTIES, ["page"], read_only=False),
+        Tool("send_study_page", STUDY_PAGE, lambda args: _send_study_page(ctx, args), STUDY_PAGE_PROPERTIES,
+             ["title", "blocks"], read_only=False),
     ])
 
 

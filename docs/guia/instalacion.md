@@ -171,6 +171,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `dashboard.url` | `https://sebasb76.github.io/vinci/dashboard/` | La página del botón «📋 Entregas». Vacío (`""`): sin dashboard, y el chat vuelve a su botón de menú de siempre |
 | `dashboard.grades_url` | `https://sebasb76.github.io/vinci/notas/` | La página «Tus notas» que Vinci manda por WhatsApp: cómo vas en cada materia según la calculadora. Vacío (`""`): sin esa página |
 | `dashboard.album_url` | `https://sebasb76.github.io/vinci/album/` | El álbum: la página donde abres los sobres que Vinci te da por entregar a tiempo y por sacar 8/10 o más en una lección o un examen. Vacío (`""`): sin álbum ni sobres |
+| `dashboard.study_url` | `https://sebasb76.github.io/vinci/repaso/` | Los repasos interactivos que Vinci arma cuando le pides repasar un tema o una explicación larga. El contenido va dentro del enlace. Vacío (``): Vinci explica solo en el chat |
 | `dashboard.semester_end` | `"2027-01-15"` | Último día de clases (`AAAA-MM-DD`) para la semana del semestre que muestra el dashboard. Vacío: el fin del periodo según el aula, que también cuenta exámenes y recuperación |
 | `general.zona_horaria` | `America/Guayaquil` | Zona para fechas, horarios y briefs |
 | `channels.telegram` | `false` | `false`: Vinci te habla solo por WhatsApp (necesita `WHATSAPP_CAPTAIN`) y lleva todas tus materias en un chat; los bots de materia quedan apagados, sin borrarse. `true`: también Telegram, con un bot por materia |

@@ -19,14 +19,15 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   Hermes's unofficial bridge, keeps every subject in one chat, with its notebook and the brief before each class.
   Telegram is off, not deleted: the `vinci-<code>` subject bot profiles are parked (`gateway.parked`), and
   `telegram = true` brings them and `vinci_espol_bot` back.
-- Live: `docs/token/`, `docs/dashboard/` and `docs/academico/` on GitHub Pages; `relay/` on Cloudflare Workers.
+- Live: `docs/token/`, `docs/dashboard/`, `docs/academico/`, `docs/notas/`, `docs/album/` and `docs/repaso/` on GitHub
+  Pages; `relay/` on Cloudflare Workers.
 - Live: Canvas token renewal runs outside the gateway, as the s6 service `vinci-mantenimiento`
   (`maintenance_service.py`): every 10 min, the captain and then each active friend, one at a time, so a frozen
   gateway no longer cuts the chains. `VINCI_MAINTENANCE_SERVICE` (set in the `Dockerfile`) drops the
   `*-mantenimiento` Hermes crons; a PC install keeps them.
 - Live: the polls and the 07:00 summary run outside the gateway too, as the s6 service `vinci-sondeo`
   (`poll_service.py`): at each poll slot the captain and then each active friend, one at a time, each with 10 min at
-  most and 3 min of OCR. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
+  most and 3 min of OCR; a pass also runs 3 min after each start, and right away when the last one ran past its slot. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
   a raised `oom_score_adj`, so at the memory limit the kernel kills a poll before the gateway.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The

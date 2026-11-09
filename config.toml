@@ -30,6 +30,10 @@ grades_url = "https://sebasb76.github.io/vinci/notas/"
 # El álbum (docs/album/): ahí abres los sobres que Vinci te da por entregar a tiempo y por sacar 8/10 o más en
 # una lección o un examen. Tus cartas van dentro del enlace. Vacío ("") para no usarlo: sin álbum ni sobres.
 album_url = "https://sebasb76.github.io/vinci/album/"
+# Los repasos interactivos (docs/repaso/) que Vinci arma cuando le pides repasar un tema o una explicación larga:
+# fórmulas, gráficos que mueves, diagramas paso a paso, tarjetas y un quiz. El contenido va dentro del enlace.
+# Vacío ("") para no usarlos: Vinci explica solo en el chat.
+study_url = "https://sebasb76.github.io/vinci/repaso/"
 # Último día de clases, para la barra del semestre (AAAA-MM-DD). Si lo dejas vacío, se usa el fin del periodo
 # según el aula, que también cuenta los exámenes y la recuperación.
 semester_end = "2027-01-15"
@@ -119,7 +123,7 @@ modelo = "claude-haiku-5-5"
 # Quitar un nombre la vuelve a apagar. La tabla con el riesgo de cada una está en docs/guia/privacidad.md.
 #   terminal, file, code_execution, browser, computer_use, delegation, cronjob, kanban, vision, video,
 #   image_gen, video_gen, tts, todo, connections, homeassistant, spotify, x_search, a2a
-#   (a los bots de materia además: web, search)
+#   (a los bots de materia además: web, search; Vinci y los de tus amigos ya traen tts, para un audio pedido)
 # Ejemplo: vinci = ["terminal", "file"]
 vinci = []
 # Para todos los bots de materia.

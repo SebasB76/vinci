@@ -474,11 +474,13 @@ Con la copia del Académico, Vinci te ayuda a elegir qué tomar el próximo seme
 1. Pregúntale «¿qué materias puedo tomar el próximo semestre?» o «¿cuánto me falta?». Vinci te dice los créditos que
    te faltan en cada categoría de tu carrera (formación profesional, educación general, prácticas…), como los cuenta
    el portal.
-2. Si Vinci no tiene tu malla, te la pide. Mándale una foto o el PDF de la malla de tu carrera: está en la página de
-   tu carrera en espol.edu.ec.
-3. Vinci te dice cuántas materias leyó y lo que no se lee bien. Revísalo y dile que está bien: recién ahí la guarda.
-4. Desde ahí te dice qué materias ya puedes tomar, primero las que abren más materias, y cuáles todavía no, con el
-   prerrequisito que te falta.
+2. Vinci lee tu malla del Académico al conectarlo: la misma que abres al tocar el nombre de tu carrera en
+   «Información General», con los prerrequisitos y correquisitos de cada materia. No tienes que mandarle nada. Si
+   conectaste el Académico antes de que Vinci leyera la malla, dile «actualiza mi Académico».
+3. Vinci te dice qué materias ya puedes tomar, primero las que abren más materias, cuáles van junto con otra
+   (correquisito) y cuáles todavía no, con lo que te falta. Lo que cursas este semestre lo cuenta aparte.
+4. Si el Académico no trae tu malla, Vinci te pide una foto o el PDF. Te dice cuántas materias leyó y lo que no se
+   lee bien, y la guarda recién cuando le dices que está bien.
 
 Pregúntale también «¿cuánto me sube el promedio si saco 9 en Redes?». La cuenta la hace un script con los créditos de
 cada materia, y Vinci te la da como un estimado: el portal no publica su fórmula exacta.

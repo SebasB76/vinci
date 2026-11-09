@@ -1647,15 +1647,17 @@ def _send_grades(ctx: Ctx, chat: WhatsApp, now: datetime) -> dict:
 
 PLAN = ("Su camino en la carrera, para planear la matrícula: los créditos que le faltan en cada categoría del flujo "
         "(«categories»: taken, required, missing), sus materias aprobadas con nota y créditos, su promedio y avance del "
-        "Académico, y, si guardó su malla (guardar_malla), las materias que ya puede tomar («can_take», primero las que "
-        "abren más materias: «unlocks») y las que todavía no, con qué prerrequisito les falta («locked»). Sin malla "
-        "(«curriculum»: null), dile que te mande una foto o el PDF de la malla de su carrera para saber qué puede tomar. "
+        "Académico, y su malla, que llega con el Académico (o la que guardó de una foto): lo que cursa ahora "
+        "(«in_course»), lo que ya puede tomar («can_take», primero lo que abre más materias: «unlocks»; «take_with» es un "
+        "correquisito del mismo semestre) y lo que todavía no, con lo que le falta («locked»). Sin malla («curriculum»: "
+        "null), ofrécele actualizar su Académico, que la trae; solo si no la trae, pídele una foto o el PDF. "
         "Con «simular» ([{subject, grade, credits?}]) estima su promedio general si saca esas notas: dilo como estimado.")
 PLAN_PROPERTIES = {"simular": {"type": "array", "items": {"type": "object", "properties": {
     "subject": {"type": "string"}, "grade": {"type": "number", "description": "de 0 a 10"},
     "credits": {"type": "number", "description": "solo si la sabes; si no, la saco de su malla o te la pido"}},
     "required": ["subject", "grade"]}, "description": "notas supuestas, para estimar su promedio"}}
-CURRICULUM = ("Guarda la malla de su carrera, que leíste de una foto o un PDF que te mandó: cada materia con su código "
+CURRICULUM = ("Solo si el Académico no trajo su malla: guarda la que leíste de una foto o un PDF que te mandó, cada "
+              "materia con su código "
               "si lo trae, nombre, créditos, nivel (semestre) y la lista de sus prerrequisitos (código o nombre). "
               "Antes de guardarla, muéstrale en pocas líneas cuántas materias leíste y los prerrequisitos que dudas, y "
               "guárdala solo cuando te diga que está bien. Reemplaza la malla que tenía.")

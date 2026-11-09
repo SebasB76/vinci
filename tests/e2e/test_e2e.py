@@ -76,7 +76,9 @@ test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step logi
   asks for his GPA with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his chat. On
   its page (in a real headless Chromium when there is one) he gives his user, then a wrong CAPTCHA and the right one;
   one portal session reads every section, the copy is saved with its date and term, and his question comes back to
-  Vinci by itself in the same Hermes session. Later questions are answered from the copy; «actualiza mi Académico»
+  Vinci by itself in the same Hermes session. The sign-in also follows the career's one-time link to the curriculum
+  (mallacurricular), so «¿qué materias puedo tomar?» answers from it with no photo: what he can take, what waits on a
+  prerequisite or a count of approved subjects, and what he takes now. Later questions are answered from the copy; «actualiza mi Académico»
   brings a second sign-in and the portal's new figures. No credential reaches the model, a chat, the relay in clear, a
   log or the data folder, and the sign-in's process exits.
 
@@ -319,17 +321,9 @@ PORTAL_ASKS = {
     "actualiza mi Académico y dime mi promedio": ("promedio", True),
 }
 PORTAL_BACK = "Ya conecté mi Académico"
-# The degree plan (plan_carrera, guardar_malla): the curriculum Vinci reads from the captain's photo of it.
+# The degree plan (plan_carrera): the curriculum comes with the Académico's copy, from mallacurricular.
 PLAN_ASK = "qué materias puedo tomar el próximo semestre"
-CURRICULUM_SAVE = "sí, guarda mi malla"
-GPA_ASK = "cuánto me sube el promedio si saco 9 en Sistemas Distribuidos"
-CURRICULUM = [
-    {"code": "CCPG1043", "name": "Fundamentos de Programación", "credits": 3, "level": 1, "prerequisites": []},
-    {"code": "MATG1049", "name": "Álgebra Lineal", "credits": 3, "level": 2, "prerequisites": ["MATG1045"]},
-    {"code": "CCPG1052", "name": "Estructuras de Datos", "credits": 3, "level": 3, "prerequisites": ["CCPG1043"]},
-    {"code": "CCPG1053", "name": "Análisis de Algoritmos", "credits": 3, "level": 4,
-     "prerequisites": ["Estructuras de Datos", "MATG1049"]},
-]  # how the question comes back after the sign-in (portal_login.py)
+GPA_ASK = "cuánto me sube el promedio si saco 9 en Sistemas Distribuidos"  # how the question comes back after the sign-in (portal_login.py)
 
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
@@ -761,13 +755,13 @@ class Script:
             missing = ", ".join(f"{c['category'].title()} {c['missing']:g}" for c in data["categories"] if c["missing"])
             if data["curriculum"] is None:
                 return {"content": f"Te faltan créditos en: {missing}. Mándame una foto de tu malla y te digo qué tomar."}
-            ready = ", ".join(m["name"] for m in data["curriculum"]["can_take"])
-            locked = ", ".join(f"{m['name']} (te falta {' y '.join(m['lacks'])})" for m in data["curriculum"]["locked"])
-            return {"content": f"Ya puedes tomar: {ready}. Todavía no: {locked}."}
-        if CURRICULUM_SAVE in text:
-            if not called:
-                return _call("mcp__vinci__guardar_malla", carrera="Computación", materias=CURRICULUM)
-            return {"content": f"Guardé tu malla: {_json(results[-1])['saved']} materias."}
+            plan = data["curriculum"]
+            ready = ", ".join(m["name"] + (f" (junto con {' y '.join(m['take_with'])})" if m.get("take_with") else "")
+                              for m in plan["can_take"])
+            locked = ", ".join(f"{m['name']} (te falta {' y '.join(m['lacks'])})" for m in plan["locked"])
+            taking = ", ".join(m["name"] for m in plan["in_course"])
+            return {"content": f"Según tu malla del {plan['from']}: ya puedes tomar {ready}. Todavía no: {locked}. "
+                               f"Ahora cursas: {taking}."}
         if GPA_ASK in text:
             if not called:
                 return _call("mcp__vinci__plan_carrera", simular=[{"subject": "Sistemas Distribuidos", "grade": 9,
@@ -1116,6 +1110,7 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
         hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
+        hosts += f', "mallacurricular.espol.edu.ec" = "{portal.base}"'  # the curriculum the Académico links'
         hosts += f', "www.espol.edu.ec" = "{web.base}"'  # ESPOL's calendar page
         config += (f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
                    f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
@@ -3394,7 +3389,8 @@ def academico_flow(w) -> None:
         assert stat.S_IMODE(copy_file.stat().st_mode) == 0o600
         assert copy["period"] == "2026 · 2S" and copy["saved_at"] and not copy["errors"], copy["errors"]
         sections = copy["sections"]
-        assert set(sections) == {"general", "historial", "calificaciones", "creditos", "horario", "examenes"}
+        assert set(sections) == {"general", "historial", "calificaciones", "creditos", "horario", "examenes", "malla"}
+        assert len(sections["malla"]["subjects"]) == 11, sections["malla"]
         general = sections["general"]["datos"]
         assert general.get("Promedio General en las materias aprobadas") == "8,15" and \
             general.get("Carrera") == "Computación Activo" and general.get("Avance de la carrera") == "40,00% *", general
@@ -3450,22 +3446,26 @@ def academico_flow(w) -> None:
                       "créditos que dice el portal y le prohíbe al modelo calcular lo que falta restando de un total, "
                       "porque la malla todavía no se lee")
 
-        # 4b. The degree plan from the same copy: credits left per category, then the curriculum from a photo
+        # 4b. The degree plan from the same copy: credits left per category, and what to take from the curriculum the
+        # sign-in read from mallacurricular (its token used once), with no photo
+        tokens = portal.curriculum_tokens
+        assert tokens and all(tokens.values()), f"la malla se lee con el enlace de Información General: {tokens}"
+        assert not any("cookie=True" in r for r in portal.curriculum_requests), "ninguna cookie del Académico va a la malla"
         plan_text = text_of(say(captain_jid, captain_jid, PLAN_ASK, "Capitán"))
-        assert "Formación Profesional 50" in plan_text and "Educación General 21" in plan_text \
-            and "foto de tu malla" in plan_text, plan_text
-        saved = text_of(say(captain_jid, captain_jid, CURRICULUM_SAVE, "Capitán"))
-        assert "Guardé tu malla: 4 materias" in saved, saved
-        plan_text = text_of(say(captain_jid, captain_jid, PLAN_ASK, "Capitán"))
-        assert "Ya puedes tomar: Álgebra Lineal, Estructuras de Datos." in plan_text \
-            and "Análisis de Algoritmos (te falta Estructuras de Datos y Álgebra Lineal)" in plan_text, plan_text
+        assert "Formación Profesional 50" in plan_text and "Educación General 21" in plan_text, plan_text
+        assert "Según tu malla del Académico: ya puedes tomar" in plan_text and "ÁLGEBRA LINEAL" in plan_text \
+            and "MATEMÁTICAS DISCRETAS" in plan_text and "PROGRAMACIÓN ORIENTADA A OBJETOS" in plan_text, plan_text
+        assert "ESTRUCTURAS DE DATOS (te falta PROGRAMACIÓN ORIENTADA A OBJETOS)" in plan_text, plan_text
+        assert "EMPRENDIMIENTO E INNOVACIÓN (te falta 20 materias aprobadas" in plan_text, plan_text
+        assert "Ahora cursas: CIENCIAS DE LA SOSTENIBILIDAD" in plan_text and "foto" not in plan_text, plan_text
         estimate = text_of(say(captain_jid, captain_jid, GPA_ASK, "Capitán"))
         assert "de 8.15 a unos 8.28" in estimate, estimate
         assert len(portal.requests) == seen, "el plan sale de la copia, sin volver al Académico"
         for asked_, said in ((PLAN_ASK, plan_text), (GPA_ASK, estimate)):
             md.append(f"**Capitán**: {asked_}\n→ Vinci: {normalize(said)}\n")
-        report.append("El plan de la carrera, de la misma copia: los créditos que faltan en cada categoría; sin malla, "
-                      "Vinci la pide; con la malla guardada, qué materias ya puede tomar (primero las que abren más) y "
+        report.append("El plan de la carrera, de la misma copia: los créditos que faltan en cada categoría; la malla, "
+                      "leída del Académico al conectarlo (sin foto): qué materias ya puede tomar (primero las que abren más), "
+                      "lo que cursa, y "
                       "cuáles no con el prerrequisito que falta; y el promedio estimado si saca 9 en una materia")
 
         # 5. Updating it: a new sign-in, the portal's new figures

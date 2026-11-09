@@ -36,7 +36,9 @@ FakePortal stands in for ESPOL's Académico (www.academico.espol.edu.ec, through
 Forms behaves: a session cookie, a fresh __VIEWSTATE and __EVENTVALIDATION in every form that the next post must send
 back (a stale or foreign one is a 500, as a broken viewstate MAC is), login.aspx in two steps (user name; then
 password and a BotDetect CAPTCHA whose image must be fetched with the same cookie), a forms-auth cookie, and the
-pages under /UI/InformacionAcademica/ in the shapes the real ones have, behind a 302 to login.aspx without it:
+pages under /UI/InformacionAcademica/ in the shapes the real ones have, behind a 302 to login.aspx without it
+(and mallacurricular.espol.edu.ec's curriculum: its list by level only on the first use of the one-time token
+«Información General» links, and each subject's requisites from a public POST):
 «Información General» with the student's card (ID, name, photo) and the career's GPA and progress in «Label:» rows;
 the history with «Año Termino» and «Prom.» columns; the credits under a card with the matrícula and name; the grades
 and the class timetable empty until «Consultar» is pressed with a year and a term typed in, the grades in a table
@@ -823,6 +825,22 @@ PORTAL_EXAMS = {"PARCIAL": [("Lunes", "08:00", "10:00", "CCPG1055 - SISTEMAS DIS
                 "MEJORAMIENTO": [("Jueves", "08:00", "10:00", "SOFG1007 - INGENIERÍA DE SOFTWARE I Paralelo N°2 "
                                   "Aula:11C-AUD CAMPUS GUSTAVO GALINDO Fecha:11/2/2027")]}
 PORTAL_EXAM_KINDS = {"1": "PARCIAL", "2": "FINAL", "M": "MEJORAMIENTO"}
+# The curriculum at mallacurricular.espol.edu.ec: (level, [(position, code, subject, credits, status,
+# [(requisite code, PRE-/CO-REQUISITO)] or a count of approved subjects)]). Invented, in the real page's shapes.
+PORTAL_CURRICULUM = [
+    ("Nivel 100I", [(1, "MATG1045", "CÁLCULO DE UNA VARIABLE", "3", "Aprobado 1º vez", []),
+                    (2, "FISG1005", "FÍSICA: MECÁNICA", "3", "Aprobado 2º vez", [("MATG1045", "CO-REQUISITO")]),
+                    (3, "CCPG1043", "FUNDAMENTOS DE PROGRAMACIÓN", "3", "Aprobado 1º vez", []),
+                    (None, "", "COMPLEMENTARIAS DE ARTE, DEPORTE E IDIOMAS", "1", "", [])]),
+    ("Nivel 100II", [(4, "MATG1049", "ÁLGEBRA LINEAL", "3", "", [("MATG1045", "PRE-REQUISITO")]),
+                     (5, "MATG1046", "CÁLCULO VECTORIAL", "3", "Aprobado 1º vez", [("MATG1045", "PRE-REQUISITO")]),
+                     (6, "CCPG1052", "PROGRAMACIÓN ORIENTADA A OBJETOS", "3", "", [("CCPG1043", "PRE-REQUISITO")])]),
+    ("Nivel 200I", [(7, "CCPG1034", "ESTRUCTURAS DE DATOS", "3", "",
+                     [("MATG1051", "CO-REQUISITO"), ("CCPG1052", "PRE-REQUISITO")]),
+                    (8, "MATG1051", "MATEMÁTICAS DISCRETAS", "3", "", []),
+                    (9, "ADSG1026", "CIENCIAS DE LA SOSTENIBILIDAD", "2", "En curso 1º vez", []),
+                    (10, "ADMG1005", "EMPRENDIMIENTO E INNOVACIÓN", "3", "", 20)]),
+]
 
 
 class FakePortal(_Server):
@@ -837,6 +855,8 @@ class FakePortal(_Server):
         self.logins: list[tuple[str, str]] = []  # (session, outcome)
         self.version = 1
         self.codes: list[str] = []       # every CAPTCHA code shown, in order
+        self.curriculum_tokens: dict[str, bool] = {}  # each «Información General» link's token → used
+        self.curriculum_requests: list[str] = []  # mallacurricular's, apart: no Académico session goes there
         self._ids = itertools.count(1)
 
     def last_code(self) -> str:
@@ -1000,9 +1020,52 @@ class _PortalHandler(_Quiet):
             'id="ctl00_contenido_btnIniciarSesion" /></div><div id="ctl00_contenido_diverror"><span '
             f'id="ctl00_contenido_LabelError" style="color:Red;">{error}</span></div>'))
 
+    def _curriculum(self, query: dict) -> None:
+        """mallacurricular's /Malla/Index: the list by level only the first time its token is used (the boxes over
+        the drawing, with each subject's position, always)."""
+        portal: FakePortal = self.server.owner
+        with portal.lock:
+            fresh = portal.curriculum_tokens.get(query.get("token", "")) is False
+            if fresh:
+                portal.curriculum_tokens[query["token"]] = True
+        boxes = "".join(f'<div class="casilla" ondblclick="consultarMateriasRequisitos(3321,{pos},&quot;es&quot;)"></div>'
+                        for _, subjects in PORTAL_CURRICULUM for pos, *_ in subjects if pos)
+        levels = ""
+        for level, subjects in PORTAL_CURRICULUM if fresh else []:
+            rows = "".join(
+                f'<tr class="tablatr"><td class="roboto-regular"><p class="roboto-regular textonegroCodigo">{code} </p>'
+                f'<p class="roboto-regular textonegro"> {name}</p> <p class="roboto-regular textogris"> ({credits} créditos)'
+                f'</p></td><td class="iconoMateria tooltip-wrapper" id="">'
+                + (f'<img class="tooltip-img" src="../../Images/AP1.png" alt="{status}" title="{status}">' if status else "")
+                + "</td></tr>" for _, code, name, credits, status, _ in subjects)
+            levels += (f'<table><tr><td><p class="roboto-bold niveltitulo">{level}</p></td></tr></table>'
+                       f'<table class="table ">{rows}</table>')
+        self._send(200, f"<html><title>ESPOL | Malla Académica</title><body>{boxes}{levels}</body></html>".encode(),
+                   "text/html; charset=utf-8")
+
+    def _requisites(self, form: dict) -> None:
+        found = next(((code, name, req) for _, subjects in PORTAL_CURRICULUM for pos, code, name, _, _, req in subjects
+                      if str(pos) == form.get("posicion")), None)
+        if form.get("mallaid") != "3321" or found is None:
+            return self._send(500, b"error", "text/plain")
+        code, name, req = found
+        head = f"<label>Código:</label> {code}<br><label>Materia:</label> {name}"
+        if isinstance(req, int):
+            body = f"<p>Esta materia tiene como requisito {req} materias aprobadas</p>"
+        elif req:
+            body = ("<table><tr><th>Codigo</th><th>Materia</th><th>Tipo</th></tr>"
+                    + "".join(f"<tr><td>{c}</td><td>MATERIA {c}</td><td>{kind}</td></tr>" for c, kind in req) + "</table>")
+        else:
+            body = "<p>Esta materia no tiene requisitos</p>"
+        self._send(200, f"{head}{body}<h4>Silabo</h4><p>Descripción del curso.</p>".encode(), "text/html; charset=utf-8")
+
     def do_GET(self):
         parts = urlsplit(self.path)
         path = parts.path.lower()
+        if path == "/malla/index":  # mallacurricular.espol.edu.ec, through [test] link_hosts
+            with self.server.owner.lock:
+                self.server.owner.curriculum_requests.append(f"GET {path} cookie={bool(self.headers.get('Cookie'))}")
+            return self._curriculum(dict(parse_qsl(parts.query)))
         sid, session = self._session(create=path == "/login.aspx")
         self._record(sid)
         if path == "/login.aspx":
@@ -1027,6 +1090,10 @@ class _PortalHandler(_Quiet):
         path = parts.path.lower()
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)).decode()
         form = dict(parse_qsl(body, keep_blank_values=True))
+        if path == "/malla/materiasrequisitos":  # public: the curriculum's id and the subject's position only
+            with portal.lock:
+                portal.curriculum_requests.append(f"POST {path} cookie={bool(self.headers.get('Cookie'))}")
+            return self._requisites(form)
         sid, session = self._session()
         self._record(sid, body)
         if session is None or not self._valid(session, form):
@@ -1065,8 +1132,11 @@ class _PortalHandler(_Quiet):
         if page == "informaciongeneral.aspx":
             def card(rows):
                 return "<table>" + "".join(f"<tr><td><b>{k}:</b></td><td><span>{v}</span></td></tr>" for k, v in rows) + "</table>"
+            token = f"tk{next(portal._ids):04d}"
+            with portal.lock:
+                portal.curriculum_tokens[token] = False
             career = [(k, v if k != "Carrera" else
-                       "<a href=javascript:AbrirVentanaMalla('http://www.mallacurricular.espol.edu.ec/Malla/Index?token=x')>"
+                       f"<a href=javascript:AbrirVentanaMalla('http://www.mallacurricular.espol.edu.ec/Malla/Index?token={token}')>"
                        + v.replace("|", "</a><br />")) for k, v in portal.career()]
             student = card([*PORTAL_CARD, ("Promedio General en las materias aprobadas", portal.gpa())])
             return self._page(sid, session, "Información General", (

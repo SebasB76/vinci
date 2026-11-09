@@ -426,6 +426,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="crear la clave con la que un agente en tu PC entra al contenedor (vinci-check remote); "
                         "la anterior deja de servir")
     p.add_argument("--quitar-agente", action="store_true", help="borrar la clave del agente: nadie entra por ahí")
+    p.add_argument("--google", nargs=2, metavar=("CORREO", "ID_CLIENTE"),
+                   help="solo tu cuenta de Google abre el panel (el ID de cliente web de tu proyecto de Google Cloud); "
+                        "el enlace con la clave deja de servir")
     p = sub.add_parser("hermes-perfil", help="crear o actualizar los perfiles de Hermes (lo usa setup.sh)")
     p.add_argument("--hermes", default=None, help="ruta al comando hermes")
     p = sub.add_parser("agenda", help="compuerta del cron de un bot de materia (sin --curso: la de Vinci, sin Telegram)")
@@ -534,6 +537,15 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Clave del agente (la anterior ya no sirve). Cópiala ahora: no se vuelve a mostrar.\n{key}\n"
                       f"En tu PC, corre `vinci-check remote login {panel.public_url() or 'https://<dominio del panel>'}`"
                       " y pégala cuando la pida. Quien la tenga controla este contenedor: no la pegues en un chat.")
+                return 0
+            if args.google:
+                email, client = args.google
+                if "@" not in email or not client.endswith(".apps.googleusercontent.com"):
+                    print("Uso: espol-bot panel --google tu@gmail.com <id>.apps.googleusercontent.com", file=sys.stderr)
+                    return 2
+                panel.set_google(email, client)
+                print(f"Listo: {panel.public_url() or 'el panel'} ahora pide entrar con Google, y solo esa cuenta "
+                      "entra. El enlace con la clave ya no sirve.")
                 return 0
             if args.nueva_clave:
                 key = panel.new_key()

@@ -25,7 +25,8 @@ Con `--json`, un error también llega como JSON en la salida (`{"error": "…"}`
 varios ID baja los que conoce y marca con `error` los que no están en el catálogo.
 
 Para ver la salud, el gasto y las conversaciones de tus bots en el navegador, `.venv/bin/espol-bot panel` sirve
-el [panel de administración](panel.md) en `http://127.0.0.1:8787`.
+el [panel de administración](panel.md) en `http://127.0.0.1:8787`. `espol-bot panel --google tu@gmail.com <ID de cliente>` hace que solo tu cuenta de
+Google lo abra ([«Entrar con Google»](panel.md#entrar-con-google)).
 
 Para el Académico:
 

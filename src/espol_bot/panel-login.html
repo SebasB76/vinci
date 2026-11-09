@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- The panel's door when Google sign-in is on (panel.py, `espol-bot panel --google`): Google's button gives an ID
+     token, /entrar checks it is the captain's account and sets the session cookie. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Vinci · panel</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--fg:#e7e9ee;--muted:#8b93a3;--border:#272b35;--fail:#ef5b5b}
+@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f27;--muted:#646c7a;--border:#e2e5ea;--fail:#cf3434}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--fg);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 24px;
+  display:grid;gap:14px;justify-items:center;text-align:center}
+h1{margin:0;font-size:20px}
+p{margin:0;color:var(--muted);font-size:14px}
+#status{min-height:1.4em;font-size:13px}
+#status.fail{color:var(--fail)}
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Vinci · panel</h1>
+  <p>Entra con la cuenta de Google del dueño de este Vinci.</p>
+  <div id="g_id_onload" data-client_id="{{CLIENT_ID}}" data-callback="signedIn" data-auto_prompt="false"></div>
+  <div class="g_id_signin" data-type="standard" data-text="signin_with" data-shape="pill" data-locale="es"></div>
+  <p id="status"></p>
+</main>
+<script>
+async function signedIn(response) {
+  const status = document.getElementById("status");
+  status.className = "";
+  status.textContent = "Entrando…";
+  try {
+    const res = await fetch("/entrar", {method: "POST", headers: {"Content-Type": "application/json"},
+                                        body: JSON.stringify({credential: response.credential})});
+    if (res.ok) { location.replace("/"); return; }
+    status.textContent = (await res.json()).error || "No pude entrar.";
+  } catch (e) {
+    status.textContent = "No pude entrar: " + e;
+  }
+  status.className = "fail";
+}
+</script>
+</body>
+</html>

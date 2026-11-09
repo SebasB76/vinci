@@ -149,8 +149,8 @@ class Bot:
                 "funcionar). No hace falta que escribas /token: aquí va el formulario, que lo cifra en tu celular "
                 "antes de enviarlo (no lo pegues en el chat).")
         if self.cfg.friend:  # a friend's Vinci, on WhatsApp: no /token, the form is a link (token_form.py)
-            text = ("⚠️ Tu token del aula dejó de funcionar (Vinci pudo pasar más de una hora sin funcionar). "
-                    "Para que vuelva a leer tu aula, crea uno nuevo; no lo pegues tal cual en el chat.")
+            text = ("⚠️ Se desconectó tu aula virtual, así que ya no veo tus tareas ni tus notas. ¿La vuelves a "
+                    "conectar? Te toma un minuto 👇")
         refused = self.aula.refused_token()
         if not refused:
             return text
@@ -158,6 +158,8 @@ class Bot:
         last = timefmt.parse(get_meta(self.conn, "bot_alert_token_at"))
         due = (get_meta(self.conn, "bot_alert_token") != refused or back
                or ((last is None or now - last >= ALERT_EVERY) and not token_form.pending(self.conn, now)))
+        if due and self.cfg.friend and now.astimezone(self.cfg.core.tz).hour not in whats_new.DAY_HOURS:
+            due = False  # at night nobody makes a token: the first maintenance after 8:00 sends it
         if due:
             form = token_form.new_form(self.cfg, self.conn, now, text + "\n\n", ttl=token_form.AUTO_FORM_TTL)
             try:

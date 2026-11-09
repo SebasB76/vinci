@@ -166,6 +166,10 @@ class WhatsApp:
         if buttons and self._polls is not None:
             self.poll(buttons)
 
+    def send_video(self, path: Path, html_caption: str) -> None:
+        self._post("send-media", {"chatId": self._chat, "filePath": str(path), "mediaType": "video",
+                                  "caption": from_html(html_caption)[:LIMIT]})
+
     def poll(self, buttons: list[tuple[str, str]], question: str | None = None) -> str:
         """The buttons as a poll (its id); `question` defaults to what the kind of button asks."""
         options = poll_options(buttons)

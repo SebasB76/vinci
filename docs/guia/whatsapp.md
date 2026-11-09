@@ -181,8 +181,10 @@ Vinci los programa: el Vinci de un amigo no puede escribir en el grupo por su cu
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
 1. En tu chat con Vinci por WhatsApp, escribe `/amigo agregar 0991234567 Angel`.
-2. Vinci le escribe a Angel por privado con un botón a la página del token (la misma de `/token`, en modo WhatsApp).
+2. Vinci le escribe a Angel por privado. Primero le manda un video de 40 segundos con lo que hace y el botón «✨ Todo
+   lo que hace Vinci». Después le manda un botón a la página del token (la misma de `/token`, en modo WhatsApp).
    Justo después le manda un sobre de bienvenida para su [álbum](uso.md#tu-álbum-de-cartas), que puede abrir ya.
+   El video y el botón de funciones salen una sola vez: un enlace nuevo con `/token` no los repite.
 3. Angel toca «Abrir» en esa página, crea el token en el aula, lo pega y pulsa «Enviar cifrado a Vinci».
 4. El token llega cifrado por el relé. Vinci lo verifica, lee el aula de Angel y le confirma sus materias en su chat.
    Sin relé, la página le da un texto cifrado para pegar en el chat.
@@ -195,7 +197,8 @@ por privado. Su Vinci le avisa de sus tareas nuevas por su chat de WhatsApp y re
 que agregues a nadie:
 
 1. Alguien que no es tu amigo le escribe a Vinci por privado, con cualquier mensaje.
-2. Vinci le manda el mismo enlace y el mismo sobre de bienvenida de `/amigo agregar`, y a ti te avisa: «🆕 Darío le
+2. Vinci le manda el mismo video, el mismo enlace y el mismo sobre de bienvenida de `/amigo agregar`, y a ti te
+   avisa: «🆕 Darío le
    escribió a Vinci…».
 3. Cuando conecta su aula, queda como un amigo más y te llega «✅ Darío ya tiene su Vinci». Su siguiente mensaje ya
    lo contesta su propio Vinci, sin reiniciar nada ni esperar tu permiso.

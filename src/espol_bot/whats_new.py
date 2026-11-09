@@ -43,15 +43,16 @@ ITEMS: tuple[tuple[str, str], ...] = (
 )
 
 
-def page_url(cfg: BotConfig, now: datetime) -> str:
-    """The features page; on WhatsApp it carries Vinci's number, so an example opens the chat with it typed."""
+def page_url(cfg: BotConfig, now: datetime, *, news: bool = True) -> str:
+    """The features page; on WhatsApp it carries Vinci's number, so an example opens the chat with it typed. Without
+    `news` (someone new to Vinci), no card is marked «Nuevo»."""
     if not cfg.features_page:
         return ""
     params = {}
     number = whatsapp.own_number() if not cfg.telegram else ""
     if number:
         params["wa"] = number
-    if now.astimezone(cfg.core.tz).date() - RELEASE <= timedelta(days=NEW_DAYS):
+    if news and now.astimezone(cfg.core.tz).date() - RELEASE <= timedelta(days=NEW_DAYS):
         params["n"] = ",".join(i for i, _ in ITEMS)
     return cfg.features_page + (f"#{urlencode(params, safe=',')}" if params else "")
 

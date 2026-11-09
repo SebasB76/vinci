@@ -1,0 +1,380 @@
+<!doctype html>
+<!-- Vinci's 39-second video for students who have not connected their aula yet, in Vinci's design system. render(t)
+     draws the moment t (ms) of TOTAL; scripts/render_screens.sh captures it frame by frame into
+     docs/images/vinci-video.mp4 (1080×1920). Every name, date and grade here is invented. Open with ?t=<ms> to see a
+     frame. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../vinci/vinci.css">
+<link rel="stylesheet" href="../../dashboard/dashboard.css">
+<style>
+  html, body { background: var(--paper); margin: 0; }
+  body { width: 540px; height: 960px; overflow: hidden; position: relative; }
+  /* A radial gradient, not filter: blur(): the headless render has no GPU and a blur costs seconds a frame. */
+  .blob { position: absolute; width: 900px; height: 900px; left: -180px; top: 180px; border-radius: 50%;
+          background: radial-gradient(closest-side, var(--tint), transparent); opacity: .9; }
+  .grain { position: absolute; inset: 0; background: radial-gradient(circle at 80% 8%, rgb(122 243 194 / .35), transparent 42%); }
+
+  .bars { position: absolute; top: 26px; left: 30px; right: 30px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .bars i { height: 4px; border-radius: 4px; background: rgb(0 0 0 / .1); overflow: hidden; }
+  .bars i b { display: block; height: 100%; background: var(--ink); transform-origin: left; }
+  .eyebrow { position: absolute; top: 46px; left: 32px; right: 32px; display: flex; justify-content: space-between;
+             font: 500 13px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .eyebrow .dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--deep); }
+  .hl { position: absolute; top: 78px; left: 30px; right: 24px; margin: 0; font: 500 45px/1.02 var(--display); letter-spacing: -0.035em; }
+  .ln { display: block; overflow: hidden; padding: 2px 0 6px; margin-bottom: -6px; }
+  .ln > span { display: inline-block; }
+  mark { color: inherit; padding: 0 3px; margin: 0 -3px; border-radius: 6px;
+         background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 82% / var(--mk, 0%) 46%; }
+
+  .phone { position: absolute; left: 26px; right: 26px; top: 252px; height: 760px; padding: 9px; border-radius: 52px; background: #111;
+           box-shadow: 0 30px 60px rgb(30 25 15 / .22), 0 6px 14px rgb(30 25 15 / .12); }
+  .screen { position: relative; height: 100%; border-radius: 44px; overflow: hidden; background: #EFE7DC; display: flex; flex-direction: column;
+            color: #111B21; font-size: 17px; line-height: 1.36; }
+  .notch { position: absolute; top: 10px; left: 50%; width: 110px; height: 30px; margin-left: -55px; border-radius: 20px; background: #111; z-index: 6; }
+  .wa-head { display: flex; align-items: center; gap: 12px; padding: 50px 18px 12px; background: #F7F7F7; border-bottom: 1px solid #E3E3E3; flex: none; }
+  .wa-head .back { font-size: 28px; line-height: 1; color: #54656F; }
+  .wa-head .av { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; overflow: hidden; background: var(--accent); font-size: 21px; }
+  .wa-head .av img { width: 100%; height: 100%; }
+  .wa-head b { display: block; font-size: 18px; font-weight: 500; }
+  .wa-head small { display: block; font-size: 13.5px; color: #667781; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+  .chat { flex: 1; min-height: 0; padding: 4px 14px 78px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+  .m { overflow: hidden; flex: none; display: flex; flex-direction: column; }
+  .m > .mi { padding-top: 8px; display: flex; flex-direction: column; }
+  .b { max-width: 84%; padding: 8px 12px 7px; border-radius: 16px; overflow-wrap: anywhere; box-shadow: 0 1px .5px rgb(11 20 26 / .13); }
+  .v .b, .o .b { align-self: flex-start; background: #fff; border-top-left-radius: 5px; transform-origin: left bottom; }
+  .s .b { align-self: flex-end; background: #D9FDD3; border-top-right-radius: 5px; transform-origin: right bottom; }
+  .b strong { font-weight: 600; }
+  .tm { float: right; margin: 6px 0 -4px 10px; font-size: 11.5px; color: #667781; }
+  .who { display: block; font-size: 14px; font-weight: 600; margin-bottom: 1px; }
+  .quote { margin: 0 0 6px; padding: 6px 10px; border-left: 4px solid var(--deep); border-radius: 8px; background: rgb(0 0 0 / .05); font-size: 14.5px; color: #54656F; }
+  .quote b { display: block; color: var(--deep); font-weight: 600; font-size: 13.5px; }
+  .typing { display: flex; gap: 5px; padding: 14px 15px !important; }
+  .typing i { width: 8px; height: 8px; border-radius: 50%; background: #8696A0; }
+  .cta { display: block; margin: 8px -12px -7px; padding: 11px; border-top: 1px solid #E9EDEF; text-align: center; color: #027EB5; font-weight: 500; }
+  .file { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; padding: 10px; border-radius: 10px; background: rgb(0 0 0 / .05); }
+  .file .ic { width: 38px; height: 44px; border-radius: 6px; display: grid; place-items: center; color: #fff; font: 700 13px var(--sans); flex: none; }
+  .file small { display: block; color: #667781; font-size: 13px; }
+  .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 250px; margin: 0 0 6px; }
+  .photos i { height: 104px; border-radius: 8px; background: repeating-linear-gradient(#FBFAF6 0 13px, #C9D4E6 13px 14px); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .06); position: relative; }
+  .photos i::after { content: ""; position: absolute; left: 10px; right: 18px; top: 22px; height: 40px;
+                     background: repeating-linear-gradient(90deg, #2B3A55 0 22px, transparent 22px 28px); opacity: .5; mask: repeating-linear-gradient(transparent 0 6px, #000 6px 8px); }
+  .poll { min-width: 300px; }
+  .poll small { display: block; margin: 2px 0 8px; font-size: 13px; color: #667781; }
+  .opt { position: relative; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 10px; padding: 8px 0 14px; }
+  .opt .rad { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #8696A0; display: grid; place-items: center; }
+  .opt .rad svg { width: 13px; height: 13px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+  .opt.on .rad { background: #00A884; border-color: #00A884; }
+  .opt.on .rad svg { opacity: 1; }
+  .opt em { font-style: normal; font-size: 14px; color: #667781; }
+  .opt u { position: absolute; left: 34px; right: 0; bottom: 4px; height: 6px; border-radius: 6px; background: #E9EDEF; }
+  .opt u b { display: block; height: 100%; border-radius: 6px; background: #00A884; transform-origin: left; transform: scaleX(0); }
+  .chip { align-self: center; padding: 6px 12px; border-radius: 10px; background: #FFF3C4; color: #54656F; font-size: 14px; }
+  .cite { display: inline-block; margin-top: 8px; padding: 5px 10px; border-radius: 999px; background: var(--today); color: var(--deep); font: 500 13px var(--mono); }
+  .src { display: inline-block; margin-top: 8px; padding: 5px 10px; border-radius: 999px; background: var(--c1); color: #4B3A9A; font: 500 13px var(--mono); }
+
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; height: 86%; background: var(--paper); border-radius: 22px 22px 0 0;
+           box-shadow: 0 -14px 34px rgb(0 0 0 / .2); overflow: hidden; transform: translateY(105%); z-index: 4; font-size: 16px; color: var(--ink); }
+  .sheet .top { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: #fff; border-bottom: 1px solid var(--line-soft); font-size: 15px; }
+  .sheet .top small { display: block; color: var(--ink-4); font-size: 12px; }
+  .sheet main { padding: 16px 14px; gap: 14px; }
+  .sheet .stack i { transform-origin: bottom; }
+  .tap { position: absolute; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgb(0 0 0 / .2);
+         opacity: 0; pointer-events: none; z-index: 8; }
+
+  .intro, .outro { position: absolute; inset: 0; display: grid; align-content: center; justify-items: start; padding: 0 34px; }
+  .logo { width: 132px; height: 132px; border-radius: 38px; overflow: hidden; box-shadow: 0 18px 40px rgb(19 112 79 / .25); }
+  .logo img { width: 100%; height: 100%; display: block; }
+  .brand { margin: 26px 0 0; font: 500 22px var(--display); letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+  .brand .mono { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+  .big-hl { margin: 18px 0 0; font: 500 64px/0.98 var(--display); letter-spacing: -0.045em; }
+  .lede { margin-top: 24px; font-size: 20px; line-height: 1.35; color: var(--ink-2); max-width: 420px; }
+  .pill-cta { margin-top: 30px; display: inline-flex; align-items: center; gap: 10px; height: 60px; padding: 0 28px; border-radius: 999px;
+              background: var(--ink); color: var(--paper); font: 500 20px var(--sans); }
+  .pill-cta i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .trust { margin-top: 38px; display: grid; gap: 10px; }
+  .trust span { display: flex; align-items: center; gap: 10px; font: 500 15px var(--mono); letter-spacing: .02em; color: var(--ink-3); }
+  .trust svg { width: 18px; height: 18px; fill: none; stroke: var(--deep); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .chips { position: absolute; left: 34px; right: 34px; top: 92px; display: grid; gap: 12px; justify-items: start; }
+  .chips span:nth-child(2) { margin-left: 72px; } .chips span:nth-child(3) { margin-left: 28px; }
+  .chips span { padding: 12px 16px; border-radius: 16px; background: #fff; box-shadow: var(--shadow); font-size: 16px; white-space: nowrap; }
+  .chips b { font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="blob" id="blob"></div>
+<div class="grain"></div>
+
+<section class="intro" id="intro">
+  <div class="chips" id="chips">
+    <span>📝 <b>Tarea nueva</b> · Software I</span>
+    <span>🎯 <b>Nota publicada</b> · 7,5 / 10</span>
+    <span>📅 <b>Cambió la fecha</b> · Estadística</span>
+  </div>
+  <div class="logo" id="logo"><img src="../../../hermes/avatars/wizard.jpg" alt=""></div>
+  <p class="brand" id="brand">Vinci <span class="mono">· tu guía de la ESPOL</span></p>
+  <h1 class="big-hl" id="intro-hl"><span class="ln"><span>Tu aula virtual,</span></span><span class="ln"><span>en tu <mark>WhatsApp</mark>.</span></span></h1>
+</section>
+
+<div class="bars" id="bars"><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i></div>
+<div class="eyebrow" id="eyebrow"></div>
+<h1 class="hl" id="hl"></h1>
+
+<div class="phone" id="phone"><div class="screen" id="screen">
+  <div class="notch"></div>
+  <div class="wa-head"><span class="back">‹</span><span class="av" id="av"></span><div><b id="who"></b><small id="status"></small></div></div>
+  <div class="chat" id="chat"></div>
+  <div class="sheet" id="sheet">
+    <div class="top"><span>✕</span><div>Tu semana<small>vinci · github.io</small></div></div>
+    <main>
+      <section class="v-sheet sum"><div class="v-eyebrow"><span>lunes 2 de noviembre</span><span>semana 9 de 18</span></div>
+        <h1 class="ttl">Tu semana</h1>
+        <div class="hero"><div class="big"><b id="pending">4</b><span>por entregar<br>en 7 días</span></div><span class="lt"><i></i>1 atrasada</span></div>
+        <div class="chart"><div class="col today"><span class="stack n1"><i class="k0" id="cap"></i></span></div><div class="col"><span class="stack n0"><i></i></span></div><div class="col"><span class="stack n2"><i class="mine"></i><i class="k1"></i></span></div><div class="col"><span class="stack n1"><i class="k3"></i></span></div><div class="col"><span class="stack n1"><i class="k2"></i></span></div><div class="col"><span class="stack n0"><i></i></span></div><div class="col"><span class="stack n0"><i></i></span></div></div>
+        <div class="days"><span class="today">hoy<b>2</b></span><span>mar<b>3</b></span><span>mié<b>4</b></span><span>jue<b>5</b></span><span>vie<b>6</b></span><span>sáb<b>7</b></span><span>dom<b>8</b></span></div>
+      </section>
+      <section class="day now"><div class="v-cap"><h2>Hoy</h2><span class="mono">1</span></div>
+        <div class="card list"><div class="it k0" id="row"><div class="body"><div class="t">Control de lectura 5</div>
+          <div class="s"><span class="dot"></span><span class="mono ellipsis">23:59 · cuestionario · Sistemas Distribuidos</span></div></div>
+          <button type="button" class="v-tick" id="tick" aria-pressed="false"><svg viewBox="0 0 24 24"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div></div></section>
+      <section class="day"><div class="v-cap"><h2>Miércoles 4</h2><span class="mono">2</span></div>
+        <div class="card list"><div class="it k1"><div class="body"><div class="t">Taller 4: intervalos de confianza</div>
+          <div class="s"><span class="dot"></span><span class="mono ellipsis">23:59 · vale 5 % · Estadística</span></div></div>
+          <button type="button" class="v-tick" aria-pressed="false"><svg viewBox="0 0 24 24"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div></div></section>
+    </main>
+  </div>
+  <div class="tap" id="tap"></div>
+</div></div>
+
+<section class="outro" id="outro">
+  <div class="logo" id="logo2"><img src="../../../hermes/avatars/wizard.jpg" alt=""></div>
+  <h1 class="big-hl" id="outro-hl"><span class="ln"><span>Conecta tu aula</span></span><span class="ln"><span>y <mark>pregúntale</mark>.</span></span></h1>
+  <p class="lede" id="lede">Te toma un minuto, desde el botón que te mandé en este chat.</p>
+  <span class="pill-cta" id="cta2"><i></i>🔑 Conectar mi aula</span>
+  <div class="trust" id="trust">
+    <span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>solo lee tu aula</span>
+    <span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>entrega solo lo que tú apruebas</span>
+    <span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>tu contraseña nunca pasa por el chat</span>
+  </div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const span = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+const ease = (x) => 1 - Math.pow(1 - x, 3);
+const io = (t, at, d = 280) => ease(span(t, at, at + d));
+const CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+const tm = (h) => `<span class="tm">${h}</span>`;
+const clock = (at) => `21:3${Math.max(0, Math.round(at / 1000))}`;
+const V = (at, html) => ({ at, cls: "v", html: `<div class="b">${html}${tm(clock(at))}</div>` });
+const S = (at, html) => ({ at, cls: "s", html: `<div class="b">${html}${tm(clock(at) + " ✓✓")}</div>` });
+const T = (at, until) => ({ at, until, cls: "v", typing: true, html: '<div class="b typing"><i></i><i></i><i></i></div>' });
+const NOTICE = "📝 <strong>Tarea nueva · Ingeniería de Software I</strong><br>Informe del Sprint 2<br>Vence el viernes 14, 23:59 · vale 10 %";
+
+const VINCI = { av: '<img src="../../../hermes/avatars/wizard.jpg" alt="">', who: "Vinci", status: "en línea" };
+const GROUP = { av: "🛠️", who: "Proyecto Software I", status: "Dani, Majo, Vinci, tú" };
+
+// One scene per idea; dur in ms. The 7 middle ones share the phone and the progress bars.
+const SCENES = [
+  { dur: 3000, id: "intro", tint: "#D9F7EA" },
+  { dur: 4000, tint: "#D5E6F5", eyebrow: "Avisos", hl: ["Te avisa apenas", "el profe sube <mark>algo</mark>."], head: VINCI, msgs: [
+    V(250, NOTICE),
+    V(1450, "📅 <strong>Cambió la fecha · Estadística</strong><br>Taller 4<br>Antes: jueves 13 · Ahora: <strong>lunes 17</strong>"),
+    V(2650, "🎯 <strong>Nota publicada · Sistemas Distribuidos</strong><br>Lección 2: <strong>7,5 / 10</strong>"),
+  ] },
+  { dur: 5000, tint: "#E3DDF7", eyebrow: "Rúbricas y notas", hl: ["Respóndele un aviso", "y te lo <mark>explica</mark>."], head: VINCI, msgs: [
+    S(400, '<div class="quote"><b>Vinci</b>📝 Tarea nueva · Informe del Sprint 2</div>¿qué rúbrica tiene?'),
+    T(900, 1650),
+    V(1650, "La rúbrica tiene 4 criterios:<br>• Historias de usuario · 30 pts<br>• Arquitectura · 25 pts<br>• Pruebas · 25 pts<br>• Redacción · 20 pts<br>Empieza por las historias: valen más."),
+  ] },
+  { dur: 5000, tint: "#D9F7EA", eyebrow: "Tu semana", hl: ["Todo lo que entregas,", "en <mark>una página</mark>."], head: VINCI, sheet: true, msgs: [
+    S(300, "¿qué tengo pendiente?"),
+    T(650, 1150),
+    V(1150, 'Esta semana tienes 4 entregas. La más urgente vence hoy.<span class="cta" id="cta">📋 Ver mis entregas</span>'),
+  ] },
+  { dur: 5000, tint: "#F7DCCB", eyebrow: "Entregas", hl: ["¿Lo hiciste a mano?", "Mándale las <mark>fotos</mark>."], head: VINCI, msgs: [
+    S(250, '<div class="photos"><i></i><i></i><i></i></div>súbelo al deber 3'),
+    T(650, 1200),
+    V(1200, '<div class="file"><span class="ic" style="background:#D93831">PDF</span><div>Deber 3.pdf<small>3 páginas · una por foto</small></div></div>Armé un PDF con tus 3 fotos.'),
+    V(1750, `<div class="poll"><strong>📤 ¿Lo entrego en «Deber 3»?</strong><small>Selecciona una opción</small>
+      <div class="opt" id="vote"><span class="rad">${CHECK}</span><span>Entregar</span><em id="votes">0</em><u><b id="votebar"></b></u></div>
+      <div class="opt"><span class="rad"></span><span>Cancelar</span><em>0</em><u><b></b></u></div></div>`),
+    V(3500, "✅ Listo: quedó entregado en el aula a las 21:40."),
+  ] },
+  { dur: 5000, tint: "#EFE3CF", eyebrow: "Grupos", hl: ["Y entrega desde", "el <mark>grupo</mark> del proyecto."], head: GROUP, msgs: [
+    { at: 200, cls: "o", html: `<div class="b"><span class="who" style="color:#C9668F">Dani</span><div class="file"><span class="ic" style="background:#2B579A">W</span><div>informe-sprint2.docx<small>4 páginas · DOCX</small></div></div>${tm("21:30")}</div>` },
+    S(950, '<div class="quote"><b>Dani</b>📄 informe-sprint2.docx</div><span style="color:#027EB5">@Vinci</span> sube esto al informe del sprint'),
+    { at: 1900, cls: "c", html: '<div class="chip">🔒 Vinci te pidió confirmar por privado</div>' },
+    { at: 2800, cls: "v", html: `<div class="b"><span class="who" style="color:#13704F">Vinci</span>✅ Quedó entregado en el aula: <strong>Informe del Sprint 2</strong> (informe-sprint2.docx).${tm("21:31")}</div>` },
+  ] },
+  { dur: 4000, tint: "#F5DCE6", eyebrow: "Tu material", hl: ["Pregúntale al", "<mark>material</mark> del profe."], head: VINCI, msgs: [
+    S(250, "¿cuándo es la lección 3 de Estadística?"),
+    T(600, 1300),
+    V(1300, 'Según la planificación, la Lección 3 es el <strong>martes 25 de noviembre</strong> (semana 11). Entra hasta intervalos de confianza.<br><span class="cite">📎 Planificación.pdf · pág. 2</span>'),
+  ] },
+  { dur: 4500, tint: "#E3DDF7", eyebrow: "Tu carrera", hl: ["Y qué materias", "puedes <mark>tomar</mark>."], head: VINCI, msgs: [
+    S(250, "¿qué materias puedo tomar el próximo semestre?"),
+    T(600, 1300),
+    V(1300, 'Con tu malla y lo que ya aprobaste, puedes tomar 5:<br>• Ingeniería de Software II<br>• Bases de Datos II<br>• Redes de Datos<br>• Inteligencia Artificial<br>• Una optativa de itinerario<br><span class="src">🎓 de tu Académico</span>'),
+  ] },
+  { dur: 3500, id: "outro", tint: "#D9F7EA" },
+];
+let at = 0;
+for (const s of SCENES) { s.from = at; at += s.dur; }
+const TOTAL = at;
+const PHONE_IN = SCENES[1].from, PHONE_OUT = SCENES[SCENES.length - 1].from;
+
+let built = -1;
+function build(i) {
+  built = i;
+  const s = SCENES[i];
+  $("hl").innerHTML = (s.hl || []).map((l) => `<span class="ln"><span>${l}</span></span>`).join("");
+  $("eyebrow").innerHTML = s.eyebrow ? `<span><span class="dot"></span>${s.eyebrow}</span><span>${String(i).padStart(2, "0")} / 07</span>` : "";
+  if (s.head) {
+    // The same chat goes on from the scene before, so earlier messages fill the top of the screen.
+    const before = SCENES[i - 1].head === s.head ? SCENES[i - 1].msgs.filter((m) => !m.typing).map((m) => ({ ...m, at: -1 })) : [];
+    s.shown = [...before, ...s.msgs];
+    $("av").innerHTML = s.head.av; $("who").textContent = s.head.who;
+    $("chat").innerHTML = s.shown.map((m) => `<div class="m ${m.cls}"><div class="mi">${m.html}</div></div>`).join("");
+  }
+  $("sheet").style.transform = "translateY(105%)";
+}
+
+function tapAt(local, el, when) {
+  const k = span(local, when, when + 450);
+  if (!el || k <= 0 || k >= 1) return;
+  const box = el.getBoundingClientRect(), scr = $("screen").getBoundingClientRect(), tap = $("tap");
+  tap.style.left = `${box.left - scr.left + box.width / 2}px`;
+  tap.style.top = `${box.top - scr.top + box.height / 2}px`;
+  tap.style.opacity = Math.sin(k * Math.PI);
+  tap.style.transform = `scale(${0.6 + 0.5 * k})`;
+}
+
+const hex = (c) => [1, 3, 5].map((n) => parseInt(c.slice(n, n + 2), 16));
+const mix = (a, b, k) => `rgb(${hex(a).map((v, n) => Math.round(v + (hex(b)[n] - v) * k)).join(" ")})`;
+
+function lines(root, local, start) {
+  root.querySelectorAll(".ln > span").forEach((el, j) => {
+    const k = io(local, start + j * 110, 520);
+    el.style.transform = `translateY(${(1 - k) * 110}%)`;
+  });
+  root.querySelectorAll("mark").forEach((m) => m.style.setProperty("--mk", `${io(local, start + 520, 480) * 100}%`));
+}
+
+function render(t) {
+  t = Math.min(Math.max(t, 0), TOTAL - 1);
+  const i = SCENES.findIndex((s) => t >= s.from && t < s.from + s.dur);
+  const s = SCENES[i], local = t - s.from;
+  if (i !== built) build(i);
+
+  const prev = SCENES[Math.max(0, i - 1)];
+  $("blob").style.setProperty("--tint", mix(prev.tint, s.tint, io(local, 0, 700)));
+  $("blob").style.transform = `translate(${Math.sin(t / 2600) * 30}px, ${Math.cos(t / 3100) * 24}px)`;
+
+  // Intro: the wizard, the headline and three notices floating in.
+  const intro = $("intro"), introOut = io(t, PHONE_IN - 350, 350);
+  intro.hidden = t >= PHONE_IN;
+  intro.style.opacity = 1 - introOut;
+  intro.style.transform = `translateY(${-introOut * 40}px)`;
+  const lk = io(t, 0, 500);
+  $("logo").style.transform = `scale(${0.7 + 0.3 * lk}) rotate(${(1 - lk) * -8}deg)`;
+  $("logo").style.opacity = lk;
+  $("brand").style.opacity = io(t, 250, 400);
+  lines($("intro-hl"), t, 350);
+  [...$("chips").children].forEach((c, n) => {
+    const k = io(t, 1300 + n * 260, 500);
+    c.style.opacity = k;
+    c.style.transform = `translate(${(1 - k) * 60}px, ${Math.sin(t / 700 + n) * 3}px)`;
+  });
+
+  // The phone rises after the intro and drops before the outro.
+  const phoneY = (1 - io(t, PHONE_IN - 150, 650)) * 760 + io(t, PHONE_OUT - 350, 450) * 900;
+  $("phone").style.transform = `translateY(${phoneY}px)`;
+  $("phone").hidden = t < PHONE_IN - 150 || t >= PHONE_OUT + 200;
+
+  // Stories-style bars, the eyebrow and the headline of each middle scene.
+  const middle = i > 0 && i < SCENES.length - 1;
+  const chrome = io(t, PHONE_IN - 100, 400) * (1 - io(t, PHONE_OUT - 350, 300));
+  for (const el of [$("bars"), $("eyebrow")]) el.style.opacity = chrome;
+  [...$("bars").children].forEach((bar, n) => {
+    const k = n + 1 < i ? 1 : n + 1 === i ? span(local, 0, s.dur) : 0;
+    bar.firstChild.style.transform = `scaleX(${k})`;
+  });
+  if (middle) {
+    lines($("hl"), local, 60);
+    const out = span(local, s.dur - 240, s.dur);
+    $("hl").style.opacity = 1 - out;
+    $("hl").style.transform = `translateY(${-out * 10}px)`;
+    $("chat").style.opacity = i === 1 || SCENES[i - 1].head === s.head ? 1 : io(local, 0, 220);
+
+    let typing = false;
+    $("chat").querySelectorAll(".m").forEach((el, n) => {
+      const m = s.shown[n], inner = el.firstElementChild;
+      let k = m.at < 0 ? 1 : io(local, m.at, 300);
+      if (m.until !== undefined && local >= m.until) k = 0;
+      if (m.typing && k > 0) typing = true;
+      el.style.height = `${inner.offsetHeight * k}px`;
+      inner.style.opacity = k;
+      inner.style.transform = `translateY(${(1 - k) * 14}px) scale(${0.94 + 0.06 * k})`;
+      inner.querySelectorAll(".typing i").forEach((d, j) => { d.style.opacity = 0.35 + 0.65 * ((Math.floor(t / 150) + j) % 3 === 0); });
+    });
+    $("status").textContent = typing ? (s.head === GROUP ? "Vinci está escribiendo…" : "escribiendo…") : s.head.status;
+    $("tap").style.opacity = 0;
+    if (s.sheet) week(local);
+    if ($("vote")) vote(local);
+  }
+
+  // Outro: connect, three promises.
+  const outro = $("outro"), ot = t - PHONE_OUT;
+  outro.hidden = ot < 0;
+  if (ot >= 0) {
+    const k = io(ot, 0, 500);
+    $("logo2").style.opacity = k;
+    $("logo2").style.transform = `scale(${0.7 + 0.3 * k}) rotate(${(1 - k) * 8}deg)`;
+    lines($("outro-hl"), ot, 200);
+    $("lede").style.opacity = io(ot, 900, 400);
+    $("lede").style.transform = `translateY(${(1 - io(ot, 900, 400)) * 10}px)`;
+    const ck = io(ot, 1150, 420);
+    $("cta2").style.opacity = ck;
+    $("cta2").style.transform = `translateY(${(1 - ck) * 14}px) scale(${0.96 + 0.04 * ck})`;
+    [...$("trust").children].forEach((c, n) => {
+      const k2 = io(ot, 1600 + n * 180, 380);
+      c.style.opacity = k2;
+      c.style.transform = `translateX(${(1 - k2) * -16}px)`;
+    });
+  }
+}
+
+// «Tu semana»: the button opens the page, the week draws itself and a tick marks today's deliverable.
+function week(local) {
+  tapAt(local, $("cta"), 1650);
+  const up = io(local, 1950, 480);
+  $("sheet").style.transform = `translateY(${(1 - up) * 105}%)`;
+  $("sheet").querySelectorAll(".stack i").forEach((c, n) => {
+    const k = io(local, 2350 + n * 60, 320);
+    c.style.transform = `scaleY(${k})`;
+  });
+  const done = local >= 3750;
+  tapAt(local, $("tick"), 3450);
+  $("tick").setAttribute("aria-pressed", String(done));
+  $("row").classList.toggle("done", done);
+  $("cap").classList.toggle("off", done);
+  $("pending").textContent = done ? "3" : "4";
+}
+
+function vote(local) {
+  tapAt(local, $("vote").querySelector(".rad"), 2550);
+  const on = local >= 2800;
+  $("vote").classList.toggle("on", on);
+  $("votes").textContent = on ? "1" : "0";
+  $("votebar").style.transform = `scaleX(${io(local, 2800, 400)})`;
+}
+
+window.render = render;
+window.TOTAL = TOTAL;
+render(Number(new URLSearchParams(location.search).get("t") || 9000));
+</script>
+</body>
+</html>

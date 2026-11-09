@@ -38,9 +38,9 @@ from pathlib import Path
 
 from aula_core import Aula, queries, timefmt
 from aula_core.canvas import CanvasError
-from aula_core.config import ConfigError, config_path, load_config, secrets_path, update_secret_values
+from aula_core.config import REPO_ROOT, ConfigError, config_path, load_config, secrets_path, update_secret_values
 from aula_core.store import connect, file_lock, set_meta
-from espol_bot import album, token_form, whatsapp
+from espol_bot import album, token_form, whats_new, whatsapp
 from espol_bot.store import ensure as store_ensure
 from espol_bot.config import CAPTAIN_SECRETS, BotConfig, load_bot_config, whatsapp_settings
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -49,6 +49,10 @@ log = logging.getLogger(__name__)
 
 PENDING, ACTIVE = "pendiente", "activo"
 PROFILE_PREFIX = "amigo-"
+# What Vinci does, shown before it asks for the token (scripts/render_screens.sh renders the video).
+VIDEO = REPO_ROOT / "docs" / "images" / "vinci-video.mp4"
+VIDEO_CAPTION = "👋 Mira en 40 segundos lo que hago por ti."
+FEATURES_TEXT = "Y aquí está todo lo que hago, con un ejemplo de cada cosa."
 
 
 @dataclass
@@ -215,7 +219,8 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
     friend = next((f for f in friends if f.numero == number), None)
     if friend and friend.estado == ACTIVE:
         return Outcome(f"{friend.nombre} ya tiene su Vinci.")
-    if friend is None:
+    first = friend is None
+    if first:
         friend = Friend(_slug(name, {f.slug for f in friends}), name, number, PENDING, timefmt.iso(now))
         friends.append(friend)
     base = folder(cfg, friend)
@@ -228,6 +233,8 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
                 form = token_form.new_form(fcfg, conn, now, _invitation(friend), ttl=token_form.AUTO_FORM_TTL)
         finally:
             conn.close()
+    if first:
+        _show_around(cfg, number, now)
     whatsapp.WhatsApp(number, cfg.whatsapp_bridge).send(form["respuesta"], link=form.get("button"),
                                                              image=form.get("image"))
     save(cfg, friends)
@@ -235,6 +242,19 @@ def add(cfg: BotConfig, number_text: str, name: str, now: datetime) -> Outcome:
     log.info("amigo agregar: %s (pendiente)", friend.slug)
     return Outcome(f"Le escribí a {friend.nombre} por privado con el enlace para su token. Cuando lo pegue, armo su "
                    "Vinci y te aviso.")
+
+
+def _show_around(cfg: BotConfig, number: str, now: datetime) -> None:
+    """The video and the features page, once, before the token link: what Vinci does before it asks for anything."""
+    wa = whatsapp.WhatsApp(number, cfg.whatsapp_bridge)
+    try:
+        if VIDEO.exists():
+            wa.send_video(VIDEO, VIDEO_CAPTION)
+        url = whats_new.page_url(cfg, now, news=False)
+        if url:
+            wa.send_link(FEATURES_TEXT, {"text": whats_new.BUTTON, "url": url})
+    except whatsapp.WhatsAppError as exc:  # an extra: the token link still goes out
+        log.warning("no pude mandar el video de bienvenida: %s", exc)
 
 
 def _welcome_pack(cfg: BotConfig, friend: Friend, now: datetime) -> None:

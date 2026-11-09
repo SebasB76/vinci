@@ -93,7 +93,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | `/estado` | `src/espol_bot/health.py` | `vinci-check smoke` runs it as the captain's WhatsApp would get it |
 | `/token` and the token chain | `src/espol_bot/token_form.py`, `token_renewal.py`, `docs/token/`; the renewal loop in the container: `maintenance_service.py`, `deploy/s6/vinci-mantenimiento` | `vinci-check page token`; `vinci-check status` (chain age); `vinci-check remote logs bot --grep "mantenimiento --todos"` |
 | WhatsApp, groups, polls, voice | `src/espol_bot/whatsapp.py`, `hermes/plugins/vinci-whatsapp/`, `hermes/whatsapp/` | `vinci-check whatsapp --chat dm\|group`; voice: the turn starts with «🎙️» and the transcript |
-| Friends | `src/espol_bot/amigos.py` (`signup` for open signup, called by the `vinci-whatsapp` plugin), `hermes/amigo/` | `vinci-check whatsapp --profile amigo-<name>` (their private chat) |
+| Friends | `src/espol_bot/amigos.py` (`signup` for open signup, called by the `vinci-whatsapp` plugin; `_show_around` sends `docs/images/vinci-video.mp4` and the features button before the first token link), `hermes/amigo/` | `vinci-check whatsapp --profile amigo-<name>` (their private chat) |
 | Admin panel, watchdog | `src/espol_bot/panel.py`, `panel.html`, `watch.py` (run by `Bot.maintenance`), `deploy/s6/vinci-panel` | `espol-bot doctor` lists each friend; the panel's «Salud de cada Vinci» |
 | Relay | `src/espol_bot/relay.py`, `relay/worker.js` | `espol-bot whatsapp-rele` shows pending answers |
 | Bot personalities | `hermes/vinci/`, `hermes/materia/`, `hermes/amigo/` (`SOUL.md`, `SKILL.md`) | a short `chat`; read the tone |

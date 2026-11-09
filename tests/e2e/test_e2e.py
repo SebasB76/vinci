@@ -2789,10 +2789,17 @@ def test_whatsapp_friend(tmp_path):
         # 10c. The captain invites Angel: his own private chat gets the link to the page
         invited = say(captain_jid, captain_jid, "/amigo agregar 099 000 0002 Angel", "Capitán")
         assert "Le escribí a Angel" in text_of(invited)
-        got = wa.wait_for(lambda b: (lambda m: m if len(m) >= 2 else None)(b.messages_to(angel_jid)), 30)
-        assert got and got[0]["path"] == "send-media" and got[0]["filePath"].endswith("token-guide.png"), \
-            f"the guide with the steps comes first: {got}"
-        letter = got[1:]
+        got = wa.wait_for(lambda b: (lambda m: m if len(m) >= 4 else None)(b.messages_to(angel_jid)), 30)
+        # First what Vinci does: the video and the features page, with no card marked «Nuevo»
+        assert got and got[0]["path"] == "send-media" and got[0]["mediaType"] == "video", got
+        assert got[0]["filePath"].endswith("vinci-video.mp4") and "40 segundos" in got[0]["caption"], got[0]
+        assert got[1]["path"] == "send-url-button" and got[1]["buttonText"] == "✨ Todo lo que hace Vinci", got[1]
+        assert "/funciones/" in got[1]["url"] and "n=" not in got[1]["url"], got[1]["url"]
+        md.append(f"→ a Angel, por privado: [video] {got[0]['caption']} · {got[1]['message']} "
+                  f"[botón «{got[1]['buttonText']}»]\n")
+        assert got[2]["path"] == "send-media" and got[2]["filePath"].endswith("token-guide.png"), \
+            f"the guide with the steps comes before the link: {got}"
+        letter = got[3:]
         assert "Hola, Angel" in letter[0]["message"] and "Integraciones aprobadas" in letter[0]["message"], letter
         assert letter[0]["path"] == "send-url-button" and letter[0]["buttonText"] == "🔑 Abrir formulario", letter
         url = letter[0]["url"]
@@ -3511,7 +3518,9 @@ def test_whatsapp_friend(tmp_path):
         # their own, the captain hears of it, and no model turn is spent on them
         newcomer_jid = f"{NEWCOMER_WA}@s.whatsapp.net"
         calls, mark = len(llm.requests), len(wa.sent)
-        letter = say(newcomer_jid, newcomer_jid, "hola, ¿cómo funciona?", "Darío", expect=2)
+        letter = say(newcomer_jid, newcomer_jid, "hola, ¿cómo funciona?", "Darío", expect=4)
+        assert letter[0].get("mediaType") == "video" and letter[1]["buttonText"] == "✨ Todo lo que hace Vinci", letter
+        letter = letter[2:]
         assert letter[0]["path"] == "send-media" and "Hola, Darío" in letter[1]["message"], letter
         assert letter[1]["path"] == "send-url-button" and letter[1]["buttonText"] == "🔑 Abrir formulario", letter
         told = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "🆕 Darío" in m.get("message", "")],
@@ -3526,6 +3535,7 @@ def test_whatsapp_friend(tmp_path):
         assert welcome and welcome[0]["buttonText"] == "🎴 Abrir mi sobre", welcome
         relinked = say(newcomer_jid, newcomer_jid, "/token", "Darío", expect=2)
         assert relinked[-1]["path"] == "send-url-button" and relinked[-1]["url"] != letter[1]["url"], relinked
+        assert not [m for m in relinked if m.get("mediaType") == "video"], "the video goes out once, with the first link"
         time.sleep(3)
         assert not [m for m in wa.messages_to(newcomer_jid, mark) if "sobre de regalo" in m.get("message", "")][1:], \
             "el sobre de bienvenida llega una sola vez"

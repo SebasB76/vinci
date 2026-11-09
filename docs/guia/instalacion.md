@@ -167,7 +167,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 |---|---|---|
 | `canvas.url` | `https://aulavirtual.espol.edu.ec` | Tu aula virtual |
 | `canvas.cache_minutos` | `10` | Cuánto tiempo `aula` y los bots reutilizan los datos guardados antes de volver a leer el aula |
-| `canvas.request_interval_seconds` | `1.0` | Pausa mínima entre dos consultas del sondeo al aula (lo que preguntas en Telegram no espera) |
+| `canvas.request_interval_seconds` | `0.5` | Pausa mínima entre dos consultas del sondeo al aula (lo que preguntas en Telegram no espera) |
 | `dashboard.url` | `https://sebasb76.github.io/vinci/dashboard/` | La página del botón «📋 Entregas». Vacío (`""`): sin dashboard, y el chat vuelve a su botón de menú de siempre |
 | `dashboard.grades_url` | `https://sebasb76.github.io/vinci/notas/` | La página «Tus notas» que Vinci manda por WhatsApp: cómo vas en cada materia según la calculadora. Vacío (`""`): sin esa página |
 | `dashboard.album_url` | `https://sebasb76.github.io/vinci/album/` | El álbum: la página donde abres los sobres que Vinci te da por entregar a tiempo y por sacar 8/10 o más en una lección o un examen. Vacío (`""`): sin álbum ni sobres |

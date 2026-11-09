@@ -1171,7 +1171,7 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
         config = config.replace('carpeta_datos = "~/.local/share/espol-academic-bot"', f'carpeta_datos = "{data_dir}"')
         config = config.replace('proveedor = "anthropic"', 'proveedor = "fakellm"')
         config = re.sub(r'^modelo = ".*"$', 'modelo = "fake"', config, count=1, flags=re.M)
-        config = config.replace("request_interval_seconds = 1.0", "request_interval_seconds = 0")  # paced below
+        config = config.replace("request_interval_seconds = 0.5", "request_interval_seconds = 0")  # paced below
         assert "\ntelegram = false\n" in config, "Vinci vive solo en WhatsApp"
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
@@ -1653,8 +1653,17 @@ def test_canvas(tmp_path):
         for m in poll1 + poll2:  # WhatsApp has no buttons: a reminder's «Ya lo entregué» is a poll after it
             assert m["options"][:1] == ([SUBMITTED] if "Recordatorio" in m["text"] else []), m
 
+        with contextlib.closing(sqlite3.connect(data_dir / "espol.db")) as conn:
+            catalog = {row[0] for row in conn.execute("SELECT id FROM files")}
+            module_files = {row[0] for row in conn.execute("SELECT id FROM files WHERE course_id = 102")}
+        mark_canvas = len(canvas.requests)
         run([bot, "sondeo"], T_POLL3)
         assert take("Sondeo 3 · mar 29 sep 01:00 (sin cambios)") == [], "no debe repetir avisos"
+        reread = [path for _, path in canvas.requests[mark_canvas:]
+                  if (m := re.match(r"/api/v1/courses/\d+/files/(\d+)(?:\?|$)", path)) and int(m[1]) in catalog]
+        assert module_files and not reread, f"un archivo ya conocido de los Módulos se relee una vez al día: {reread}"
+        report.append("El sondeo no vuelve a pedir uno por uno los archivos que los Módulos listan y ya están en el "
+                      "catálogo (una materia que esconde Archivos): los revisa una vez al día")
 
         # 4. daily summary -----------------------------------------------------------------
         # ESPOL's official calendar: a site that answers 500 leaves no copy; the next read keeps the page's dates.
@@ -3336,6 +3345,9 @@ def test_whatsapp_friend(tmp_path):
                 return json.loads(conn.execute("SELECT value FROM meta WHERE key = 'bot_run_poll'").fetchone()[0])["at"]
         polled = run([bot, "sondeo", "--todos"], "2026-09-30T10:05:00-05:00").stdout.strip()
         assert re.fullmatch(r"sondeo --todos: capitán ✓ \d+ s · angel ✓ \d+ s", polled), polled
+        ocr_line = [line for line in (data_dir / "bot.log").read_text().splitlines() if "ocr --todos:" in line]
+        assert ocr_line and re.search(r"ocr --todos: capitán ✓ \d+ s · angel ✓ \d+ s$", ocr_line[-1]), \
+            f"las páginas escaneadas se leen después de los sondeos de todos: {ocr_line[-1:]}"
         assert last_poll(data_dir / "espol.db") == last_poll(angel_dir / "espol.db") == "2026-09-30T15:05:00Z"
         mark = len(wa.sent)
         summed = run([bot, "resumen", "--todos"], "2026-09-30T10:10:00-05:00").stdout.strip()

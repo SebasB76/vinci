@@ -4,7 +4,7 @@ Everything comes from what the no-agent jobs leave in espol.db (their last run, 
 token chain).
 
 Thresholds (P = intervalo_minutos, 30 by default):
-  poll            ❌ when its last run is older than 2·P (at least one run missed)
+  poll            ❌ when its last run is older than 2.5·P (a pass of everyone, one at a time, can outlast P)
   aula sync       ⚠️ when older than 2·P
   maintenance     ❌ when older than 25 min (it runs every 10; the token dies at one hour)
   token           ⚠️ from 50 min old (a renewal missed), ❌ from 60 min or when Canvas refused it
@@ -32,6 +32,7 @@ MAINTENANCE_RUN = "bot_run_maintenance"
 MAINTENANCE_LATE = timedelta(minutes=25)  # it runs every 10 minutes (maintenance_service.EVERY)
 TOKEN_LATE = token_renewal.RENEW_AFTER + timedelta(minutes=10)
 TOKEN_DEAD = timedelta(hours=1)           # ESPOL silently invalidates a personal token after an hour
+POLL_LATE = 2.5                           # periods; a friend late in a slow pass waits about two
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 ICON = {OK: "✅", WARN: "⚠️", FAIL: "❌"}
@@ -109,7 +110,7 @@ def _poll(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Che
                      f"{cfg.poll_minutes} min; si no, revisa {runner}.")
     if at is None:
         return Check(name, FAIL, "todavía no ha corrido nunca: sin él no llegan avisos ni recordatorios.", fix)
-    if now - at > 2 * every:
+    if now - at > POLL_LATE * every:
         return Check(name, FAIL, f"no corre desde {ago(at)}; debería cada {cfg.poll_minutes} min. Sin él no te "
                      f"llegan avisos ni recordatorios: ¿Vinci estuvo apagado o se detuvo {runner}?", fix)
     if run.get("error"):

@@ -26,7 +26,7 @@ shipping speed beats ceremony, and a bug found later is fixed in a new session.
   `*-mantenimiento` Hermes crons; a PC install keeps them.
 - Live: the polls and the 07:00 summary run outside the gateway too, as the s6 service `vinci-sondeo`
   (`poll_service.py`): at each poll slot the captain and then each active friend, one at a time, each with 10 min at
-  most and 3 min of OCR. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
+  most and 3 min of OCR; a pass also runs 3 min after each start, and right away when the last one ran past its slot. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
   a raised `oom_score_adj`, so at the memory limit the kernel kills a poll before the gateway.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The

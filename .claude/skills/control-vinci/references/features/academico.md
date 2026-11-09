@@ -8,7 +8,7 @@ password never reaches the chat, the model, a log or a file.
 
 | Step | Telegram | WhatsApp |
 |---|---|---|
-| 1. Trigger | a question about grades, GPA or timetables with no copy, or «actualiza mi Académico» | same, DM only (a group gets «por privado») |
+| 1. Trigger | a question about grades, GPA or timetables with no copy, or «actualiza mi Académico» | same; from a group the button goes to the owner's DM and the answer comes back to the group |
 | 2. What arrives | «🎓 Conectar Académico» as a Mini App button | the same button as a URL button |
 | 3. The page | `docs/academico/`: user, then password + the CAPTCHA the worker publishes through the relay | same page |
 | 4. Back to the laptop | each answer travels sealed to the worker's one-time RSA key, through the relay | same |

@@ -144,7 +144,7 @@ Una nota sale en el grupo solo si alguien la pide. «@vinci este grupo ya no es 
 simples.
 
 En un grupo, Vinci sabe quién le escribe y empieza con su nombre cuando habla de su aula. Da entregas, plazos y
-notas solo cuando se los piden, y nunca pide el token ahí: ese aviso llega por privado. Vinci no contesta los
+notas solo cuando se los piden, ahí mismo, y nunca pide el token en el grupo: ese aviso llega por privado. Vinci no contesta los
 stickers. Después de 4 horas sin mensajes, Vinci empieza la charla del grupo desde cero; tus datos y tu lista no
 cambian.
 
@@ -209,8 +209,10 @@ y Vinci los contesta sin gastar tokens:
 | `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
-En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas de tus tarjetas
-(«Ya lo entregué», el horario, una entrega) van a tu chat privado. Las de un quiz sí salen en el grupo.
+En un grupo, `/estado`, `/token` y `/entregas` te contestan en tu chat privado, y el grupo lee «Te lo mandé por
+privado». Lo mismo pasa con tus páginas («Tu semana», «Tus notas», tu álbum), el botón «🎓 Conectar Académico» y las
+encuestas de tus tarjetas («Ya lo entregué», el horario, una entrega). Las de un quiz sí salen en el grupo. Si
+conectas el Académico desde un grupo, Vinci contesta tu pregunta en ese grupo.
 
 El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con sus recordatorios), su calculadora de
 notas con el esquema que guarda con su voto, y los recordatorios del aula con la encuesta «✅ Ya lo entregué».

@@ -38,7 +38,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Class notes folder (`//vinci`) | answers and summaries in the subject bot chat | answers and summaries in Vinci's DM | yes | `uso.md` «Tus apuntes de clase» |
 | Slide decks (.pptx) | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
 | PDF summaries | ask Vinci or a subject bot | ask Vinci | yes | `funciones.md` |
-| `/estado` | Vinci | Vinci (DM only) | no | `uso.md` «El estado del sistema» |
+| `/estado` | Vinci | Vinci; from a group the answer goes to the sender's DM («Te lo mandé por privado»), as do `/token`, `/entregas` and `show_page` | no | `uso.md` «El estado del sistema» |
 | `/token` new Canvas token | Mini App form | guide image + link button, back through the relay; Vinci sends it too (`show_page`) when the token died or he asks | no (from Vinci: yes) | `uso.md` «Token nuevo desde Telegram (`/token`)» |
 | `/start` | every bot | Vinci | no | `uso.md` «Comandos» |
 | Groups («@vinci activa este grupo») | not available | yes; answers whoever mentions it, by name, with no unasked reminders; someone without a Vinci gets Vinci as a guest (guest tools only, marked in the turn's header); ignores stickers; starts over after 4 h idle | yes | `whatsapp.md` «Vinci en WhatsApp» |

@@ -53,15 +53,14 @@ RELAY_DOWN_SECONDS = 120  # the relay unreachable this long: give the sign-in up
 
 
 class LoginError(ConfigError):
-    """Why a connection cannot start: no relay, a group chat, no chat to answer in."""
+    """Why a connection cannot start: no relay, no chat to answer in."""
 
 
 def request(cfg: BotConfig, channel: dict, topic: str, question: str, now: datetime) -> dict:
     """Asks the captain's side for a sign-in whose button goes to this chat and whose answer goes back to this
-    Hermes session. `channel`: where the tool call came from (herramientas.Ctx.channel)."""
+    Hermes session. `channel`: where the tool call came from (herramientas.Ctx.channel). On WhatsApp the button
+    always goes to the owner's private chat, also when asked in a group; the question comes back to the group."""
     platform, session = channel.get("canal", ""), channel.get("sesion", "")
-    if channel.get("tipo") not in ("dm", "private", ""):
-        raise LoginError("Conectar el Académico se hace por privado: pídele que te escriba en su chat contigo.")
     if not session or platform not in ("whatsapp", "telegram"):
         raise LoginError("No sé en qué chat estamos: el Académico se conecta desde una conversación de Telegram o "
                          "WhatsApp.")

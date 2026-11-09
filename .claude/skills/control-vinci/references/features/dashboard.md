@@ -9,11 +9,14 @@ the `#`. No server holds the captain's data.
 | 2. The data | rebuilt after each poll where something changed and put in the button's link | built when the button is sent |
 | 3. Ticking a deliverable | opens Vinci's chat with a special `/start`; the plugin handles it, deletes it, confirms, refreshes the button | posted to the relay, confirmed in chat. Without relay: opens the chat with `/marca …` typed |
 
-Parts of the page («Tu semana», on `docs/vinci/vinci.css`): three tiles (due this week, overdue, week of the
-semester), then two tabs. Entregas: pending deliverables grouped (Atrasadas, Hoy, Esta semana, Más adelante, Sin
-fecha), each with its subject's initials in a fixed pastel, its due pill and its weight in the grade when known (`vale 25 %`), on one line that ends in an ellipsis. Más
-adelante shows its first 3 and folds the rest under «Ver N más adelante».
-Novedades: the last 7 days of Canvas news, with an unread dot.
+Parts of the page («Tu semana», on `docs/vinci/vinci.css`): a white summary sheet (how many are due in the next 7
+days, how many are late, the week of the semester, and one column per day with one capsule per deliverable in its
+subject's color; a ticked capsule fades, a day over 6 shows «+N»), then a three-way segmented control. Por día:
+sections Atrasadas, Hoy, Mañana, each day of the week, Más adelante (first 3, the rest under «Ver N más adelante») and
+Sin fecha; each row says its time, weight (`vale 25 %`), flags and subject on one line that ends in an ellipsis. Por
+materia: one block per subject (something late first, then the soonest; «Tus pendientes» last) with how many are
+left, a progress bar and the next date; rows lead with a date column. Novedades: the last 7 days of Canvas news, with
+an unread dot. The chosen tab is kept on the phone.
 
 Code: `src/espol_bot/dashboard.py` (`snapshot`, `page_url`, `publish`, `whatsapp_link`),
 `docs/dashboard/`, `src/espol_bot/relay.py`, `hermes/plugins/vinci-botones/`.

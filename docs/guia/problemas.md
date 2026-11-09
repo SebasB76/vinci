@@ -2,6 +2,9 @@
 
 ## Límites conocidos
 
+- **Entregar desde un grupo:** Vinci toma el archivo al que respondes solo si llegó al grupo después del último
+  reinicio de Vinci (el puente de WhatsApp los guarda en memoria). Si es más viejo, pide que lo reenvíen y responde
+  a ese.
 - **La vigilancia:** Vinci te avisa por WhatsApp cuando el Vinci de alguien falla, revisando cada 10 minutos. Si el
   servidor o el WhatsApp de Vinci se caen, no puede avisarte: eso lo ves en Coolify (**Unhealthy**) o en el panel.
 - **El panel desde Coolify:** con el enlace de la clave ves todo menos el texto de los chats, también los tuyos.

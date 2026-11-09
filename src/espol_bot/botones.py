@@ -43,15 +43,18 @@ handed in to the aula only by the captain's own press.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from aula_core import Aula, timefmt
 from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
-from espol_bot import conversation, dashboard, equipo, grades, horario, materias, messages, store, submission
+from espol_bot import conversation, dashboard, equipo, grades, horario, materias, messages, store, submission, whatsapp
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
+
+log = logging.getLogger(__name__)
 
 PATTERN = re.compile(r"v1:([aghckxrnpstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
@@ -218,7 +221,20 @@ def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetim
         reply += " El aula la marcó como atrasada."
     if assignment.get("html_url"):
         reply += "\n" + messages.link(assignment["html_url"], "Ver la entrega en el aula")
+    if proposal.get("group_chat"):
+        _tell_group(cfg, proposal["group_chat"], proposal["assignment_name"], files, pages, bool(result.get("late")))
     return _answer("Entregada", reply, remove_buttons=True)
+
+
+def _tell_group(cfg: BotConfig, group: str, assignment: str, files: list[Path], pages: int, late: bool) -> None:
+    """The group the hand-in was asked from hears it went up; the vote and the receipt stay in the private chat."""
+    what = (f"{pages} página{'s' if pages != 1 else ''}" if len(files) == 1 and pages else
+            files[0].name if len(files) == 1 else f"{len(files)} archivos")
+    text = f"✅ Quedó entregado en el aula: *{assignment}* ({what})." + (" El aula lo marcó atrasado." if late else "")
+    try:
+        whatsapp.send_text(cfg.whatsapp_bridge, group, text)
+    except Exception as exc:  # the hand-in already happened: the group's notice is a courtesy
+        log.warning("no pude avisar la entrega en el grupo: %s", exc)
 
 
 def _mark_submitted(conn, assignment_id: int, submitted_at: str) -> None:

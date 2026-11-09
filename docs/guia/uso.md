@@ -128,6 +128,15 @@ Antes de mostrártelos, Vinci revisa que la tarea reciba archivos de ese tipo (s
 entregar un Word). Te llegan con la encuesta «📤 Entregar / Cancelar» y se suben al aula solo con tu voto, con los
 mismos cuidados que las fotos: la tarea abierta, tus intentos y un voto que no entrega dos veces.
 
+En el grupo de un trabajo también sirve. Si un compañero manda el informe final al grupo:
+
+1. Responde a su archivo (mantén presionado el mensaje y toca «Responder»).
+2. Escribe «@vinci sube esto al informe del sprint».
+3. Vota «Entregar» en la encuesta que te llega por privado. Solo tú puedes entregar en tu aula.
+4. Vinci sube el archivo a tu aula y avisa en el grupo que quedó entregado.
+
+Vinci lee el archivo citado solo si llegó mientras Vinci estaba encendido; si no, pide que lo reenvíen.
+
 ## El dashboard de entregas
 
 El botón «📋 Entregas» está al lado del campo de texto, en el chat de Vinci (en WhatsApp, escribe `/entregas`). Al

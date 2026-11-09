@@ -8,7 +8,11 @@ secrets.env
 !secrets.env.example
 artifacts
 data
-tests
+# Only the headless browser driver of the tests ships: `vinci-check page` and `smoke` run it in the container.
+tests/*
+!tests/e2e
+tests/e2e/*
+!tests/e2e/browser.mjs
 experiments
 relay
 .lavish

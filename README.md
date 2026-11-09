@@ -22,8 +22,9 @@ Tu aula virtual, pero en WhatsApp.<br>
 - Cada mañana te arma la semana.
 - Te prepara para cada clase.
 - Responde sobre tu material, con la fuente.
-- Te dice cuánto necesitas para pasar, materia por materia.
-- Te regala sobres de cartas por entregar a tiempo, por tus buenas notas y uno cada mañana.
+- Te dice cuánto necesitas para pasar, materia por materia, y cómo te fue frente al promedio del curso.
+- Te ayuda a planear la matrícula con tu historial y tu malla.
+- Te regala sobres de cartas por entregar a tiempo, por tus buenas notas y uno cada mañana, con cambios y un ranking entre amigos.
 - Entrega tus deberes desde unas fotos o tus archivos, con tu voto.
 - Entiende audios, capturas y fotos de la pizarra.
 
@@ -34,6 +35,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 - **[Aula virtual](https://aulavirtual.espol.edu.ec):** tareas, fechas, anuncios, notas con los comentarios del profe, material, foros, calendario, los mensajes de tus profes y tus grupos. Ahí también entrega.
 - **[Académico](https://www.academico.espol.edu.ec):** promedio, avance, historial y horarios de clases y exámenes.
 - **[DSpace](https://www.dspace.espol.edu.ec):** unos 20 000 exámenes anteriores, de todas las facultades.
+- **[Calendario de ESPOL](https://www.espol.edu.ec/es/vida-politecnica/calendario-grado):** feriados, fin de clases, vacaciones y el inicio de cada período.
 
 ## Privacidad
 

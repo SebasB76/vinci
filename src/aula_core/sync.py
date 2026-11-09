@@ -162,7 +162,7 @@ class _Syncer:
     def assignments(self, course: dict, quiet: bool) -> None:
         raw = self.client.get_all(
             f"courses/{course['id']}/assignments",
-            {"include[]": ["submission"], "order_by": "due_date"},
+            {"include[]": ["submission", "score_statistics"], "order_by": "due_date"},
         )
         seen = []
         bodies = self.bodies.setdefault(course["id"], [])
@@ -201,6 +201,8 @@ class _Syncer:
                 "group_id": a.get("assignment_group_id"),
                 "points_deducted": sub.get("points_deducted") or None,
                 "peer_reviews": int(bool(a.get("peer_reviews"))),
+                # The course's mean, max and min; Canvas leaves it out when the professor hides it.
+                "stats": _stats(a.get("score_statistics")),
             }
             seen.append(row["id"])
             prev = self.conn.execute("SELECT * FROM assignments WHERE id = ?", (row["id"],)).fetchone()
@@ -220,7 +222,8 @@ class _Syncer:
                     self.emit(quiet, "due_changed", course, row["id"], {**info, "due_at_anterior": prev["due_at"]})
                 had_grade = prev["score"] is not None or prev["grade"] is not None
                 has_grade = row["score"] is not None or row["grade"] is not None
-                grade_info = {**info, "nota": row["score"], "calificacion": row["grade"]}
+                grade_info = {**info, "nota": row["score"], "calificacion": row["grade"],
+                              **({"curso_stats": json.loads(row["stats"])} if row["stats"] else {})}
                 if has_grade and not had_grade and not row["excused"]:
                     self.emit(quiet, "grade_posted", course, row["id"],
                               {**grade_info, "feedback": json.loads(row["feedback"] or "{}") or None,
@@ -234,10 +237,10 @@ class _Syncer:
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
                      allowed_extensions, asks_scan, description, material, rubric, sub_state, submitted_at, score, grade,
-                     graded_at, excused, missing, late, group_id, feedback, points_deducted, peer_reviews, active, first_seen)
+                     graded_at, excused, missing, late, group_id, feedback, points_deducted, peer_reviews, stats, active, first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
                      :allowed_extensions, :asks_scan, :description, :material, :rubric, :sub_state, :submitted_at, :score,
-                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, :points_deducted, :peer_reviews, 1,
+                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, :points_deducted, :peer_reviews, :stats, 1,
                      :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
@@ -247,7 +250,8 @@ class _Syncer:
                      submitted_at=excluded.submitted_at, score=excluded.score, grade=excluded.grade,
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
                      late=excluded.late, group_id=excluded.group_id, feedback=excluded.feedback,
-                     points_deducted=excluded.points_deducted, peer_reviews=excluded.peer_reviews, active=1""",
+                     points_deducted=excluded.points_deducted, peer_reviews=excluded.peer_reviews, stats=excluded.stats,
+                     active=1""",
                 {**row, "now": self.now_iso},
             )
         self._deactivate("assignments", course["id"], seen)
@@ -652,6 +656,12 @@ class _Syncer:
             f"UPDATE {table} SET active = 0 WHERE course_id = ? AND id > 0 AND id NOT IN ({marks})",
             (course_id, *seen),
         )
+
+
+def _stats(raw: dict | None) -> str | None:
+    if not raw or raw.get("mean") is None:
+        return None
+    return json.dumps({k: raw[k] for k in ("mean", "max", "min") if raw.get(k) is not None})
 
 
 def _rubric(a: dict) -> str | None:

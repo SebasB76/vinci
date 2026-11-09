@@ -40,7 +40,8 @@ from aula_core import sync as core_sync
 from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
-from espol_bot import agenda, album, dashboard, health, libros, materias, messages, priority, store, token_form, watch
+from espol_bot import (agenda, album, dashboard, espol_calendar, health, libros, materias, messages, priority, store,
+                       token_form, watch)
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -198,6 +199,11 @@ class Bot:
                                       "Si la cadena se corta, te mostraré cómo resembrarla.", threshold=1)
         health.record_run(self.conn, health.MAINTENANCE_RUN, now, renewal_error=renewal_error)
         watch.run(self.cfg, self.conn, lambda text: self.telegram.send(text, []), now)
+        if not self.cfg.friend:  # one copy for every Vinci, read by the captain's maintenance once a day
+            try:
+                espol_calendar.refresh(self.cfg, now)
+            except Exception:  # the token renewal above matters more than the calendar
+                log.exception("calendario de ESPOL: falló la lectura")
         return result
 
     def poll(self) -> PollResult:
@@ -429,7 +435,9 @@ class Bot:
         done = [(messages.todo_done_button(t["text"]), f"v1:t:{t['id']}:ok") for t in shown[:MAX_BUTTONS]]
         text = messages.weekly_summary(entries, len(week) - len(pending), recent, self.tz, now, undated,
                                        health.aula_stale(self.aula, self.cfg.poll_minutes, now),
-                                       queries.calendar(self.conn, now, days=7))
+                                       queries.calendar(self.conn, now, days=7),
+                                       espol_calendar.between(espol_calendar.load(self.cfg), local_midnight.date(),
+                                                              local_midnight.date() + timedelta(days=6)))
         return text, courses, done
 
     def _dashboard_button(self, now: datetime) -> None:

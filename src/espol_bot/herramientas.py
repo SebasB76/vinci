@@ -64,9 +64,9 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, album, citations, conversation, dashboard, diapositivas, grades,
-                       grades_page, health, horario, libros, materias, messages, portal_login, priority, quiz, resumen, store, submission,
-                       token_form, visuales)
+from espol_bot import (academic_portal, agenda, album, citations, conversation, dashboard, diapositivas, espol_calendar,
+                       grades, grades_page, health, horario, libros, materias, messages, plan, portal_login, priority,
+                       quiz, resumen, store, submission, token_form, visuales)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -272,7 +272,7 @@ FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
-    "set_assignment_delivery", "study_activity", "show_page"})
+    "set_assignment_delivery", "study_activity", "show_page", "plan_carrera", "guardar_malla", "calendario_espol"})
 
 
 @dataclass
@@ -1635,7 +1635,9 @@ DISCUSSIONS = ("Los foros de discusión del aula (no los anuncios): de qué trat
                "participó («participated»: null si no lo he abierto) y cuántas respuestas le dejaron.")
 GRADES_FEEDBACK = ("Cada tarea trae «feedback»: los comentarios que dejó el profe en la entrega (y sus adjuntos) y "
                    "la rúbrica calificada por criterio. Sin «feedback», el profe no escribió nada; con "
-                   "«feedback_read: false», todavía no lo leí del aula.")
+                   "«feedback_read: false», todavía no lo leí del aula. «curso» trae el promedio (mean), la nota más alta "
+                   "(max) y la más baja (min) del curso en esa tarea, en los mismos puntos; sin «curso», el profe no "
+                   "lo muestra.")
 PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "album", "token"],
                             "description": "deliverables: su panel de entregas; grades: sus notas en todas las "
                                            "materias; album: su álbum de cartas; token: el formulario del token"}}
@@ -1655,6 +1657,70 @@ def _send_grades(ctx: Ctx, chat: WhatsApp, now: datetime) -> dict:
             "mensaje": "Ya le llegó el botón. Dile en una o dos líneas lo más importante (la materia en riesgo, o "
                        "que va bien) sin repetir las cuentas de cada materia."
                        + (" Las de «sin_esquema» no salen en la página: ofrécele armar su esquema." if without else "")}
+
+
+PLAN = ("Su camino en la carrera, para planear la matrícula: los créditos que le faltan en cada categoría del flujo "
+        "(«categories»: taken, required, missing), sus materias aprobadas con nota y créditos, su promedio y avance del "
+        "Académico, y, si guardó su malla (guardar_malla), las materias que ya puede tomar («can_take», primero las que "
+        "abren más materias: «unlocks») y las que todavía no, con qué prerrequisito les falta («locked»). Sin malla "
+        "(«curriculum»: null), dile que te mande una foto o el PDF de la malla de su carrera para saber qué puede tomar. "
+        "Con «simular» ([{subject, grade, credits?}]) estima su promedio general si saca esas notas: dilo como estimado.")
+PLAN_PROPERTIES = {"simular": {"type": "array", "items": {"type": "object", "properties": {
+    "subject": {"type": "string"}, "grade": {"type": "number", "description": "de 0 a 10"},
+    "credits": {"type": "number", "description": "solo si la sabes; si no, la saco de su malla o te la pido"}},
+    "required": ["subject", "grade"]}, "description": "notas supuestas, para estimar su promedio"}}
+CURRICULUM = ("Guarda la malla de su carrera, que leíste de una foto o un PDF que te mandó: cada materia con su código "
+              "si lo trae, nombre, créditos, nivel (semestre) y la lista de sus prerrequisitos (código o nombre). "
+              "Antes de guardarla, muéstrale en pocas líneas cuántas materias leíste y los prerrequisitos que dudas, y "
+              "guárdala solo cuando te diga que está bien. Reemplaza la malla que tenía.")
+CURRICULUM_PROPERTIES = {
+    "carrera": {"type": "string"},
+    "materias": {"type": "array", "items": {"type": "object", "properties": {
+        "code": {"type": "string"}, "name": {"type": "string"}, "credits": {"type": "number"},
+        "level": {"type": "integer"}, "prerequisites": {"type": "array", "items": {"type": "string"}}},
+        "required": ["name"]}},
+}
+
+
+ESPOL_CALENDAR = ("El calendario oficial de ESPOL para grado (de su web, no del aula): feriados, inicio y fin de "
+                  "clases, semanas de exámenes, vacaciones entre períodos, registro de materias, cuándo empieza cada "
+                  "PAO. Úsalo para «¿hay clases el lunes?», «¿cuándo es feriado?», «¿cuándo empiezan las vacaciones?». "
+                  "Sin «buscar», trae lo de los próximos «dias». Di de cuándo es la copia si tiene más de una semana.")
+ESPOL_CALENDAR_PROPERTIES = {
+    "buscar": {"type": "string", "description": "palabras de la actividad («feriado», «vacaciones», «PAO I»)"},
+    "dias": {"type": "integer", "description": "cuántos días hacia adelante, sin buscar (60 si no lo dices)"},
+}
+
+
+def _espol_calendar(ctx: Ctx, args: dict) -> dict:
+    copy = espol_calendar.load(ctx.cfg)
+    if not copy or not copy.get("entries"):
+        raise ToolError("Todavía no pude leer el calendario de ESPOL de su web: dile que lo revise en "
+                        f"{espol_calendar.URL}.")
+    if words := str(args.get("buscar") or "").strip():
+        found = espol_calendar.search(copy, words)
+    else:
+        today = ctx.now().astimezone(ctx.cfg.core.tz).date()
+        found = espol_calendar.between(copy, today, today + timedelta(days=_int(args.get("dias"), "dias", 60, 1, 400)))
+    return {"read_at": copy.get("read_at"), "source": copy.get("url"),
+            "entries": [{**e, "when": espol_calendar.when(e)} for e in found[:60]]}
+
+
+def _plan(ctx: Ctx, args: dict) -> dict:
+    try:
+        if args.get("simular"):
+            return plan.simulate(ctx.cfg, list(args["simular"]))
+        return plan.progress(ctx.cfg)
+    except plan.PlanError as exc:
+        raise ToolError(str(exc)) from None
+
+
+def _save_curriculum(ctx: Ctx, args: dict) -> dict:
+    try:
+        saved = plan.save_curriculum(ctx.cfg, args.get("carrera") or "", list(args.get("materias") or []))
+    except plan.PlanError as exc:
+        raise ToolError(str(exc)) from None
+    return {"saved": len(saved["subjects"]), "next": "Call plan_carrera to tell them what they can take now."}
 
 
 def _show_page(ctx: Ctx, args: dict) -> dict:
@@ -2306,6 +2372,10 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         _summary_tool(ctx),
         Tool("academic_record", PORTAL, lambda args: _academic_record(ctx, args), PORTAL_PROPERTIES, ["topic", "question"],
              read_only=False),
+        Tool("plan_carrera", PLAN, lambda args: _plan(ctx, args), PLAN_PROPERTIES),
+        Tool("calendario_espol", ESPOL_CALENDAR, lambda args: _espol_calendar(ctx, args), ESPOL_CALENDAR_PROPERTIES),
+        Tool("guardar_malla", CURRICULUM, lambda args: _save_curriculum(ctx, args), CURRICULUM_PROPERTIES,
+             ["materias"], read_only=False),
         Tool("show_page", PAGE, lambda args: _show_page(ctx, args), PAGE_PROPERTIES, ["page"], read_only=False),
     ])
 

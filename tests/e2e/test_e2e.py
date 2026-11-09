@@ -606,6 +606,12 @@ class Script:
             sent = _json(results[-1])
             return {"content": "Te lo mandé por privado." if isinstance(sent, dict) and "por privado" in
                     sent.get("mensaje", "") else _problem(results[-1])}
+        if "qué puedes hacer" in text:
+            if not called:
+                return _call("mcp__vinci__show_page", page="features")
+            sent = _json(results[-1])
+            return {"content": "Te avisé del aula, te ayudo a entregar y a estudiar con tu material. Todo lo demás está "
+                               "en la página." if isinstance(sent, dict) and sent.get("enviado") else _problem(results[-1])}
         if "muéstrame mis notas" in text:
             if not called:
                 return _call("mcp__vinci__show_page", page="grades")
@@ -2372,6 +2378,49 @@ def test_whatsapp_captain(tmp_path):
         md.append(f"**Capitán**: explícame bien two-phase commit → botón «📚 Abrir el repaso»: "
                   f"{normalize(study_button['text'])}\n")
 
+        # 10m5. «¿qué puedes hacer?» brings «Todo lo que hace Vinci»; a release's news go out once per person, in a
+        # day poll, with the same page's button
+        asked = say(captain_jid, captain_jid, "qué puedes hacer", "Capitán", expect=2)
+        [features] = [m for m in asked if m["path"] == "send-url-button"]
+        assert features["buttonText"] == "✨ Todo lo que hace Vinci" and "/funciones/#wa=" in features["url"], features
+        assert f"wa={FakeWhatsApp.BOT.split('@')[0]}" in features["url"] and "n=repaso," in features["url"], features
+        db = sqlite3.connect(data_dir / "espol.db")
+        assert db.execute("SELECT value FROM meta WHERE key = 'whats_new_seen'").fetchone(), "la bienvenida ya las cuenta"
+        db.execute("DELETE FROM meta WHERE key = 'whats_new_seen'")  # as a captain welcomed before this release
+        db.commit()
+        db.close()
+        mark = len(wa.sent)
+        run([bot, "sondeo"], T_VINCI)
+        news = [m for m in wa.messages_to(captain_jid, mark) if "Novedades de Vinci" in (m.get("message") or "")]
+        assert len(news) == 1 and "Repasos interactivos" in news[0]["message"] and "<b>" not in news[0]["message"], news
+        assert [m["buttonText"] for m in wa.messages_to(captain_jid, mark) if m["path"] == "send-url-button"
+                and "/funciones/" in m["url"]] == ["✨ Todo lo que hace Vinci"], wa.sent[mark:]
+        mark = len(wa.sent)
+        run([bot, "sondeo"], T_VINCI)
+        assert not [m for m in wa.messages_to(captain_jid, mark) if "Novedades" in (m.get("message") or "")], \
+            "las novedades salen una sola vez"
+        features_seen = "sin Chromium: no abrí la página"
+        if NODE:
+            from test_webview_experiment import CHROMIUM, Browser
+            if CHROMIUM:
+                browser = Browser()
+                with FakePages(REPO / "docs", w.relay.base) as pages:
+                    page = browser.open(f"{pages.base}/funciones/#{features['url'].split('#', 1)[1]}")
+                    browser.wait_text(page, ".chip", "Nuevo")
+                    first = browser.eval(page, "document.querySelector('#nuevo a.ask').getAttribute('href')")
+                    assert first.startswith(f"https://wa.me/{FakeWhatsApp.BOT.split('@')[0]}?text="), first
+                    assert browser.eval(page, "document.querySelectorAll('#nuevo .pill').length") == 0
+                    assert browser.eval(page, "document.querySelectorAll('.topic:not(#nuevo) .feat.new').length") >= 7
+                    browser.close(page)
+                browser.quit()
+                features_seen = ("en Chromium la página abre con «Nuevo» primero, y cada ejemplo abre el chat de Vinci "
+                                 "con el texto escrito")
+        report.append("«qué puedes hacer» manda el botón «✨ Todo lo que hace Vinci» con el número de Vinci; un sondeo de "
+                      "día manda una sola vez «🆕 Novedades de Vinci» y el mismo botón, y el siguiente no las repite; "
+                      + features_seen)
+        md.append(f"**Capitán**: qué puedes hacer → botón «✨ Todo lo que hace Vinci»; sondeo → "
+                  f"{normalize(news[0]['message'])[:160]}…\n")
+
         # 10m''. What became of a PDF comes from the table the vote writes, in every private turn
         db = sqlite3.connect(data_dir / "espol.db")
         db.execute("INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, "
@@ -2633,7 +2682,9 @@ def test_whatsapp_friend(tmp_path):
         told = wa.wait_for(lambda b: [m for m in b.messages_to(GROUP_WA, mark) if "Quedó entregado" in m.get("message", "")],
                            60)
         assert told and "informe-grupal.docx" in text_of(told), fail(f"el grupo no supo de la entrega: {wa.sent[mark:]}")
-        assert [m for m in wa.messages_to(captain_jid, mark) if "Entregué" in m.get("message", "")], wa.sent[mark:]
+        receipt = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Entregué" in m.get("message", "")],
+                              30)  # the group's notice goes out first, inside the vote's handler
+        assert receipt, fail(f"su privado no tuvo el recibo: {wa.sent[mark:]}")
         assert [s["assignment"] for s in canvas.submissions] == [3002], canvas.submissions
         md.append(f"→ [informe-grupal.docx y la encuesta, al privado del capitán] → vota «Entregar» → grupo: "
                   f"{normalize(text_of(told))}\n")

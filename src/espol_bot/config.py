@@ -23,6 +23,8 @@ DEFAULT_GRADES_URL = "https://sebasb76.github.io/vinci/notas/"
 DEFAULT_ALBUM_URL = "https://sebasb76.github.io/vinci/album/"
 # The study pages Vinci builds for a review or a long explanation (docs/repaso/); their content rides in the URL too.
 DEFAULT_STUDY_URL = "https://sebasb76.github.io/vinci/repaso/"
+# «Todo lo que hace Vinci» (docs/funciones/): every feature with an example; the news message and «¿qué puedes hacer?».
+DEFAULT_FEATURES_URL = "https://sebasb76.github.io/vinci/funciones/"
 # A friend's Vinci reads its own secrets.env; this points it at the captain's, which holds the album's ALBUM_ART_KEY.
 CAPTAIN_SECRETS = "VINCI_CAPTAIN_SECRETS"
 DEFAULT_PORTAL_URL = "https://www.academico.espol.edu.ec"
@@ -63,6 +65,7 @@ class BotConfig:
     grades_page: str = DEFAULT_GRADES_URL        # empty: no grades page
     album_page: str = DEFAULT_ALBUM_URL          # empty: no album, and no packs
     study_page: str = DEFAULT_STUDY_URL          # empty: no study pages
+    features_page: str = DEFAULT_FEATURES_URL    # empty: no features page, and the news go without its button
     semester_end: date | None = None             # the last day of classes; None: the aula term's end
     notes_folder: Path | None = None  # the captain's class notes (notes.py); None: not read
     notes_idle_minutes: int = 15
@@ -157,6 +160,9 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     study_url = str(dashboard.get("study_url", DEFAULT_STUDY_URL) or "")
     if study_url and not study_url.startswith("https://"):
         raise ConfigError("dashboard.study_url debe empezar con https://")
+    features_url = str(dashboard.get("features_url", DEFAULT_FEATURES_URL) or "")
+    if features_url and not features_url.startswith("https://"):
+        raise ConfigError("dashboard.features_url debe empezar con https://")
     end_raw = dashboard.get("semester_end") or None
     try:
         semester_end = end_raw if isinstance(end_raw, date) or end_raw is None else date.fromisoformat(str(end_raw))
@@ -201,6 +207,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         grades_page=grades_url,
         album_page=album_url,
         study_page=study_url,
+        features_page=features_url,
         semester_end=semester_end,
         notes_folder=Path(folder).expanduser() if folder and not friend else None,
         notes_idle_minutes=idle,

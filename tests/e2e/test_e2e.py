@@ -43,7 +43,9 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
   poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
-  first asks what it judges; a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
+  first asks what it judges; «explícame bien two-phase commit» becomes a study page (send_study_page refuses
+  a quiz answer that is not an option, the corrected page arrives as a button and draws in a real headless Chromium:
+  KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
   masked logs, turns and files, and runs commands, each one in remote-access.log.
@@ -62,14 +64,15 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   path with its own token, neither token opens the other's tools even when both ask at once, and no profile starts a
   stdio MCP process;
   voice notes and audio files heard by the real local
-  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at); his alerts;
+  Whisper (in a group, only one that says «Vinci»; a silent one is said to be unheard, never guessed at), answered
+  with text, and a voice note only when he asks for one; his alerts;
   the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
   hangs and is cut at the limit, then Angel's chain renewed, with the WhatsApp bridge down and the watchdog's message
   sent on the next pass; the poll service (s6 vinci-sondeo, also in place of the Hermes crons): the captain's poll
   then Angel's, one at a time, and the summary the same way, sent once a day even when the pass repeats; his Vinci
   never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; a card trade (/cambio, and the album's «Cambios» tab with Angel's repeats) with the captain,
-  swapped by Angel's vote; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
+  swapped by Angel's vote; /canje (3 repeats for a pack); the ranking, with each person's cards for the album page; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
 
@@ -216,6 +219,20 @@ SLIDES = {"titulo": "Integrales dobles", "subtitulo": "Cálculo de varias variab
 SUMMARY = {"titulo": "Taller 2: Integrales dobles", "subtitulo": "Cálculo de varias variables",
            "introduccion": "Lo que pide el taller, para repasar antes de resolverlo."}
 SUMMARY_STEPS = ["Copia el enunciado", "Resuelve en su hoja", "Junta todo en un PDF"]
+# The study page the captain asks for (send_study_page): a protocol walked step by step, a formula and a quiz.
+STUDY_PAGE = {"title": "Two-phase commit", "subject": "Sistemas Distribuidos", "blocks": [
+    {"type": "text", "title": "La idea", "body": "O **todos** los nodos confirman, o **ninguno**."},
+    {"type": "sequence", "actors": ["Coordinador", "Nodo A"], "scenarios": [
+        {"name": "Todo bien", "messages": [
+            {"from": "Coordinador", "to": "Nodo A", "label": "PREPARE", "note": "El coordinador pregunta si puede."},
+            {"from": "Nodo A", "to": "Coordinador", "label": "SÍ", "note": "A promete confirmar."}]},
+        {"name": "A falla", "messages": [
+            {"from": "Nodo A", "to": "Coordinador", "label": "NO", "note": "Basta un no.", "fail": True}]}]},
+    {"type": "formula", "latex": "P(\\text{commit}) = \\prod_{i=1}^{n} p_i",
+     "legend": [{"symbol": "$p_i$", "meaning": "la probabilidad de que el nodo i vote sí"}]},
+    {"type": "quiz", "questions": [{"question": "¿Qué pasa si un nodo vota NO?",
+                                    "options": ["Se confirma igual", "Se aborta en todos"],
+                                    "answer": "Se aborta en todos", "explanation": "2PC exige unanimidad."}]}]}
 SUMMARY_FAKE_CITE = "📄 [Capítulo 9 - Inventado.pdf, página 99](https://aulavirtual.espol.edu.ec/courses/1/files/9)"
 VENV_BIN = Path(sys.executable).parent
 FILES = HERE / "fixtures" / "files"
@@ -620,6 +637,10 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
+        if "mándame eso en audio" in text:
+            if not called:
+                return _call("text_to_speech", text="Esta semana tienes el Taller 2 de Cálculo.")
+            return {"content": "Te lo mandé en audio. Esta semana: Taller 2 de Cálculo."}
         task = re.search(r"\[Tarea del sistema para (.+?) \(", text)
         if task and "TAREA: brief_de_clase" in text:  # Telegram off: the brief comes to Vinci's chat as a task
             return {"content": f"📚 Brief de {task[1]}: repasa lo de la clase anterior y revisa lo que vence."}
@@ -712,6 +733,18 @@ class Script:
             data = _json(results[-1])
             return {"content": f"📝 Te mandé el quiz: {data['questions']} preguntas como encuestas."
                     if isinstance(data, dict) and data.get("quiz") else _problem(results[-1])}
+        if "explícame bien two-phase commit" in text:
+            # The first try gives a quiz answer that is not one of its options; the tool says what to fix.
+            tries = called.count("mcp__vinci__send_study_page")
+            if tries == 0:
+                wrong = json.loads(json.dumps(STUDY_PAGE))
+                wrong["blocks"][-1]["questions"][0]["answer"] = "Se reintenta"
+                return _call("mcp__vinci__send_study_page", **wrong)
+            if tries == 1 and "debe ser una de las opciones" in str(_json(results[-1])):
+                return _call("mcp__vinci__send_study_page", **STUDY_PAGE)
+            data = _json(results[-1])
+            return {"content": "📚 Te mandé el repaso: empieza por el diagrama y termina con el quiz."
+                    if isinstance(data, dict) and data.get("enviado") else _problem(results[-1])}
         if "tengo 20 minutos para Cálculo" in text:
             if not called:
                 return _call("mcp__vinci__study_activity", action="start", kind="study", materia="cálculo", minutes=20,
@@ -1243,6 +1276,12 @@ def trace_page(w) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Vinci's spoken answer without Microsoft: a fixed voice note, so the test sees it leave as one.
+TTS_STAND_IN = {"provider": "e2e", "providers": {"e2e": {
+    "type": "command", "command": f"cp {FILES / 'whatsapp-voz-vinci.ogg'} {{output_path}}", "output_format": "ogg",
+    "voice_compatible": True}}}
+
+
 def ready_gateway(w, *, voice: bool = False) -> None:
     """setup.sh once more, now with Hermes, and the gateway serving Vinci's WhatsApp: the data of two polls, the
     schedule saved, the scripted model, the test clock. With `voice`, Hermes' local Whisper is on from the start."""
@@ -1268,11 +1307,17 @@ def ready_gateway(w, *, voice: bool = False) -> None:
                                          "models": ["fake"]}}
         data["model"]["context_length"] = 256_000  # no lookup of the fake model's window on each start
         data.setdefault("stt", {}).update(enabled=voice, **({"provider": "local"} if voice else {}))
+        data["tts"] = TTS_STAND_IN
         spec_file = profiles / name / "vinci-mcp.json"  # the shared server reads it on each request
         spec = json.loads(spec_file.read_text())
         spec["env"]["AULA_NOW"] = T_VINCI
         spec_file.write_text(json.dumps(spec))
         cfg_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        # The gateway may read the voice from its own config too, which adding a friend rewrites.
+        default_file = home / ".hermes" / "config.yaml"
+        default_cfg = yaml.safe_load(default_file.read_text())
+        default_cfg["tts"] = TTS_STAND_IN
+        default_file.write_text(yaml.safe_dump(default_cfg, allow_unicode=True, sort_keys=False))
 
     def pause_crons() -> None:
         """setup.sh resumes every cron; the test runs each poll itself, on its own clock."""
@@ -1425,7 +1470,8 @@ def test_canvas(tmp_path):
             assert vcfg["timezone"] == "America/Guayaquil" and vcfg["model"]["provider"] == "fakellm"
             assert vcfg["model"]["default"] == "fake", "the config.toml model substitution no longer matches"
             assert set(vcfg["platform_toolsets"]["whatsapp"]) == {"web", "memory", "session_search", "clarify",
-                                                                  "skills", "mcp-vinci", "vinci-paginas"}
+                                                                  "skills", "mcp-vinci", "vinci-paginas", "tts"}
+            assert "tts" not in vcfg["agent"]["disabled_toolsets"], "Vinci manda un audio cuando se lo piden"
             assert set(vcfg["platform_toolsets"]["cli"]) == set(vcfg["platform_toolsets"]["whatsapp"])
             assert set(vcfg["platform_toolsets"]["cron"]) == {"web", "memory", "skills", "mcp-vinci", "vinci-paginas"}
             assert {"terminal", "file", "code_execution", "delegation", "cronjob"} <= \
@@ -2276,6 +2322,46 @@ def test_whatsapp_captain(tmp_path):
         md.append(f"**Capitán**: tengo 20 minutos para Cálculo → Vinci: {normalize(planned)}; «me costó el 0/0»; "
                   f"«listo, guarda lo que me costó» → {normalize(saved)}\n")
 
+        # 10m4. A long explanation becomes a study page: the model's first try is refused with what to fix, the
+        # corrected one arrives as a «📚 Abrir el repaso» button, and the page draws it (in a real headless Chromium)
+        asked = say(captain_jid, captain_jid, "explícame bien two-phase commit", "Capitán", expect=2)
+        assert "Te mandé el repaso" in text_of(asked), asked
+        [study_button] = [m for m in asked if m["path"] == "send-url-button"]
+        assert study_button["buttonText"] == "📚 Abrir el repaso" and "/repaso/#d=" in study_button["url"], study_button
+        assert "Two-phase commit" in study_button["text"] and "quiz" in study_button["text"], study_button
+        from espol_bot import dashboard as dashboard_module
+        study = dashboard_module.decode(study_button["url"].split("#d=", 1)[1])
+        assert [b["type"] for b in study["blocks"]] == ["text", "sequence", "formula", "quiz"], study
+        assert study["blocks"][1]["scenarios"][0]["messages"][1]["from"] == 1, study["blocks"][1]
+        assert study["blocks"][3]["questions"][0]["answer"] == 1, study["blocks"][3]
+        study_seen = "sin Chromium: no abrí la página"
+        if NODE:
+            from test_webview_experiment import CHROMIUM, Browser
+            if CHROMIUM:
+                browser = Browser()
+                with FakePages(REPO / "docs", w.relay.base) as pages:
+                    page = browser.open(f"{pages.base}/repaso/#d={study_button['url'].split('#d=', 1)[1]}")
+                    ready = "document.getElementById('app').dataset.ready === '1' && !!document.querySelector('.katex')"
+                    end = time.time() + 20
+                    while not browser.eval(page, ready) and time.time() < end:
+                        time.sleep(0.2)
+                    assert browser.eval(page, ready), browser.eval(page, "document.body.innerText")
+                    assert browser.eval(page, "document.querySelectorAll('[data-block]:not([data-block=score])').length") == 4
+                    browser.eval(page, "const n = document.querySelector('[data-block=sequence] .row2 .btn:last-child');"
+                                       "n.click(); n.click(); true")
+                    browser.wait_text(page, "[data-block=sequence] .say", "A promete confirmar.")
+                    browser.eval(page, "[...document.querySelectorAll('.opt')].find(o => o.textContent === "
+                                       "'Se aborta en todos').click(); true")
+                    browser.wait_text(page, "[data-block=score] .big", "1 de 1")
+                    browser.close(page)
+                browser.quit()
+                study_seen = ("en Chromium la página dibuja los 4 bloques con KaTeX, avanza el diagrama de secuencia "
+                              "y cuenta el quiz respondido")
+        report.append("«explícame bien two-phase commit»: send_study_page rechaza una respuesta de quiz que no es una "
+                      "de sus opciones, el modelo la corrige y llega el botón «📚 Abrir el repaso»; " + study_seen)
+        md.append(f"**Capitán**: explícame bien two-phase commit → botón «📚 Abrir el repaso»: "
+                  f"{normalize(study_button['text'])}\n")
+
         # 10m''. What became of a PDF comes from the table the vote writes, in every private turn
         db = sqlite3.connect(data_dir / "espol.db")
         db.execute("INSERT INTO submission_proposals(subject, course_id, assignment_id, assignment_name, pdf, pages, "
@@ -2477,7 +2563,7 @@ def test_whatsapp_friend(tmp_path):
     """Section 10 for a friend: a group the captain turns on, Angel invited with a Vinci of his own (his token through
     the page and Vinci's relay, his week, slides, a quote, a sticker, a group that goes idle, a poll for a button, his
     dashboard, his commands), voice notes and audio files heard by the real local Whisper (in a group, only one that
-    says «Vinci»), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
+    says «Vinci»; a voice note only when asked for), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
     started = time.monotonic()
     # as in the container: the s6 services vinci-mantenimiento and vinci-sondeo renew every chain and run every poll
     # and summary, not Hermes cron
@@ -3050,20 +3136,28 @@ def test_whatsapp_friend(tmp_path):
                 assert not wa.messages_to(chat, mark) and len(llm.requests) == calls, wa.messages_to(chat, mark)
                 md.append("→ (sin respuesta)\n")
                 return ""
-            got = wa.wait_for(lambda b: (lambda m: m if any(not x.get("message", "").startswith("🎙️") for x in m)
+            got = wa.wait_for(lambda b: (lambda m: m if any(x["path"] == "send" and not x.get("message", "")
+                                                            .startswith("🎙️") for x in m)
                                          else None)(b.messages_to(chat, mark)), 180)
             assert got, fail(f"nadie contestó a {fixture}")
             for m in got:
-                md.append(f"→ Vinci: {normalize(m.get('message', ''))}\n")
+                said = "[nota de voz]" if m.get("mediaType") == "audio" else normalize(m.get("message", ""))
+                md.append(f"→ Vinci: {said}\n")
+            spoken.append(got)
             return text_of(got)
 
         audio_ids = itertools.count(1)
+        spoken: list[list[dict]] = []
         calls = len(llm.requests)
         heard = speak(captain_jid, captain_jid, "whatsapp-voz-vinci.ogg", "Capitán")
         assert "Esta semana:" in heard and "qué tengo esta semana" in heard, \
             f"Hermes muestra lo que entendió y Vinci contesta: {heard}"
         assert "nota de voz que transcribió Whisper" in turn_context(llm.requests[calls:]), \
             "una nota de voz llega con su aviso: un nombre o un término pudo salir mal escrito"
+        assert not any(m.get("mediaType") == "audio" for m in spoken[-1]), "a una nota de voz Vinci contesta con texto"
+        aloud = say(captain_jid, captain_jid, "mándame eso en audio", "Capitán", expect=2)
+        assert [m.get("mediaType") == "audio" for m in aloud].count(True) == 1 and "Taller 2" in text_of(aloud), \
+            f"pedido en audio, Vinci manda una nota de voz y el texto: {aloud}"
         his = speak(GROUP_WA, angel_jid, "whatsapp-voz-vinci.ogg", "Angel", group=True)
         assert "EDO de primer orden" in his, his  # his week; /marca above closed the Taller 2
         speak(GROUP_WA, captain_jid, "whatsapp-voz-charla.ogg", "Capitán", group=True,
@@ -3085,7 +3179,8 @@ def test_whatsapp_friend(tmp_path):
                       "alguien sin su Vinci no llegan al modelo (la de ese alguien ni se transcribe). Un archivo de "
                       "audio (.m4a), que Hermes no transcribe, lo transcribe el plugin. Cada nota de voz llega con "
                       "un aviso en el contexto (un término pudo salir mal escrito); una en silencio, con que no se "
-                      "oyó y no hay que adivinar")
+                      "oyó y no hay que adivinar. Vinci contesta las notas de voz con texto, y manda una nota de voz "
+                      "(Edge TTS, aquí un audio fijo) solo cuando el capitán la pide: «mándame eso en audio»")
 
         # 10i. Angel's alerts reach his own chat, never the captain's
         angel_env = {"AULA_SECRETS": str(angel_dir / "secrets.env"), "AULA_DATA_DIR": str(angel_dir),
@@ -3150,8 +3245,11 @@ def test_whatsapp_friend(tmp_path):
             assert wa.sent[mark:] == [], "con el puente caído no sale nada"
             back = run([bot, "mantenimiento", "--todos", "--limite", "15"], "2026-09-30T09:55:00-05:00", check=False)
             assert "capitán ✓" in back.stdout and "angel ✓" in back.stdout, back.stdout
-        told = [m["message"] for m in wa.messages_to(captain_jid, mark) if "Vigilancia · Beto" in m.get("message", "")]
+        watched = [m["message"] for m in wa.messages_to(captain_jid, mark) if "Vigilancia · " in m.get("message", "")]
+        told = [m for m in watched if re.search(r"Vigilancia · [^·]*\bBeto\b", m)]
         assert told, f"el aviso de la vigilancia sale cuando vuelve el puente: {wa.sent[mark:]}"
+        checks = [re.search(r"Vigilancia · [^·]+ · ([^:*<]+)", m).group(1).strip() for m in watched]
+        assert len(checks) == len(set(checks)), f"lo que falla para varios va en un solo mensaje: {watched}"
         registry.write_text(registered)
         shutil.rmtree(beto_dir)
         md.append(f"→ servicio de renovación, puente caído: `{normalize(line)}`\n")
@@ -3252,6 +3350,35 @@ def test_whatsapp_friend(tmp_path):
                       "«/cambio Angel bosque por coliseo» le manda a Angel la oferta con una encuesta, y su «✅ Acepto» "
                       "cambia una repetida de cada uno en los dos álbumes (un segundo voto no hace nada), sin el modelo")
 
+        # 10i''. /canje: 3 repeats for a pack, the commonest first and never a card's last copy
+        def album_only(db, counts):
+            conn = sqlite3.connect(db)
+            conn.execute("DELETE FROM album_cards")
+            conn.commit()
+            conn.close()
+            album_set(db, counts)
+
+        calls = len(llm.requests)
+        album_only(data_dir / "espol.db", {"bosque": 2, "lago": 2})
+        short = text_of(say(captain_jid, captain_jid, "/canje", "Capitán"))
+        assert "necesitas 3 cartas repetidas, y tienes 2" in short, short
+        assert album_of(data_dir / "espol.db") == {"bosque": 2, "lago": 2}, "sin repetidas suficientes no cambia nada"
+        album_only(data_dir / "espol.db", {"bosque": 3, "lago": 2})
+        swapped = say(captain_jid, captain_jid, "/canje", "Capitán")
+        assert "entregaste" in text_of(swapped) and "te llevas un sobre" in text_of(swapped), text_of(swapped)
+        opened = [m for m in swapped if m.get("buttonText") == "🎴 Abrir mi sobre"]
+        assert opened, swapped
+        pack = dashboard_module.decode(opened[0]["url"].split("#d=", 1)[1])["pack"]
+        drawn = [c["id"] for c in pack["cards"]]
+        assert pack.get("swap") and len(set(drawn)) == 3, pack
+        after = album_of(data_dir / "espol.db")
+        spent_back = {c: after.get(c, 0) - drawn.count(c) for c in ("bosque", "lago")}
+        assert spent_back == {"bosque": 1, "lago": 1}, (after, drawn)
+        assert sum(after.values()) == 5, after
+        assert len(llm.requests) == calls, "el canje no usa el modelo"
+        report.append("«/canje» con 2 repetidas dice cuántas faltan y no toca el álbum; con 3 entrega esas 3 (deja una "
+                      "copia de cada carta) y manda un sobre «del canje» de 3 cartas distintas, sin el modelo")
+
         # 10i'. The album ranking (/ranking): nobody is in it until they join; the album's «Ranking» view lists them
         calls = len(llm.requests)
         alone = text_of(say(captain_jid, captain_jid, "/ranking", "Capitán"))
@@ -3267,13 +3394,15 @@ def test_whatsapp_friend(tmp_path):
         board = dashboard_module.decode(page[0]["url"].split("#d=", 1)[1].split("&", 1)[0])["rank"]
         assert board["in"] is True and len(board["people"]) == 2 and [p.get("me") for p in board["people"]].count(1) == 1, \
             board
+        assert all(len(p["c"]) == p["n"] for p in board["people"]), board
         left = text_of(say(angel_jid, angel_jid, "/ranking salir", "Angel"))
         assert "ya no sales en el ranking" in left, left
         after = text_of(say(captain_jid, captain_jid, "/ranking", "Capitán"))
         assert "Angel" not in after and "(tú)" in after, after
         assert len(llm.requests) == calls, "el ranking no usa el modelo"
         report.append("«/ranking» no muestra a nadie hasta que entra; con «/ranking entrar» del capitán y de Angel salen "
-                      "los dos con medallas y el botón «🏆 Ver el ranking» abre esa vista del álbum; «/ranking salir» "
+                      "los dos con medallas y el botón «🏆 Ver el ranking» abre esa vista del álbum, con las cartas de "
+                      "cada uno; «/ranking salir» "
                       "saca a Angel, sin el modelo")
 
         # 10j. The captain lists and removes Angel; then turns the group off

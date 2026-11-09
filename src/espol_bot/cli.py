@@ -490,10 +490,10 @@ def main(argv: list[str] | None = None) -> int:
                         "un quiz de ese grupo, leído por stdin; cierre: los resultados de sus quiz que ya vencieron")
     p.add_argument("grupo", help="el ID del grupo (…@g.us)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
-    p = sub.add_parser("whatsapp-comando", help="/start, /estado, /token, /cambio y /ranking por WhatsApp, del capitán o de un amigo "
+    p = sub.add_parser("whatsapp-comando", help="/start, /estado, /token, /cambio, /canje y /ranking por WhatsApp, del capitán o de un amigo "
                                                 "(lo usa el plugin vinci-whatsapp)")
     p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado", "voto", "marca", "entregas",
-                                      "cambio", "ranking"])
+                                      "cambio", "canje", "ranking"])
     p.add_argument("numero", help="quién lo escribió (593…)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-rele", help="lo que el formulario del token y el dashboard mandaron por el relé de "

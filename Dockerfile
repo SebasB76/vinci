@@ -18,11 +18,13 @@ RUN cd /opt/hermes/scripts/whatsapp-bridge && \
 
 COPY . /opt/vinci
 # The versions in uv.lock, installed editable as setup.sh does: the code finds its templates (hermes/) next to src/.
+# Vinci's voice (Edge TTS) goes into Hermes' venv: the image lacks it, and Microsoft refuses edge-tts 7.2.7 (403).
 RUN python3 -m venv /tmp/uv && \
     /tmp/uv/bin/pip install --no-cache-dir --disable-pip-version-check uv && \
     cd /opt/vinci && \
     UV_PROJECT_ENVIRONMENT=/opt/vinci/.venv UV_PYTHON=/usr/local/bin/python3 UV_PYTHON_DOWNLOADS=never \
         /tmp/uv/bin/uv sync --frozen --no-dev --no-cache && \
+    /tmp/uv/bin/uv pip install --no-cache --python /opt/hermes/.venv/bin/python edge-tts==7.3.1 && \
     rm -rf /tmp/uv && \
     chmod 0755 /opt/vinci/deploy/boot.sh /opt/vinci/deploy/healthcheck.sh && \
     install -m 0755 /opt/vinci/deploy/cont-init.sh /etc/cont-init.d/019-vinci && \

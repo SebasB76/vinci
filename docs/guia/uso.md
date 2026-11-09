@@ -182,7 +182,7 @@ corre `.venv/bin/espol-bot dashboard`.
   [Token nuevo desde Telegram](#token-nuevo-desde-telegram-token)).
 - Al escribir `/` en tu chat con un bot, el menú muestra primero estos comandos y debajo los de Hermes. Si no
   aparecen, cierra y abre el chat: Telegram guarda el menú un rato.
-- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz`, y además `/cambio` y `/ranking` para el
+- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz`, y además `/cambio`, `/canje` y `/ranking` para el
   álbum (mira [Vinci en WhatsApp](whatsapp.md#vinci-en-whatsapp)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
@@ -273,6 +273,24 @@ disco ni el contexto del modelo:
   tarea, el ID de Zoom que el profesor escribió como título), así que «pásame el link del Perusall» tiene respuesta.
 - **Documentos que le mandas:** un PDF, DOCX o PPTX del curso que le mandas al bot pasa a su material y se puede
   buscar; lo que es tuyo (un deber resuelto, tus apuntes) va al cuaderno.
+
+## Repasos interactivos
+
+Cuando le pides a Vinci repasar un tema o una explicación larga («explícame bien two-phase commit», «ármame un
+repaso de la distribución normal para la lección»), te manda un botón **📚 Abrir el repaso**. La página trae lo que
+sirve para ese tema:
+
+- **Números y fórmulas** (Estadística, Cálculo, Física): la fórmula con qué significa cada símbolo, un gráfico con
+  deslizadores (una función, la normal, la binomial o la de Poisson, con la probabilidad pintada) y un ejercicio
+  resuelto que se revela paso a paso.
+- **Protocolos y sistemas** (Sistemas Distribuidos, Redes): los mensajes entre nodos uno por uno, con un escenario
+  donde todo sale bien y otro con una falla, y un diagrama de arquitectura que recorres.
+- **Conceptos y procesos** (Ingeniería de Software, Dirección de Proyectos): código explicado línea por línea, una
+  tabla que compara, casos para clasificar, pasos para ordenar y tarjetas para memorizar.
+
+Al final hay un quiz con tu resultado y las fuentes del material. Lo que respondes se queda en la página: Vinci no
+lo ve. Una pregunta corta la contesta en el chat, y si quieres algo para imprimir, pídele un resumen en PDF. En un
+grupo el botón llega al grupo, y el repaso sale solo del material del curso.
 
 ## Exámenes anteriores (DSpace)
 
@@ -396,7 +414,9 @@ mi álbum?».
 
 - **Las cartas:** Polito, el campus y la gente de ESPOL, Ecuador (Julio Jaramillo, Barcelona, Emelec), música,
   series, juegos, tecnología e IA. Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos
-  una rara. Las cartas son de pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado.
+  una rara.
+- **Menos repetidas:** un sobre nunca trae la misma carta dos veces. Una carta que ya tienes sale con menos de la mitad
+  de la probabilidad de una que te falta. Las repetidas siguen saliendo, para que puedas cambiarlas. Las cartas son de pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado.
 - **El álbum es una sola lista:** todas las cartas por número. Las que te faltan salen como silueta con «?» en el
   marco de su rareza. Los cuatro anillos de arriba muestran cuántas tienes de cada rareza: toca uno para ver solo esas.
   El buscador encuentra una carta tuya por su nombre, y puedes ordenar por número, por rareza o ver solo tus
@@ -436,6 +456,18 @@ También puedes pedir un cambio desde el álbum, sin escribir el comando:
 «Cambios» muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
 te lo dice al recibir tu `/cambio`.
 
+### Canjear repetidas por un sobre
+
+Si nadie quiere tus repetidas, las canjeas con Vinci: 3 repetidas te dan un sobre de 3 cartas.
+
+1. Escribe `/canje` en tu chat con Vinci. En «🔁 Cambios», el botón «Canjear 3 repetidas por un sobre» abre el chat
+   con el comando escrito.
+2. Vinci entrega 3 repetidas y te dice cuáles. Elige primero las más comunes y las que más copias tienen.
+3. Toca «🎴 Abrir mi sobre» para abrir el sobre del canje.
+
+Vinci nunca entrega tu última copia de una carta. Si tienes menos de 3 repetidas, Vinci te dice cuántas tienes y no
+cambia nada. `/canje` funciona solo por privado.
+
 ### El ranking del álbum
 
 Por WhatsApp, el ranking muestra quién tiene más cartas distintas del álbum. Nadie sale en él hasta que lo pide.
@@ -444,7 +476,10 @@ Por WhatsApp, el ranking muestra quién tiene más cartas distintas del álbum. 
 2. Escribe `/ranking` cuando quieras verlo. Si dos tienen las mismas cartas, va primero el que tiene más legendarias.
 3. Toca el botón «🏆 Ver el ranking» para verlo en el álbum. En el álbum también está el botón «🏆 Ranking», al lado de
    «🔁 Cambios».
-4. Escribe `/ranking salir` para salir. Puedes volver cuando quieras.
+4. Toca a una persona del ranking para ver sus cartas. «Te faltan» muestra solo las que tiene y tú no.
+5. Escribe `/ranking salir` para salir. Puedes volver cuando quieras.
+
+Quien entra al ranking muestra sus cartas a los demás del ranking. Nadie más las ve.
 
 `/ranking` también funciona en un grupo. Cuenta solo a quien tiene su Vinci: el capitán y cada amigo con su token.
 

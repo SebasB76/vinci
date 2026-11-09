@@ -5,6 +5,8 @@
 - **Entregar desde un grupo:** Vinci toma el archivo al que respondes solo si llegó al grupo después del último
   reinicio de Vinci (el puente de WhatsApp los guarda en memoria). Si es más viejo, pide que lo reenvíen y responde
   a ese.
+- **Repasos interactivos:** el repaso va dentro del enlace, así que trae de 2 a 12 bloques, y Vinci acorta lo que no
+  cabe. Lo que respondes no se guarda: si recargas la página, el quiz empieza de cero.
 - **La vigilancia:** Vinci te avisa por WhatsApp cuando el Vinci de alguien falla, revisando cada 10 minutos. Si el
   servidor o el WhatsApp de Vinci se caen, no puede avisarte: eso lo ves en Coolify (**Unhealthy**) o en el panel.
 - **El panel desde Coolify:** con el enlace de la clave ves todo menos el texto de los chats, también los tuyos.
@@ -48,6 +50,8 @@
   están en el catálogo (`docs/album/cards.json`). El arte cifrado de una carta lo abre cualquiera que tenga un enlace
   de Vinci: si reenvías el enlace de tu sobre, quien lo recibe también ve las caras.
 - **Notas de voz:** se transcriben si tu Hermes tiene cómo; si no, el bot guarda el audio sin transcribir.
+- **La voz de Vinci:** Edge TTS usa un servicio gratis de Microsoft que no es oficial. Si Microsoft lo cambia, Vinci
+  no puede mandarte audios hasta que se actualice `edge-tts` en el `Dockerfile`.
 - **WhatsApp no es oficial:** el puente de Hermes es un cliente no oficial de WhatsApp (Baileys). WhatsApp puede
   bloquear el número de Vinci, por eso va en un chip aparte. En WhatsApp no hay botones: los avisos de un amigo
   llegan como texto.

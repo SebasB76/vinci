@@ -27,7 +27,9 @@ cuántas respuestas dio Vinci en cada uno.
 
 Cada 10 minutos, tu mantenimiento revisa la salud de cada Vinci, el tuyo y el de cada amigo. Cuando algo pasa a
 fallar (❌), Vinci te escribe una sola vez, por ejemplo «⚠️ Vigilancia · Angel · Token de Canvas: …». Cuando se
-arregla, te escribe «✅ Vigilancia · Angel · Token de Canvas: volvió a estar bien». Lo que solo está para revisar
+arregla, te escribe «✅ Vigilancia · Angel · Token de Canvas: volvió a estar bien». Si lo mismo falla o se arregla
+para varios a la vez, llega un solo mensaje con todos los nombres: «⚠️ Vigilancia · Tú, Angel y Beto · Sondeo: …».
+El sondeo cuenta como caído después de 25 minutos sin correr (dos vueltas y media). Lo que solo está para revisar
 (⚠️) no te avisa. Tu propio token tampoco, porque tu Vinci ya te lo dice en su chat. Si WhatsApp no responde en
 ese momento, el aviso sale en una revisión siguiente.
 

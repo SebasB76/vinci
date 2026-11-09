@@ -17,8 +17,8 @@ número personal.
 **Páginas dentro de WhatsApp.** El formulario del token, el panel de entregas y tus notas llegan como un botón. No hace falta
 escribir `/entregas` ni `/token`: el panel llega al final del resumen de las 7:00, y Vinci te lo manda cuando le
 preguntas «¿qué tengo pendiente?» en privado. Entonces su respuesta es corta: lo atrasado y lo que vence hoy o
-mañana. Si preguntas «¿cómo voy en notas?», te manda «📊 Ver mis notas», con todas tus materias ([la calculadora](uso.md#la-calculadora-de-notas)). Si tu token dejó de funcionar o le preguntas cómo poner uno nuevo, Vinci te manda el formulario. En un grupo
-no manda páginas, porque tienen tus datos. En el iPhone,
+mañana. Si preguntas «¿cómo voy en notas?», te manda «📊 Ver mis notas», con todas tus materias ([la calculadora](uso.md#la-calculadora-de-notas)). Si tu token dejó de funcionar o le preguntas cómo poner uno nuevo, Vinci te manda el formulario. Si le pides repasar un tema o una explicación larga, te manda «📚 Abrir el repaso» ([los repasos](uso.md#repasos-interactivos)). En un grupo
+no manda esas páginas, porque tienen tus datos; un repaso sí, porque solo trae el material del curso. En el iPhone,
 el botón abre la página dentro de WhatsApp, como un Mini App de Telegram. En WhatsApp Web abre otra pestaña: Web no
 tiene otra forma de abrir una página. En Android no lo probamos. `setup.sh` agrega la ruta del botón al puente de
 Hermes sin editar su `bridge.js` (`hermes/whatsapp/vinci-bridge.js`). Si el puente no la tiene, la página llega
@@ -110,9 +110,13 @@ solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para
   Lo que dejas más de 3 días ya no te lo recuerda.
 - **Notas de voz y audios.** Háblale en vez de escribir: «¿qué tengo esta semana?» por nota de voz recibe la misma
   respuesta que por texto. Un audio reenviado o un archivo `.m4a` también se entiende. Todo se transcribe en tu PC
-  con faster-whisper (`setup.sh` lo instala en Hermes); en un servidor, con tu key de OpenAI o de Groq. Vinci te muestra primero lo que entendió (🎙️). Si no se
-  oyó (silencio, ruido), Vinci te lo dice y te pide repetirla o escribirla: no adivina. Si se oyó pero un nombre salió
-  raro, lo entiende por el tema y te dice qué entendió; solo pregunta si no sabe qué pides.
+  con faster-whisper (`setup.sh` lo instala en Hermes); en un servidor, con una key de Groq (gratis) o de OpenAI.
+  Vinci te muestra primero lo que entendió (🎙️). Si no se oyó (silencio, ruido), Vinci te lo dice y te pide repetirla
+  o escribirla: no adivina. Si se oyó pero un nombre salió raro, lo entiende por el tema y te dice qué entendió; solo
+  pregunta si no sabe qué pides.
+- **Respuestas en audio.** Vinci contesta con texto, también a tus notas de voz. Si quieres oír la respuesta, pídela:
+  «mándame un audio», «respóndeme por voz» o «léemelo», por escrito o por nota de voz. Te llega una nota de voz y
+  el texto, con sus enlaces. Habla con una voz ecuatoriana de Microsoft (Edge TTS, gratis).
 
 **Grupos.** Agrega el número de Vinci a un grupo y escribe ahí «@vinci activa este grupo». Desde entonces Vinci
 contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz
@@ -207,7 +211,8 @@ y Vinci los contesta sin gastar tokens:
 | `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). También llega al final del resumen de las 7:00 y cuando preguntas «¿qué tengo pendiente?». Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
 | `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo, y los resultados de todos llegan cuando todos responden o a los 15 minutos |
 | `/cambio` | Tus cartas repetidas del álbum, y quién tiene repetidas las que te faltan. `/cambio Angel Bosque protector por Lago ESPOL` le ofrece a Angel tu repetida por la suya: le llega una encuesta y, si acepta, Vinci cambia las dos cartas. El botón «🔁 Ver los cambios» abre «Cambios» en el álbum, donde eliges el cambio con un toque. [Más sobre los cambios](uso.md#cambiar-cartas) |
-| `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
+| `/canje` | 3 de tus cartas repetidas por un sobre nuevo. Vinci entrega primero las más comunes y nunca tu última copia. Solo por privado. [Más sobre el canje](uso.md#canjear-repetidas-por-un-sobre) |
+| `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum, y ahí tocas a alguien para ver sus cartas. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
 En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas de tus tarjetas

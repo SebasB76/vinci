@@ -176,6 +176,29 @@ def command(cfg: BotConfig, number: str, text: str, now: datetime) -> amigos.Out
     return _offer(cfg, me, people, text, now)
 
 
+def exchange(cfg: BotConfig, number: str, now: datetime) -> amigos.Outcome:
+    """«/canje»: 3 repeats for a pack, opened from the answer's button."""
+    if not cfg.album_page:
+        return amigos.Outcome("El álbum está apagado en este Vinci.")
+    me = next(p for p in _people(cfg) if p.number == number)
+    known = _names()
+    with _album(cfg, me, lock=True) as (owner, conn):
+        have = album.spare(album.collection(conn))
+        done = album.exchange(conn, now)
+        url = album.page_url(owner, album.snapshot(conn, now, done[1])) if done else ""
+    if done is None:
+        return amigos.Outcome(f"🎴 Para un canje necesitas {album.EXCHANGE_COST} cartas repetidas, y tienes {have}. "
+                              "Te salen más en los sobres, y también las puedes cambiar con /cambio.")
+    spent: dict[str, int] = {}
+    for card in done[0]:
+        spent[card] = spent.get(card, 0) + 1
+    gave = ", ".join(known[c]["name"] + (f" ×{n}" if n > 1 else "") for c, n in spent.items())
+    left = have - album.EXCHANGE_COST
+    more = f" Te quedan {left} repetidas." if left else ""
+    return amigos.Outcome(f"🎴 Listo: entregaste {gave} y te llevas un sobre con 3 cartas.{more}",
+                          button={"text": album.BUTTON, "url": url})
+
+
 def _overview(cfg: BotConfig, me: Person, people: list[Person], now: datetime) -> amigos.Outcome:
     known = _names()
     with _album(cfg, me) as (owner, conn):
@@ -211,6 +234,8 @@ def _overview(cfg: BotConfig, me: Person, people: list[Person], now: datetime) -
                       "contesta en la encuesta que te mandé."]
     if repeats:
         lines += ["", HOW]
+    if album.spare(mine) >= album.EXCHANGE_COST:
+        lines.append(f"Con /canje entregas {album.EXCHANGE_COST} repetidas y te llevas un sobre.")
     button = {"text": TRADES_BUTTON, "url": f"{link['url']}&t=cambios"} if link else None
     return amigos.Outcome("\n".join(lines), button=button)
 

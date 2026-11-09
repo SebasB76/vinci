@@ -40,12 +40,15 @@ CATALOG = REPO_ROOT / "docs" / "album" / "cards.json"
 RARITIES = ("com", "rare", "epic", "leg")
 WEIGHTS = {"com": 55, "rare": 25, "epic": 10, "leg": 10}  # with 6 legendaries, a given one: about 1 in 4 people by their 5th pack
 PACK_SIZE = 3
+OWNED_WEIGHT = 0.4  # in 14 packs, about 6 repeats instead of 10
 GOOD_SHARE = 0.8
 TEST = re.compile(r"\b(leccion|lecciones|examen|examenes|parcial|parciales)\b")
 SINCE = "album_since"
 DAILY = "diario:"
 GIFT = "regalo:"
 WELCOME = f"{GIFT}bienvenida"
+EXCHANGE = "canje:"
+EXCHANGE_COST = 3  # repeats for one pack
 PENDING_HINT = ("\n\nGanas más sobres cuando entregas a tiempo y cuando sacas buenas notas. Para eso, conecta tu aula "
                 "virtual desde el enlace que te mandé: yo solo la leo, no cambio nada. Si el enlace ya no abre, "
                 "escríbeme /token.")
@@ -59,18 +62,23 @@ def catalog() -> tuple[dict, ...]:
     return tuple(json.loads(CATALOG.read_text(encoding="utf-8"))["cards"])
 
 
-def draw(cards: tuple[dict, ...], rng: random.Random, *, gold: bool = False, floor: bool = True) -> list[str]:
-    """Three card ids, the rarest last so the page shows it at the end. A pack has a rare or better (with `floor`); a
-    gold one, an epic or better."""
-    pools = {r: [c for c in cards if c["rarity"] == r] for r in RARITIES}
+def draw(cards: tuple[dict, ...], rng: random.Random, have: dict[str, int], *, gold: bool = False,
+         floor: bool = True) -> list[str]:
+    """Three different card ids, the rarest last so the page shows it at the end. A pack has a rare or better (with
+    `floor`); a gold one, an epic or better. A card already in `have` keeps OWNED_WEIGHT of its chance: repeats still
+    come, for trades, but less often."""
+    pools = {r: [c["id"] for c in cards if c["rarity"] == r] for r in RARITIES}
     rarity = {c["id"]: c["rarity"] for c in cards}
+    picks: list[str] = []
 
     def pick(allowed: tuple[str, ...]) -> str:
-        found = [r for r in allowed if pools[r]] or [r for r in RARITIES if pools[r]]
+        open_ = {r: [c for c in pools[r] if c not in picks] for r in RARITIES}
+        found = [r for r in allowed if open_[r]] or [r for r in RARITIES if open_[r]]
         chosen = rng.choices(found, [WEIGHTS[r] for r in found])[0]
-        return rng.choice(pools[chosen])["id"]
+        return rng.choices(open_[chosen], [OWNED_WEIGHT if have.get(c) else 1 for c in open_[chosen]])[0]
 
-    picks = [pick(RARITIES) for _ in range(PACK_SIZE - 1)]
+    for _ in range(PACK_SIZE - 1):
+        picks.append(pick(RARITIES))
     if gold:
         picks.append(pick(("epic", "leg")))
     elif floor and all(rarity[p] == "com" for p in picks):
@@ -139,7 +147,8 @@ def give(conn: sqlite3.Connection, now: datetime, rng: random.Random | None = No
     new = [f for f in earned(conn, since) if f["source"] not in known]
     rng = rng or random.Random()
     for found in new:
-        _store(conn, now, found["source"], found["reason"], draw(catalog(), rng, gold=found["gold"]), found["gold"])
+        picks = draw(catalog(), rng, collection(conn), gold=found["gold"])
+        _store(conn, now, found["source"], found["reason"], picks, found["gold"])
     conn.commit()
     return len(new)
 
@@ -150,7 +159,7 @@ def give_daily(conn: sqlite3.Connection, now: datetime, today: str, rng: random.
     if get_meta(conn, SINCE) is None or conn.execute(
             "SELECT 1 FROM album_packs WHERE source = ?", (source,)).fetchone():
         return False
-    picks = draw(catalog(), rng or random.Random(), floor=False)
+    picks = draw(catalog(), rng or random.Random(), collection(conn), floor=False)
     _store(conn, now, source, "Te llega uno cada mañana con tu resumen", picks, False)
     conn.commit()
     return True
@@ -164,7 +173,8 @@ def give_gift(conn: sqlite3.Connection, now: datetime, reason: str, rng: random.
         if not start:
             return False
         set_meta(conn, SINCE, timefmt.iso(now))
-    _store(conn, now, f"{GIFT}{timefmt.iso(now)}", reason, draw(catalog(), rng or random.Random()), False)
+    picks = draw(catalog(), rng or random.Random(), collection(conn))
+    _store(conn, now, f"{GIFT}{timefmt.iso(now)}", reason, picks, False)
     conn.commit()
     return True
 
@@ -175,9 +185,40 @@ def give_welcome(conn: sqlite3.Connection, now: datetime, rng: random.Random | N
         return False
     if get_meta(conn, SINCE) is None:
         set_meta(conn, SINCE, timefmt.iso(now))
-    _store(conn, now, WELCOME, "Para que empieces tu colección", draw(catalog(), rng or random.Random()), False)
+    picks = draw(catalog(), rng or random.Random(), collection(conn))
+    _store(conn, now, WELCOME, "Para que empieces tu colección", picks, False)
     conn.commit()
     return True
+
+
+def spare(have: dict[str, int]) -> int:
+    """The copies beyond the first of each card in the catalog: what /cambio and /canje can spend."""
+    ids = {c["id"] for c in catalog()}
+    return sum(n - 1 for c, n in have.items() if n > 1 and c in ids)
+
+
+def exchange(conn: sqlite3.Connection, now: datetime,
+             rng: random.Random | None = None) -> tuple[list[str], sqlite3.Row] | None:
+    """Spends EXCHANGE_COST repeats on a pack, the commonest and most repeated first, never a card's last copy:
+    (the card ids spent, the pack row, already marked sent); None with too few repeats."""
+    have = collection(conn)
+    if spare(have) < EXCHANGE_COST:
+        return None
+    order = {c["id"]: (RARITIES.index(c["rarity"]), c["n"]) for c in catalog()}
+    spent: list[str] = []
+    while len(spent) < EXCHANGE_COST:
+        card = min((c for c, n in have.items() if n > 1 and c in order),
+                   key=lambda c: (order[c][0], -have[c], order[c][1]))
+        have[card] -= 1
+        spent.append(card)
+    for card in spent:
+        conn.execute("UPDATE album_cards SET count = count - 1 WHERE card = ?", (card,))
+    _store(conn, now, f"{EXCHANGE}{timefmt.iso(now)}", f"Canjeaste {EXCHANGE_COST} repetidas",
+           draw(catalog(), rng or random.Random(), collection(conn)), False)
+    pack_id = conn.execute("SELECT max(id) FROM album_packs").fetchone()[0]
+    conn.execute("UPDATE album_packs SET sent_at = ? WHERE id = ?", (timefmt.iso(now), pack_id))
+    conn.commit()
+    return spent, conn.execute("SELECT * FROM album_packs WHERE id = ?", (pack_id,)).fetchone()
 
 
 def trade(conn: sqlite3.Connection, given: str, got: str, now: datetime) -> None:
@@ -211,6 +252,8 @@ def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None =
             data["pack"]["daily"] = True
         elif pack["source"].startswith(GIFT):
             data["pack"]["gift"] = True
+        elif pack["source"].startswith(EXCHANGE):
+            data["pack"]["swap"] = True
     return data
 
 

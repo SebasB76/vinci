@@ -586,7 +586,9 @@ class _Syncer:
                 seen.append(fid)
                 continue
             f = entry["file"]
-            if f.get("locked_for_user") or f.get("hidden_for_user"):
+            # A file «solo disponible con enlace» is hidden_for_user: left out of the Files listing, yet it is the
+            # material an assignment or a page hands out, and it downloads like any other.
+            if f.get("locked_for_user"):
                 continue
             seen.append(fid)
             row = {

@@ -10,8 +10,9 @@ test_canvas, no gateway:
   1. setup.sh twice: a legacy «espol» profile becomes Vinci with its memory; the second run changes nothing; a toolset
      switched on in config.toml leaves the blocked list and a typo is refused.
   2. `aula` CLI commands against the first fixture state: the material catalog (a module's subheader, folders, a copy
-     from 2025, a big book, a guide only an assignment links to, an announcement's attachment) and its outside links;
-     a file and its copy downloaded on demand.
+     from 2025, a big book, a guide only an assignment links to and the Files listing hides («solo disponible con
+     enlace»), an announcement's attachment) and its outside links; a file, its copy and that guide downloaded on
+     demand; an unknown file id is an error in JSON.
   3. Vinci's polls, then the fixtures change (new assignment, due-date change, new announcement, posted grade with the
      professor's comment and its file (never the student's own comment), new
      material, the syllabus, a new module link, a submission), then polls 2-4 and the 07:00 summary (twice: the second
@@ -106,6 +107,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -327,6 +329,9 @@ GPA_ASK = "cuánto me sube el promedio si saco 9 en Sistemas Distribuidos"  # ho
 
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
+DOCUMENT_RE = re.compile(r"\[The user sent a (?:text )?document: '[^']*'\. (?:It|The file) is (?:also )?saved at: (\S+?)(?:\.\s|\])")
+# «entrégalo en …» → the assignment the scripted model hands a file in to
+HAND_IN = {"entrégalo en el informe de laboratorio": 3002}
 REPLY_RE = re.compile(r'\[Replying to[^:]*: "(.+?)"\]', re.S)
 QUIZ_SKILL = 'invoked the "quiz" skill'
 QUIZ_TOPIC = re.compile(r"instruction alongside the skill invocation: (.+)$", re.M)
@@ -623,6 +628,13 @@ class Script:
             return _call("mcp__vinci__chat_reminder", text=GROUP_REMINDER, at=["2026-10-01 09:00", "2026-10-02 12:00"])
         if "avísame mañana a las 9" in text and not called:
             return _call("mcp__vinci__chat_reminder", text=PRIVATE_REMINDER, at=["2026-10-01 09:00"])
+        documents = DOCUMENT_RE.findall(text)
+        hand_in = next((a for words, a in HAND_IN.items() if words in text), None)
+        if documents and hand_in and not called:
+            return _call("mcp__vinci__prepare_submission", assignment_id=hand_in, files=documents)
+        if "mcp__vinci__prepare_submission" in called and results:
+            return {"content": "Te lo mandé: revísalo y vota «Entregar»." if '"proposal"' in results[-1]
+                    else f"No lo preparé: {results[-1].split('</untrusted_tool_result>')[0][-300:]}"}
         flow = (self.plan(text, called, results) or self.portal(text, called, results)
                 or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results) or self.pending(text, called, results)
@@ -1448,11 +1460,13 @@ def test_canvas(tmp_path):
             ["archivos", "bajar", "5001", "--json"],
             ["archivos", "bajar", "5005", "--json"],
             ["archivos", "leer", "5001", "--paginas", "2"],
+            ["archivos", "bajar", "5006", "999999", "--json"],
+            ["archivos", "leer", "999999", "--json"],
         ]
         cli_md = ["# Salida del comando `aula` (estado 1 del aula virtual)\n"]
         cli_json = {}
         for args in cli_runs:
-            proc = run([aula, *args], T_SETUP)
+            proc = run([aula, *args], T_SETUP, check="999999" not in args)
             cli_md.append(f"## `aula {' '.join(args)}`\n\n```\n{normalize(proc.stdout).rstrip()}\n```\n")
             if "--json" in args:
                 cli_json[" ".join(args)] = json.loads(proc.stdout)
@@ -1471,6 +1485,10 @@ def test_canvas(tmp_path):
         assert guide["origen"] == "Tarea «Taller 3: Derivadas»" and formulario["origen"] == "Anuncio «Bienvenidos al curso»"
         assert catalog[5301]["curso"].endswith("Práctico")
         assert cli_json["archivos bajar 5005 --json"][0]["indexado"] == "ok"
+        hidden_guide, unknown = cli_json["archivos bajar 5006 999999 --json"]
+        assert Path(hidden_guide["ruta_local"]).is_file(), "un archivo «solo con enlace» de una tarea se baja"
+        assert unknown["ruta_local"] is None and "999999" in unknown["error"], unknown
+        assert "999999" in cli_json["archivos leer 999999 --json"]["error"], "con --json, el error también es JSON"
         assert take("aula CLI") == [], "la CLI nunca envía mensajes"
 
         # 3. polls -----------------------------------------------------------------------
@@ -1989,7 +2007,7 @@ def test_canvas(tmp_path):
         assert any("page=2" in p for _, p in canvas.requests), "debió seguir la paginación"
         assert not any("5002" in p and "download" in p for _, p in canvas.requests), "archivo enorme no se baja"
         downloaded = {int(p.split("/")[2]) for _, p in canvas.requests if p.startswith("/files/")}
-        assert downloaded == {5001, 5005, 5010, 5301, 5101}, \
+        assert downloaded == {5001, 5005, 5006, 5010, 5301, 5101}, \
             f"solo los sílabos se bajan solos; lo demás, cuando se pide: {sorted(downloaded)}"
 
         notif = ["# Mensajes de WhatsApp al capitán (en orden)\n",
@@ -2266,6 +2284,46 @@ def test_whatsapp_captain(tmp_path):
         md.append(f"**Capitán**: /quiz integrales dobles → [2 encuestas]; vota la 1; «qué tengo esta semana»; "
                   f"«sigamos con el quiz» → Vinci: {normalize(resumed)} → [la 2/2 otra vez]; vota → "
                   f"{normalize(text_of(score))[:200]}\n")
+
+        # 10m3. A file he sends goes to the assignment he names as it is, with its own name, only on his vote; an
+        # assignment that takes PDF only is refused before any poll.
+        def send_file(name: str, caption: str) -> list[dict]:
+            cached = home / ".hermes" / "cache" / "documents" / f"doc_{uuid.uuid4().hex[:12]}_{name}"
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(b"PK\x03\x04 informe de prueba")
+            mark = len(wa.sent)
+            wa.document(captain_jid, captain_jid, cached, caption, name="Capitán")
+            md.append(f"**Capitán** (privado): [archivo {name}] {caption}\n")
+            got = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if m["path"] == "send"], 120)
+            assert got, fail(f"Vinci no contestó al archivo {name}")
+            return wa.sent[mark:]
+
+        db = sqlite3.connect(data_dir / "espol.db")
+        db.execute("UPDATE assignments SET allowed_extensions = 'pdf' WHERE id = 3002")
+        db.commit()
+        db.close()
+        refused = send_file("informe.docx", "entrégalo en el informe de laboratorio")
+        said = text_of([m for m in refused if m["path"] == "send"])
+        assert "solo acepta pdf" in said and not [m for m in refused if m["path"] == "send-poll"], refused
+        db = sqlite3.connect(data_dir / "espol.db")
+        db.execute("UPDATE assignments SET allowed_extensions = '' WHERE id = 3002")
+        db.commit()
+        db.close()
+        sent = send_file("informe-final.docx", "entrégalo en el informe de laboratorio")
+        shown = [m for m in sent if m["path"] == "send-media"]
+        assert [m.get("fileName") for m in shown] == ["informe-final.docx"], sent
+        assert "«informe-final.docx», tal como me lo mandaste" in shown[0].get("caption", ""), shown
+        poll = next(m for m in sent if m["path"] == "send-poll")
+        assert not canvas.uploads, "nada se sube antes del voto"
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, poll["messageId"], next(o for o in poll["options"] if "Entregar" in o))
+        done = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Entregué" in m.get("message", "")],
+                           60)
+        assert done and "«informe-final.docx»" in text_of(done), fail(f"no confirmó la entrega: {wa.sent[mark:]}")
+        assert [(u["file"], u["type"], u["token"]) for u in canvas.uploads] == [
+            ("informe-final.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", False)]
+        assert canvas.submissions == [{"assignment": 3002, "file_ids": [9001]}], canvas.submissions
+        md.append(f"→ [informe-final.docx con la encuesta] → vota «Entregar» → Vinci: {normalize(text_of(done))}\n")
 
         checked = run([str(VENV_BIN / "vinci-check"), "say", "qué tengo esta semana", "--timeout", "150"], T_VINCI,
                       check=False)

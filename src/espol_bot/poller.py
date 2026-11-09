@@ -168,6 +168,8 @@ class Bot:
                     self.telegram.send(form["respuesta"], reply_markup=token_form.keyboard(button) if button else None)
                 set_meta(self.conn, "bot_alert_token", refused)
                 set_meta(self.conn, "bot_alert_token_at", timefmt.iso(now))
+                sent = int(get_meta(self.conn, "bot_alert_token_count") or 0) + 1  # the panel's «Personas»
+                set_meta(self.conn, "bot_alert_token_count", str(sent))
                 self.conn.commit()
             except TelegramError as exc:
                 log.error("No pude avisar por Telegram: %s", exc)
@@ -175,7 +177,7 @@ class Bot:
 
     def _ok(self) -> None:
         delete_meta(self.conn, "bot_fail_count_token", "bot_fail_count_red", "bot_alert_token",
-                    "bot_alert_token_at")
+                    "bot_alert_token_at", "bot_alert_token_count")
         self.conn.commit()
 
     # -- poll ------------------------------------------------------------------------

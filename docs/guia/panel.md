@@ -9,6 +9,7 @@ cada conversación. La página solo lee: no usa el modelo, no llama al aula y no
 | Parte | Qué ves |
 |---|---|
 | Arriba | Si el gateway de Hermes está vivo y cuántas veces se reinició, si WhatsApp está conectado, los turnos en curso o trabados (más de 5 min), el gasto de hoy y de 7 días, y los errores de las últimas 24 h. |
+| Personas | Una fila por persona: tú y cada amigo, también los que aún no conectan su aula. Dice si su Vinci funciona, si el token se cortó o si nunca lo conectó, y por qué: cuándo se renovó su token por última vez, cuántas veces y cuándo Vinci le pidió reconectar, cuándo lo invitaste, cuántas veces te escribió sin conectar y si su enlace sigue vigente. También si le llegaron las novedades. De cada amigo ves su nombre y las 3 últimas cifras de su número. Debajo, «Cómo funcionan el sondeo y el token» lo explica en 4 párrafos. |
 | Salud de cada Vinci | Lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas, para tu Vinci y para el de cada amigo. De un amigo ves solo lo que falla. |
 | Gasto por día | Los últimos 14 días, por grupo: Vinci, bots de materia y amigos. Al pasar el mouse sobre un día (o tocarlo en el celular) ves su total frente al promedio, el gasto por grupo y por bot, las llamadas al modelo, los tokens y el costo por llamada. |
 | Gasto por bot | Llamadas al modelo, tokens, costo y el último día de uso de cada perfil y modelo en esos 14 días. |

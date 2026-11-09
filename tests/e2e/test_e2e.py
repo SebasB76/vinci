@@ -2513,6 +2513,9 @@ def test_whatsapp_captain(tmp_path):
             assert {c["name"] for c in state["checks"]} == {"Sondeo", "Aula virtual", "Mantenimiento",
                                                             "Token de Canvas"}, state["checks"]
             assert {"vinci-sondeo", "vinci-mantenimiento", "vinci-resumen"} <= {j["name"] for j in state["jobs"]}
+            me = state["roster"][0]  # «Personas»: the captain first, his chain alive
+            assert me["name"] == "Tú" and not me["friend"] and me["state"] == "funciona", state["roster"]
+            assert "Personas" in page.text and "Cómo funcionan el sondeo y el token" in page.text
             assert any(u["profile"] == "vinci" and u["calls"] for u in state["usage"]), "el gasto de Vinci sale"
             chat = next(s for s in state["sessions"] if s["profile"] == "vinci" and s["source"] == "whatsapp"
                         and s["chat_type"] == "dm")

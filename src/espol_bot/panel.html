@@ -49,6 +49,9 @@ tr.click{cursor:pointer}tr.click:hover td{background:rgba(127,127,127,.08)}
 .step pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.4 var(--mono)}
 .nowrap{white-space:nowrap}
 .err{font-family:var(--mono);font-size:12px;word-break:break-word}
+.sum{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;font-size:13px}.sum b{font-size:18px;margin-right:4px}
+details.how{margin-top:10px;font-size:13px;color:var(--muted)}details.how summary{cursor:pointer;color:var(--fg)}
+details.how p{margin:8px 0 0;max-width:760px}
 button{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer}
 </style>
 </head>
@@ -59,6 +62,24 @@ button{background:transparent;color:var(--fg);border:1px solid var(--border);bor
   <span class="muted small" id="stamp">cargando…</span>
 </header>
 <section class="tiles" id="tiles"></section>
+
+<h2>Personas</h2>
+<div class="card">
+  <div class="sum" id="rosterSum"></div>
+  <div class="scroll"><table id="roster"></table></div>
+  <details class="how"><summary>Cómo funcionan el sondeo y el token</summary>
+    <p><b>Sondeo.</b> Cada 10 minutos, un servicio aparte lee el aula de cada persona con Vinci, una por una: tú
+      primero, después cada amigo. Compara con lo que vio antes y manda un aviso por cada tarea, nota o fecha nueva.</p>
+    <p><b>Renovación del token.</b> ESPOL invalida cada token a la hora. A los 40 minutos, Vinci usa el token actual
+      para crear el siguiente y borra el viejo: la cadena sigue sola, sin que nadie haga nada.</p>
+    <p><b>Token cortado.</b> Si Vinci pasa más de una hora sin renovar (el servidor caído o un deploy largo), el token
+      vence y no queda con qué crear otro. Solo la persona lo arregla: crea un token nuevo en el aula y lo manda con
+      el formulario. Su Vinci se lo pide solo, con el botón, una vez al día hasta que lo haga.</p>
+    <p><b>Sin token.</b> Recibió la invitación (el video, la página de funciones y el enlace), pero nunca mandó su
+      token. El enlace sirve un día; si escribe <code>/token</code>, le llega otro. Hasta entonces Vinci no usa el
+      modelo con esa persona.</p>
+  </details>
+</div>
 
 <h2>Salud de cada Vinci</h2>
 <div class="card checks" id="checks"></div>
@@ -153,6 +174,8 @@ function render(d) {
     tile("Errores 24 h", String(errs), `${d.errors.length} tipos con avisos`, errs ? "warn" : "ok"),
   );
 
+  renderRoster(d.roster || []);
+
   const check = (c, pad = "") => el("div", {style: pad}, `${ICON[c.level] || ""} `, el("b", {}, c.name), ": ", c.detail,
     c.fix && c.level !== "ok" ? el("span", {class: "muted"}, ` → ${c.fix}`) : null);
   const worst = cs => cs.some(c => c.level === "fail") ? "fail" : cs.some(c => c.level === "warn") ? "warn" : "ok";
@@ -226,6 +249,36 @@ function render(d) {
         d.errors.map(e => el("tr", {title: e.sample || ""},
           el("td", {class: "err " + (e.level === "WARNING" ? "" : "fail")}, e.signature),
           el("td", {class: "n"}, e.count), el("td", {}, e.last.slice(11, 16)), el("td", {class: "small muted"}, e.sources.join(", ")))));
+}
+
+const STATE = {"funciona": ["✅", "funciona", "ok"], "cortado": ["❌", "token cortado", "fail"],
+               "sin token": ["⏳", "sin conectar", "warn"]};
+const times = n => n === 1 ? "1 vez" : `${n} veces`;
+function why(p) {
+  if (p.state === "funciona") return p.renewed ? `token renovado ${ago(p.renewed)}` : "funciona";
+  if (p.state === "cortado") {
+    const sent = p.reminders ? `le pedí reconectar ${times(p.reminders)}` : p.reminded_at ? "le pedí reconectar" : "aún no le pido reconectar";
+    return [p.renewed ? `se cortó después de ${clock(p.renewed)}` : "se cortó", p.reminded_at ? `${sent}, la última ${clock(p.reminded_at)}` : sent].join(" · ");
+  }
+  const open = p.form_until && new Date(p.form_until) > new Date();
+  return [p.since ? `invitado ${clock(p.since)}` : "invitado",
+          p.wrote ? `te escribió ${times(p.wrote)} sin conectar, la última ${clock(p.wrote_at)}` : "no volvió a escribir",
+          open ? `su enlace sirve hasta ${clock(p.form_until)}` : "su enlace venció"].join(" · ");
+}
+function renderRoster(rows) {
+  const order = {"cortado": 0, "sin token": 1, "funciona": 2};
+  const sorted = [...rows].sort((a, b) => (a.friend - b.friend) || (order[a.state] - order[b.state]) || a.name.localeCompare(b.name));
+  const count = s => rows.filter(p => p.state === s).length;
+  $("rosterSum").replaceChildren(
+    el("span", {}, el("b", {class: "ok"}, count("funciona")), "funcionan"),
+    el("span", {}, el("b", {class: "fail"}, count("cortado")), "con el token cortado"),
+    el("span", {}, el("b", {class: "warn"}, count("sin token")), "sin conectar"));
+  table($("roster"), [["Persona"], ["Estado"], ["Qué pasó"], ["Novedades"]],
+        sorted.map(p => el("tr", {},
+          el("td", {class: "nowrap"}, p.friend ? p.name : "Tú", p.phone ? el("div", {class: "muted small"}, p.phone) : null),
+          el("td", {class: "nowrap " + STATE[p.state][2]}, `${STATE[p.state][0]} ${STATE[p.state][1]}`),
+          el("td", {class: "small"}, why(p)),
+          el("td", {class: "small " + (p.news ? "ok" : "muted")}, p.state === "sin token" ? "—" : p.news ? "✓ le llegaron" : "todavía no"))));
 }
 
 let chart = {};

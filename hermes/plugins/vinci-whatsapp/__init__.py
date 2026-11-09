@@ -25,6 +25,8 @@ friend's and in the default one; it acts only on WhatsApp.
   counts (`espol-bot whatsapp-grupo voto`). Once every member answered it all, or 15 minutes after the quiz went out
   (QUIZ_CLOSES, checked by the relay loop), the group gets everyone's results, tagged. A vote skips Hermes' sessions
   altogether (_wire_votes): one cast while Vinci's turn still runs is not queued for the model.
+- Hermes' notices for an operator (the «💾 Self-improvement review» line, a busy ack and its first-time tip) are
+  dropped before they reach WhatsApp (_quiet).
 - A voice note or an audio file: Hermes transcribes a voice note on its own, not an audio file (a recording someone
   forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
   Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
@@ -122,6 +124,10 @@ PENDING_HEADER = ("[{name}, invitado: ya te escribió y le falta conectar su aul
 NOT_YOURS = ("(un mensaje de Vinci que no está en tu conversación: es del Vinci de otra persona del grupo, o de hace "
              "rato) ")
 AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an audio file
+# Hermes' own lines, in English or Spanish (its locales): the self-improvement review, a first-time tip, a busy ack.
+HERMES_NOTICE_RE = re.compile(
+    r"\s*(?:💾\s|💡\s*First-time tip|[↪⏩⏳⚡]\ufe0f?\s*(?:Redirected|Steered|Queued for|Interrupting|"
+    r"Ejecución actual redirigida|Redirigido a la ejecución|En cola para el siguiente|Interrumpiendo la tarea))")
 CALLS_VINCI_RE = re.compile(r"\b[bv]in(?:ch|c|s)h?i\b")  # «Vinci» as Whisper may spell it, over _plain text
 # Next to the profile's config (<profile>/plugins/vinci-whatsapp/__init__.py); the profile's tools read it there.
 ATTACHMENTS = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "adjuntos.json"))
@@ -136,7 +142,7 @@ LIVE_ROUTE = "vinci-whatsapp-en-vivo-"
 
 def register(ctx):
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
-    ctx.register_platform_handler("whatsapp", _wire_votes)
+    ctx.register_platform_handler("whatsapp", _wire)
     if RELAY:
         threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
     elif PROFILE:
@@ -180,6 +186,29 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
     except Exception:
         logger.exception("no pude ordenar un mensaje de WhatsApp")
         return {"action": "skip", "reason": "vinci-whatsapp: error"}
+
+
+def _wire(native, adapter):
+    _wire_votes(native, adapter)
+    _quiet(adapter)
+
+
+def _quiet(adapter):
+    """Hermes' notices for an operator never reach a student: the review that patched a skill or the memory, and the
+    busy ack with its first-time tip (busy_ack_enabled already turns that off; this catches a gateway that missed it)."""
+    if getattr(adapter, "_vinci_quiet", False):
+        return
+    send = adapter.send
+
+    async def quiet_send(chat_id, content, reply_to=None, metadata=None, **kwargs):
+        if isinstance(content, str) and HERMES_NOTICE_RE.match(content):
+            logger.info("aviso de Hermes no enviado a WhatsApp: %s", content.splitlines()[0][:80])
+            from gateway.platforms.base import SendResult
+            return SendResult(success=True)
+        return await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
+
+    adapter.send = quiet_send
+    adapter._vinci_quiet = True
 
 
 def _wire_votes(_native, adapter):

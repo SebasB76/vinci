@@ -48,6 +48,10 @@ que cada tarjeta te llega como mensaje con una **encuesta**: votar «✅ Hecho»
 horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram, sin pasar por el modelo. Cambiar
 el voto lo deshace.
 
+**Solo la respuesta de Vinci.** Si le escribes mientras todavía responde, Vinci toma tu mensaje nuevo sin avisar
+«Redirected current run». Tampoco te llegan los avisos internos de Hermes, como «💾 Self-improvement review» cuando
+Vinci actualiza su memoria.
+
 **Tus materias, en un solo chat.** No hay un bot por materia: Vinci sabe de qué materia hablas en cada mensaje.
 1. Si nombras la materia («en Estadística: no entendí la varianza»), usa esa.
 2. Si respondes a un aviso, a un brief o a un resumen de apuntes, usa la materia de ese mensaje.

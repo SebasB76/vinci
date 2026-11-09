@@ -119,7 +119,7 @@ modelo = "claude-haiku-5-5"
 # Quitar un nombre la vuelve a apagar. La tabla con el riesgo de cada una está en docs/guia/privacidad.md.
 #   terminal, file, code_execution, browser, computer_use, delegation, cronjob, kanban, vision, video,
 #   image_gen, video_gen, tts, todo, connections, homeassistant, spotify, x_search, a2a
-#   (a los bots de materia además: web, search)
+#   (a los bots de materia además: web, search; Vinci y los de tus amigos ya traen tts, para un audio pedido)
 # Ejemplo: vinci = ["terminal", "file"]
 vinci = []
 # Para todos los bots de materia.

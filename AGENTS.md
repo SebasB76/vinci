@@ -141,6 +141,7 @@ with `Docs:` and lists what it updated, or says why nothing needed it.
 | A known limit (fixed or new) | `problemas.md` «Límites conocidos» |
 | A headline feature (new or gone) | the «Qué hace» list in `README.md` + `funciones.md` |
 | The summary, dashboard, Académico or hand-in messages | `docs/images/pantallas/pantallas.html`, then `scripts/render_screens.sh` |
+| A feature the invitation video shows (notices, rubrics, «Tu semana», hand-in, groups, material, Académico) | `docs/images/video/video.html`, then `scripts/render_screens.sh video` |
 | A new ESPOL source (like the Académico) | «De dónde lee» in `README.md` |
 
 ## Do not re-propose
@@ -203,7 +204,7 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
 - `docs/guia/`: the user guides the README links to.
 - `relay/`: Cloudflare Worker that passes encrypted webview results back to the laptop.
 - `tests/e2e/`: the E2E with its fake servers, Hermes harness and fixtures.
-- `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README demo).
+- `scripts/`: repo maintenance (`docs_check.py`, `render_screens.sh` for the README demo and the invitation video).
 - `.github/workflows/checks.yml`: CI on every PR, `ruff` and the docs check.
 - `.claude/skills/control-vinci/`: how agents verify on the live bots, and the feature map.
 

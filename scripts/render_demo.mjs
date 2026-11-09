@@ -1,8 +1,9 @@
-// Captures docs/images/pantallas/pantallas.html frame by frame: calls its render(t) through the DevTools protocol of a
-// headless Chromium started with --remote-debugging-port. Usage: node render_demo.mjs <port> <url> <out-dir> <fps>
+// Captures an animated page (pantallas.html, video/video.html) frame by frame: calls its render(t) through the DevTools
+// protocol of a headless Chromium started with --remote-debugging-port.
+// Usage: node render_demo.mjs <port> <url> <out-dir> <fps> [<width> <height>]
 import { writeFileSync } from "node:fs";
 
-const [port, url, outDir, fps] = process.argv.slice(2);
+const [port, url, outDir, fps, width = "1200", height = "720"] = process.argv.slice(2);
 const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 const ws = new WebSocket(pages.find((p) => p.type === "page").webSocketDebuggerUrl);
 await new Promise((resolve) => { ws.onopen = resolve; });
@@ -19,7 +20,7 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
 });
 const evaluate = async (expression) => (await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result.value;
 
-await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 720, deviceScaleFactor: 2, mobile: false });
+await send("Emulation.setDeviceMetricsOverride", { width: Number(width), height: Number(height), deviceScaleFactor: 2, mobile: false });
 await send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
 await send("Page.navigate", { url });

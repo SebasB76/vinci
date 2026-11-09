@@ -185,7 +185,7 @@ def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetim
         return _answer("No encuentro esa entrega.")
     name = messages.e(proposal["assignment_name"])
     if not hand_in:
-        if not store.set_submission_state(conn, proposal_id, "cancelled", now, only_from="pending"):
+        if not store.set_submission_state(conn, proposal_id, "cancelled", now):
             return _answer(SUBMISSION_STATE.get(proposal["state"], "Esa entrega ya no está pendiente."))
         return _answer("No la entregué", f"👌 Listo, no entregué «{name}».", remove_buttons=True)
     if not store.claim_submission(conn, proposal_id, now):
@@ -205,10 +205,14 @@ def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetim
         return _answer("Ya estaba entregada", f"✅ El aula ya tiene una entrega de «{name}» del {messages.e(when)}, "
                                               "posterior a esta: no subí otra.", remove_buttons=True)
     except submission.SubmitError as exc:
-        store.set_submission_state(conn, proposal_id, "failed" if exc.final else "pending", now)
-        retry = "" if exc.final else " Puedes volver a pulsar «Entregar»."
-        return _answer("No pude entregarla", f"⚠️ No pude entregar «{name}»: {messages.e(exc)}{retry}",
-                       remove_buttons=exc.final)
+        retry = not exc.final and store.set_submission_state(conn, proposal_id, "pending", now)
+        if retry:
+            after = " Puedes volver a pulsar «Entregar»."
+        else:
+            store.set_submission_state(conn, proposal_id, "failed" if exc.final else "replaced", now)
+            after = "" if exc.final else " " + SUBMISSION_STATE["replaced"]
+        return _answer("No pude entregarla", f"⚠️ No pude entregar «{name}»: {messages.e(exc)}{after}",
+                       remove_buttons=not retry)
     store.set_submission_state(conn, proposal_id, "submitted", now)
     submitted_at = result.get("submitted_at") or timefmt.iso(now)
     _mark_submitted(conn, proposal["assignment_id"], submitted_at)

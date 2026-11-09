@@ -656,7 +656,7 @@ function distribution(b) {
         const x = lo + ((hi - lo) * k) / 240;
         curve += `${k ? "L" : "M"}${sx(x).toFixed(1)},${sy(pdf(x)).toFixed(1)}`;
       }
-      const a = q.kind === "greater" ? q.a : lo, z = q.kind === "less" ? q.a : q.kind === "greater" ? hi : q.b;
+      const a = q.kind === "less" ? lo : q.a, z = q.kind === "less" ? q.a : q.kind === "greater" ? hi : q.b;
       if (z > a) {
         area = `M${sx(a)},${base}`;
         for (let k = 0; k <= 120; k += 1) { const x = a + ((z - a) * k) / 120; area += `L${sx(x).toFixed(1)},${sy(pdf(x)).toFixed(1)}`; }

@@ -10,6 +10,7 @@ const DAY = 864e5;
 const WEEKDAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const STORE = "vinci-dashboard";
+const LATER_SHOWN = 3;
 
 const MAILBOX_RE = /^[A-Za-z0-9_-]{22,64}$/;
 
@@ -140,11 +141,12 @@ function duePill(item, key, now) {
 function itemView(item, key, now, done) {
   const avatar = item.todo ? `<span class="av mine">${icon("pin")}</span>`
     : `<span class="av c${hue(item.course)}">${esc(initials(item.course))}</span>`;
-  const meta = [item.todo ? "Tuya" : item.course, item.quiz ? "cuestionario" : "", item.elsewhere ? "fuera del aula" : "",
-    item.weight != null ? `${item.weight} % de la nota` : ""].filter(Boolean).map(esc).join(" · ");
+  // The flags go before the subject: on a narrow phone the line ends in an ellipsis, and the avatar already says the subject.
+  const meta = [item.weight != null ? `vale ${item.weight} %` : "", item.quiz ? "cuestionario" : "",
+    item.elsewhere ? "fuera del aula" : "", item.todo ? "Tuya" : item.course].filter(Boolean).map(esc).join(" · ");
   return `<div class="it${done ? " done" : ""}" id="it-${esc(item.id)}">${avatar}
     <div class="body"><div class="t">${esc(item.title)}</div>
-      <div class="s">${duePill(item, key, now)}<span>${meta}</span></div></div>
+      <div class="s">${duePill(item, key, now)}<span class="ellipsis">${meta}</span></div></div>
     <button type="button" class="check" data-check="${esc(item.id)}" aria-pressed="${done}"
       aria-label="${done ? "Desmarcar" : "Marcar"}: ${esc(item.title)}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path
       pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
@@ -204,8 +206,12 @@ export function view(data, now, state = {}, { inline = false } = {}) {
   } else {
     const groups = GROUPS.map(([key, name]) => {
       const inGroup = keyed.filter(([k]) => k === key).map(([, i]) => i).sort((a, b) => (a.due || "").localeCompare(b.due || ""));
+      // What is weeks away folds under a button, so this week's list is not lost in a long scroll.
+      const folded = key === "later" && !state.later && inGroup.length > LATER_SHOWN + 1;
+      const shown = folded ? inGroup.slice(0, LATER_SHOWN) : inGroup;
       return inGroup.length ? `<p class="gl${key === "overdue" ? " late" : ""}">${name}</p>
-        ${inGroup.map((i) => itemView(i, key, now, isDone(i.id))).join("")}` : "";
+        ${shown.map((i) => itemView(i, key, now, isDone(i.id))).join("")}${folded
+          ? `<button type="button" class="btn btn-quiet sm unfold" data-later>Ver ${inGroup.length - LATER_SHOWN} más adelante</button>` : ""}` : "";
     }).join("");
     body = groups ? `<section class="card list">${groups}</section>`
       : `<div class="card empty"><b>Nada pendiente.</b>Disfruta mientras dure.</div>`;
@@ -305,6 +311,9 @@ async function init() {
       if (!postEvent("web_app_open_tg_link", { path_full: link })) window.open(`https://t.me${link}`, "_blank");
     } else if (tab) {
       state.tab = tab.dataset.tab;
+      render();
+    } else if (event.target.closest("[data-later]")) {
+      state.later = true;
       render();
     } else if (event.target.closest("[data-read-all]")) {
       state.read = [...new Set([...(state.read || []), ...(data.news || []).map((n) => n.id)])].slice(-200);

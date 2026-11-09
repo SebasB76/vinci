@@ -145,7 +145,8 @@ tocarlo se abre «Tu semana», una página dentro del chat:
 - **Tres números arriba:** lo que tienes por entregar esta semana, lo atrasado y en qué semana del semestre vas.
 - **Entregas:** las tareas sin entregar y tus pendientes anotados, en grupos (Atrasadas, Hoy, Esta semana, Más
   adelante y Sin fecha). Cada una lleva las iniciales de su materia en un color fijo, cuándo vence y cuánto pesa en
-  tu nota (si la calculadora lo sabe). Toca el círculo de la derecha para marcarla: es lo mismo que «✅ Ya lo
+  tu nota (si la calculadora lo sabe). «Más adelante» muestra solo las 3 próximas: «Ver N más adelante» abre el
+  resto. Toca el círculo de la derecha para marcarla: es lo mismo que «✅ Ya lo
   entregué» o «✅ Hecho».
 - **Novedades:** la otra pestaña. Los avisos del aula de los últimos 7 días, con un punto en lo que no has leído.
 

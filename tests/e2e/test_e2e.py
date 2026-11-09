@@ -3211,8 +3211,11 @@ def test_whatsapp_friend(tmp_path):
             assert wa.sent[mark:] == [], "con el puente caído no sale nada"
             back = run([bot, "mantenimiento", "--todos", "--limite", "15"], "2026-09-30T09:55:00-05:00", check=False)
             assert "capitán ✓" in back.stdout and "angel ✓" in back.stdout, back.stdout
-        told = [m["message"] for m in wa.messages_to(captain_jid, mark) if "Vigilancia · Beto" in m.get("message", "")]
+        watched = [m["message"] for m in wa.messages_to(captain_jid, mark) if "Vigilancia · " in m.get("message", "")]
+        told = [m for m in watched if re.search(r"Vigilancia · [^·]*\bBeto\b", m)]
         assert told, f"el aviso de la vigilancia sale cuando vuelve el puente: {wa.sent[mark:]}"
+        checks = [re.search(r"Vigilancia · [^·]+ · ([^:*<]+)", m).group(1).strip() for m in watched]
+        assert len(checks) == len(set(checks)), f"lo que falla para varios va en un solo mensaje: {watched}"
         registry.write_text(registered)
         shutil.rmtree(beto_dir)
         md.append(f"→ servicio de renovación, puente caído: `{normalize(line)}`\n")

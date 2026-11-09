@@ -6,6 +6,8 @@ aula (and their OCR) piled up in memory at once. This loop runs apart from the g
 captain's poll and then each active friend's, one at a time, each a child process with its own environment and a
 time limit (maintenance_service.run_one); at the summary time, the same with the summary, which polls first. A
 summary missed by a restart goes out at the next slot within SUMMARY_WINDOW; Bot.summary sends it once a day.
+A pass also runs BOOT_WAIT after each start, and a pass that runs past a slot starts the next one at once: with one
+person after another a pass can last over 10 minutes, and waiting for the following slot left 30-minute holes.
 
 With VINCI_POLL_SERVICE set (the Dockerfile sets it) hermes_setup removes the `*-sondeo` and `*-resumen` crons;
 without it (a PC install) Hermes cron keeps running them.
@@ -28,6 +30,7 @@ SERVICE = "vinci-sondeo"
 LIMIT = 600           # seconds per person: a Canvas sync plus OCR_MINUTES of scanned pages
 OCR_MINUTES = 3       # per person and pass (poller.OCR_MINUTES alone): a scanned book still gets read over a few polls
 SUMMARY_WINDOW = timedelta(hours=2)
+BOOT_WAIT = timedelta(minutes=3)  # the gateway's WhatsApp bridge is up about a minute after the container starts
 
 
 def enabled() -> bool:
@@ -67,14 +70,15 @@ def next_wake(now: datetime, cfg: BotConfig) -> datetime:
 
 
 def serve(cfg: BotConfig, limit: int) -> None:
-    """Waits for the first slot (at boot the gateway's WhatsApp bridge is not up yet), then a pass at each one. A pass
-    that overruns a slot skips it rather than queueing passes."""
+    """A pass BOOT_WAIT after start (a Redeploy may have cost a slot), then one at each slot; a pass that ends past
+    its next slot is followed by another at once."""
     tz = cfg.core.tz
     done: date | None = None
+    due = datetime.now(tz) + BOOT_WAIT
     while True:
+        time.sleep(max(0.0, (due - datetime.now(tz)).total_seconds()))
         now = datetime.now(tz)
-        time.sleep(max(0.0, (next_wake(now, cfg) - now).total_seconds()) + 1)  # past the slot, never just before
-        now = datetime.now(tz)
+        due = next_wake(now, cfg) + timedelta(seconds=1)  # past the slot, never just before
         command = "resumen" if summary_due(now, cfg, done) else "sondeo"
         try:
             print(maintenance_service.summary(run_all(cfg, command, limit), command), flush=True)

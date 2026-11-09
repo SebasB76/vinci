@@ -142,16 +142,19 @@ Vinci lee el archivo citado solo si llegó mientras Vinci estaba encendido; si n
 El botón «📋 Entregas» está al lado del campo de texto, en el chat de Vinci (en WhatsApp, escribe `/entregas`). Al
 tocarlo se abre «Tu semana», una página dentro del chat:
 
-- **Tres números arriba:** lo que tienes por entregar esta semana, lo atrasado y en qué semana del semestre vas.
-- **Entregas:** las tareas sin entregar y tus pendientes anotados, en grupos (Atrasadas, Hoy, Esta semana, Más
-  adelante y Sin fecha). Cada una lleva las iniciales de su materia en un color fijo, cuándo vence y cuánto pesa en
-  tu nota (si la calculadora lo sabe). «Más adelante» muestra solo las 3 próximas: «Ver N más adelante» abre el
-  resto. Toca el círculo de la derecha para marcarla: es lo mismo que «✅ Ya lo
-  entregué» o «✅ Hecho».
-- **Novedades:** la otra pestaña. Los avisos del aula de los últimos 7 días, con un punto en lo que no has leído.
+- **El resumen arriba:** cuántas entregas vencen en los próximos 7 días, cuántas tienes atrasadas y en qué semana
+  del semestre vas. Debajo, una columna por día con una cápsula por entrega, del color de su materia: ves de un
+  vistazo qué día está cargado. Al marcar una entrega, su cápsula se apaga.
+- **Por día:** las tareas sin entregar y tus pendientes anotados, en secciones (Atrasadas, Hoy, Mañana, cada día de
+  la semana, Más adelante y Sin fecha). Cada una dice a qué hora vence, cuánto pesa en tu nota (si la calculadora lo
+  sabe) y de qué materia es. «Más adelante» muestra solo las 3 próximas: «Ver N más adelante» abre el resto. Toca el
+  círculo de la derecha para marcarla: es lo mismo que «✅ Ya lo entregué» o «✅ Hecho».
+- **Por materia:** las mismas entregas, un bloque por materia, con cuántas quedan, una barra de avance y la próxima
+  fecha. Primero va la materia con algo atrasado, después la que vence antes.
+- **Novedades:** la tercera pestaña. Los avisos del aula de los últimos 7 días, con un punto en lo que no has leído.
 
 <p align="center">
-  <img src="../../docs/images/dashboard.png" alt="«Tu semana»: tres números (por entregar esta semana, atrasadas y la semana del semestre), las pestañas Entregas y Novedades, y las entregas en Atrasadas, Hoy, Esta semana y Más adelante" width="300">
+  <img src="../../docs/images/dashboard.png" alt="«Tu semana»: el resumen con las entregas de los próximos 7 días, las atrasadas y una columna por día; las pestañas Por día, Por materia y Novedades; y las entregas en Atrasadas, Hoy y cada día" width="300">
 </p>
 <p align="center"><sub>Con datos ficticios.</sub></p>
 

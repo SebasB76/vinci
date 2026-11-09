@@ -3,7 +3,10 @@
 The Académico (academico.espol.edu.ec) has the GPA, degree progress, history, this term's grades
 and the class and exam timetables. It has no API: a worker signs in once with the student's user,
 password and CAPTCHA, reads every section and saves a copy (`academico.json` in the data folder,
-or the friend's folder). Vinci answers from the copy through the `academic_record` tool. The
+or the friend's folder). Right after «Información General» it also follows the career's one-time link to
+mallacurricular.espol.edu.ec and keeps the curriculum, with each subject's requisites, as the copy's «malla». Outside
+«Información Académica» it reads the registered and offered subjects (`/UI/Registros/`), the internship hours and
+offers, the debts page and the MOOCs page; never «Datos Personales» nor the online payment. Vinci answers from the copy through the `academic_record` tool. The
 password never reaches the chat, the model, a log or a file.
 
 | Step | Telegram | WhatsApp |

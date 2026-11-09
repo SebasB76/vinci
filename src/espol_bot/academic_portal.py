@@ -17,6 +17,16 @@ The GPA, the progress and the credits left are on «Información General», in l
 ID, ethnic group and photo: only the academic rows are kept (`GENERAL_FACTS`). What is left of the degree, subject by
 subject, needs the curriculum, which this does not read yet.
 
+The curriculum (malla) is on another site, mallacurricular.espol.edu.ec: «Información General» links it from the
+career's name with a one-time token, and the page it opens lists every subject by level with its credits and status.
+Each subject's requisites come from a POST that needs only the curriculum's id and the subject's position. Vinci reads
+it right after «Información General», while the token is fresh.
+
+Beyond «Información Académica», the copy also keeps what helps to plan and to answer: the subjects registered this
+term with their exam grades, the subjects the portal offers to register (and the itinerary ones), the internship hours
+and the open internship offers, whether the student owes anything, and the MOOCs passed. It never reads «Datos
+Personales», the online payment, or the per-subject searches (planned timetables, why a subject is not offered).
+
 The copy lives in <data>/academico.json (0600), with when it was read and the term it belongs to. It holds no
 credential and no cookie.
 """
@@ -62,7 +72,17 @@ SECTIONS = (
     ("examenes", "horarioExView.aspx", "exámenes", "tu horario de exámenes"),
     ("calificaciones", "calificacionesbusqueda_.aspx", "calificaciones", "tus calificaciones del período"),
     ("horario", "horarioView.aspx", "horario", "tu horario de clases"),
+    ("registradas", "/UI/Registros/materiasregistradas.aspx", "materias registradas", "tus materias registradas"),
+    ("disponibles", "/UI/Registros/materiasdisponibles.aspx", "materias disponibles", "las materias que puedes tomar"),
+    ("itinerario", "/UI/Registros/materiasitinerariodisponibles.aspx", "materias de itinerario",
+     "las materias de itinerario disponibles"),
+    ("practicas", "ActividadesExtraCurriculares.aspx", "prácticas", "tus horas de prácticas"),
+    ("ofertas", "/UI/Practicas/PreProfesionales.aspx", "ofertas de prácticas", "las prácticas empresariales abiertas"),
+    ("deudas", "/UI/PagosPendientes/deudasG.aspx", "deudas", "si tienes deudas"),
+    ("moocs", "/UI/RegistrosHDC/ConsultaExamenTeoricoPractico.aspx", "MOOC", "tus MOOC"),
 )
+# Pages whose answer is a sentence, not a table («No registra Deudas!!», «Usted ha aprobado el MOOC de A2»).
+NOTES = {"deudas": re.compile(r"deuda|valor|saldo|vencid|pagar", re.I), "moocs": re.compile(r"mooc|aprob", re.I)}
 # Folded header → the history record's field.
 COLUMNS = {
     "code": ("codigo", "cod", "cod materia", "codigo materia", "sigla"),
@@ -75,6 +95,18 @@ COLUMNS = {
     "credits": ("creditos", "cred", "creditos materia"),
 }
 EXAM_KINDS = re.compile(r"parcial|final|mejora", re.I)
+CURRICULUM_LINK = re.compile(r"AbrirVentanaMalla\('([^']+)'\)")
+CURRICULUM_HOST = "mallacurricular.espol.edu.ec"  # its https answers only without «www.», the host the link names
+CURRICULUM_POSITION = re.compile(r"consultarMateriasRequisitos\((\d+),\s*(\d+)")
+CURRICULUM_LEVEL = re.compile(r'class="[^"]*niveltitulo[^"]*">\s*([^<]+?)\s*<')
+CURRICULUM_ROW = re.compile(
+    r'textonegroCodigo">\s*([^<]*?)\s*</p>\s*<p[^>]*textonegro">\s*([^<]+?)\s*</p>\s*<p[^>]*textogris">\s*\(\s*([\d.,]+)'
+    r'.*?(?:alt="([^"]*)"|</tr>)', re.S)
+REQUISITE_ROW = re.compile(r"<td[^>]*>\s*([A-Z]{4}\d{4})\s*</td>\s*<td[^>]*>.*?</td>\s*<td[^>]*>\s*([A-Z-]+)\s*</td>",
+                           re.I | re.S)
+REQUISITE_SUBJECT = re.compile(r"C[oó]digo:\s*(?:<[^>]+>\s*)*([A-Z]{4}\d{4})", re.I)
+REQUISITE_COUNT = re.compile(r"requisito\s+(\d+)\s+materias\s+aprobadas", re.I)
+MAX_CURRICULUM = 120
 SEARCH_BUTTON = re.compile(r"consult|busca|ver|mostrar|cargar", re.I)
 WEEKDAYS = ("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo")
 # Presentar(nombre, nota1, nota2, nota3, nota2practica, subpromedio, porcentajeteorico, porcentajepractico, promedio)
@@ -576,7 +608,7 @@ class Portal:
 
     def open(self, page: str) -> None:
         """A page of the student's information; back at the login page means the session ended."""
-        self._send("GET", self.base + PAGES + page)
+        self._send("GET", self.base + (page if page.startswith("/") else PAGES + page))
         if self._on_login():
             raise PortalError("la sesión del Académico se cerró")
 
@@ -613,12 +645,22 @@ class Portal:
                 if key == "general":
                     section = {"datos": {label: value for label, value in rows(self.page).items()
                                          if GENERAL_FACTS.search(label)}}
+                    link = CURRICULUM_LINK.search(self.html)
+                    if link:  # its token works once: now, before another page
+                        progress("Leyendo tu malla…")
+                        try:
+                            sections["malla"] = read_curriculum(link[1], self.cfg)
+                        except PortalError as exc:
+                            log.warning("academico: la malla no se pudo leer (%s)", exc)
+                            errors["malla"] = str(exc)
                 elif key == "historial":
                     section["materias"] = history(section["tablas"])
                 elif key == "calificaciones":
                     section["breakdowns"] = breakdowns(self.html)
                 elif key == "horario":
                     section["classes"] = timetable(section["tablas"])
+                elif key in NOTES:
+                    section["avisos"] = notes(self.html, NOTES[key])
                 sections[key] = section
             except PortalError as exc:
                 log.warning("academico: %s no se pudo leer (%s)", key, exc)
@@ -642,6 +684,69 @@ class Portal:
             tables[text] = data_tables(self.page)
             exams[text] = timetable(tables[text])
         return {**base, "tablas": [], "por_tipo": tables, "exams": exams}
+
+
+def notes(html: str, pattern: re.Pattern) -> list[str]:
+    """The page's sentences that match `pattern`, without the menu's links (which name «Pago en Línea» or a MOOC)."""
+    html = re.sub(r"<(script|style)\b.*?</\1>", " ", html, flags=re.S | re.I)
+    menu = {unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m))).strip()
+            for m in re.findall(r"<a\b[^>]*>(.*?)</a>", html, re.S | re.I)}
+    parts = (unescape(re.sub(r"\s+", " ", p)).strip() for p in re.split(r"<[^>]+>", html))
+    return list(dict.fromkeys(p for p in parts if 8 <= len(p) <= 200 and p not in menu and pattern.search(p)))[:10]
+
+
+def read_curriculum(link: str, cfg: BotConfig) -> dict:
+    """The student's curriculum from mallacurricular.espol.edu.ec: {"source", "subjects": [{"code", "name", "credits",
+    "level", "status", "prerequisites", "corequisites", "min_passed"?}]}. Its own session: no Académico cookie goes
+    there."""
+    parts = urlsplit(link)
+    if not (parts.hostname or "").endswith(CURRICULUM_HOST):
+        raise PortalError(f"la malla está en un sitio que no conozco ({parts.hostname})")
+    index = parts._replace(scheme="https", netloc=CURRICULUM_HOST).geturl()
+    http = requests.Session()
+    http.trust_env = False
+    http.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "es-EC,es;q=0.9"})
+    try:
+        page = http.get(route(index, cfg.core), timeout=TIMEOUT)
+        if page.status_code != 200:
+            raise PortalError(f"la página de la malla respondió {page.status_code}")
+        html = page.text
+        positions = list(dict.fromkeys(CURRICULUM_POSITION.findall(html)))[:MAX_CURRICULUM]
+        subjects, level = [], None
+        for chunk in re.split(r"(?=<p[^>]*niveltitulo)", html):
+            if found := CURRICULUM_LEVEL.search(chunk):
+                level = unescape(found[1]).strip()
+            for code, name, credits, status in CURRICULUM_ROW.findall(chunk):
+                if code.strip() and any(s["code"] == code.strip().upper() for s in subjects):
+                    continue
+                subjects.append({"code": code.strip().upper() or None, "name": unescape(name).strip(),
+                                 "credits": float(credits.replace(",", ".")), "level": level,
+                                 "status": unescape(status).strip() or None,
+                                 "prerequisites": [], "corequisites": []})
+        by_code = {s["code"]: s for s in subjects if s["code"]}
+        requests_url = urljoin(index, "MateriasRequisitos")
+        for curriculum_id, position in positions:
+            try:
+                answer = http.post(route(requests_url, cfg.core), timeout=TIMEOUT,
+                                   data={"mallaid": curriculum_id, "posicion": position, "lang": "es"})
+            except requests.RequestException:
+                continue  # one subject without its requisites; the rest still count
+            text = answer.text.split("Silabo")[0] if answer.status_code == 200 else ""
+            code = REQUISITE_SUBJECT.search(text)
+            subject = code and by_code.get(code[1].upper())
+            if not subject:
+                continue
+            for other, kind in REQUISITE_ROW.findall(text):
+                subject["corequisites" if kind.upper().startswith("CO") else "prerequisites"].append(other.upper())
+            if count := REQUISITE_COUNT.search(text):
+                subject["min_passed"] = int(count[1])
+    except requests.RequestException as exc:
+        raise PortalError(f"la página de la malla no responde ({exc.__class__.__name__})") from None
+    finally:
+        http.close()
+    if not subjects:
+        raise PortalError("la página de la malla no trajo materias")
+    return {"source": "Académico", "subjects": subjects[:MAX_CURRICULUM]}
 
 
 # -- the copy ---------------------------------------------------------------------------------------
@@ -699,4 +804,6 @@ def summary(copy: dict) -> str:
             continue
         materias = section.get("materias") or []
         parts.append(f"{name} ({len(materias)} materias)" if materias else name)
+    if copy["sections"].get("malla"):
+        parts.append(f"malla ({len(copy['sections']['malla'].get('subjects') or [])} materias)")
     return ", ".join(parts)

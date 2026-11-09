@@ -3,9 +3,10 @@
 `progress` reads what the copy already holds: the credits each category of the degree still needs, the approved
 subjects and the GPA. `simulate` estimates the GPA after some grades. The portal's GPA follows no formula the copy
 can rebuild (the credit-weighted mean of approved and credited subjects lands within about 0.2), so the estimate is
-the portal's own GPA plus the change that weighted mean shows. The curriculum, with each subject's prerequisites,
-is not on the portal: Vinci reads it from a photo or the PDF the student sends and saves it with `save_curriculum`;
-then `progress` also says which subjects they can take next.
+the portal's own GPA plus the change that weighted mean shows. The curriculum, with each subject's requisites, comes
+with the Académico's copy (its «malla» section, from mallacurricular.espol.edu.ec); only when it did not come, Vinci
+reads it from a photo or the PDF the student sends and saves it with `save_curriculum`. With it, `progress` also says
+which subjects they can take next.
 """
 
 from __future__ import annotations
@@ -61,6 +62,21 @@ def _done(copy: dict) -> list[dict]:
     return [s for s in subjects if s.get("status_kind") in DONE]
 
 
+def _taking(copy: dict, curriculum: dict) -> set[str]:
+    """Codes of the subjects in course this term, from the history or the curriculum's own status."""
+    subjects = (copy.get("sections", {}).get("historial") or {}).get("materias") or []
+    codes = {(s.get("code") or "").strip().upper() for s in subjects if s.get("status_kind") == "in_progress"}
+    codes |= {(s.get("code") or "").upper() for s in curriculum.get("subjects") or []
+              if fold(s.get("status") or "").startswith("en curso")}
+    return codes - {""}
+
+
+def curriculum(cfg: BotConfig, copy: dict | None) -> dict | None:
+    """The Académico's curriculum when the copy has it; otherwise the one saved from a photo."""
+    from_portal = ((copy or {}).get("sections") or {}).get("malla")
+    return from_portal if from_portal and from_portal.get("subjects") else load_curriculum(cfg)
+
+
 def _weighted(rows: list[tuple[float, float]]) -> float | None:
     total = sum(c for _, c in rows)
     return sum(g * c for g, c in rows) / total if total else None
@@ -99,9 +115,9 @@ def save_curriculum(cfg: BotConfig, career: str, subjects: list[dict]) -> dict:
     return data
 
 
-def _next(curriculum: dict, done: list[dict]) -> dict:
-    """The curriculum's subjects not passed yet: those whose prerequisites are all passed, and the rest with what
-    they still lack. A prerequisite is matched by code or by name."""
+def _next(curriculum: dict, done: list[dict], taking: set[str] = frozenset()) -> dict:
+    """The curriculum's subjects not passed yet: those in course, those whose prerequisites are all passed, and the
+    rest with what they still lack. A prerequisite is matched by code or by name; a corequisite is taken along."""
     passed = {s.get("code", "").strip().upper() for s in done} | {_key(s.get("name") or "") for s in done}
     subjects = curriculum.get("subjects") or []
     names = {(s.get("code") or "").upper(): s["name"] for s in subjects if s.get("code")}
@@ -111,12 +127,20 @@ def _next(curriculum: dict, done: list[dict]) -> dict:
         return bool(ref) and (ref.upper() in passed or _key(ref) in passed
                               or _key(names.get(ref.upper(), "")) in passed or codes.get(_key(ref)) in passed)
 
-    ready, locked = [], []
+    ready, locked, current = [], [], []
     for s in subjects:
         if is_passed(s.get("code") or "") or _key(s["name"]) in passed:
             continue
-        lacking = [names.get(p.upper(), p) for p in s["prerequisites"] if not is_passed(p)]
         row = {"name": s["name"], **{k: s[k] for k in ("code", "credits", "level") if s.get(k) is not None}}
+        if (s.get("code") or "").upper() in taking:
+            current.append(row)
+            continue
+        lacking = [names.get(p.upper(), p) for p in s.get("prerequisites") or [] if not is_passed(p)]
+        if s.get("min_passed") and len(done) < s["min_passed"]:
+            lacking.append(f"{s['min_passed']} materias aprobadas (lleva {len(done)})")
+        along = [names.get(c.upper(), c) for c in s.get("corequisites") or [] if not is_passed(c)]
+        if along:
+            row["take_with"] = along
         if lacking:
             locked.append({**row, "lacks": lacking})
         else:
@@ -124,9 +148,10 @@ def _next(curriculum: dict, done: list[dict]) -> dict:
     # A locked subject that unlocks many others is worth taking soon: count how many wait on each ready one.
     for r in ready:
         refs = {(r.get("code") or "").upper(), _key(r["name"])} - {""}
-        r["unlocks"] = sum(1 for s in subjects if any(p.upper() in refs or _key(p) in refs for p in s["prerequisites"]))
+        r["unlocks"] = sum(1 for s in subjects
+                           if any(p.upper() in refs or _key(p) in refs for p in s.get("prerequisites") or []))
     ready.sort(key=lambda r: (-r["unlocks"], str(r.get("level") or ""), r["name"]))
-    return {"can_take": ready, "locked": locked}
+    return {"in_course": current, "can_take": ready, "locked": locked}
 
 
 def progress(cfg: BotConfig) -> dict:
@@ -145,9 +170,10 @@ def progress(cfg: BotConfig) -> dict:
         "passed": [{"code": s.get("code"), "name": s.get("name"), "grade": _num(s.get("grade")),
                     "credits": by_code.get((s.get("code") or "").strip())} for s in done],
     }
-    curriculum = load_curriculum(cfg)
-    if curriculum:
-        answer["curriculum"] = {"career": curriculum.get("career"), **_next(curriculum, done)}
+    found = curriculum(cfg, copy)
+    if found:
+        answer["curriculum"] = {"from": found.get("source") or "su foto o PDF", "career": found.get("career"),
+                                **_next(found, done, _taking(copy, found))}
     else:
         answer["curriculum"] = None
     return answer
@@ -162,9 +188,9 @@ def simulate(cfg: BotConfig, grades: list[dict]) -> dict:
     facts = (copy.get("sections", {}).get("general") or {}).get("datos") or {}
     gpa = _num(facts.get("Promedio General en las materias aprobadas"))
     by_code, _ = _credits(copy)
-    curriculum = load_curriculum(cfg) or {}
-    known = {_key(s["name"]): s.get("credits") for s in curriculum.get("subjects") or []}
-    known |= {(s.get("code") or "").upper(): s.get("credits") for s in curriculum.get("subjects") or [] if s.get("code")}
+    found = curriculum(cfg, copy) or {}
+    known = {_key(s["name"]): s.get("credits") for s in found.get("subjects") or []}
+    known |= {(s.get("code") or "").upper(): s.get("credits") for s in found.get("subjects") or [] if s.get("code")}
     now = [(_num(s.get("grade")), by_code.get((s.get("code") or "").strip())) for s in _done(copy)]
     now = [(g, c) for g, c in now if g is not None and c]
     added, unknown = [], []

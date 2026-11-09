@@ -1171,7 +1171,11 @@ QUIZ_QUESTIONS = {"type": "array", "maxItems": quiz.MAX_QUESTIONS, "items": {
         "entry_id": {"type": "integer", "description": "o la entrada del cuaderno de la materia de donde sale "
                                                        "(una foto, un apunte, un texto que te pasó)"}},
     "required": ["question", "options", "answer", "explanation"]}}
-PORTAL_TOPICS = ("historial", "promedio", "avance", "calificaciones", "horario", "examenes", "todo")
+PORTAL_TOPICS = ("historial", "promedio", "avance", "calificaciones", "horario", "examenes", "registro", "practicas",
+                 "deudas", "moocs", "todo")
+# topic → the copy's sections it answers from, as they are
+PORTAL_PLAIN = {"registro": ("registradas", "disponibles", "itinerario"), "practicas": ("practicas", "ofertas"),
+                "deudas": ("deudas",), "moocs": ("moocs",)}
 PORTAL_OLD = timedelta(days=30)
 GPA_NOTE = ("Give the GPA exactly as the portal shows it (`gpa`, from Información General), never one you work out "
             "from the grades. If `gpa` is empty this copy was saved before Vinci read that page: say so and offer to "
@@ -1179,7 +1183,10 @@ GPA_NOTE = ("Give the GPA exactly as the portal shows it (`gpa`, from Informaci�
 PORTAL = ("ESPOL's Académico (academico.espol.edu.ec), not the aula virtual: the student's academic history (every "
           "subject with its grade and status: approved, failed, credited, in progress), the GPA and the progress "
           "through the degree as the portal shows them, credits and requirements of the degree, this term's grades, "
-          "and the class and exam timetables (parcial, final, mejoramiento). Use it for those questions, never "
+          "the class and exam timetables (parcial, final, mejoramiento), the subjects registered this term with their "
+          "exam grades, the subjects the portal offers to register now with their paralelos (and the itinerary ones), "
+          "the internship hours done and missing and the open internship offers, whether they owe anything, and the "
+          "MOOCs passed. Use it for those questions, never "
           "`notas` or `semana`. With a saved copy it answers from it, with when it was read and its term. With none "
           "(or with refresh) it sends the student a «🎓 Conectar Académico» button to sign in on a page of their own; "
           "their question comes back to you by itself once the copy is saved. Never ask for their user, password or "
@@ -1187,7 +1194,9 @@ PORTAL = ("ESPOL's Académico (academico.espol.edu.ec), not the aula virtual: th
 PORTAL_PROPERTIES = {
     "topic": {"type": "string", "enum": list(PORTAL_TOPICS),
               "description": "historial: approved/failed subjects; promedio: GPA; avance: credits and progress; "
-                             "calificaciones: this term's grades; horario: class timetable; examenes: exam timetable"},
+                             "calificaciones: this term's grades; horario: class timetable; examenes: exam timetable; "
+                             "registro: registered and offered subjects; practicas: internship hours and offers; "
+                             "deudas: what they owe; moocs: MOOCs passed"},
     "question": {"type": "string", "description": "the student's question, in their words (it comes back to you "
                                                   "after they connect)"},
     "refresh": {"type": "boolean", "description": "true only when they ask to update or reconnect the Académico"},
@@ -1571,6 +1580,15 @@ def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
                           "marks the progress with * as referential: the career's coordinator confirms it at the end. "
                           "Never work out the remaining subjects or credits by subtracting the approved ones from a "
                           "total: electives, credited subjects and each degree's requirements change that count.")
+    elif topic in PORTAL_PLAIN:
+        found = {key: _portal_section(sections[key]) for key in PORTAL_PLAIN[topic] if sections.get(key)}
+        answer.update(found)
+        if not found:
+            answer["note"] = ("This copy does not have it: it was saved before Vinci read that page. Offer to update it "
+                              "(refresh: true).")
+        elif topic == "registro":
+            answer["note"] = ("«disponibles» is what the portal offers to register in the term it names, with each "
+                              "subject's paralelos; «registradas» is what they registered, with exams 1, 2 and Mej.")
     elif topic in ("calificaciones", "horario", "examenes"):
         section = _portal_section(sections.get(topic) or {})
         answer.update({"selected": section.pop("selected", {}), **section})
@@ -1578,7 +1596,7 @@ def _portal_answer(ctx: Ctx, copy: dict, topic: str) -> dict:
             answer["note"] = "The portal showed nothing for this term: say so."
     else:
         answer.update({"counts": {kind: len(items) for kind, items in by_kind.items() if items}, "gpa": gpa,
-                       "sections": {key: _portal_section(s) for key, s in sections.items()},
+                       "sections": {key: _portal_section(s) for key, s in sections.items() if key != "malla"},
                        "subjects": {kind: items for kind, items in by_kind.items() if items},
                        "note": GPA_NOTE})
     return answer

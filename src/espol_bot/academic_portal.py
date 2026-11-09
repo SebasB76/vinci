@@ -22,6 +22,11 @@ career's name with a one-time token, and the page it opens lists every subject b
 Each subject's requisites come from a POST that needs only the curriculum's id and the subject's position. Vinci reads
 it right after «Información General», while the token is fresh.
 
+Beyond «Información Académica», the copy also keeps what helps to plan and to answer: the subjects registered this
+term with their exam grades, the subjects the portal offers to register (and the itinerary ones), the internship hours
+and the open internship offers, whether the student owes anything, and the MOOCs passed. It never reads «Datos
+Personales», the online payment, or the per-subject searches (planned timetables, why a subject is not offered).
+
 The copy lives in <data>/academico.json (0600), with when it was read and the term it belongs to. It holds no
 credential and no cookie.
 """
@@ -67,7 +72,17 @@ SECTIONS = (
     ("examenes", "horarioExView.aspx", "exámenes", "tu horario de exámenes"),
     ("calificaciones", "calificacionesbusqueda_.aspx", "calificaciones", "tus calificaciones del período"),
     ("horario", "horarioView.aspx", "horario", "tu horario de clases"),
+    ("registradas", "/UI/Registros/materiasregistradas.aspx", "materias registradas", "tus materias registradas"),
+    ("disponibles", "/UI/Registros/materiasdisponibles.aspx", "materias disponibles", "las materias que puedes tomar"),
+    ("itinerario", "/UI/Registros/materiasitinerariodisponibles.aspx", "materias de itinerario",
+     "las materias de itinerario disponibles"),
+    ("practicas", "ActividadesExtraCurriculares.aspx", "prácticas", "tus horas de prácticas"),
+    ("ofertas", "/UI/Practicas/PreProfesionales.aspx", "ofertas de prácticas", "las prácticas empresariales abiertas"),
+    ("deudas", "/UI/PagosPendientes/deudasG.aspx", "deudas", "si tienes deudas"),
+    ("moocs", "/UI/RegistrosHDC/ConsultaExamenTeoricoPractico.aspx", "MOOC", "tus MOOC"),
 )
+# Pages whose answer is a sentence, not a table («No registra Deudas!!», «Usted ha aprobado el MOOC de A2»).
+NOTES = {"deudas": re.compile(r"deuda|valor|saldo|vencid|pagar", re.I), "moocs": re.compile(r"mooc|aprob", re.I)}
 # Folded header → the history record's field.
 COLUMNS = {
     "code": ("codigo", "cod", "cod materia", "codigo materia", "sigla"),
@@ -593,7 +608,7 @@ class Portal:
 
     def open(self, page: str) -> None:
         """A page of the student's information; back at the login page means the session ended."""
-        self._send("GET", self.base + PAGES + page)
+        self._send("GET", self.base + (page if page.startswith("/") else PAGES + page))
         if self._on_login():
             raise PortalError("la sesión del Académico se cerró")
 
@@ -644,6 +659,8 @@ class Portal:
                     section["breakdowns"] = breakdowns(self.html)
                 elif key == "horario":
                     section["classes"] = timetable(section["tablas"])
+                elif key in NOTES:
+                    section["avisos"] = notes(self.html, NOTES[key])
                 sections[key] = section
             except PortalError as exc:
                 log.warning("academico: %s no se pudo leer (%s)", key, exc)
@@ -667,6 +684,15 @@ class Portal:
             tables[text] = data_tables(self.page)
             exams[text] = timetable(tables[text])
         return {**base, "tablas": [], "por_tipo": tables, "exams": exams}
+
+
+def notes(html: str, pattern: re.Pattern) -> list[str]:
+    """The page's sentences that match `pattern`, without the menu's links (which name «Pago en Línea» or a MOOC)."""
+    html = re.sub(r"<(script|style)\b.*?</\1>", " ", html, flags=re.S | re.I)
+    menu = {unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m))).strip()
+            for m in re.findall(r"<a\b[^>]*>(.*?)</a>", html, re.S | re.I)}
+    parts = (unescape(re.sub(r"\s+", " ", p)).strip() for p in re.split(r"<[^>]+>", html))
+    return list(dict.fromkeys(p for p in parts if 8 <= len(p) <= 200 and p not in menu and pattern.search(p)))[:10]
 
 
 def read_curriculum(link: str, cfg: BotConfig) -> dict:

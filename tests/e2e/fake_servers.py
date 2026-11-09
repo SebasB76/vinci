@@ -949,6 +949,33 @@ def _captcha_jpeg(code: str) -> bytes:
     return out.getvalue()
 
 
+# The pages outside «Información Académica» the copy also reads, in the real ones' shapes, with invented data.
+PORTAL_EXTRA = {
+    "/ui/registros/materiasregistradas.aspx": ("Materias registradas", (
+        '<h1>Materias Registradas</h1><table id="tbl_materias_registradas"><thead><tr>'
+        + "".join(f"<th>{h}</th>" for h in ("Código", "Materia", "Paralelo", "Examen 1", "Examen 2", "Mej."))
+        + "</tr></thead><tbody><tr><td>CCPG1036</td><td>SISTEMAS DISTRIBUIDOS</td><td>2</td><td>7,50</td><td></td>"
+        "<td></td></tr></tbody></table>")),
+    "/ui/registros/materiasdisponibles.aspx": ("Materias disponibles", (
+        '<h1>Materias disponibles para registro 2027 - 1S</h1><table id="ctl00_contenido_tbMateriasDisp"><tr>'
+        "<th>Código</th><th>Materia</th><th>Créditos</th><th>Paralelos</th></tr>"
+        "<tr><td>MATG1049</td><td>ÁLGEBRA LINEAL</td><td>3</td><td>1, 3</td></tr>"
+        "<tr><td>CCPG1052</td><td>PROGRAMACIÓN ORIENTADA A OBJETOS</td><td>3</td><td>2</td></tr></table>")),
+    "/ui/registros/materiasitinerariodisponibles.aspx": ("Materias de itinerario",
+                                                          "<h1>Materias de itinerario</h1><p>No existen registros</p>"),
+    "/ui/informacionacademica/actividadesextracurriculares.aspx": ("Actividades", (
+        "<h1>Prácticas Pre-profesionales</h1><table><tr><th>Tipo</th><th>Horas realizadas</th><th>Horas requeridas</th>"
+        "</tr><tr><td>Empresariales</td><td>160</td><td>240</td></tr>"
+        "<tr><td>Comunitarias</td><td>0</td><td>160</td></tr></table>")),
+    "/ui/practicas/preprofesionales.aspx": ("Prácticas", (
+        "<h1>Ofertas de prácticas</h1><table><tr><th>Empresa</th><th>Cargo</th><th>Vacantes</th></tr>"
+        "<tr><td>EMPRESA DE PRUEBA</td><td>Pasante de desarrollo</td><td>2</td></tr></table>")),
+    "/ui/pagospendientes/deudasg.aspx": ("Deudas", "<h1>Deudas</h1><p><b>No registra Deudas!!</b></p>"),
+    "/ui/registroshdc/consultaexamenteoricopractico.aspx": ("MOOC", (
+        "<h1>MOOC</h1><p>Usted ha aprobado el MOOC de Inglés A2</p><p><a href='#'>Inscripción MOOC</a></p>")),
+}
+
+
 def _cells(row, tag="td") -> str:
     from html import escape
     return "".join(f"<{tag}>{escape(str(c))}</{tag}>" for c in row)
@@ -1135,8 +1162,7 @@ class _PortalHandler(_Quiet):
             return self._redirect(f"/login.aspx?ReturnUrl={quote(parts.path)}")
         if path == "/default.aspx":
             return self._page(sid, session, "Inicio", f"<h2>Bienvenido, {session['user']}</h2>")
-        page = path.removeprefix("/ui/informacionacademica/")
-        return self._data(sid, session, page, {})
+        return self._data(sid, session, path.removeprefix("/ui/informacionacademica/"), {})
 
     def do_POST(self):
         portal: FakePortal = self.server.owner
@@ -1247,6 +1273,9 @@ class _PortalHandler(_Quiet):
             return self._page(sid, session, "Horario de exámenes", '<h1>Consulta tu horario de Exámenes</h1>'
                               + _term_boxes(*(asked if form else PORTAL_TERM)).replace("{select}", select) + grid,
                               allowed={"ctl00$contenido$cmbParcial": list(PORTAL_EXAM_KINDS)})
+        if page in PORTAL_EXTRA:
+            title, content = PORTAL_EXTRA[page]
+            return self._page(sid, session, title, content)
         return self._send(404, b"not found", "text/html")
 
 

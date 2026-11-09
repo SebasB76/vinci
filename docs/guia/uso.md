@@ -443,10 +443,12 @@ Por WhatsApp, el ranking muestra quién tiene más cartas distintas del álbum. 
 
 El Académico (academico.espol.edu.ec) tiene lo que el aula virtual no trae: tu promedio general y tu avance en la
 carrera, tu historial con la nota y el estado de cada materia, los créditos de tu carrera, las calificaciones del
-período y tus horarios de clases y de exámenes. No tiene API, así que Vinci lo lee como lo harías tú en el navegador,
+período, tus horarios de clases y de exámenes, las materias que registraste y las que puedes registrar con sus
+paralelos, tus horas de prácticas y las ofertas abiertas, si tienes deudas y tus MOOC aprobados. No tiene API, así que Vinci lo lee como lo harías tú en el navegador,
 una vez, y guarda una copia en tu PC.
 
-1. Pregúntale a Vinci algo de ahí: «¿cuál es mi promedio?», «¿qué materias aprobé?», «¿cuándo son mis finales?».
+1. Pregúntale a Vinci algo de ahí: «¿cuál es mi promedio?», «¿qué materias aprobé?», «¿cuándo son mis finales?»,
+   «¿qué materias puedo registrar?», «¿cuántas horas de prácticas me faltan?», «¿tengo deudas?».
 2. Si no tiene copia, te manda el botón «🎓 Conectar Académico» (en Telegram abre como Mini App; en WhatsApp, dentro
    de WhatsApp en el iPhone).
 3. En la página, escribe tu usuario de ESPOL y toca «Siguiente».

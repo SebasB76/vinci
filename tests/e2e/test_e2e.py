@@ -79,7 +79,8 @@ test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step logi
   one portal session reads every section, the copy is saved with its date and term, and his question comes back to
   Vinci by itself in the same Hermes session. The sign-in also follows the career's one-time link to the curriculum
   (mallacurricular), so «¿qué materias puedo tomar?» answers from it with no photo: what he can take, what waits on a
-  prerequisite or a count of approved subjects, and what he takes now. Later questions are answered from the copy; «actualiza mi Académico»
+  prerequisite or a count of approved subjects, and what he takes now. Later questions are answered from the copy, also what the portal offers to
+  register and whether he owes anything; «actualiza mi Académico»
   brings a second sign-in and the portal's new figures. No credential reaches the model, a chat, the relay in clear, a
   log or the data folder, and the sign-in's process exits.
 
@@ -321,6 +322,8 @@ PORTAL_ASKS = {
     "cuándo son mis exámenes finales": ("examenes", False),
     "cuánto me falta para graduarme": ("avance", False),
     "actualiza mi Académico y dime mi promedio": ("promedio", True),
+    "qué materias puedo registrar": ("registro", False),
+    "tengo deudas con la ESPOL": ("deudas", False),
 }
 PORTAL_BACK = "Ya conecté mi Académico"
 # The degree plan (plan_carrera): the curriculum comes with the Académico's copy, from mallacurricular.
@@ -819,6 +822,11 @@ class Script:
             return (f"{when}: llevas {career.get('Avance de la carrera')} de avance, {facts.get('Total de Créditos')} "
                     f"créditos, y te faltan {career.get('Créditos por tomar')} créditos por tomar. Cuántas materias te "
                     "faltan depende de tu malla, que todavía no leo.")
+        if topic == "registro":
+            offered = data["disponibles"]["tables"][0]["filas"]
+            return f"{when}: puedes registrar " + ", ".join(f"{r['Materia']} (paralelos {r['Paralelos']})" for r in offered)
+        if topic == "deudas":
+            return f"{when}: " + " ".join(data["deudas"]["avisos"])
         return json.dumps(data, ensure_ascii=False)[:500]
 
     def vinci_material(self, text: str, called: list[str], results: list[str]) -> dict | None:
@@ -3447,7 +3455,10 @@ def academico_flow(w) -> None:
         assert stat.S_IMODE(copy_file.stat().st_mode) == 0o600
         assert copy["period"] == "2026 · 2S" and copy["saved_at"] and not copy["errors"], copy["errors"]
         sections = copy["sections"]
-        assert set(sections) == {"general", "historial", "calificaciones", "creditos", "horario", "examenes", "malla"}
+        assert set(sections) == {"general", "historial", "calificaciones", "creditos", "horario", "examenes", "malla",
+                                 "registradas", "disponibles", "itinerario", "practicas", "ofertas", "deudas", "moocs"}
+        assert sections["moocs"]["avisos"] == ["Usted ha aprobado el MOOC de Inglés A2"], "sin el enlace del menú"
+        assert sections["practicas"]["tablas"][0]["filas"][0]["Horas realizadas"] == "160", sections["practicas"]
         assert len(sections["malla"]["subjects"]) == 11, sections["malla"]
         general = sections["general"]["datos"]
         assert general.get("Promedio General en las materias aprobadas") == "8,15" and \
@@ -3496,11 +3507,17 @@ def academico_flow(w) -> None:
         assert "Never work out the remaining subjects" in json.dumps(avance, ensure_ascii=False), \
             "la herramienta le prohíbe al modelo restar las aprobadas de un total"
         assert len(portal.requests) == seen, "con copia, Vinci no vuelve a entrar al Académico"
+        offered = text_of(say(captain_jid, captain_jid, "qué materias puedo registrar", "Capitán"))
+        assert "ÁLGEBRA LINEAL (paralelos 1, 3)" in offered, offered
+        debts = text_of(say(captain_jid, captain_jid, "tengo deudas con la ESPOL", "Capitán"))
+        assert "No registra Deudas!!" in debts, debts
+        assert len(portal.requests) == seen, "con copia, Vinci no vuelve a entrar al Académico"
         for asked_, said in (("qué materias aprobé", approved), ("cuándo son mis exámenes finales", finals),
-                             ("cuánto me falta para graduarme", progress)):
+                             ("cuánto me falta para graduarme", progress), ("qué materias puedo registrar", offered),
+                             ("tengo deudas con la ESPOL", debts)):
             md.append(f"**Capitán**: {asked_}\n→ Vinci: {normalize(said)}\n")
         report.append("Con la copia, «¿qué materias aprobé?», «¿cuándo son mis exámenes finales?» y «¿cuánto me falta "
-                      "para graduarme?» se contestan sin volver al Académico; para el avance la herramienta da los "
+                      "para graduarme?», «¿qué materias puedo registrar?» y «¿tengo deudas?» se contestan sin volver al Académico; para el avance la herramienta da los "
                       "créditos que dice el portal y le prohíbe al modelo calcular lo que falta restando de un total, "
                       "porque la malla todavía no se lee")
 

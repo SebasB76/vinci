@@ -963,7 +963,7 @@ PORTAL_EXTRA = {
         "<tr><td>CCPG1052</td><td>PROGRAMACIÓN ORIENTADA A OBJETOS</td><td>3</td><td>2</td></tr></table>")),
     "/ui/registros/materiasitinerariodisponibles.aspx": ("Materias de itinerario",
                                                           "<h1>Materias de itinerario</h1><p>No existen registros</p>"),
-    "/ui/informacionacademica/actividadesextracurriculares.aspx": ("Actividades", (
+    "actividadesextracurriculares.aspx": ("Actividades", (  # do_GET strips its folder, as for the others
         "<h1>Prácticas Pre-profesionales</h1><table><tr><th>Tipo</th><th>Horas realizadas</th><th>Horas requeridas</th>"
         "</tr><tr><td>Empresariales</td><td>160</td><td>240</td></tr>"
         "<tr><td>Comunitarias</td><td>0</td><td>160</td></tr></table>")),

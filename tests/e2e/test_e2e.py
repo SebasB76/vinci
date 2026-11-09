@@ -775,8 +775,8 @@ class Script:
                               for m in plan["can_take"])
             locked = ", ".join(f"{m['name']} (te falta {' y '.join(m['lacks'])})" for m in plan["locked"])
             taking = ", ".join(m["name"] for m in plan["in_course"])
-            return {"content": f"Según tu malla del {plan['from']}: ya puedes tomar {ready}. Todavía no: {locked}. "
-                               f"Ahora cursas: {taking}."}
+            return {"content": f"Te faltan créditos en: {missing}. Según tu malla del {plan['from']}: ya puedes tomar "
+                               f"{ready}. Todavía no: {locked}. Ahora cursas: {taking}."}
         if GPA_ASK in text:
             if not called:
                 return _call("mcp__vinci__plan_carrera", simular=[{"subject": "Sistemas Distribuidos", "grade": 9,

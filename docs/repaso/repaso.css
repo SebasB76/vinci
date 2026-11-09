@@ -34,7 +34,7 @@ svg.plot text { font: 10px var(--sans); fill: var(--ink-3); }
 .keys span { display: inline-flex; align-items: center; gap: 6px; }
 .keys i { width: 14px; height: 3px; border-radius: 2px; background: currentColor; }
 .reading { min-height: 1.4em; font-size: 13.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.sl { display: grid; grid-template-columns: minmax(64px, auto) 1fr 52px; align-items: center; gap: 10px; font-size: 13.5px;
+.sl { display: grid; grid-template-columns: 7.5em 1fr 52px; align-items: center; gap: 10px; font-size: 13.5px;
       color: var(--ink-2); }
 .sl output { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
 .sl input { width: 100%; height: 32px; margin: 0; accent-color: #1E9E6E; }

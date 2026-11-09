@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 VERSION = 1
 CATALOG = REPO_ROOT / "docs" / "album" / "cards.json"
 RARITIES = ("com", "rare", "epic", "leg")
-WEIGHTS = {"com": 58, "rare": 25, "epic": 10, "leg": 7}  # a given legendary: about 1 in 3 people by their 5th pack
+WEIGHTS = {"com": 55, "rare": 25, "epic": 10, "leg": 10}  # with 6 legendaries, a given one: about 1 in 4 people by their 5th pack
 PACK_SIZE = 3
 GOOD_SHARE = 0.8
 TEST = re.compile(r"\b(leccion|lecciones|examen|examenes|parcial|parciales)\b")
@@ -215,12 +215,17 @@ def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None =
 
 
 def page_url(cfg: BotConfig, data: dict) -> str:
-    from espol_bot import trades  # trades imports this module
+    from espol_bot import ranking, trades  # both import this module
     try:
         if found := trades.market(cfg):
             data = {**data, "trade": found}
     except Exception:  # an extra: the album opens without its «Cambios» tab
         log.exception("álbum: no pude leer las repetidas de los demás")
+    try:
+        if board := ranking.page(cfg):
+            data = {**data, "rank": board}
+    except Exception:  # an extra too: the album opens without its «Ranking» view
+        log.exception("álbum: no pude armar el ranking")
     url = f"{cfg.album_page}#d={encode(data)}"
     if len(url) > MAX_URL:  # a catalog of a few hundred cards still fits; this only guards the phones' webviews
         log.warning("álbum: el enlace mide %d caracteres", len(url))

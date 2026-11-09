@@ -338,7 +338,8 @@ class Setup:
             # not a student: in a WhatsApp group the whole group reads them.
             # Hermes dates only a chat's first day: a chat open for a week answered «mañana» from that day.
             "gateway": {"message_timestamps": {"enabled": True}},
-            "display": {"suppress_warning_notifications": True,
+            # A message sent mid-turn interrupts it in silence: no «↪ Redirected current run» nor first-time tip.
+            "display": {"suppress_warning_notifications": True, "busy_ack_enabled": False,
                         "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
             # Voice notes are in Spanish (Hermes' Whisper hint defaults to English).
             "stt": {"language": "es"},
@@ -623,9 +624,10 @@ class Setup:
                 section["bridge_script"] = str(launcher)
             else:
                 section.pop("bridge_script", None)
-        # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci. The
-        # adapter takes its voice-reply default from here too.
-        _deep_merge(merged, {"display": {"suppress_warning_notifications": True,
+        # The plugin hears audio in the gateway, which may read the stt settings here: Spanish, as in each Vinci.
+        # busy_ack_enabled is read once per gateway, from this root config. The adapter takes its voice-reply default
+        # from here too.
+        _deep_merge(merged, {"display": {"suppress_warning_notifications": True, "busy_ack_enabled": False,
                                          "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
                              "stt": {"language": "es"}, **copy.deepcopy(VOICE_REPLY)})
         plugins = _section(merged, "plugins")

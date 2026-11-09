@@ -7,8 +7,8 @@ friend's and in the default one; it acts only on WhatsApp.
 - The captain's private chat: «/amigo agregar 0991234567 Angel», «/amigo quitar Angel» and «/amigos» run
   `espol-bot amigo` (amigos.py); anything else goes on to his Vinci.
 - Vinci's own commands, for the captain and every friend with their Vinci, each over their own aula: /start,
-  /estado, /token, /entregas (a link to the dashboard), /marca (what a tick on it types) and /cambio (card trades)
-  run `espol-bot whatsapp-comando` (in a group, all but /start and /cambio only say to ask in private); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
+  /estado, /token, /entregas (a link to the dashboard), /marca (what a tick on it types), /cambio (card trades) and /ranking (the album ranking)
+  run `espol-bot whatsapp-comando` (in a group, all but /start, /cambio and /ranking only say to ask in private); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
   (/new, /usage, /stop, /help) go on to Hermes.
 - A group: only a mention of Vinci gets here (Hermes' require_mention). The captain's «@vinci activa este grupo» /
   «desactiva este grupo» turns it on or off (`espol-bot whatsapp-grupo`); «activa los avisos» / «desactiva los
@@ -25,6 +25,8 @@ friend's and in the default one; it acts only on WhatsApp.
   counts (`espol-bot whatsapp-grupo voto`). Once every member answered it all, or 15 minutes after the quiz went out
   (QUIZ_CLOSES, checked by the relay loop), the group gets everyone's results, tagged. A vote skips Hermes' sessions
   altogether (_wire_votes): one cast while Vinci's turn still runs is not queued for the model.
+- Hermes' notices for an operator (the «💾 Self-improvement review» line, a busy ack and its first-time tip) are
+  dropped before they reach WhatsApp (_quiet).
 - A voice note or an audio file: Hermes transcribes a voice note on its own, not an audio file (a recording someone
   forwarded, an .m4a), so this one hears that with the same local Whisper. In a group a voice note cannot mention
   Vinci: every one gets here (a mention pattern in setup), and only the captain's or a friend's with their Vinci that
@@ -99,7 +101,7 @@ CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9
                              r"[A-Za-z0-9]{64}\b")
 MENTION_RE = re.compile(r"@(\d{6,})\b")
 FRIEND_RE = re.compile(r"^/amigos?\b\s*(\S*)\s*(.*)$", re.S)
-COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca|cambio)\b\s*(.*)$", re.S | re.I)
+COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca|cambio|ranking)\b\s*(.*)$", re.S | re.I)
 PRIVATE_ONLY = ("estado", "token", "entregas", "marca")  # they show or change the sender's own aula
 QUIZ = "Hazme un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material."
 PRIVATE = "Eso te lo contesto por privado: escríbeme /{0} en nuestro chat."
@@ -124,6 +126,10 @@ PENDING_HEADER = ("[{name}, invitado: ya te escribió y le falta conectar su aul
 NOT_YOURS = ("(un mensaje de Vinci que no está en tu conversación: es del Vinci de otra persona del grupo, o de hace "
              "rato) ")
 AUDIO = ("ptt", "audio")  # the bridge's mediaType for a voice note and for an audio file
+# Hermes' own lines, in English or Spanish (its locales): the self-improvement review, a first-time tip, a busy ack.
+HERMES_NOTICE_RE = re.compile(
+    r"\s*(?:💾\s|💡\s*First-time tip|[↪⏩⏳⚡]\ufe0f?\s*(?:Redirected|Steered|Queued for|Interrupting|"
+    r"Ejecución actual redirigida|Redirigido a la ejecución|En cola para el siguiente|Interrumpiendo la tarea))")
 CALLS_VINCI_RE = re.compile(r"\b[bv]in(?:ch|c|s)h?i\b")  # «Vinci» as Whisper may spell it, over _plain text
 # Next to the profile's config (<profile>/plugins/vinci-whatsapp/__init__.py); the profile's tools read it there.
 ATTACHMENTS = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "adjuntos.json"))
@@ -139,7 +145,7 @@ LIVE_ROUTE = "vinci-whatsapp-en-vivo-"
 def register(ctx):
     _speak_only_to_voice()
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
-    ctx.register_platform_handler("whatsapp", _wire_votes)
+    ctx.register_platform_handler("whatsapp", _wire)
     if RELAY:
         threading.Thread(target=_relay_loop, args=(ctx,), name="vinci-relay", daemon=True).start()
     elif PROFILE:
@@ -202,6 +208,29 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
     except Exception:
         logger.exception("no pude ordenar un mensaje de WhatsApp")
         return {"action": "skip", "reason": "vinci-whatsapp: error"}
+
+
+def _wire(native, adapter):
+    _wire_votes(native, adapter)
+    _quiet(adapter)
+
+
+def _quiet(adapter):
+    """Hermes' notices for an operator never reach a student: the review that patched a skill or the memory, and the
+    busy ack with its first-time tip (busy_ack_enabled already turns that off; this catches a gateway that missed it)."""
+    if getattr(adapter, "_vinci_quiet", False):
+        return
+    send = adapter.send
+
+    async def quiet_send(chat_id, content, reply_to=None, metadata=None, **kwargs):
+        if isinstance(content, str) and HERMES_NOTICE_RE.match(content):
+            logger.info("aviso de Hermes no enviado a WhatsApp: %s", content.splitlines()[0][:80])
+            from gateway.platforms.base import SendResult
+            return SendResult(success=True)
+        return await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
+
+    adapter.send = quiet_send
+    adapter._vinci_quiet = True
 
 
 def _wire_votes(_native, adapter):
@@ -382,7 +411,7 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     who = CAPTAIN if CAPTAIN in senders else next(f["numero"] for f in _read(REGISTRY, "amigos")
                                                      if f.get("numero") in senders)
     await _answer(chat, await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
-                                   stdin=rest if name in ("marca", "cambio") else None), reply_to, gateway)
+                                   stdin=rest if name in ("marca", "cambio", "ranking") else None), reply_to, gateway)
     return _skip(f"/{name}")
 
 

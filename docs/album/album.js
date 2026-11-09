@@ -2,7 +2,9 @@
 // fragment (#d=<base64url of raw DEFLATE JSON>); only the catalog, cards.json, comes from this site. A pack is
 // opened the way of the design system's sheets: pull it up, then swipe each card away. Art with real faces is
 // stored encrypted (scripts/album_card.py); the fragment's `k` opens it, so it never shows without Vinci's link.
-// «Cambios» lists the cards others have repeated (`trade`) and opens WhatsApp with the «/cambio …» that asks for one.
+// The album is one list of every card by number, filtered by rarity or a search; a missing card is a silhouette in
+// its rarity's frame. «Cambios» lists the cards others have repeated (`trade`) and opens WhatsApp with the «/cambio …».
+// «Ranking» lists who has the most cards among those who joined it (`rank`, espol_bot/ranking.py).
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
 const TAG = { com: "COMUN", rare: "RARA", epic: "EPICA", leg: "★ LEGENDARIA ★" };
@@ -198,7 +200,7 @@ function openPack(data, cards) {
   });
 }
 
-const TRADES = "cambios";
+const TRADES = "cambios", RANKING = "ranking";
 const RANK = ["com", "rare", "epic", "leg"];
 const byRarity = (dir) => (a, b) => dir * (RANK.indexOf(a.rarity) - RANK.indexOf(b.rarity)) || a.n - b.n;
 
@@ -259,45 +261,149 @@ function offerSheet(data, cards, mine, id) {
   sheet.classList.add("on");
 }
 
-function showAlbum(data, cards, fresh, tab) {
+// A card still missing: its frame and number, with no name or art.
+function ghost(c, size = "s") {
+  return `<div class="vc t-${c.rarity} ${size} miss"><div class="art"><span class="no">Nº${pad(c.n)}</span></div>
+    <div class="bd"><div class="nm">???</div></div><div class="rk"><span class="tag">${TAG[c.rarity]}</span></div></div>`;
+}
+
+const VIEW = "album-view";  // this phone's order and columns
+const RING = { com: "#a39b8f", rare: "#3f78cc", epic: "#7d45d6", leg: "#e5b225" };
+const fold = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const cols = (n) => `<svg viewBox="0 0 18 18" aria-hidden="true">${Array.from({ length: n * n }, (_, i) => {
+  const s = 18 / n;
+  return `<rect x="${(i % n) * s + 1}" y="${Math.floor(i / n) * s + 1}" width="${s - 2}" height="${s - 2}" rx="1"/>`;
+}).join("")}</svg>`;
+
+function prefs() {
+  try { return { sort: "n", cols: 3, ...JSON.parse(localStorage.getItem(VIEW) || "{}") }; } catch { return { sort: "n", cols: 3 }; }
+}
+function keep(view) {
+  try { localStorage.setItem(VIEW, JSON.stringify({ sort: view.sort, cols: view.cols })); } catch { /* private mode */ }
+}
+
+// A missing card nobody has repeated: how to get it.
+function missingSheet(c) {
+  const sheet = app.querySelector(".offer"), body = sheet.querySelector(".body");
+  body.innerHTML = `<div class="pick"><div class="mini">${ghost(c)}</div><div><div class="t">Nº${pad(c.n)}</div>
+      <div class="m"><span class="rp t-${c.rarity}">${RL[c.rarity]}</span></div>
+      <p class="hint">Te falta. Sale en los sobres: ganas uno al entregar a tiempo y al sacar 8/10 o más en lecciones y exámenes.
+      Cuando alguien la tenga repetida, la pides en «Cambios».</p></div></div>
+    <button class="btn btn-quiet block" type="button" data-close>Cerrar</button>`;
+  body.querySelector("[data-close]").addEventListener("click", () => sheet.classList.remove("on"));
+  sheet.classList.add("on");
+}
+
+function showTrades(data, cards, fresh, mine) {
   document.body.classList.remove("opening");
-  const all = [...cards.values()];
-  const collections = [...new Set(all.map((c) => c.collection))];
-  const names = Object.fromEntries((data.collections || []).map((c) => [c.id, c.name]));
-  if (!(collections.includes(tab) || (tab === TRADES && data.trade))) tab = collections[0];
-  const have = data.have || {};
-  const owned = all.filter((c) => have[c.id]).length;
-  const repeats = all.reduce((sum, c) => sum + Math.max(0, (have[c.id] || 0) - 1), 0);
-  const newIds = new Set(fresh && data.pack ? data.pack.cards.filter((e) => e.new).map((e) => e.id) : []);
-  const list = all.filter((c) => c.collection === tab).sort((a, b) => a.n - b.n);
-  const mine = all.filter((c) => (have[c.id] || 0) > 1).sort(byRarity(1));
-  app.innerHTML = head("Tu álbum", `${owned} de ${all.length} cartas`) + `
-    <div class="tiles"><div class="tile hi"><div class="n">${owned}</div><div class="l">de ${all.length} cartas</div></div>
-      <div class="tile"><div class="n">${newIds.size}</div><div class="l">${newIds.size === 1 ? "nueva hoy" : "nuevas hoy"}</div></div>
-      <div class="tile"><div class="n">${repeats}</div><div class="l">${repeats === 1 ? "repetida" : "repetidas"}</div></div></div>
-    <div class="tabs" role="tablist">${collections.map((id) => {
-      const total = all.filter((c) => c.collection === id), got = total.filter((c) => have[c.id]).length;
-      return `<button class="tab" role="tab" type="button" data-t="${esc(id)}" aria-selected="${id === tab}">${esc(names[id] || id)} ${got}/${total.length}</button>`;
-    }).join("")}${data.trade ? `<button class="tab" role="tab" type="button" data-t="${TRADES}" aria-selected="${tab === TRADES}">🔁 Cambios ${wanted(data, cards).length}</button>` : ""}</div>
-    ${tab === TRADES ? tradeTab(data, cards, mine) : `<div class="grid">${list.map((c) => {
-      if (!have[c.id]) return `<div class="cell empty">${pad(c.n)}</div>`;
-      const flag = newIds.has(c.id) ? '<span class="pill hi flag">Nueva</span>' : have[c.id] > 1 ? `<span class="pill flag">×${have[c.id]}</span>` : "";
-      return `<button class="cell own ${newIds.has(c.id) ? "fresh" : ""}" type="button" data-id="${esc(c.id)}">${card(c, "s", flag)}</button>`;
-    }).join("")}</div>`}
-    ${data.pack && !fresh ? '<button class="btn btn-quiet block" type="button" data-again>Abrir el sobre otra vez</button>' : ""}
-    <div class="zoom" aria-hidden="true"><div class="big"></div></div>
+  const count = wanted(data, cards).length;
+  app.innerHTML = head("Cambios", count === 1 ? "1 carta que te falta" : `${count} cartas que te faltan`) + `
+    <button class="btn btn-quiet block" type="button" data-back>← Volver a tu álbum</button>
+    ${tradeTab(data, cards, mine)}
     <div class="offer" role="dialog" aria-label="Pedir un cambio"><div class="body"></div></div>`;
-  app.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showAlbum(data, cards, fresh, b.dataset.t)));
+  app.querySelector("[data-back]").addEventListener("click", () => showAlbum(data, cards, fresh));
   app.querySelectorAll("[data-want]").forEach((b) => b.addEventListener("click", () => offerSheet(data, cards, mine, b.dataset.want)));
   const offer = app.querySelector(".offer");
   offer.addEventListener("click", (e) => { if (e.target === offer) offer.classList.remove("on"); });
-  const zoom = app.querySelector(".zoom");
-  app.querySelectorAll(".cell.own[data-id]").forEach((b) => b.addEventListener("click", () => {
-    const c = cards.get(b.dataset.id), big = zoom.querySelector(".big");
-    big.classList.toggle("wide", Boolean(c.wide && c.src));
-    big.innerHTML = card(c);
-    zoom.classList.add("on");
-  }));
+}
+
+// Who has the most cards, among those who wrote «/ranking entrar»; joining opens WhatsApp with it typed.
+function showRanking(data, cards, fresh) {
+  document.body.classList.remove("opening");
+  const { people = [], wa } = data.rank, total = cards.size;
+  const medal = ["🥇", "🥈", "🥉"];
+  const rows = people.map((p, i) => `<li class="${p.me ? "me" : ""}"><span class="pos">${medal[i] || i + 1}</span>
+      <span class="who">${esc(p.name)}${p.me ? " <b>(tú)</b>" : ""}</span>
+      <span class="sc">${p.n}<small>/${total}</small>${p.leg ? ` <span class="pill">${p.leg} ★</span>` : ""}</span></li>`).join("");
+  const join = (word) => wa
+    ? `<a class="btn ${word === "entrar" ? "btn-accent" : "btn-quiet"} block" href="https://wa.me/${esc(wa)}?text=${encodeURIComponent(`/ranking ${word}`)}">${word === "entrar" ? "Entrar al ranking" : "Salir del ranking"}</a>`
+    : `<p class="hint c">Escríbele a Vinci: <b>/ranking ${word}</b></p>`;
+  app.innerHTML = head("Ranking", people.length === 1 ? "1 persona" : `${people.length} personas`) + `
+    <button class="btn btn-quiet block" type="button" data-back>← Volver a tu álbum</button>
+    ${rows ? `<ol class="board">${rows}</ol>` : '<p class="empty-state">Todavía nadie entró al ranking.</p>'}
+    ${data.rank.in ? join("salir") : `<p class="hint c">No sales en el ranking: entra solo quien quiere.</p>${join("entrar")}`}`;
+  app.querySelector("[data-back]").addEventListener("click", () => showAlbum(data, cards, fresh));
+}
+
+// Every card in one list, by number: what you have with its art, what you lack as a silhouette in its rarity's frame.
+function showAlbum(data, cards, fresh, tab) {
+  document.body.classList.remove("opening");
+  const all = [...cards.values()].sort((a, b) => a.n - b.n);
+  const have = data.have || {};
+  const mine = all.filter((c) => (have[c.id] || 0) > 1).sort(byRarity(1));
+  if (tab === TRADES && data.trade) return showTrades(data, cards, fresh, mine);
+  if (tab === RANKING && data.rank) return showRanking(data, cards, fresh);
+  const owned = all.filter((c) => have[c.id]).length;
+  const repeats = all.reduce((sum, c) => sum + Math.max(0, (have[c.id] || 0) - 1), 0);
+  const newIds = new Set(fresh && data.pack ? data.pack.cards.filter((e) => e.new).map((e) => e.id) : []);
+  const market = data.trade ? wanted(data, cards) : [];
+  const view = { ...prefs(), rarity: null, q: "" };
+  if (view.sort === "rep" && !repeats) view.sort = "n";
+  const rings = RANK.map((r) => {
+    const total = all.filter((c) => c.rarity === r), got = total.filter((c) => have[c.id]).length;
+    return `<button class="rar" type="button" data-r="${r}" aria-pressed="false"><span class="ring" data-p="${total.length ? got / total.length * 100 : 0}"><span>${got}/${total.length}</span></span><span class="l">${RL[r]}</span></button>`;
+  }).join("");
+  app.innerHTML = head("Tu álbum", `${owned} de ${all.length} cartas`) + `
+    <div class="progress"><i></i></div>
+    ${data.trade || data.rank ? `<div class="pair">${data.trade ? `<button class="btn btn-quiet" type="button" data-trades>🔁 Cambios${market.length ? ` · ${market.length}` : ""}</button>` : ""}${data.rank ? '<button class="btn btn-quiet" type="button" data-ranking>🏆 Ranking</button>' : ""}</div>` : ""}
+    <div class="rars">${rings}</div>
+    <input class="search" type="search" placeholder="Busca una carta tuya" enterkeyhint="search" autocomplete="off" aria-label="Busca una carta tuya">
+    <div class="tools"><div class="seg" role="group" aria-label="Orden">${[["n", "Número"], ["r", "Rareza"], ["rep", `Repetidas ${repeats}`]].map(([k, label]) =>
+      `<button type="button" data-s="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
+      <button class="dens" type="button" aria-label="Cambiar el número de columnas"></button></div>
+    <p class="count"></p>
+    <div class="grid"></div>
+    ${data.pack && !fresh ? '<button class="btn btn-quiet block" type="button" data-again>Abrir el sobre otra vez</button>' : ""}
+    <div class="zoom" aria-hidden="true"><div class="big"></div></div>
+    <div class="offer" role="dialog" aria-label="Pedir un cambio"><div class="body"></div></div>`;
+  const grid = app.querySelector(".grid"), count = app.querySelector(".count"), dens = app.querySelector(".dens");
+  // The page's CSP blocks style attributes; the CSSOM is allowed.
+  app.querySelector(".progress i").style.width = `${all.length ? owned / all.length * 100 : 0}%`;
+  app.querySelectorAll(".ring").forEach((el) => {
+    el.style.setProperty("--p", el.dataset.p);
+    el.style.setProperty("--c", RING[el.closest("[data-r]").dataset.r]);
+  });
+  const cell = (c) => {
+    if (!have[c.id]) return `<button class="cell" type="button" data-miss="${esc(c.id)}" aria-label="Nº${pad(c.n)}: te falta">${ghost(c)}</button>`;
+    const flag = newIds.has(c.id) ? '<span class="pill hi flag">Nueva</span>' : have[c.id] > 1 ? `<span class="pill flag">×${have[c.id]}</span>` : "";
+    return `<button class="cell own ${newIds.has(c.id) ? "fresh" : ""}" type="button" data-id="${esc(c.id)}">${card(c, "s", flag)}</button>`;
+  };
+  const draw = () => {
+    const q = fold(view.q.trim());
+    let list = all.filter((c) => (!view.rarity || c.rarity === view.rarity) && (!q || (have[c.id] && fold(c.name).includes(q)))
+      && (view.sort !== "rep" || have[c.id] > 1));
+    if (view.sort === "r") list = list.sort(byRarity(-1));
+    grid.classList.toggle("g4", view.cols === 4);
+    grid.innerHTML = list.map(cell).join("");
+    const got = list.filter((c) => have[c.id]).length;
+    count.textContent = !list.length ? (q ? `No tienes ninguna carta con «${view.q.trim()}».` : "No hay cartas aquí todavía.")
+      : `${list.length} ${list.length === 1 ? "carta" : "cartas"}${got < list.length ? `, tienes ${got}` : ""}`;
+    app.querySelectorAll("[data-r]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.r === view.rarity)));
+    app.querySelectorAll("[data-s]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.s === view.sort)));
+    dens.innerHTML = cols(view.cols === 3 ? 4 : 3);
+  };
+  draw();
+  app.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => { view.rarity = view.rarity === b.dataset.r ? null : b.dataset.r; draw(); }));
+  app.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { view.sort = b.dataset.s; keep(view); draw(); }));
+  dens.addEventListener("click", () => { view.cols = view.cols === 3 ? 4 : 3; keep(view); draw(); });
+  app.querySelector(".search").addEventListener("input", (e) => { view.q = e.target.value; draw(); });
+  app.querySelector("[data-trades]")?.addEventListener("click", () => showTrades(data, cards, fresh, mine));
+  app.querySelector("[data-ranking]")?.addEventListener("click", () => showRanking(data, cards, fresh));
+  const offer = app.querySelector(".offer"), zoom = app.querySelector(".zoom");
+  offer.addEventListener("click", (e) => { if (e.target === offer) offer.classList.remove("on"); });
+  grid.addEventListener("click", (e) => {
+    const own = e.target.closest(".cell.own[data-id]"), miss = e.target.closest("[data-miss]");
+    if (own) {
+      const c = cards.get(own.dataset.id), big = zoom.querySelector(".big");
+      big.classList.toggle("wide", Boolean(c.wide && c.src));
+      big.innerHTML = card(c);
+      zoom.classList.add("on");
+    } else if (miss) {
+      const id = miss.dataset.miss;
+      if (market.some((w) => w.c.id === id)) offerSheet(data, cards, mine, id);
+      else missingSheet(cards.get(id));
+    }
+  });
   zoom.addEventListener("click", () => zoom.classList.remove("on"));
   app.querySelector("[data-again]")?.addEventListener("click", () => openPack(data, cards));
 }
@@ -314,7 +420,6 @@ async function main() {
     app.innerHTML = head("Tu álbum", "Vinci") + '<p class="empty-state">Abre tu álbum desde el botón que Vinci te manda en WhatsApp.</p>';
     return;
   }
-  data.collections = catalog.collections;
   const cards = new Map(catalog.cards.map((c) => [c.id, c]));
   await unlock(data, cards);
   if (data.pack && !opened().has(data.pack.id)) openPack(data, cards);

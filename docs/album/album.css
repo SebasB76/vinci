@@ -97,12 +97,8 @@ body.opening { background: var(--panel); }
 /* The album */
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .cell { aspect-ratio: 5 / 7; }
-.cell.own { cursor: pointer; }
-/* An empty slot: the card's stepped outline, pressed into the page. */
-.cell.empty { display: grid; place-items: center; font: 8px/1 "Press Start 2P", monospace; color: var(--ink-4); background: var(--line-soft);
-  clip-path: polygon(0 4px, 2px 4px, 2px 2px, 4px 2px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 2px, calc(100% - 2px) 2px, calc(100% - 2px) 4px, 100% 4px,
-    100% calc(100% - 4px), calc(100% - 2px) calc(100% - 4px), calc(100% - 2px) calc(100% - 2px), calc(100% - 4px) calc(100% - 2px), calc(100% - 4px) 100%,
-    4px 100%, 4px calc(100% - 2px), 2px calc(100% - 2px), 2px calc(100% - 4px), 0 calc(100% - 4px)); }
+.cell { position: relative; cursor: pointer; transition: transform 140ms var(--ease-out); }
+.cell:active { transform: scale(0.97); }
 .cell.fresh { animation: rise .45s ease both; }
 .zoom { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgb(232 228 222 / .92);
   opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease-out); }
@@ -143,19 +139,53 @@ body.opening { background: var(--panel); }
 .offer .t { font-size: 18px; letter-spacing: -.2px; overflow-wrap: anywhere; }
 .offer .m { display: flex; }
 
+/* The list's controls: progress, a ring per rarity (it filters), a search over the cards you have, the order and the
+   columns. A missing card is its frame with a «?». */
+.progress { height: 6px; border-radius: 9px; background: var(--line-soft); overflow: hidden; }
+.progress i { display: block; height: 100%; border-radius: 9px; background: var(--accent); }
+.rars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.rar { min-width: 0; padding: 10px 2px 9px; border-radius: var(--r-sm); background: var(--card); text-align: center; box-shadow: inset 0 0 0 2px transparent;
+  transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out); }
+.rar[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
+.rar:active { transform: scale(0.97); }
+.ring { --p: 0; --c: #a39b8f; width: 44px; height: 44px; margin: 0 auto 6px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--line-soft) 0); }
+.ring span { width: 34px; height: 34px; border-radius: 50%; background: var(--card); display: grid; place-items: center; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.rar .l { display: block; font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search { box-sizing: border-box; width: 100%; padding: 12px 14px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--card);
+  font: 400 16px var(--sans); color: var(--ink); -webkit-appearance: none; appearance: none; }
+.search:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+.tools { display: flex; gap: 8px; align-items: center; }
+.seg { flex: 1; min-width: 0; display: flex; padding: 3px; border-radius: 999px; background: var(--line-soft); }
+.seg button { flex: 1; min-width: 0; padding: 8px 4px; border-radius: 999px; font-size: 13.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out), transform 140ms var(--ease-out); }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+.seg button:active, .dens:active { transform: scale(0.97); }
+.dens { flex: none; width: 42px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: var(--line-soft); color: var(--ink-2);
+  transition: transform 140ms var(--ease-out); }
+.dens svg { width: 18px; height: 18px; fill: currentColor; }
+.count { margin: 0; font-size: 13px; color: var(--ink-3); overflow-wrap: anywhere; }
+.grid.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.grid.g4 .vc.s { --px: 1.5px; }
+.grid.g4 .vc.s .nm { font-size: 5px; }
+.grid.g4 .vc.s .mt, .grid.g4 .vc.s .no { display: none; }
+.vc.miss .art { background: #0e0c0a; }
+.vc.miss .art::before { content: "?"; font: 22px/1 "Press Start 2P", monospace; color: rgb(255 255 255 / .22); }
+.vc.s.miss .art::before { font-size: 16px; }
+.vc.miss .nm { opacity: .55; }
+
+.pair { display: flex; gap: 8px; }
+.pair .btn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.board li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--r-sm); background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line); }
+.board li.me { box-shadow: inset 0 0 0 2px var(--ink); }
+.board .pos { flex: none; width: 26px; text-align: center; font-weight: 500; color: var(--ink-3); }
+.board .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .sc { flex: none; display: flex; align-items: center; gap: 6px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.board .sc small { font-weight: 400; color: var(--ink-3); }
+
 @media (prefers-reduced-motion: reduce) {
   .rise, .cell.fresh { animation: none; }
-  .offer, .offer .body, .chip { transition: none; }
+  .offer, .offer .body, .chip, .cell, .rar, .seg button, .dens { transition: none; }
 }
-
-/* The tiles and tabs of «Tu semana» (../dashboard/dashboard.css) */
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.tile { border-radius: var(--r-sm); padding: 16px 6px 13px; text-align: center; background: var(--card); }
-.tile .n { font-size: 26px; letter-spacing: -0.6px; line-height: 1.1; white-space: nowrap; }
-.tile .l { font-size: 12px; line-height: 1.25; color: var(--ink-3); margin-top: 3px; }
-.tile.hi { background: var(--accent); color: var(--on-accent); }
-.tile.hi .l { color: rgb(0 0 0 / .62); }
-.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
-.tabs::-webkit-scrollbar { display: none; }
-.tab { flex: none; padding: 8px 14px; border-radius: 999px; font-size: 14px; color: var(--ink-3); white-space: nowrap; }
-.tab[aria-selected="true"] { background: var(--card); color: var(--ink); }

@@ -71,7 +71,15 @@
   ASP.NET (VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos, CAPTCHA) y copia la forma de las páginas reales. Si
   ESPOL cambia una página, el lector puede necesitar ajustes. Corre `.venv/bin/espol-bot academico --conectar --html
   …` para ver qué lee con tu cuenta.
-- **La malla, todavía no:** Vinci no lee la malla de tu carrera, así que no te dice qué materias te faltan.
+- **La malla, desde tu foto:** el Académico no trae la malla ni los prerrequisitos. Vinci los lee de la foto o el
+  PDF que le mandas; revisa lo que leyó antes de decirle que la guarde.
+- **El promedio simulado es un estimado:** el portal no publica su fórmula. Vinci suma a tu promedio del portal el
+  cambio que da el promedio ponderado por créditos, que se acerca al del portal en unas décimas.
+- **El calendario de ESPOL depende de su web:** Vinci lee la tabla de la página una vez al día. Si ESPOL cambia la
+  forma de la página, el lector puede necesitar ajustes; corre `.venv/bin/espol-bot calendario-espol` para ver qué
+  lee.
+- **El promedio del curso, solo si el profe lo muestra:** Canvas lo da cuando el profe deja ver las estadísticas
+  de la tarea.
 - **El Académico sin relé, tampoco:** sin el relé la página no puede mostrarte el CAPTCHA.
 
 ## Solución de problemas

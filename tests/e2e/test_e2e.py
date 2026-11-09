@@ -226,6 +226,16 @@ T_POLL1 = "2026-09-28T07:40:00-05:00"   # Deber 2 vence 10:00 → recordatorio d
 T_POLL2 = "2026-09-29T00:30:00-05:00"   # después de los cambios; Taller 2 vence en 22.5 h
 T_POLL3 = "2026-09-29T01:00:00-05:00"   # sin cambios: no debe enviar nada
 T_SUMMARY = "2026-09-29T07:00:00-05:00"
+# ESPOL's calendar page as its table looks: a term heading, then activities with dates in Spanish.
+ESPOL_CALENDAR = """<html><body><h1>Calendario académico de grado 2026 - 2027</h1><table>
+<tr><th>Actividad</th><th>Fecha</th></tr>
+<tr><td colspan="2">PAO II</td></tr>
+<tr><td>Inicio de clases</td><td>lunes, 14 de septiembre de 2026</td></tr>
+<tr><td>Semana de la primera evaluación</td><td>del 1 al 3 de octubre</td></tr>
+<tr><td>Feriado por la Independencia de Guayaquil</td><td>viernes, 9 de octubre de 2026</td></tr>
+<tr><td>Fin de clases</td><td>15/01/2027</td></tr>
+<tr><td>Observación</td><td>Sujeto a cambios</td></tr>
+</table></body></html>"""
 T_POLL4 = "2026-09-29T20:30:00-05:00"   # Taller 2 vence en 2.5 h → recordatorio de 3 h
 T_RESILIENCE = [f"2026-09-30T{12 + i // 2}:{i % 2 * 30:02d}:00-05:00" for i in range(9)]  # 12:00 … 16:00
 # Work the aula takes no upload for, in Física, all due before T_VINCI: a lab on another platform, an exam held in
@@ -309,7 +319,18 @@ PORTAL_ASKS = {
     "cuánto me falta para graduarme": ("avance", False),
     "actualiza mi Académico y dime mi promedio": ("promedio", True),
 }
-PORTAL_BACK = "Ya conecté mi Académico"  # how the question comes back after the sign-in (portal_login.py)
+PORTAL_BACK = "Ya conecté mi Académico"
+# The degree plan (plan_carrera, guardar_malla): the curriculum Vinci reads from the captain's photo of it.
+PLAN_ASK = "qué materias puedo tomar el próximo semestre"
+CURRICULUM_SAVE = "sí, guarda mi malla"
+GPA_ASK = "cuánto me sube el promedio si saco 9 en Sistemas Distribuidos"
+CURRICULUM = [
+    {"code": "CCPG1043", "name": "Fundamentos de Programación", "credits": 3, "level": 1, "prerequisites": []},
+    {"code": "MATG1049", "name": "Álgebra Lineal", "credits": 3, "level": 2, "prerequisites": ["MATG1045"]},
+    {"code": "CCPG1052", "name": "Estructuras de Datos", "credits": 3, "level": 3, "prerequisites": ["CCPG1043"]},
+    {"code": "CCPG1053", "name": "Análisis de Algoritmos", "credits": 3, "level": 4,
+     "prerequisites": ["Estructuras de Datos", "MATG1049"]},
+]  # how the question comes back after the sign-in (portal_login.py)
 
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
@@ -609,7 +630,8 @@ class Script:
             return _call("mcp__vinci__chat_reminder", text=GROUP_REMINDER, at=["2026-10-01 09:00", "2026-10-02 12:00"])
         if "avísame mañana a las 9" in text and not called:
             return _call("mcp__vinci__chat_reminder", text=PRIVATE_REMINDER, at=["2026-10-01 09:00"])
-        flow = (self.portal(text, called, results) or self.exams("vinci", text, called, results)
+        flow = (self.plan(text, called, results) or self.portal(text, called, results)
+                or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results) or self.pending(text, called, results)
                 or self.vinci_study(text, called, results) or self.group_quiz(text, called, results))
         if flow is not None:
@@ -729,6 +751,31 @@ class Script:
         data = _json(results[-1])
         return {"content": "📝 Ahí va el quiz en el grupo." if isinstance(data, dict) and data.get("quiz")
                 else _problem(results[-1])}
+
+    @staticmethod
+    def plan(text: str, called: list[str], results: list[str]) -> dict | None:
+        """The degree plan from the Académico's copy: what is left per category, what to take, a GPA estimate."""
+        if PLAN_ASK in text:
+            if not called:
+                return _call("mcp__vinci__plan_carrera")
+            data = _json(results[-1])
+            missing = ", ".join(f"{c['category'].title()} {c['missing']:g}" for c in data["categories"] if c["missing"])
+            if data["curriculum"] is None:
+                return {"content": f"Te faltan créditos en: {missing}. Mándame una foto de tu malla y te digo qué tomar."}
+            ready = ", ".join(m["name"] for m in data["curriculum"]["can_take"])
+            locked = ", ".join(f"{m['name']} (te falta {' y '.join(m['lacks'])})" for m in data["curriculum"]["locked"])
+            return {"content": f"Ya puedes tomar: {ready}. Todavía no: {locked}."}
+        if CURRICULUM_SAVE in text:
+            if not called:
+                return _call("mcp__vinci__guardar_malla", carrera="Computación", materias=CURRICULUM)
+            return {"content": f"Guardé tu malla: {_json(results[-1])['saved']} materias."}
+        if GPA_ASK in text:
+            if not called:
+                return _call("mcp__vinci__plan_carrera", simular=[{"subject": "Sistemas Distribuidos", "grade": 9,
+                                                                   "credits": 3}])
+            data = _json(results[-1])
+            return {"content": f"Tu promedio pasaría de {data['gpa_now']} a unos {data['gpa_estimated']} (es un estimado)."}
+        return None
 
     def portal(self, text: str, called: list[str], results: list[str]) -> dict | None:
         """The Académico: asked with no copy, the tool sends the sign-in button; the question comes back on its own
@@ -1070,6 +1117,7 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
         hosts = ", ".join(f'"{host}" = "{web.base}"' for host in (
             "docs.google.com", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com", "sharepoint.com"))
         hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
+        hosts += f', "www.espol.edu.ec" = "{web.base}"'  # ESPOL's calendar page
         config += (f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
                    f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
                    f"whatsapp_grupo_inactivo_segundos = {GROUP_IDLE}\n")
@@ -1503,11 +1551,15 @@ def test_canvas(tmp_path):
         assert "revisa la normalización" in graded and "Profesor E2E" in graded \
             and "correcciones-tarea1.pdf" in graded, f"la nota llega con el comentario del profe y su adjunto:\n{graded}"
         assert "versión final" not in graded, "el comentario del propio estudiante no es feedback del profe"
+        assert "El curso: promedio 7.2 · la más alta 10 · la más baja 4" in graded, \
+            f"la nota trae el promedio del curso que da Canvas:\n{graded}"
         notas = json.loads(run([aula, "notas", "--curso", "FÍSICA", "--json"], T_POLL2).stdout)
         tarea1 = next(t for c in notas for t in c["tareas"] if t["id"] == 3001)
         assert [c["text"][:13] for c in tarea1["feedback"]["comments"]] == ["Buen trabajo."], tarea1
+        assert tarea1["curso"] == {"mean": 7.25, "max": 10.0, "min": 4.0}, tarea1
         report.append("La nota de la Tarea 1 llega con el comentario del profe y su PDF adjunto, sin el comentario "
-                      "del estudiante, y `aula notas` (lo que lee la herramienta `notas` de los bots) lo devuelve")
+                      "del estudiante, y con el promedio, la más alta y la más baja del curso; `aula notas` (lo que "
+                      "lee la herramienta `notas` de los bots) lo devuelve")
         by_title = {m["text"].split("\n")[1]: m["text"] for m in poll2 if "\n" in m["text"]}
         assert "Ya lo leí" in by_title["Sílabo MATG1049 2026-2T.pdf"], "el sílabo se baja y se lee solo"
         assert "Lo bajo y lo leo cuando haga falta" in by_title["Semana 2 - Cinemática.pptx"], \
@@ -1537,6 +1589,13 @@ def test_canvas(tmp_path):
         assert take("Sondeo 3 · mar 29 sep 01:00 (sin cambios)") == [], "no debe repetir avisos"
 
         # 4. daily summary -----------------------------------------------------------------
+        # ESPOL's official calendar: a site that answers 500 leaves no copy; the next read keeps the page's dates.
+        down = run([bot, "calendario-espol"], T_SUMMARY, check=False)
+        assert down.returncode == 1 and "No pude leer" in down.stdout, down.stdout
+        w.web.espol_calendar = ESPOL_CALENDAR
+        read = run([bot, "calendario-espol"], T_SUMMARY)
+        assert "4 fechas guardadas" in read.stdout and "vie 9 oct — PAO II: Feriado por la Independencia de Guayaquil" \
+            in read.stdout, read.stdout
         run([bot, "resumen"], T_SUMMARY)
         summary = take("Resumen diario · mar 29 sep 07:00")
         assert len(summary) == 3 and "Resumen de tu semana" in summary[0]["text"]
@@ -1547,11 +1606,15 @@ def test_canvas(tmp_path):
         assert daily["pack"]["daily"] and len(daily["pack"]["cards"]) == 3, daily
         assert sum(daily["have"].values()) == 9, daily["have"]
         for expected in ("Taller 2: Movimiento parabólico", "Taller 3: Derivadas", "Examen parcial",
-                         "Informe de laboratorio 1", "Ya entregaste 1", "Cambio de fecha del Taller 3"):
+                         "Informe de laboratorio 1", "Ya entregaste 1", "Cambio de fecha del Taller 3",
+                         "🏛️ En ESPOL esta semana", "jue 1 oct → sáb 3 oct — PAO II: Semana de la primera evaluación"):
             assert expected in summary[0]["text"], f"falta «{expected}» en el resumen"
+        assert "Independencia de Guayaquil" not in summary[0]["text"], "el resumen trae solo la semana"
         run([bot, "resumen"], T_SUMMARY)
         assert take("Resumen diario repetido") == [], "el resumen se envía una vez al día"
         report.append("El resumen de las 7:00 trajo después el sobre del día, con 3 cartas más; repetido, no manda nada")
+        report.append("El calendario de ESPOL: con la web en error 500, `calendario-espol` avisa y no guarda nada; con "
+                      "la página, guarda sus 4 fechas, y el resumen de las 7:00 trae solo las de esa semana")
 
         # A gift pack from the captain to everyone with Vinci: the next poll sends it, with the page's gift title.
         run([bot, "album-regalo", "Porque sí"], T_SUMMARY)
@@ -3122,6 +3185,30 @@ def test_whatsapp_friend(tmp_path):
                       "«/cambio Angel bosque por coliseo» le manda a Angel la oferta con una encuesta, y su «✅ Acepto» "
                       "cambia una repetida de cada uno en los dos álbumes (un segundo voto no hace nada), sin el modelo")
 
+        # 10i'. The album ranking (/ranking): nobody is in it until they join; the album's «Ranking» view lists them
+        calls = len(llm.requests)
+        alone = text_of(say(captain_jid, captain_jid, "/ranking", "Capitán"))
+        assert "Todavía nadie entró al ranking" in alone and "/ranking entrar" in alone, alone
+        joined = say(captain_jid, captain_jid, "/ranking entrar", "Capitán")
+        assert "sales en el ranking" in text_of(joined) and "🥇" in text_of(joined) and "(tú)" in text_of(joined), \
+            text_of(joined)
+        both = say(angel_jid, angel_jid, "/ranking entrar", "Angel")
+        board_text = text_of(both)
+        assert "🥇" in board_text and "🥈" in board_text and "Angel (tú)" in board_text, board_text
+        page = [m for m in both if m.get("buttonText") == "🏆 Ver el ranking"]
+        assert page and page[0]["url"].endswith("&t=ranking"), both
+        board = dashboard_module.decode(page[0]["url"].split("#d=", 1)[1].split("&", 1)[0])["rank"]
+        assert board["in"] is True and len(board["people"]) == 2 and [p.get("me") for p in board["people"]].count(1) == 1, \
+            board
+        left = text_of(say(angel_jid, angel_jid, "/ranking salir", "Angel"))
+        assert "ya no sales en el ranking" in left, left
+        after = text_of(say(captain_jid, captain_jid, "/ranking", "Capitán"))
+        assert "Angel" not in after and "(tú)" in after, after
+        assert len(llm.requests) == calls, "el ranking no usa el modelo"
+        report.append("«/ranking» no muestra a nadie hasta que entra; con «/ranking entrar» del capitán y de Angel salen "
+                      "los dos con medallas y el botón «🏆 Ver el ranking» abre esa vista del álbum; «/ranking salir» "
+                      "saca a Angel, sin el modelo")
+
         # 10j. The captain lists and removes Angel; then turns the group off
         listed = say(captain_jid, captain_jid, "/amigos", "Capitán")
         assert "Angel: tiene su Vinci" in text_of(listed)
@@ -3387,6 +3474,24 @@ def academico_flow(w) -> None:
                       "para graduarme?» se contestan sin volver al Académico; para el avance la herramienta da los "
                       "créditos que dice el portal y le prohíbe al modelo calcular lo que falta restando de un total, "
                       "porque la malla todavía no se lee")
+
+        # 4b. The degree plan from the same copy: credits left per category, then the curriculum from a photo
+        plan_text = text_of(say(captain_jid, captain_jid, PLAN_ASK, "Capitán"))
+        assert "Formación Profesional 50" in plan_text and "Educación General 21" in plan_text \
+            and "foto de tu malla" in plan_text, plan_text
+        saved = text_of(say(captain_jid, captain_jid, CURRICULUM_SAVE, "Capitán"))
+        assert "Guardé tu malla: 4 materias" in saved, saved
+        plan_text = text_of(say(captain_jid, captain_jid, PLAN_ASK, "Capitán"))
+        assert "Ya puedes tomar: Álgebra Lineal, Estructuras de Datos." in plan_text \
+            and "Análisis de Algoritmos (te falta Estructuras de Datos y Álgebra Lineal)" in plan_text, plan_text
+        estimate = text_of(say(captain_jid, captain_jid, GPA_ASK, "Capitán"))
+        assert "de 8.15 a unos 8.28" in estimate, estimate
+        assert len(portal.requests) == seen, "el plan sale de la copia, sin volver al Académico"
+        for asked_, said in ((PLAN_ASK, plan_text), (GPA_ASK, estimate)):
+            md.append(f"**Capitán**: {asked_}\n→ Vinci: {normalize(said)}\n")
+        report.append("El plan de la carrera, de la misma copia: los créditos que faltan en cada categoría; sin malla, "
+                      "Vinci la pide; con la malla guardada, qué materias ya puede tomar (primero las que abren más) y "
+                      "cuáles no con el prerrequisito que falta; y el promedio estimado si saca 9 en una materia")
 
         # 5. Updating it: a new sign-in, the portal's new figures
         portal.version = 2

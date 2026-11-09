@@ -48,6 +48,10 @@ que cada tarjeta te llega como mensaje con una **encuesta**: votar «✅ Hecho»
 horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram, sin pasar por el modelo. Cambiar
 el voto lo deshace.
 
+**Solo la respuesta de Vinci.** Si le escribes mientras todavía responde, Vinci toma tu mensaje nuevo sin avisar
+«Redirected current run». Tampoco te llegan los avisos internos de Hermes, como «💾 Self-improvement review» cuando
+Vinci actualiza su memoria.
+
 **Tus materias, en un solo chat.** No hay un bot por materia: Vinci sabe de qué materia hablas en cada mensaje.
 1. Si nombras la materia («en Estadística: no entendí la varianza»), usa esa.
 2. Si respondes a un aviso, a un brief o a un resumen de apuntes, usa la materia de ese mensaje.
@@ -203,7 +207,8 @@ y Vinci los contesta sin gastar tokens:
 | `/token` | Una imagen con los pasos para crear el token en el aula, y un botón a la página del token: su botón «Abrir» te lleva a donde se crea, lo pegas y pulsas «Enviar cifrado a Vinci». Sin relé, pegas en el chat el texto que te da |
 | `/entregas` | Un botón a tu panel de entregas (el mismo dashboard de Telegram). También llega al final del resumen de las 7:00 y cuando preguntas «¿qué tengo pendiente?». Marcar una le llega a Vinci por el relé y te confirma en el chat. Sin relé, abre este chat con `/marca …` escrito: envíalo y cuenta como entregada |
 | `/quiz <tema>` | Un quiz corto con encuestas: al votar cada pregunta te dice si acertaste. En un grupo, las encuestas salen en el grupo, y los resultados de todos llegan cuando todos responden o a los 15 minutos |
-| `/cambio` | Tus cartas repetidas del álbum, y quién tiene repetidas las que te faltan. `/cambio Angel Bosque protector por Lago ESPOL` le ofrece a Angel tu repetida por la suya: le llega una encuesta y, si acepta, Vinci cambia las dos cartas. El botón «🔁 Ver los cambios» abre la pestaña del álbum donde eliges el cambio con un toque. [Más sobre los cambios](uso.md#cambiar-cartas) |
+| `/cambio` | Tus cartas repetidas del álbum, y quién tiene repetidas las que te faltan. `/cambio Angel Bosque protector por Lago ESPOL` le ofrece a Angel tu repetida por la suya: le llega una encuesta y, si acepta, Vinci cambia las dos cartas. El botón «🔁 Ver los cambios» abre «Cambios» en el álbum, donde eliges el cambio con un toque. [Más sobre los cambios](uso.md#cambiar-cartas) |
+| `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
 En un grupo, `/estado`, `/token` y `/entregas` te piden escribirlos por privado, y las encuestas de tus tarjetas

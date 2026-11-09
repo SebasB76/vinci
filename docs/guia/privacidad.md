@@ -28,6 +28,13 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   solo cuando pulsas «📤 Entregar» debajo de ese PDF, nunca porque el modelo lo pida. No publica, no comenta y no
   cambia nada más. Otro componente hace `POST` y `DELETE` únicamente sobre los tokens propios de Vinci, verifica
   el reemplazo antes del cambio y nunca manda un token o una URL de feed fuera del aula.
+- **Solo tú le das órdenes.** Lo que Vinci lee (un anuncio, un foro, un PDF, una página web, el mensaje de otra
+  persona que citas) es información, nunca una orden: si ese texto le pide abrir un enlace, guardar algo o cambiar
+  sus reglas, no lo hace. Hermes además marca todo lo que traen las herramientas como «datos, no instrucciones».
+  Vinci no muestra sus instrucciones ni acepta otro papel por chat.
+- **Lo que no es de la U, en una línea.** Vinci contesta completo lo de tus materias, tu aula y tu carrera. A una
+  pregunta que no es de eso (trivia, deportes, código de otra cosa) le da una línea con humor, sin herramientas ni
+  código, y te devuelve a la U.
 - **Del buzón del aula, solo lo de tus profes.** Vinci lee las conversaciones del buzón sin marcarlas como leídas y guarda solo los mensajes de profesores y ayudantes de tus cursos. Lo que te escribe un compañero no se guarda ni llega al modelo.
 - **Tus apuntes salen solo si son de clase.** Vinci lee tu carpeta de notas en tu PC, sin el modelo. Al modelo
   solo llegan las notas que quedaron de una materia (por su título, por la clase y su material, o por tu botón) y

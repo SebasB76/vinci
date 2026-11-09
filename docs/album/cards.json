@@ -383,6 +383,347 @@
    "group": "Campus",
    "rarity": "rare",
    "art": "art/residencias-5b500b2cd8.bin"
+  },
+  {
+   "id": "taws",
+   "n": 44,
+   "name": "TAWS",
+   "collection": "espol",
+   "group": "Clubes",
+   "rarity": "leg",
+   "art": "art/taws-4592c9964b.bin"
+  },
+  {
+   "id": "barcelona-sc",
+   "n": 45,
+   "name": "Barcelona SC",
+   "collection": "iconos",
+   "group": "Ecuador",
+   "rarity": "epic",
+   "art": "art/barcelona-sc-841545a180.bin",
+   "wide": true
+  },
+  {
+   "id": "emelec",
+   "n": 46,
+   "name": "Emelec",
+   "collection": "iconos",
+   "group": "Ecuador",
+   "rarity": "epic",
+   "art": "art/emelec-6991069498.bin",
+   "wide": true
+  },
+  {
+   "id": "julio-jaramillo",
+   "n": 47,
+   "name": "Julio Jaramillo",
+   "collection": "iconos",
+   "group": "Ecuador",
+   "rarity": "epic",
+   "art": "art/julio-jaramillo-bbc1664302.bin"
+  },
+  {
+   "id": "jose-delgado",
+   "n": 48,
+   "name": "José Delgado",
+   "collection": "iconos",
+   "group": "Ecuador",
+   "rarity": "epic",
+   "art": "art/jose-delgado-d1a6693771.bin"
+  },
+  {
+   "id": "luis-miguel",
+   "n": 49,
+   "name": "Luis Miguel",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "rare",
+   "art": "art/luis-miguel-719bcd8320.bin"
+  },
+  {
+   "id": "abbey-road",
+   "n": 50,
+   "name": "Abbey Road",
+   "collection": "iconos",
+   "group": "The Beatles",
+   "rarity": "leg",
+   "art": "art/abbey-road-9dd5e005c1.bin",
+   "wide": true
+  },
+  {
+   "id": "john-lennon",
+   "n": 51,
+   "name": "John Lennon",
+   "collection": "iconos",
+   "group": "The Beatles",
+   "rarity": "epic",
+   "art": "art/john-lennon-48a7307aca.bin"
+  },
+  {
+   "id": "paul-mccartney",
+   "n": 52,
+   "name": "Paul McCartney",
+   "collection": "iconos",
+   "group": "The Beatles",
+   "rarity": "epic",
+   "art": "art/paul-mccartney-ac052f49bc.bin"
+  },
+  {
+   "id": "george-harrison",
+   "n": 53,
+   "name": "George Harrison",
+   "collection": "iconos",
+   "group": "The Beatles",
+   "rarity": "rare",
+   "art": "art/george-harrison-85d2a3586b.bin"
+  },
+  {
+   "id": "ringo-starr",
+   "n": 54,
+   "name": "Ringo Starr",
+   "collection": "iconos",
+   "group": "The Beatles",
+   "rarity": "rare",
+   "art": "art/ringo-starr-d17116e3e3.bin"
+  },
+  {
+   "id": "bts",
+   "n": 55,
+   "name": "BTS",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "rare",
+   "art": "art/bts-443268d5aa.bin",
+   "wide": true
+  },
+  {
+   "id": "lana-del-rey",
+   "n": 56,
+   "name": "Lana Del Rey",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "rare",
+   "art": "art/lana-del-rey-4a0d48c3eb.bin"
+  },
+  {
+   "id": "the-strokes",
+   "n": 57,
+   "name": "The Strokes",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "com",
+   "art": "art/the-strokes-00c7324f41.bin",
+   "wide": true
+  },
+  {
+   "id": "arctic-monkeys",
+   "n": 58,
+   "name": "Arctic Monkeys",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "com",
+   "art": "art/arctic-monkeys-75aece3a95.bin",
+   "wide": true
+  },
+  {
+   "id": "oasis",
+   "n": 59,
+   "name": "Oasis",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "com",
+   "art": "art/oasis-cd8fa63ac2.bin",
+   "wide": true
+  },
+  {
+   "id": "blur",
+   "n": 60,
+   "name": "Blur",
+   "collection": "iconos",
+   "group": "Música",
+   "rarity": "com",
+   "art": "art/blur-278c905bbf.bin",
+   "wide": true
+  },
+  {
+   "id": "lol",
+   "n": 61,
+   "name": "League of Legends",
+   "collection": "iconos",
+   "group": "Juegos",
+   "rarity": "rare",
+   "art": "art/lol-d22640455c.bin"
+  },
+  {
+   "id": "minecraft",
+   "n": 62,
+   "name": "Minecraft",
+   "collection": "iconos",
+   "group": "Juegos",
+   "rarity": "com",
+   "art": "art/minecraft-22f4227b61.bin"
+  },
+  {
+   "id": "fortnite",
+   "n": 63,
+   "name": "Fortnite",
+   "collection": "iconos",
+   "group": "Juegos",
+   "rarity": "com",
+   "art": "art/fortnite-6f40d137cb.bin"
+  },
+  {
+   "id": "smash",
+   "n": 64,
+   "name": "Super Smash",
+   "collection": "iconos",
+   "group": "Juegos",
+   "rarity": "rare",
+   "art": "art/smash-794402b603.bin"
+  },
+  {
+   "id": "claude",
+   "n": 65,
+   "name": "Claude",
+   "collection": "iconos",
+   "group": "IA",
+   "rarity": "epic",
+   "art": "art/claude-282a05aa59.bin"
+  },
+  {
+   "id": "codex",
+   "n": 66,
+   "name": "Codex",
+   "collection": "iconos",
+   "group": "IA",
+   "rarity": "epic",
+   "art": "art/codex-3afbb12b04.bin"
+  },
+  {
+   "id": "linux",
+   "n": 67,
+   "name": "Linux",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "com",
+   "art": "art/linux-ee1c2ef048.bin"
+  },
+  {
+   "id": "alan-turing",
+   "n": 68,
+   "name": "Alan Turing",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "leg",
+   "art": "art/alan-turing-2442ce0395.bin"
+  },
+  {
+   "id": "ada-lovelace",
+   "n": 69,
+   "name": "Ada Lovelace",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "epic",
+   "art": "art/ada-lovelace-5abfb2b49e.bin"
+  },
+  {
+   "id": "steve-jobs",
+   "n": 70,
+   "name": "Steve Jobs",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "epic",
+   "art": "art/steve-jobs-b1d0100ddc.bin"
+  },
+  {
+   "id": "linus-torvalds",
+   "n": 71,
+   "name": "Linus Torvalds",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "epic",
+   "art": "art/linus-torvalds-81f48ee130.bin"
+  },
+  {
+   "id": "jensen-huang",
+   "n": 72,
+   "name": "Jensen Huang",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "epic",
+   "art": "art/jensen-huang-810093d686.bin"
+  },
+  {
+   "id": "tim-cook",
+   "n": 73,
+   "name": "Tim Cook",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "com",
+   "art": "art/tim-cook-031bf5562b.bin"
+  },
+  {
+   "id": "sundar-pichai",
+   "n": 74,
+   "name": "Sundar Pichai",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "com",
+   "art": "art/sundar-pichai-794c100ded.bin"
+  },
+  {
+   "id": "elon-musk",
+   "n": 75,
+   "name": "Elon Musk",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "rare",
+   "art": "art/elon-musk-19ac1adbec.bin"
+  },
+  {
+   "id": "mark-zuckerberg",
+   "n": 76,
+   "name": "Mark Zuckerberg",
+   "collection": "iconos",
+   "group": "Tecnología",
+   "rarity": "com",
+   "art": "art/mark-zuckerberg-f3473c8625.bin"
+  },
+  {
+   "id": "sam-altman",
+   "n": 77,
+   "name": "Sam Altman",
+   "collection": "iconos",
+   "group": "IA",
+   "rarity": "rare",
+   "art": "art/sam-altman-94a9cb6509.bin"
+  },
+  {
+   "id": "dario-amodei",
+   "n": 78,
+   "name": "Dario Amodei",
+   "collection": "iconos",
+   "group": "IA",
+   "rarity": "rare",
+   "art": "art/dario-amodei-34ea823476.bin"
+  },
+  {
+   "id": "tibo",
+   "n": 79,
+   "name": "Tibo",
+   "collection": "iconos",
+   "group": "IA",
+   "rarity": "rare",
+   "art": "art/tibo-812bfbef34.bin"
+  },
+  {
+   "id": "alexander-wang",
+   "n": 80,
+   "name": "Alexander Wang",
+   "collection": "iconos",
+   "group": "IA",
+   "rarity": "com",
+   "art": "art/alexander-wang-095f09b61f.bin"
   }
  ]
 }

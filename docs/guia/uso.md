@@ -163,7 +163,8 @@ corre `.venv/bin/espol-bot dashboard`.
   [Token nuevo desde Telegram](#token-nuevo-desde-telegram-token)).
 - Al escribir `/` en tu chat con un bot, el menú muestra primero estos comandos y debajo los de Hermes. Si no
   aparecen, cierra y abre el chat: Telegram guarda el menú un rato.
-- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz` (mira [Vinci en WhatsApp](whatsapp.md#vinci-en-whatsapp)).
+- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz`, y además `/cambio` y `/ranking` para el
+  álbum (mira [Vinci en WhatsApp](whatsapp.md#vinci-en-whatsapp)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
 
@@ -373,10 +374,15 @@ Te llega un mensaje con el botón «🎴 Abrir mi sobre». En la página subes e
 para ver la siguiente y al final las pegas en tu álbum. Para verlo sin un sobre nuevo, pídeselo a Vinci: «¿cómo va
 mi álbum?».
 
-- **Las cartas:** la colección ESPOL (Polito, el campus y GrupAP) y la de Íconos (series, películas y artistas).
-  Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos una rara. Las cartas son de
-  pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado. Al tocar una carta, se abre en
-  grande.
+- **Las cartas:** Polito, el campus y la gente de ESPOL, Ecuador (Julio Jaramillo, Barcelona, Emelec), música,
+  series, juegos, tecnología e IA. Cada carta es común, rara, épica o legendaria; cada sobre por el aula trae al menos
+  una rara. Las cartas son de pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado.
+- **El álbum es una sola lista:** todas las cartas por número. Las que te faltan salen como silueta con «?» en el
+  marco de su rareza. Los cuatro anillos de arriba muestran cuántas tienes de cada rareza: toca uno para ver solo esas.
+  El buscador encuentra una carta tuya por su nombre, y puedes ordenar por número, por rareza o ver solo tus
+  repetidas. El botón de la cuadrícula cambia entre 3 y 4 columnas, y tu teléfono lo recuerda.
+- **Al tocar una carta:** si la tienes, se abre en grande. Si te falta y alguien la tiene repetida, puedes pedirle el
+  cambio; si nadie la tiene, Vinci te dice cómo ganar sobres.
 - **Las caras no son públicas:** el arte de una carta con personas reales está cifrado en GitHub. Solo lo abre la
   clave que va dentro del enlace de Vinci; sin ese enlace, la carta muestra sus iniciales.
 - **Solo lo nuevo cuenta:** el álbum empieza el día que tu Vinci lo estrena; lo que entregaste o te calificaron antes
@@ -401,14 +407,26 @@ funciona en un grupo.
 
 También puedes pedir un cambio desde el álbum, sin escribir el comando:
 
-1. Abre la pestaña «🔁 Cambios» del álbum. El botón «🔁 Ver los cambios» de `/cambio` la abre directo, y también
+1. Toca el botón «🔁 Cambios», arriba en el álbum. El botón «🔁 Ver los cambios» de `/cambio` lo abre directo, y también
    «🔁 Cambiar mi repetida», que aparece al final de un sobre que trajo una repetida.
 2. Mira tus repetidas y las cartas que te faltan y otra persona tiene repetidas, con su nombre en la carta.
 3. Toca una carta. Elige a quién se la pides, si la tienen varias, y cuál de tus repetidas das.
 4. Toca «Pedir el cambio en WhatsApp». Se abre tu chat con Vinci con el `/cambio` ya escrito: envíalo.
 
-La pestaña muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
+«Cambios» muestra las repetidas del momento en que Vinci te mandó el enlace. Si alguien ya cambió esa carta, Vinci
 te lo dice al recibir tu `/cambio`.
+
+### El ranking del álbum
+
+Por WhatsApp, el ranking muestra quién tiene más cartas distintas del álbum. Nadie sale en él hasta que lo pide.
+
+1. Escribe `/ranking entrar`. Vinci te pone en el ranking y te lo muestra, con 🥇, 🥈 y 🥉 para los tres primeros.
+2. Escribe `/ranking` cuando quieras verlo. Si dos tienen las mismas cartas, va primero el que tiene más legendarias.
+3. Toca el botón «🏆 Ver el ranking» para verlo en el álbum. En el álbum también está el botón «🏆 Ranking», al lado de
+   «🔁 Cambios».
+4. Escribe `/ranking salir` para salir. Puedes volver cuando quieras.
+
+`/ranking` también funciona en un grupo. Cuenta solo a quien tiene su Vinci: el capitán y cada amigo con su token.
 
 ## Tu Académico de ESPOL
 
@@ -443,12 +461,37 @@ Académico»: te llega otro botón.
 - **Qué lee de «Información General»:** tu promedio general, tu avance en la carrera y los créditos que te faltan,
   tal como los muestra el portal. No guarda tu identificación, tu nombre, tu grupo étnico ni tu foto, que están en
   la misma página.
-- **Qué no calcula:** el promedio es el del portal, nunca uno sacado de tus notas. Qué materias te faltan para
-  graduarte depende de tu malla, con sus optativas, convalidaciones y requisitos, y Vinci todavía no la lee: te da el
-  avance y los créditos que dice el portal, sin restar las aprobadas de un total.
+- **Qué no calcula:** el promedio es el del portal, nunca uno sacado de tus notas. Los créditos que te faltan son
+  los que dice el portal en cada categoría, nunca una resta de las aprobadas a un total.
 - **Necesita el relé** ([cómo publicarlo](whatsapp.md#vinci-en-whatsapp)): por ahí la página recibe la imagen del CAPTCHA y
   ve cómo va el ingreso.
 - **Cada amigo con lo suyo.** El Vinci de un amigo le manda su propio botón y guarda su copia en su carpeta.
+
+### Planear tu matrícula
+
+Con la copia del Académico, Vinci te ayuda a elegir qué tomar el próximo semestre.
+
+1. Pregúntale «¿qué materias puedo tomar el próximo semestre?» o «¿cuánto me falta?». Vinci te dice los créditos que
+   te faltan en cada categoría de tu carrera (formación profesional, educación general, prácticas…), como los cuenta
+   el portal.
+2. Si Vinci no tiene tu malla, te la pide. Mándale una foto o el PDF de la malla de tu carrera: está en la página de
+   tu carrera en espol.edu.ec.
+3. Vinci te dice cuántas materias leyó y lo que no se lee bien. Revísalo y dile que está bien: recién ahí la guarda.
+4. Desde ahí te dice qué materias ya puedes tomar, primero las que abren más materias, y cuáles todavía no, con el
+   prerrequisito que te falta.
+
+Pregúntale también «¿cuánto me sube el promedio si saco 9 en Redes?». La cuenta la hace un script con los créditos de
+cada materia, y Vinci te la da como un estimado: el portal no publica su fórmula exacta.
+
+## El calendario de ESPOL
+
+Vinci lee una vez al día el [calendario de grado](https://www.espol.edu.ec/es/vida-politecnica/calendario-grado) de
+la web de ESPOL: feriados, inicio y fin de clases, semanas de exámenes, vacaciones y cuándo empieza cada período.
+
+- **En el resumen de las 7:00**, el bloque «🏛️ En ESPOL esta semana» trae lo de esos siete días.
+- **En el chat**, pregúntale «¿hay clases el lunes?», «¿cuándo es el próximo feriado?» o «¿cuándo empiezan las
+  vacaciones?».
+- **Si la web de ESPOL falla**, Vinci sigue con la última copia que leyó y lo intenta otra vez a las 3 horas.
 
 ## El resumen de las 7:00
 
@@ -480,8 +523,9 @@ Ese botón sirve hasta el resumen del día siguiente.
    vez, debajo), una tarea que no entra en ninguna parte del esquema («no sé a qué parte de la nota va») y lo de tu
    lista (📌). Vinci no inventa un peso: cuéntale cómo se evalúa esa materia y la próxima vez entra en el orden.
 
-Lo atrasado va aparte, debajo, con su peso. «¿Qué tengo esta semana?» usa el mismo orden y los mismos pesos. El
-resumen lo arma un script, sin el modelo ni tokens.
+Lo atrasado va aparte, debajo, con su peso. «¿Qué tengo esta semana?» usa el mismo orden y los mismos pesos. Si esa
+semana hay un feriado o algo del [calendario de ESPOL](#el-calendario-de-espol), sale en el bloque «🏛️ En ESPOL esta
+semana». El resumen lo arma un script, sin el modelo ni tokens.
 
 **Lo que no se sube al aula.** Algunas actividades no tienen dónde subir nada en el aula. Vinci lee su consigna para
 saber de cuál se trata:

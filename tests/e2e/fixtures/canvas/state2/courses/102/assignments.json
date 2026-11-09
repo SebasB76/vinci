@@ -1,6 +1,7 @@
 [
   {
     "id": 3001,
+    "score_statistics": {"min": 4.0, "max": 10.0, "mean": 7.25},
     "description": "<p>Resuelvan los ejercicios de vectores. Se califica con la <a href=\"https://docs.google.com/document/d/1RubricaFisicaE2E-privado_00000000000000000/edit?usp=sharing\" target=\"_blank\" rel=\"noopener\">rúbrica de la tarea</a>.</p>",
     "due_at": "2026-09-30T04:59:59Z",
     "unlock_at": null,

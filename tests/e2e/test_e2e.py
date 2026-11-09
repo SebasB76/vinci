@@ -72,7 +72,7 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   then Angel's, one at a time, and the summary the same way, sent once a day even when the pass repeats; his Vinci
   never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; a card trade (/cambio, and the album's «Cambios» tab with Angel's repeats) with the captain,
-  swapped by Angel's vote; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
+  swapped by Angel's vote; /canje (3 repeats for a pack); the ranking, with each person's cards for the album page; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
 
@@ -3313,6 +3313,35 @@ def test_whatsapp_friend(tmp_path):
                       "«/cambio Angel bosque por coliseo» le manda a Angel la oferta con una encuesta, y su «✅ Acepto» "
                       "cambia una repetida de cada uno en los dos álbumes (un segundo voto no hace nada), sin el modelo")
 
+        # 10i''. /canje: 3 repeats for a pack, the commonest first and never a card's last copy
+        def album_only(db, counts):
+            conn = sqlite3.connect(db)
+            conn.execute("DELETE FROM album_cards")
+            conn.commit()
+            conn.close()
+            album_set(db, counts)
+
+        calls = len(llm.requests)
+        album_only(data_dir / "espol.db", {"bosque": 2, "lago": 2})
+        short = text_of(say(captain_jid, captain_jid, "/canje", "Capitán"))
+        assert "necesitas 3 cartas repetidas, y tienes 2" in short, short
+        assert album_of(data_dir / "espol.db") == {"bosque": 2, "lago": 2}, "sin repetidas suficientes no cambia nada"
+        album_only(data_dir / "espol.db", {"bosque": 3, "lago": 2})
+        swapped = say(captain_jid, captain_jid, "/canje", "Capitán")
+        assert "entregaste" in text_of(swapped) and "te llevas un sobre" in text_of(swapped), text_of(swapped)
+        opened = [m for m in swapped if m.get("buttonText") == "🎴 Abrir mi sobre"]
+        assert opened, swapped
+        pack = dashboard_module.decode(opened[0]["url"].split("#d=", 1)[1])["pack"]
+        drawn = [c["id"] for c in pack["cards"]]
+        assert pack.get("swap") and len(set(drawn)) == 3, pack
+        after = album_of(data_dir / "espol.db")
+        spent_back = {c: after.get(c, 0) - drawn.count(c) for c in ("bosque", "lago")}
+        assert spent_back == {"bosque": 1, "lago": 1}, (after, drawn)
+        assert sum(after.values()) == 5, after
+        assert len(llm.requests) == calls, "el canje no usa el modelo"
+        report.append("«/canje» con 2 repetidas dice cuántas faltan y no toca el álbum; con 3 entrega esas 3 (deja una "
+                      "copia de cada carta) y manda un sobre «del canje» de 3 cartas distintas, sin el modelo")
+
         # 10i'. The album ranking (/ranking): nobody is in it until they join; the album's «Ranking» view lists them
         calls = len(llm.requests)
         alone = text_of(say(captain_jid, captain_jid, "/ranking", "Capitán"))
@@ -3328,13 +3357,15 @@ def test_whatsapp_friend(tmp_path):
         board = dashboard_module.decode(page[0]["url"].split("#d=", 1)[1].split("&", 1)[0])["rank"]
         assert board["in"] is True and len(board["people"]) == 2 and [p.get("me") for p in board["people"]].count(1) == 1, \
             board
+        assert all(len(p["c"]) == p["n"] for p in board["people"]), board
         left = text_of(say(angel_jid, angel_jid, "/ranking salir", "Angel"))
         assert "ya no sales en el ranking" in left, left
         after = text_of(say(captain_jid, captain_jid, "/ranking", "Capitán"))
         assert "Angel" not in after and "(tú)" in after, after
         assert len(llm.requests) == calls, "el ranking no usa el modelo"
         report.append("«/ranking» no muestra a nadie hasta que entra; con «/ranking entrar» del capitán y de Angel salen "
-                      "los dos con medallas y el botón «🏆 Ver el ranking» abre esa vista del álbum; «/ranking salir» "
+                      "los dos con medallas y el botón «🏆 Ver el ranking» abre esa vista del álbum, con las cartas de "
+                      "cada uno; «/ranking salir» "
                       "saca a Angel, sin el modelo")
 
         # 10j. The captain lists and removes Angel; then turns the group off

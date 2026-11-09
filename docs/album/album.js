@@ -4,7 +4,8 @@
 // stored encrypted (scripts/album_card.py); the fragment's `k` opens it, so it never shows without Vinci's link.
 // The album is one list of every card by number, filtered by rarity or a search; a missing card is a silhouette in
 // its rarity's frame. «Cambios» lists the cards others have repeated (`trade`) and opens WhatsApp with the «/cambio …».
-// «Ranking» lists who has the most cards among those who joined it (`rank`, espol_bot/ranking.py).
+// «Ranking» lists who has the most cards among those who joined it (`rank`, espol_bot/ranking.py); a tap on someone
+// shows their cards, sent as catalog numbers (`c`). «/canje» trades 3 repeats for a pack.
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
 const TAG = { com: "COMUN", rare: "RARA", epic: "EPICA", leg: "★ LEGENDARIA ★" };
@@ -45,7 +46,9 @@ export function initials(name) {
 async function unlock(data, cards) {
   if (!data.k || !crypto.subtle) return;
   const offered = (data.trade?.people || []).flatMap((p) => Object.keys(p.cards || {}));
-  const wanted = new Set([...Object.keys(data.have || {}), ...(data.pack?.cards || []).map((e) => e.id), ...offered]);
+  const byN = new Map([...cards.values()].map((c) => [c.n, c.id]));
+  const ranked = (data.rank?.people || []).flatMap((p) => (p.c || []).map((n) => byN.get(n)).filter(Boolean));
+  const wanted = new Set([...Object.keys(data.have || {}), ...(data.pack?.cards || []).map((e) => e.id), ...offered, ...ranked]);
   try {
     const key = await crypto.subtle.importKey("raw", bytesOf(data.k), "AES-GCM", false, ["decrypt"]);
     await Promise.all([...wanted].map(async (id) => {
@@ -88,10 +91,10 @@ function openPack(data, cards) {
   const pulled = pack.cards.map((entry) => ({ entry, c: cards.get(entry.id) })).filter((p) => p.c);
   const repeated = Boolean(data.trade) && pulled.some((p) => !p.entry.new);
   document.body.classList.add("opening");
-  app.innerHTML = head(pack.gold ? "Tu sobre dorado" : pack.daily ? "Tu sobre del día" : pack.gift ? "Un sobre de regalo" : "Tu sobre", pack.reason) + `<section class="stage"><div class="ghost"></div><div class="sheet">
+  app.innerHTML = head(pack.gold ? "Tu sobre dorado" : pack.daily ? "Tu sobre del día" : pack.gift ? "Un sobre de regalo" : pack.swap ? "Tu sobre del canje" : "Tu sobre", pack.reason) + `<section class="stage"><div class="ghost"></div><div class="sheet">
       <div class="stack">${pulled.map((p, i) => `<div class="slot" data-i="${i}">${card(p.c, "", p.entry.new ? '<span class="pill hi flag">Nueva</span>' : `<span class="pill flag">×${data.have[p.c.id] || 2}</span>`)}</div>`).reverse().join("")}</div>
       <div class="pack"><div class="pk"><div class="mark">V</div><span class="n3">${pulled.length} cartas</span>
-        <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">${pack.daily ? "de hoy." : pack.gift ? "de regalo." : "de esta semana."}</span></h2><p class="why">${esc(pack.reason)}</p></div><span class="grab"></span></div>
+        <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">${pack.daily ? "de hoy." : pack.gift ? "de regalo." : pack.swap ? "del canje." : "de esta semana."}</span></h2><p class="why">${esc(pack.reason)}</p></div><span class="grab"></span></div>
       <div class="cap"><div class="t">Desliza el sobre hacia arriba</div><div class="h">Tus cartas están debajo.</div></div>
       <div class="foot"><div class="segs">${pulled.map(() => "<i></i>").join("")}</div><button class="btn btn-accent block" type="button">Pegar en mi álbum</button>${repeated ? '<button class="btn btn-quiet block" type="button" data-trade>🔁 Cambiar mi repetida</button>' : ""}</div>
     </div></section>`;
@@ -218,8 +221,16 @@ function wanted(data, cards) {
   return [...found.values()].sort((a, b) => byRarity(-1)(a.c, b.c));
 }
 
+const COST = 3;  // repeats per pack in «/canje» (album.EXCHANGE_COST)
+
 function tradeTab(data, cards, mine) {
   const list = wanted(data, cards);
+  const spare = mine.reduce((sum, c) => sum + data.have[c.id] - 1, 0), wa = data.trade.wa;
+  const swap = spare >= COST
+    ? (wa ? `<a class="btn btn-accent block" href="https://wa.me/${esc(wa)}?text=${encodeURIComponent("/canje")}">Canjear ${COST} repetidas por un sobre</a>`
+      : `<p class="hint">Escríbele a Vinci <b>/canje</b>: entregas ${COST} repetidas y te llevas un sobre.</p>`)
+      + '<p class="hint c">Vinci entrega primero las más comunes y nunca tu última copia.</p>'
+    : `<p class="hint">Con ${COST} repetidas las canjeas por un sobre nuevo. Tienes ${spare}.</p>`;
   const repeats = mine.length
     ? `<div class="chips">${mine.map((c) => `<span class="pill">${esc(c.name)} ×${data.have[c.id]}</span>`).join("")}</div>`
     : '<p class="hint">Todavía no tienes repetidas, y solo se cambian las repetidas. Las que te salgan dos veces aparecen aquí.</p>';
@@ -229,7 +240,7 @@ function tradeTab(data, cards, mine) {
         return `<button class="cell own" type="button" data-want="${esc(c.id)}">${card(c, "s", `<span class="pill hi flag">${esc(plain(who))}</span>`)}</button>`;
       }).join("")}</div>`
     : '<p class="empty-state">Nadie tiene repetida una carta que te falte, por ahora.</p>';
-  return `<section class="trade"><h2 class="sub">Tus repetidas</h2>${repeats}
+  return `<section class="trade"><h2 class="sub">Tus repetidas</h2>${repeats}${swap}
     <h2 class="sub">Te faltan y alguien las tiene repetidas</h2>${grid}</section>`;
 }
 
@@ -312,17 +323,56 @@ function showRanking(data, cards, fresh) {
   document.body.classList.remove("opening");
   const { people = [], wa } = data.rank, total = cards.size;
   const medal = ["🥇", "🥈", "🥉"];
-  const rows = people.map((p, i) => `<li class="${p.me ? "me" : ""}"><span class="pos">${medal[i] || i + 1}</span>
+  const rows = people.map((p, i) => `<li class="${p.me ? "me" : ""}"><button type="button" data-p="${i}"><span class="pos">${medal[i] || i + 1}</span>
       <span class="who">${esc(p.name)}${p.me ? " <b>(tú)</b>" : ""}</span>
-      <span class="sc">${p.n}<small>/${total}</small>${p.leg ? ` <span class="pill">${p.leg} ★</span>` : ""}</span></li>`).join("");
+      <span class="sc">${p.n}<small>/${total}</small>${p.leg ? ` <span class="pill">${p.leg} ★</span>` : ""}</span><span class="go" aria-hidden="true">›</span></button></li>`).join("");
   const join = (word) => wa
     ? `<a class="btn ${word === "entrar" ? "btn-accent" : "btn-quiet"} block" href="https://wa.me/${esc(wa)}?text=${encodeURIComponent(`/ranking ${word}`)}">${word === "entrar" ? "Entrar al ranking" : "Salir del ranking"}</a>`
     : `<p class="hint c">Escríbele a Vinci: <b>/ranking ${word}</b></p>`;
   app.innerHTML = head("Ranking", people.length === 1 ? "1 persona" : `${people.length} personas`) + `
     <button class="btn btn-quiet block" type="button" data-back>← Volver a tu álbum</button>
-    ${rows ? `<ol class="board">${rows}</ol>` : '<p class="empty-state">Todavía nadie entró al ranking.</p>'}
-    ${data.rank.in ? join("salir") : `<p class="hint c">No sales en el ranking: entra solo quien quiere.</p>${join("entrar")}`}`;
+    ${rows ? `<ol class="board">${rows}</ol><p class="hint c">Toca a alguien para ver sus cartas.</p>` : '<p class="empty-state">Todavía nadie entró al ranking.</p>'}
+    ${data.rank.in ? join("salir") : `<p class="hint c">No sales en el ranking: entra solo quien quiere, y quien entra muestra sus cartas.</p>${join("entrar")}`}`;
   app.querySelector("[data-back]").addEventListener("click", () => showAlbum(data, cards, fresh));
+  app.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => {
+    const person = people[Number(b.dataset.p)];
+    if (person.me) showAlbum(data, cards, fresh);
+    else showPerson(data, cards, fresh, person);
+  }));
+}
+
+// Someone's cards from the ranking: only the ones they have, and a filter for the ones you lack.
+function showPerson(data, cards, fresh, person) {
+  const byN = new Map([...cards.values()].map((c) => [c.n, c]));
+  const theirs = (person.c || []).map((n) => byN.get(n)).filter(Boolean).sort((a, b) => a.n - b.n);
+  const have = data.have || {}, lack = theirs.filter((c) => !have[c.id]);
+  let onlyLack = false;
+  app.innerHTML = head(person.name, `${theirs.length} de ${cards.size} cartas`) + `
+    <button class="btn btn-quiet block" type="button" data-back>← Volver al ranking</button>
+    ${lack.length ? `<div class="seg" role="group" aria-label="Qué cartas"><button type="button" data-f="all" aria-pressed="true">Todas ${theirs.length}</button><button type="button" data-f="lack" aria-pressed="false">Te faltan ${lack.length}</button></div>` : ""}
+    <div class="grid"></div>
+    <div class="zoom" aria-hidden="true"><div class="big"></div></div>`;
+  const grid = app.querySelector(".grid"), zoom = app.querySelector(".zoom");
+  const draw = () => {
+    const list = onlyLack ? lack : theirs;
+    grid.innerHTML = list.length
+      ? list.map((c) => `<button class="cell own" type="button" data-id="${esc(c.id)}">${card(c, "s", have[c.id] ? "" : '<span class="pill hi flag">Te falta</span>')}</button>`).join("")
+      : '<p class="empty-state">Todavía no tiene cartas.</p>';
+    app.querySelectorAll("[data-f]").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.f === "lack") === onlyLack)));
+  };
+  draw();
+  app.querySelector("[data-back]").addEventListener("click", () => showRanking(data, cards, fresh));
+  app.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => { onlyLack = b.dataset.f === "lack"; draw(); }));
+  grid.addEventListener("click", (e) => {
+    const own = e.target.closest("[data-id]");
+    if (!own) return;
+    const c = cards.get(own.dataset.id), big = zoom.querySelector(".big");
+    big.classList.toggle("wide", Boolean(c.wide && c.src));
+    big.innerHTML = card(c);
+    zoom.classList.add("on");
+  });
+  zoom.addEventListener("click", () => zoom.classList.remove("on"));
+  window.scrollTo(0, 0);
 }
 
 // Every card in one list, by number: what you have with its art, what you lack as a silhouette in its rarity's frame.

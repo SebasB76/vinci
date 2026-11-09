@@ -221,7 +221,7 @@ uno nuevo no hace falta abrir `secrets.env` ni escribir nada:
 5. Vinci lo verifica con el aula, lo guarda y reanuda la renovación. Te confirma en el chat.
 
 <p align="center">
-  <img src="../../docs/images/token-formulario.png" alt="La página «Conecta tu aula»: los dos pasos para crear el token, el campo para pegarlo y el botón «Enviar cifrado a Vinci»" width="300">
+  <img src="../../docs/images/token-formulario.png" alt="La página «Conecta tu aula»: la hoja del título, los dos pasos para crear el token, el campo para pegarlo (paso 3) y el botón «Enviar cifrado a Vinci»" width="300">
 </p>
 
 Cómo se protege el token:
@@ -292,7 +292,8 @@ sirve para ese tema:
 - **Conceptos y procesos** (Ingeniería de Software, Dirección de Proyectos): código explicado línea por línea, una
   tabla que compara, casos para clasificar, pasos para ordenar y tarjetas para memorizar.
 
-Al final hay un quiz con tu resultado y las fuentes del material. Cuando bajas, una barra arriba cuenta cuántas
+Arriba, una hoja blanca dice la materia, cuánto dura y cuántas preguntas llevas respondidas, con una cápsula por
+respuesta: verde si acertaste, roja si no. Al final hay un quiz con tu resultado y las fuentes del material. Cuando bajas, una barra arriba cuenta cuántas
 preguntas respondiste; tócala para saltar a la siguiente. Al terminar, **Repasar lo que fallé** te lleva a la primera
 que fallaste y **Hacerlo otra vez** reinicia la página. Lo que respondes se queda en la página: Vinci no lo ve. Una pregunta corta la contesta en el chat, y si quieres algo para imprimir, pídele un resumen en PDF. En un
 grupo el botón llega al grupo, y el repaso sale solo del material del curso.
@@ -370,12 +371,12 @@ Para aprobar necesitas un promedio de 58,7 % en lo que falta (como máximo puede
 
 En WhatsApp, si preguntas por todas tus materias («¿cómo voy en notas?», «muéstrame mis notas»), Vinci también te
 manda un botón «📊 Ver mis notas». Abre la página «Tus notas»: una pestaña por materia, la que está en riesgo primero.
-Cada materia muestra lo que necesitas en lo que falta, tus puntos ganados, cuánto ya evaluaron y una barra por
-componente con tus notas. Son las mismas cuentas del chat. La página no guarda nada: tus notas van dentro del enlace,
+Cada materia muestra en grande lo que necesitas en lo que falta (o «Listo», o lo máximo que puedes sacar), una barra
+con tus puntos ganados, lo que falta por evaluar y la meta, y una barra por componente con tus notas. Son las mismas cuentas del chat. La página no guarda nada: tus notas van dentro del enlace,
 después del `#`, y el navegador nunca se lo manda a GitHub.
 
 <p align="center">
-  <img src="../../docs/images/notas.png" alt="La página Tus notas: pestañas por materia, las tres cifras para aprobar y una barra por componente" width="300">
+  <img src="../../docs/images/notas.png" alt="La página Tus notas: pestañas por materia, lo que necesitas en lo que falta, la barra de puntos y una barra por componente" width="300">
 </p>
 <p align="center"><sub>Con datos ficticios.</sub></p>
 
@@ -423,7 +424,8 @@ mi álbum?».
 - **Menos repetidas:** un sobre nunca trae la misma carta dos veces. Una carta que ya tienes sale con menos de la mitad
   de la probabilidad de una que te falta. Las repetidas siguen saliendo, para que puedas cambiarlas. Las cartas son de pixel art, con un marco por rareza: piedra, azul, morado y, la legendaria, dorado.
 - **El álbum es una sola lista:** todas las cartas por número. Las que te faltan salen como silueta con «?» en el
-  marco de su rareza. Los cuatro anillos de arriba muestran cuántas tienes de cada rareza: toca uno para ver solo esas.
+  marco de su rareza. La hoja de arriba dice cuántas cartas tienes y cuántas de cada rareza: toca una rareza para ver
+  solo esas.
   El buscador encuentra una carta tuya por su nombre, y puedes ordenar por número, por rareza o ver solo tus
   repetidas. El botón de la cuadrícula cambia entre 3 y 4 columnas, y tu teléfono lo recuerda.
 - **Al tocar una carta:** si la tienes, se abre en grande. Si te falta y alguien la tiene repetida, puedes pedirle el
@@ -452,8 +454,8 @@ funciona en un grupo.
 
 También puedes pedir un cambio desde el álbum, sin escribir el comando:
 
-1. Toca el botón «🔁 Cambios», arriba en el álbum. El botón «🔁 Ver los cambios» de `/cambio` lo abre directo, y también
-   «🔁 Cambiar mi repetida», que aparece al final de un sobre que trajo una repetida.
+1. Toca «Cambios», debajo del resumen del álbum. El botón «🔁 Ver los cambios» de `/cambio` lo abre directo, y también
+   «Cambiar mi repetida», que aparece al final de un sobre que trajo una repetida.
 2. Mira tus repetidas y las cartas que te faltan y otra persona tiene repetidas, con su nombre en la carta.
 3. Toca una carta. Elige a quién se la pides, si la tienen varias, y cuál de tus repetidas das.
 4. Toca «Pedir el cambio en WhatsApp». Se abre tu chat con Vinci con el `/cambio` ya escrito: envíalo.
@@ -465,7 +467,7 @@ te lo dice al recibir tu `/cambio`.
 
 Si nadie quiere tus repetidas, las canjeas con Vinci: 3 repetidas te dan un sobre de 3 cartas.
 
-1. Escribe `/canje` en tu chat con Vinci. En «🔁 Cambios», el botón «Canjear 3 repetidas por un sobre» abre el chat
+1. Escribe `/canje` en tu chat con Vinci. En «Cambios», el botón «Canjear 3 repetidas por un sobre» abre el chat
    con el comando escrito.
 2. Vinci entrega 3 repetidas y te dice cuáles. Elige primero las más comunes y las que más copias tienen.
 3. Toca «🎴 Abrir mi sobre» para abrir el sobre del canje.
@@ -479,8 +481,8 @@ Por WhatsApp, el ranking muestra quién tiene más cartas distintas del álbum. 
 
 1. Escribe `/ranking entrar`. Vinci te pone en el ranking y te lo muestra, con 🥇, 🥈 y 🥉 para los tres primeros.
 2. Escribe `/ranking` cuando quieras verlo. Si dos tienen las mismas cartas, va primero el que tiene más legendarias.
-3. Toca el botón «🏆 Ver el ranking» para verlo en el álbum. En el álbum también está el botón «🏆 Ranking», al lado de
-   «🔁 Cambios».
+3. Toca el botón «🏆 Ver el ranking» para verlo en el álbum. En el álbum también está «Ranking», al lado de
+   «Cambios», con tu puesto.
 4. Toca a una persona del ranking para ver sus cartas. «Te faltan» muestra solo las que tiene y tú no.
 5. Escribe `/ranking salir` para salir. Puedes volver cuando quieras.
 
@@ -507,8 +509,8 @@ una vez, y guarda una copia en tu PC.
    repitas.
 
 <p align="center">
-  <img src="../../docs/images/academico-usuario.png" alt="La página «Conecta tu Académico»: el campo del usuario de ESPOL y el botón «Siguiente»" width="260">
-  <img src="../../docs/images/academico-captcha.png" alt="El segundo paso: la contraseña, la imagen del CAPTCHA que mandó el Académico y el aviso de que el código no era correcto" width="260">
+  <img src="../../docs/images/academico-usuario.png" alt="La página «Conecta tu Académico» en el paso 1 de 2: el campo del usuario de ESPOL y el botón «Siguiente»" width="260">
+  <img src="../../docs/images/academico-captcha.png" alt="El paso 2 de 2: la contraseña, la imagen del CAPTCHA que mandó el Académico y el aviso de que el código no era correcto" width="260">
 </p>
 
 Desde ahí te contesta con la copia y te dice de cuándo es y de qué período. Para ponerla al día, dile «actualiza mi

@@ -1,65 +1,109 @@
-/* Only what «Tus notas» adds to ../vinci/vinci.css; the reference is the «Notas por materia» screen in
-   experiments/design-system/index.html. */
+/* Only what «Tus notas» adds to ../vinci/vinci.css; the look follows «Tu semana» (docs/dashboard/). */
 button { font: inherit; color: inherit; }
-.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
-.logo { width: 48px; height: 48px; border-radius: 50%; flex: none; background: url("../vinci/logo.png") center / cover; }
+main { gap: 20px; padding-top: 16px; }
 
-.tabs { display: flex; gap: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; padding: 0 6px; }
+.top h1 { margin: 0; font: 500 23px/1.15 var(--display); letter-spacing: -0.015em; white-space: nowrap; }
+.top .mono { margin-left: auto; white-space: nowrap; }
+/* On a narrow phone the right caption drops under the left one instead of breaking mid-phrase. */
+.sum .v-eyebrow { flex-wrap: wrap; row-gap: 2px; }
+.sum .v-eyebrow span { white-space: nowrap; }
+
+/* The subject strip: a .v-seg whose tabs fit their names, so the pill takes the chosen tab's offset and width
+   (notas.js placePill), and the strip scrolls sideways when the subjects do not fit. */
+.tabs { margin-top: -8px; border-radius: 999px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { display: inline-flex; align-items: center; gap: 7px; padding: 6px 14px 6px 6px; border: 0; border-radius: 999px;
-       background: none; color: var(--ink-3); font-size: 14px; white-space: nowrap; cursor: pointer; flex: none;
-       transition: transform 140ms var(--ease-out); }
+.track { position: relative; display: flex; gap: 2px; width: max-content; min-width: 100%; padding: 4px; border-radius: 999px; background: var(--panel); }
+.track .ind { position: absolute; top: 4px; bottom: 4px; left: 0; width: var(--w, 0); border-radius: 999px; background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 2px 8px rgb(0 0 0 / .04); transform: translateX(var(--x, 0)); }
+.tabs[data-ready] .ind { transition: transform 250ms var(--ease-out), width 250ms var(--ease-out); }
+.tab { position: relative; flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px;
+  padding: 0 14px; border: 0; border-radius: 999px; background: none; font: 500 14px var(--sans); color: var(--ink-3); white-space: nowrap;
+  cursor: pointer; transition: color 150ms var(--ease-out), transform 140ms var(--ease-out); }
 .tab:active { transform: scale(0.97); }
+.tab[aria-selected="true"] { color: var(--ink); }
 /* A long subject name would fill the strip and hide the others. */
-.tab .nm { max-width: 11em; }
-.tab[aria-selected="true"] { background: var(--card); color: var(--ink); }
-.tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--late); }
+.tab .nm { max-width: 10em; }
+.tab .dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--k); }
+.tab .risk { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--late); box-shadow: 0 0 0 2px var(--late-bg); }
 
-.av { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
-      font-size: 11.5px; font-weight: 500; color: var(--ink); background: var(--sub, var(--line-soft)); }
-.av.lg { width: 48px; height: 48px; font-size: 14px; }
-.tab .av { width: 26px; height: 26px; font-size: 10px; }
-.c0 { --sub: var(--c0); } .c1 { --sub: var(--c1); } .c2 { --sub: var(--c2); } .c3 { --sub: var(--c3); } .c4 { --sub: var(--c4); }
+/* A subject switch slides the new subject in from the side of the tab that was tapped; only the first load staggers. */
+.view { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+.view.enter { animation: enter 220ms var(--ease-out); }
+@keyframes enter { from { opacity: 0; transform: translateX(var(--dx, 0)); } }
+.first .view > * { animation: rise 320ms var(--ease-out) both; }
+.first .view > :nth-child(2) { animation-delay: 50ms; } .first .view > :nth-child(3) { animation-delay: 95ms; }
+.first .view > :nth-child(4) { animation-delay: 135ms; } .first .view > :nth-child(n + 5) { animation-delay: 170ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
-.sheet { display: grid; gap: 14px; }
-.head h2 { margin: 0; font-size: 22px; font-weight: 400; letter-spacing: -0.3px; line-height: 1.2; }
-.lab { font-size: 13px; color: var(--ink-3); }
+/* The summary sheet. */
+.sum .ttl { margin: 4px 0 0; font: 500 21px/1.2 var(--display); letter-spacing: -0.015em; overflow-wrap: break-word; }
+.hero { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 12px; margin-top: 22px; }
+.big { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.big b { font: 400 68px/0.86 var(--display); letter-spacing: -0.045em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.big b small { margin-left: 2px; font-size: 0.5em; letter-spacing: -0.02em; }
+.big span { font-size: 14.5px; line-height: 1.25; color: var(--ink-2); white-space: nowrap; }
+.big.late b { color: var(--late); }
+.big.ok b { color: var(--deep); }
+.big.word b { font-size: 58px; letter-spacing: -0.04em; }
+.lt { display: inline-flex; align-items: center; gap: 7px; flex: none; padding-bottom: 4px; font-size: 13.5px; font-weight: 500;
+  white-space: nowrap; color: var(--late); }
+.lt i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.lt.ok { color: var(--deep); }
 
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.tile { border-radius: var(--r-sm); padding: 16px 6px 13px; text-align: center; background: var(--paper); }
-.tile .n { font-size: 24px; letter-spacing: -0.6px; line-height: 1.1; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tile .l { font-size: 12px; line-height: 1.25; color: var(--ink-3); margin-top: 3px; }
-.tile.hi { background: var(--accent); color: var(--on-accent); }
-.tile.hi .l { color: rgb(0 0 0 / .62); }
-.tile.late { background: var(--late-bg); }
-.tile.late .n { color: var(--late); }
-.tile.done { background: var(--done-bg); }
-.tile.done .n { color: var(--done); }
-.say { font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+/* Out of 100 points: secured, still to earn up to the maximum, lost; the dark line is the target. */
+.meter { position: relative; margin-top: 30px; }
+.bar { display: flex; gap: 2px; height: 12px; }
+.bar i { min-width: 2px; border-radius: 3px; }
+.bar i:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.bar i:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+.bar .got { flex: 0 1 calc(var(--got, 0) * 1%); background: var(--k); }
+.bar .can { flex: 0 1 calc((var(--top, 0) - var(--got, 0)) * 1%); background: var(--c); }
+.bar .lost { flex: 1 1 0; background: repeating-linear-gradient(-45deg, var(--line-soft) 0 3px, transparent 3px 6px); }
+.goal { position: absolute; top: -4px; bottom: -4px; left: calc(var(--goal, 0) * 1%); width: 2px; margin-left: -1px; border-radius: 2px; background: var(--ink); }
+.goal .mono { position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--ink); white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend .aim { margin-left: auto; }
+.sw { width: 8px; height: 8px; border-radius: 2px; }
+.sw.got { background: var(--k); } .sw.can { background: var(--c); }
+.sw.line { width: 2px; height: 11px; border-radius: 1px; background: var(--ink); }
+.say { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); font-size: 14px; line-height: 1.4; color: var(--ink-2); }
 
-.gl { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-4); }
-.gl b { color: var(--ink-3); font-weight: 500; }
-.ins { display: grid; grid-template-columns: 1fr 46px; gap: 7px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line-soft); }
-.gl + .ins, .lab + .ins { border-top: 0; }
-.ins .nm { font-size: 14px; overflow-wrap: anywhere; }
-.ins .nm span { color: var(--ink-4); font-size: 12.5px; }
-.ins .sc { grid-row: span 2; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; text-align: center; padding: 5px 0; border-radius: 999px; background: var(--sub); }
-.ins .sc.none { background: var(--line-soft); color: var(--ink-3); }
-.ins .gr { grid-column: 1 / -1; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+/* Componentes. */
+/* A long period name keeps its words: the caption drops to the next line instead. */
+.grp .v-cap { flex-wrap: wrap; row-gap: 2px; }
+.grp .v-cap h2 { max-width: 100%; overflow-wrap: break-word; }
+.grp .v-cap .mono { margin-left: auto; text-align: right; }
+.comps { padding: 2px 16px; }
+.exc { padding: 12px 0 2px; overflow-wrap: anywhere; }
+.comp { display: grid; gap: 8px; padding: 13px 0; }
+.comp + .comp { border-top: 1px solid rgb(0 0 0 / .06); }
+.comp .row { display: flex; align-items: baseline; gap: 10px; }
+.comp .nm { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; line-height: 1.28; overflow-wrap: anywhere; }
+.comp .nm .mono { margin-left: 8px; font-weight: 400; white-space: nowrap; }
+.comp .sc { flex: none; font: 400 22px/1 var(--display); font-variant-numeric: tabular-nums; }
+.comp .sc.none { color: var(--ink-4); }
+.comp .gr { line-height: 1.5; overflow-wrap: anywhere; }
 .segs { display: flex; gap: 4px; }
 .segs i { flex: 1; height: 7px; border-radius: 9px; background: var(--line-soft); }
-.segs i.on { background: var(--sub); }
-.segs.blank i { background: none; border-top: 2px dotted var(--line); height: 0; margin-top: 3px; border-radius: 0; }
+.segs i.on { background: var(--k); }
+.segs.blank i { height: 0; margin-top: 3px; border-top: 2px dotted var(--line); border-radius: 0; background: none; }
 
 .note { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-radius: 16px;
-        box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 13.5px; line-height: 1.4; color: var(--ink-3); }
+  box-shadow: inset 0 0 0 1px var(--line); font-size: 13.5px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
 .note svg.i { width: 16px; height: 16px; margin-top: 1px; }
 .note b { color: var(--ink); }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .empty { text-align: center; padding: 28px 16px; color: var(--ink-3); }
-.empty b { display: block; font-size: 17px; font-weight: 400; color: var(--ink); margin-bottom: 4px; }
-.foot { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; color: var(--ink-4); margin-top: 6px; text-align: center; }
+.empty b { display: block; margin-bottom: 4px; font: 500 18px var(--display); color: var(--ink); }
+.foot { text-align: center; }
 
-@media (prefers-reduced-motion: reduce) { .tab:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .first .view > * { animation: none; }
+  .view.enter { animation: fade 150ms ease; }
+  @keyframes fade { from { opacity: 0; } }
+  .tabs[data-ready] .ind { transition: none; }
+  .tab:active { transform: none; }
+}

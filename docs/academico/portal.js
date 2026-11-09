@@ -67,7 +67,7 @@ function init() {
   const publicKey = params.get("k") || "";
   const relay = params.get("r") || "";  // the CSP lets the page reach workers.dev only
   const mailbox = new URLSearchParams(location.hash.slice(1)).get("m") || "";
-  const status = $("status"), wait = $("wait"), waitText = $("wait-text");
+  const status = $("status"), wait = $("wait"), waitText = $("wait-text"), step = $("step");
   const userForm = $("user-form"), loginForm = $("login-form");
   const user = $("user"), password = $("password"), code = $("code"), captcha = $("captcha");
   const say = (text, kind = "error") => {
@@ -96,11 +96,13 @@ function init() {
     const answered = (state.handled || 0) >= sent;
     if (state.state === "user") {
       show("user");
+      step.textContent = "paso 1 de 2";
       busy(userForm, !answered);
       say(state.error || "");
       if (answered && !state.error) user.focus();
     } else if (state.state === "login") {
       show("login");
+      step.textContent = "paso 2 de 2";
       busy(loginForm, !answered);
       if (typeof state.captcha === "string" && state.captcha.startsWith("data:image/")) {
         captcha.src = state.captcha;
@@ -110,6 +112,7 @@ function init() {
       if (answered) (password.value ? code : password).focus();
     } else if (state.state === "working") {
       show("wait");
+      step.textContent = "leyendo";
       waitText.textContent = state.message || "Leyendo tu Académico…";
       say("");
     } else if (FINAL.has(state.state)) {
@@ -117,8 +120,10 @@ function init() {
       wait.dataset.still = "1";
       show("wait");
       password.value = code.value = "";
-      waitText.textContent = state.message || "";
+      // The page draws its own tick for «done», so the message's ✅ would say it twice.
+      waitText.textContent = (state.message || "").replace(/^✅\s*/u, "");
       say(state.state === "done" ? "🔒 Tu contraseña no se guardó en ningún lado." : "", "ok");
+      step.textContent = state.state === "done" ? "listo" : "";
       if (state.state === "done") document.body.dataset.done = "1";
     }
   }

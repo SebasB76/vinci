@@ -274,6 +274,12 @@ svg.i {
 .trust li svg.i { width: 16px; height: 16px; margin-top: 1px; }
 .trust b { color: var(--ink); }
 
+/* A subject's two tones: .k<hue> sets --k (strong: dots, bars) and --c (pastel: fills). */
+.k0 { --k: var(--k0); --c: var(--c0); } .k1 { --k: var(--k1); --c: var(--c1); } .k2 { --k: var(--k2); --c: var(--c2); }
+.k3 { --k: var(--k3); --c: var(--c3); } .k4 { --k: var(--k4); --c: var(--c4); }
+
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
 /* A small caption in mono: dates, counts, «semana 7 de 17». */
 .mono { font: 400 11.5px var(--mono); letter-spacing: .02em; color: var(--ink-3); }
 

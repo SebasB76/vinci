@@ -4,6 +4,7 @@
 
 const SVG = "http://www.w3.org/2000/svg";
 const INK = "#000000", INK3 = "#70685C", LINE = "#CDC6BC", SOFT = "#ECE8E2", ACCENT = "#7AF3C2", LATE = "#B5432E";
+const TODAY = "#E9FBF3", DEEP = "#13704F";
 const CURVES = ["#000000", "#1E9E6E", "#7C5CD6"];
 
 export function readFragment(hash) {
@@ -115,7 +116,6 @@ function niceStep(range, target = 5) {
 let uid = 0;
 
 const ICONS = {
-  book: '<path d="M4 19.5V5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2Zm0 0A2 2 0 0 0 6 22h13"/><path d="M9 8h6M9 11h4"/>',
   tip: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.5.4.8 1 .8 1.6V16h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0 0 12 3Z"/>',
   warning: '<path d="M12 4l9 16H3zM12 10v4M12 17h.01"/>',
   key: '<path d="M12 3l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.3 6.8 19l1-5.8L3.6 9.1l5.8-.8z"/>',
@@ -198,8 +198,8 @@ function prose(text, cls = "prose") {
 let score, watcher;
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function counts(c, n) {
+  score.parts.push({ card: c, total: n, done: 0, missed: 0, at: score.total });
   score.total += n;
-  score.parts.push({ card: c, total: n, done: 0, missed: 0 });
 }
 function goTo(target) {
   target.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
@@ -217,15 +217,22 @@ function answered(c, right) {
   if (right) score.right += 1;
   try { navigator.vibrate?.(right ? 10 : [18, 50, 18]); } catch { /* no vibration here */ }
   const all = score.done === score.total, share = score.right / score.total;
-  score.bar.querySelector(".pill").textContent = all ? `${score.right} de ${score.total} bien` : `${score.done} de ${score.total}`;
-  score.bar.querySelector(".pill").className = all && share === 1 ? "pill ok" : "pill";
+  const tally = score.bar.querySelector(".bar-n");
+  tally.textContent = all ? `${score.right} de ${score.total} bien` : `${score.done} de ${score.total}`;
+  tally.classList.toggle("ok", all && share === 1);
   score.bar.querySelector(".go").textContent = all ? "Resultado" : "Siguiente";
-  score.bar.querySelector(".meter i").style.width = `${(score.done / score.total) * 100}%`;
+  score.bar.querySelector(".meter i").style.transform = `scaleX(${score.done / score.total})`;
+  const sheet = score.sheet;
+  sheet.querySelector(".big b").textContent = String(score.done);
+  sheet.querySelector(".caps").children[part.at + part.done - 1]?.classList.add(right ? "ok" : "bad");
+  const hits = sheet.querySelector(".hits");
+  hits.hidden = false;
+  hits.lastChild.textContent = `${score.right} bien`;
   const s = score.card;
   s.hidden = false;
   s.querySelector(".big").textContent = `${score.right} de ${score.total}`;
-  s.querySelector(".meter i").style.width = `${(score.right / score.total) * 100}%`;
-  s.querySelector(".say-end").textContent = !all ? `Te faltan ${score.total - score.done} por responder.`
+  s.querySelector(".meter i").style.transform = `scaleX(${score.right / score.total})`;
+  s.querySelector(".say-end").textContent = !all ? score.total - score.done === 1 ? "Te falta 1 por responder." : `Te faltan ${score.total - score.done} por responder.`
     : share === 1 ? "Todo bien. Ya lo dominas." : share >= 0.6 ? "Bien. Vuelve a mirar las que fallaste."
     : "Vuelve a leer la explicación y hazlo otra vez.";
   s.classList.toggle("all", all && share === 1);
@@ -233,13 +240,21 @@ function answered(c, right) {
   s.querySelector(".missed").hidden = share === 1;
 }
 
-function card(title, kind, extra) {
+const KICKERS = { formula: "fórmula", function_plot: "gráfica", distribution: "distribución", steps: "ejercicio resuelto",
+  flashcards: "tarjetas", quiz: "ponte a prueba", sequence: "diagrama de secuencia", compare: "comparación", classify: "clasifica",
+  order: "ordena", code: "código", diagram: "diagrama", score: "tu resultado", sources: "de dónde sale" };
+const hint = (text) => el("span", "mono hint", text);
+
+function card(title, kind, extra, kicker = KICKERS[kind]) {
   const c = el("section", "card");
   c.dataset.block = kind;
-  const head = el("div", "lab hd");
-  head.append(el("h2", null, title || ""));
-  if (extra) head.append(extra);
-  if (title || extra) c.append(head);
+  if (kicker || extra) {
+    const head = el("div", "kick");
+    head.append(el("span", "mono", kicker || ""));
+    if (extra) head.append(extra);
+    c.append(head);
+  }
+  if (title) c.append(el("h2", "bt", title));
   return c;
 }
 
@@ -282,7 +297,7 @@ const BLOCKS = {
   },
 
   function_plot(b) {
-    const c = card(b.title, "function_plot", el("span", "pill", "toca la gráfica"));
+    const c = card(b.title, "function_plot", hint("toca la gráfica"));
     const curves = b.curves.map((cv) => ({ ...cv, fn: (() => { try { return compile(cv.expr); } catch { return () => NaN; } })() }));
     const env = Object.fromEntries(b.params.map((p) => [p.name, p.value]));
     const [x0, x1] = b.x, W = 320, H = 210, PAD = { l: 30, r: 8, t: 8, b: 20 };
@@ -382,7 +397,7 @@ const BLOCKS = {
   },
 
   flashcards(b) {
-    const c = card(b.title || "Tarjetas", "flashcards", el("span", "pill", "toca para voltear"));
+    const c = card(b.title, "flashcards", hint("toca para voltear"));
     let i = 0, back = false;
     const face = el("button", "flash");
     face.type = "button";
@@ -392,7 +407,7 @@ const BLOCKS = {
     face.addEventListener("click", () => { back = !back; show(); });
     function show() {
       face.className = back ? "flash back" : "flash";
-      face.replaceChildren(el("span", "k", back ? "Respuesta" : `Tarjeta ${i + 1} de ${b.cards.length}`),
+      face.replaceChildren(el("span", "k mono", back ? "respuesta" : `tarjeta ${i + 1} de ${b.cards.length}`),
                            inline(back ? b.cards[i].back : b.cards[i].front, el("span", "q")));
       dots.replaceChildren(...b.cards.map((_, k) => el("i", k === i ? "on" : null)));
       prev.disabled = i === 0;
@@ -406,8 +421,8 @@ const BLOCKS = {
   },
 
   quiz(b) {
-    const tally = el("span", "pill", `0 de ${b.questions.length}`);
-    const c = card(b.title || "Ponte a prueba", "quiz", tally);
+    const tally = hint(`0 de ${b.questions.length}`);
+    const c = card(b.title, "quiz", tally);
     let right = 0, done = 0;
     counts(c, b.questions.length);
     b.questions.forEach((q, qi) => {
@@ -425,7 +440,7 @@ const BLOCKS = {
           why.append(el("b", null, ok ? "Bien. " : "Casi. "), inline(q.explanation));
           opts.after(why);
           tally.textContent = `${right} de ${b.questions.length}`;
-          if (done === b.questions.length && right === done) tally.className = "pill ok";
+          if (done === b.questions.length && right === done) tally.classList.add("ok");
           answered(c, ok);
         });
         opt.append(inline(q.options[oi]));
@@ -461,8 +476,8 @@ const BLOCKS = {
   },
 
   classify(b) {
-    const tally = el("span", "pill", `0 de ${b.cases.length}`);
-    const c = card(b.title || "Clasifica", "classify", tally);
+    const tally = hint(`0 de ${b.cases.length}`);
+    const c = card(b.title, "classify", tally);
     counts(c, b.cases.length);
     const stage = el("div", "stage");
     c.append(stage);
@@ -482,21 +497,21 @@ const BLOCKS = {
           why.append(el("b", null, ok ? "Bien. " : "Casi. "), inline(cs.explanation));
           stage.append(why);
           if (i < b.cases.length - 1) stage.append(button("btn btn-quiet sm", "Siguiente caso", () => { i += 1; show(); }));
-          else if (right === b.cases.length) tally.className = "pill ok";
+          else if (right === b.cases.length) tally.classList.add("ok");
           answered(c, ok);
         });
         chip.append(inline(o));
         all.push([chip, oi]);
         chips.append(chip);
       });
-      stage.replaceChildren(el("span", "lab", `Caso ${i + 1} de ${b.cases.length}`), inline(cs.text, el("p", "case")), chips);
+      stage.replaceChildren(el("span", "mono", `caso ${i + 1} de ${b.cases.length}`), inline(cs.text, el("p", "case")), chips);
     }
     show();
     return c;
   },
 
   order(b) {
-    const c = card(b.title || "Ordena", "order", el("span", "pill", "toca en orden"));
+    const c = card(b.title, "order", hint("toca en orden"));
     counts(c, 1);
     const slots = el("ol", "slots"), chips = el("div", "chips"), after = el("div", "stage");
     c.append(slots, chips, after);
@@ -542,7 +557,7 @@ const BLOCKS = {
   },
 
   code(b) {
-    const c = card(b.title, "code", b.language ? el("span", "pill", b.language) : null);
+    const c = card(b.title, "code", null, b.language ? `código · ${b.language}` : "código");
     const pre = el("pre", "code"), say = el("p", "say");
     const lines = b.code.split("\n");
     c.append(pre, say);
@@ -605,7 +620,8 @@ function pmfs(dist, prm, kmax) {
 }
 
 function distribution(b) {
-  const c = card(b.title, "distribution", el("span", "pill", "desliza"));
+  const NAMES = { normal: "normal", binomial: "binomial", poisson: "de Poisson" };
+  const c = card(b.title, "distribution", hint("desliza"), `distribución ${NAMES[b.dist] || ""}`.trim());
   const W = 320, H = 170, PAD = { l: 6, r: 6, t: 10, b: 20 };
   const svg = svgEl("svg", { class: "plot", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": b.title || "Distribución" });
   const tiles = el("div", "tiles");
@@ -700,8 +716,17 @@ function sequence(b) {
   const c = card(b.title, "sequence");
   const n = b.actors.length, W = 320, ROW = 34, TOP = 8;
   const xs = b.actors.map((_, k) => ((k + 0.5) * W) / n);
-  const seg = el("div", "seg");
+  const seg = el("div", "v-seg");
   seg.setAttribute("role", "tablist");
+  seg.style.setProperty("--seg-n", String(b.scenarios.length));
+  seg.append(el("span", "ind"));
+  const tabs = b.scenarios.map((s, k) => {
+    const tab = button("", s.name || `Escenario ${k + 1}`, () => { if (sc !== k) { sc = k; i = 0; draw(); } });
+    tab.setAttribute("role", "tab");
+    seg.append(tab);
+    return tab;
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => seg.setAttribute("data-ready", "")));
   const actors = el("div", "actors");
   actors.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
   b.actors.forEach((a) => actors.append(el("span", null, a)));
@@ -737,12 +762,8 @@ function sequence(b) {
     prev.hidden = i === 0;
     next.className = i === msgs.length ? "btn btn-quiet" : "btn btn-accent";
     next.textContent = i === 0 ? "Empezar" : i === msgs.length ? "Ver de nuevo" : `Paso ${i + 1} de ${msgs.length}`;
-    seg.replaceChildren(...b.scenarios.map((s, k) => {
-      const tab = button("", s.name || `Escenario ${k + 1}`, () => { sc = k; i = 0; draw(); });
-      tab.setAttribute("role", "tab");
-      tab.setAttribute("aria-selected", String(k === sc));
-      return tab;
-    }));
+    tabs.forEach((tab, k) => tab.setAttribute("aria-selected", String(k === sc)));
+    seg.style.setProperty("--seg-at", String(sc));
   }
   draw();
   return c;
@@ -861,8 +882,8 @@ function diagram(b) {
     const on = i ? new Set(b.tour[i - 1].nodes) : null;
     nodeGs.forEach(({ g, rect }, v) => {
       g.setAttribute("opacity", !on || on.has(v) ? 1 : 0.35);
-      rect.setAttribute("fill", on?.has(v) ? ACCENT : "#F1EDE7");
-      rect.setAttribute("stroke", on?.has(v) ? INK : LINE);
+      rect.setAttribute("fill", on?.has(v) ? TODAY : "#F1EDE7");
+      rect.setAttribute("stroke", on?.has(v) ? DEEP : LINE);
     });
     edgeGs.forEach(({ g, path, e, tag }) => {
       const lit = on && on.has(e.from) && on.has(e.to);
@@ -883,14 +904,35 @@ function diagram(b) {
 
 // -- the page -----------------------------------------------------------------------------------------------------
 
+// The subject's pastel and strong tone, picked by its name as on «Tu semana» (dashboard.js hue).
+function hue(name) {
+  let h = 0;
+  for (const ch of String(name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 5;
+}
+
+// The summary sheet: subject and length, the title, and once there is something to answer, how many are done with
+// one capsule per answer (green right, red wrong).
 function header(data) {
-  const head = el("header", "head");
-  const sq = el("div", "isq");
-  sq.append(icon("book"));
-  const text = el("div");
-  text.append(el("h1", null, data.title));
-  text.append(el("div", "meta", [data.subject, `repaso de ${data.minutes} min`].filter(Boolean).join(" · ")));
-  head.append(sq, text);
+  const head = el("header", "v-sheet sum");
+  const brow = el("div", "v-eyebrow"), who = el("span", "who");
+  if (data.subject) who.append(el("i", "dot"), el("span", "ellipsis", data.subject));
+  who.append(el("span", "len", `${data.subject ? "· " : ""}repaso de ${data.minutes || 1} min`));
+  brow.append(who);
+  head.append(brow, el("h1", "ttl", data.title || "Repaso"));
+  if (!score.total) return head;
+  const hero = el("div", "hero"), big = el("div", "big"), label = el("span");
+  label.append(`de ${score.total}`, el("br"), score.total === 1 ? "respondida" : "respondidas");
+  big.append(el("b", null, "0"), label);
+  const hits = el("span", "hits");
+  hits.hidden = true;
+  hits.append(el("i"), el("span"));
+  hero.append(big, hits);
+  const caps = el("div", "caps");
+  caps.setAttribute("aria-hidden", "true");
+  if (score.total > 16) caps.classList.add("thin");
+  for (let k = 0; k < score.total; k += 1) caps.append(el("i"));
+  head.append(hero, caps);
   return head;
 }
 
@@ -908,7 +950,7 @@ function progressBar(data) {
   inner.tabIndex = -1;
   const row = el("span", "bar-row"), meter = el("span", "meter");
   meter.append(el("i"));
-  row.append(el("span", "bar-t", data.title || "Repaso"), el("span", "go", "Siguiente"), el("span", "pill", `0 de ${score.total}`));
+  row.append(el("span", "bar-t", data.title || "Repaso"), el("span", "go", "Siguiente"), el("span", "mono bar-n", `0 de ${score.total}`));
   inner.append(row, meter);
   inner.addEventListener("click", () => goTo(nextOpen()));
   bar.append(inner);
@@ -916,7 +958,7 @@ function progressBar(data) {
 }
 
 function resultCard(app, data) {
-  const s = card("Tu resultado", "score");
+  const s = card("", "score");
   s.classList.add("score");
   s.hidden = true;
   const meter = el("div", "meter"), acts = el("div", "acts");
@@ -931,21 +973,26 @@ function resultCard(app, data) {
   });
   acts.append(missed, again);
   acts.hidden = true;
-  s.append(el("div", "big", ""), meter, el("p", "say-end prose"), acts);
+  const top = el("div", "res");
+  top.append(el("div", "big", ""), el("span", "res-l", "bien"));
+  s.append(top, meter, el("p", "say-end prose"), acts);
   return s;
 }
 
 export function render(app, data) {
   document.title = data.title || "Repaso";
-  score = { right: 0, done: 0, total: 0, card: null, bar: null, parts: [] };
+  score = { right: 0, done: 0, total: 0, card: null, bar: null, sheet: null, parts: [] };
   watcher?.disconnect();
-  const head = header(data);
-  const parts = [head];
+  app.className = data.subject ? `k${hue(data.subject)}` : "";
+  const parts = [];
   for (const block of data.blocks || []) {
     const make = BLOCKS[block.type];
     if (!make) continue;
     try { parts.push(make(block)); } catch (err) { console.error("block", block.type, err); }
   }
+  const head = header(data);
+  score.sheet = head;
+  parts.unshift(head);
   if (score.total) {
     score.card = resultCard(app, data);
     score.bar = progressBar(data);
@@ -955,7 +1002,7 @@ export function render(app, data) {
     watcher.observe(head);
   }
   if (data.sources?.length) {
-    const s = card("De dónde sale", "sources");
+    const s = card("", "sources");
     const list = el("ul", "sources");
     for (const src of data.sources) {
       const li = el("li");
@@ -972,7 +1019,7 @@ export function render(app, data) {
     s.append(list);
     parts.push(s);
   }
-  parts.push(el("p", "foot", "Vinci armó este repaso. Lo que respondas se queda en esta página."));
+  parts.push(el("p", "mono foot", "Vinci armó este repaso. Lo que respondas se queda en esta página."));
   app.replaceChildren(...parts);
   app.dataset.ready = "1";
 }

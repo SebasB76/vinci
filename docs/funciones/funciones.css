@@ -1,78 +1,92 @@
-/* «Todo lo que hace Vinci»: every feature by topic, each with an example the student sends with one tap. */
-.head .isq { font-size: 24px; }
+/* «Todo lo que hace Vinci»: only what it adds to ../vinci/vinci.css. Every feature by topic, each with an example the
+   student sends with one tap. */
+main { gap: 12px; padding-top: 16px; }
 
-.chips {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  gap: 8px;
-  margin: 0 -16px;
-  padding: 10px 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  background: var(--paper);
-  overscroll-behavior-x: contain;
-}
-.chips::-webkit-scrollbar { display: none; }
-.chip {
-  flex: none;
-  height: 36px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--ink-2);
-  font: 500 14px var(--sans);
-  cursor: pointer;
-  transition: background-color 140ms var(--ease-out), transform 140ms var(--ease-out);
-}
+/* Each topic takes one subject tone; the «Nuevo» topic takes the accent. */
+.fresh { --k: var(--accent-2); --c: var(--today); }
+
+/* The summary sheet. */
+.sum { margin-bottom: 4px; }
+.sum .ttl { margin: 4px 0 0; font: 500 21px/1.2 var(--display); letter-spacing: -0.015em; }
+.big { display: flex; align-items: baseline; gap: 10px; margin-top: 22px; min-width: 0; }
+.big b { font: 400 76px/0.82 var(--display); letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+.big span { font-size: 14.5px; line-height: 1.25; color: var(--ink-2); white-space: nowrap; }
+.big.wide b { font-size: 60px; }
+/* One capsule per feature, grouped by topic: the page's whole map at a glance. */
+.caps { display: flex; gap: 7px; height: 30px; margin-top: 22px; }
+.caps .grp { flex: 1 1 0; display: flex; gap: 2px; min-width: 0; }
+/* A group is as wide as its count of features (9 at most), so every capsule has the same width. */
+.grp.n2 { flex-grow: 2; } .grp.n3 { flex-grow: 3; } .grp.n4 { flex-grow: 4; } .grp.n5 { flex-grow: 5; }
+.grp.n6 { flex-grow: 6; } .grp.n7 { flex-grow: 7; } .grp.n8 { flex-grow: 8; } .grp.n9 { flex-grow: 9; }
+.caps i { flex: 1; min-width: 2px; border-radius: 4px; background: var(--k); }
+.caps i.off { opacity: .22; }
+.hint { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft);
+        font-size: 14px; color: var(--ink-2); }
+.hint svg.i { width: 17px; height: 17px; color: var(--ink-3); }
+
+/* The topic strip: a pill track like .v-seg that scrolls sideways; it sticks under the top while the page scrolls. */
+.chips { position: sticky; top: 0; z-index: 2; margin: 0 -16px; padding: 8px 16px; background: var(--paper); }
+.track { display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--panel); overflow-x: auto;
+         scrollbar-width: none; overscroll-behavior-x: contain; }
+.track::-webkit-scrollbar { display: none; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px 0 12px; border: 0;
+        border-radius: 999px; background: transparent; color: var(--ink-3); font: 500 14px var(--sans); white-space: nowrap;
+        cursor: pointer; transition: background-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out),
+        color 150ms var(--ease-out), transform 140ms var(--ease-out); }
+.chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--k); flex: none; }
 .chip:active { transform: scale(0.97); }
-.chip[aria-current="true"] { background: var(--ink); color: var(--paper); }
+.chip[aria-current="true"] { background: var(--card); color: var(--ink);
+                             box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 2px 8px rgb(0 0 0 / .04); }
 
-.topic { scroll-margin-top: 64px; display: grid; gap: 8px; }
-.topic h2 { margin: 14px 4px 2px; font: 400 19px/1.25 var(--serif); }
+/* A topic: its title over its cards. The strip is about 60px tall, so a jump lands under it. */
+.topic { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); scroll-margin-top: 64px; margin-top: 14px; }
+.topic .v-cap { padding-bottom: 0; }
+.topic .v-cap h2 { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.topic .v-cap h2 i { width: 7px; height: 7px; border-radius: 50%; background: var(--k); flex: none; }
 
-.feat { display: grid; gap: 10px; }
+.feat { display: grid; gap: 12px; padding: 16px; border-radius: var(--r-md); background: var(--card); }
 .feat .row { display: flex; gap: 12px; align-items: flex-start; }
-.feat .emo { width: 36px; height: 36px; border-radius: 10px; background: var(--paper); display: grid; place-items: center; font-size: 19px; flex: none; }
+.feat .emo { width: 38px; height: 38px; border-radius: 12px; background: var(--paper); display: grid; place-items: center;
+             font-size: 19px; flex: none; }
+.feat.new .emo { background: var(--today); }
 .feat .x { flex: 1; min-width: 0; }
-.feat h3 { margin: 0; font-size: 15.5px; font-weight: 500; line-height: 1.3; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.feat p { margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--ink-2); overflow-wrap: anywhere; }
-.feat.new { box-shadow: inset 0 0 0 1.5px var(--accent-2); }
+.feat h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 15.5px; font-weight: 500;
+           line-height: 1.3; overflow-wrap: anywhere; }
+.feat h3 span { min-width: 0; }
+.feat h3 .pill { padding: 2px 8px; font: 500 11px/1.4 var(--mono); letter-spacing: .02em; }
+.feat .x p { margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--ink-2); overflow-wrap: anywhere; }
+.feat .how { padding-left: 50px; overflow-wrap: anywhere; }
+.feat .how + .ask { margin-top: -6px; }
 
-/* The example: a chat bubble the student taps to send it to Vinci. */
-.ask {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 12px 10px 14px;
-  border: 0;
-  border-radius: 16px 16px 16px 4px;
-  background: var(--strip);
-  color: var(--ink);
-  font: 400 14.5px/1.35 var(--sans);
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background-color 140ms var(--ease-out), transform 140ms var(--ease-out);
-}
-.ask span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ask svg.i { width: 16px; height: 16px; color: var(--ink-3); }
+/* The example: the student's chat bubble, with the send (or copy) button at its end. */
+.ask { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 7px 7px 7px 14px; border: 0;
+       border-radius: 18px 18px 18px 6px; background: var(--strip); color: var(--ink); font: 400 14.5px/1.35 var(--sans);
+       text-align: left; text-decoration: none; cursor: pointer;
+       transition: background-color 150ms var(--ease-out), transform 140ms var(--ease-out); }
+.ask .q { flex: 1; min-width: 0; padding: 3px 0; overflow-wrap: anywhere; }
+.ask .go { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--card);
+           color: var(--ink-2); transition: background-color 180ms var(--ease-out), color 180ms var(--ease-out); }
+.ask .go svg.i { width: 16px; height: 16px; }
+a.ask .go { background: var(--accent); color: var(--on-accent); }
 .ask:active { transform: scale(0.98); background: var(--line-soft); }
-.ask[data-done] svg.i { color: var(--done); }
-.how { font-size: 13px; color: var(--ink-3); padding-left: 48px; }
+.ask[data-done] .go { background: var(--accent); color: #0B3327; }
 
-.foot { margin: 18px 4px 0; font-size: 13px; line-height: 1.45; color: var(--ink-3); text-align: center; }
+.foot { margin: 22px 8px 0; line-height: 1.5; text-align: center; }
+
+/* First load only: the sheet, the strip and the first topic rise in, about 150ms apart in all. */
+.first > * { animation: rise 320ms var(--ease-out) both; }
+.first > :nth-child(2) { animation-delay: 50ms; }
+.first > :nth-child(3) { animation-delay: 100ms; }
+.first > :nth-child(n + 4) { animation-delay: 150ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
 @media (hover: hover) {
-  .chip:hover { background: var(--line-soft); }
-  .chip[aria-current="true"]:hover { background: var(--ink); }
+  .chip:not([aria-current="true"]):hover { color: var(--ink); }
   .ask:hover { background: var(--line-soft); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chip:active, .ask:active { transform: none; }
+  .first > * { animation-name: fade; }
+  @keyframes fade { from { opacity: 0; } }
 }

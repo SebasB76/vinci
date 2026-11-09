@@ -40,3 +40,12 @@ packages = ["src/aula_core", "src/aula", "src/espol_bot"]
 testpaths = ["tests"]
 # each E2E test builds its own install: one process per test, so the run lasts as long as the slowest
 addopts = "-n 5"
+
+[tool.ruff]
+extend-exclude = ["experiments", "artifacts"]
+# the E2E only runs on the PC's Python, and already uses 3.12 f-string syntax
+per-file-target-version = { "tests/**" = "py312" }
+
+[tool.ruff.lint]
+# Only what is a bug (undefined names, unused imports, syntax errors), so CI can block on it.
+select = ["F", "E9"]

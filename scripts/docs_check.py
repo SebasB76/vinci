@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Warn when a change touches code whose docs did not change in the same branch.
 
-Usage: python3 scripts/docs_check.py [--base origin/main]
+Usage: python3 scripts/docs_check.py [--base origin/main] [--pr-body TEXT]
 
-It only warns (exit 0): a refactor can touch these files without changing anything a person
-sees. The PR body's "Docs:" line says what was updated, or why nothing needed it.
+A refactor can touch these files without changing anything a person sees, so a warning alone
+passes. The PR body's "Docs:" line says what was updated, or why nothing needed it: with
+--pr-body (CI), a warning and no "Docs:" line fail.
 """
 import argparse
 import fnmatch
+import re
 import subprocess
+import sys
 
 FEATURES = ".claude/skills/control-vinci/references/features/"
 GUIDE = "docs/guia/"
@@ -46,7 +49,9 @@ def changed(base: str) -> set[str]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="origin/main")
-    files = changed(ap.parse_args().base)
+    ap.add_argument("--pr-body", help="the PR description; a warning without a \"Docs:\" line in it fails")
+    args = ap.parse_args()
+    files = changed(args.base)
     claimed = set()
     warnings = []
     for code, docs, section in RULES:
@@ -61,6 +66,9 @@ def main() -> None:
     if warnings:
         print("\n".join(warnings))
         print("If no doc needed it, say why in the PR's \"Docs:\" line.")
+        if args.pr_body is not None and not re.search(r"^\s*\**Docs:", args.pr_body, re.MULTILINE):
+            print("❌ the PR body has no \"Docs:\" line")
+            sys.exit(1)
     else:
         print("✅ every changed area has its docs in the change, or needs none")
 

@@ -23,7 +23,6 @@ writes its notebook: the note's text and pictures are stored there before its mo
 
 from __future__ import annotations
 
-import difflib
 import hashlib
 import json
 import logging

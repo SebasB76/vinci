@@ -71,6 +71,11 @@ manda el brief a este chat: repaso de la clase anterior, lo que vence, material 
 para el profesor. Si le respondes, Vinci sabe que hablas de esa materia. Los apuntes de tu computadora (`[notes]
 folder`) también llegan aquí: las preguntas `//vinci` y el resumen con feedback al terminar la clase.
 
+**Novedades y todo lo que hace Vinci.** Cuando Vinci aprende algo nuevo, te llega una vez «🆕 Novedades de Vinci»,
+de día, con un ejemplo para probar cada novedad. Debajo viene el botón «✨ Todo lo que hace Vinci»: una página con
+cada función por tema y un ejemplo que tocas para mandárselo a Vinci, ya escrito. El mismo botón te llega cuando le
+preguntas «¿qué puedes hacer?». Si recién conectas tu aula, no te llegan las novedades: todo es nuevo para ti.
+
 **Tus avisos.** Cada aviso del aula, los recordatorios y el resumen de las 7:00 te llegan a tu chat de WhatsApp, con
 su encuesta en vez de botones. Si le pides un aviso a una hora exacta («avísame a las 6 que imprima el informe»,
 «recuérdame cada hora hasta las 7 que haga el control»), Vinci lo programa y te llega a esa hora, sin el modelo. «Hazme

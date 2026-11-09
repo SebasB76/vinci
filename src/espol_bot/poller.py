@@ -41,7 +41,7 @@ from aula_core.canvas import CanvasError, InvalidTokenError
 from aula_core.config import ConfigError
 from aula_core.store import delete_meta, get_meta, set_meta
 from espol_bot import (agenda, album, dashboard, espol_calendar, health, libros, materias, messages, priority, store,
-                       token_form, watch)
+                       token_form, watch, whats_new)
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 from espol_bot.token_renewal import RenewalError, TokenRenewal
@@ -233,6 +233,7 @@ class Bot:
                 text = messages.welcome(queries.courses(self.conn), len(week), self.cfg.poll_minutes)
                 self.telegram.send(text)
                 set_meta(self.conn, "bot_welcomed", timefmt.iso(now))
+                whats_new.mark_seen(self.conn)  # everything is new to them: no news on top of the welcome
                 self.conn.commit()
                 result.sent.append(text)
             self._report_failures(report.failed, now)
@@ -241,6 +242,7 @@ class Bot:
             self._send_quiz_openings(result, now)
             self._send_peer_review_reminders(result, now)
             result.sent += album.deliver(self.conn, self.cfg, self.telegram, now)
+            result.sent += whats_new.deliver(self.conn, self.cfg, self.telegram, now)
         except TelegramError as exc:
             log.error("%s", exc)
             problems.append(f"Telegram no aceptó un mensaje ({exc})")

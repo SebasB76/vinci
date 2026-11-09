@@ -67,7 +67,7 @@ from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
 from espol_bot import (academic_portal, agenda, album, citations, conversation, dashboard, diapositivas, espol_calendar,
                        grades, grades_page, health, horario, libros, materias, messages, plan, portal_login, priority,
-                       quiz, resumen, store, study_page, submission, token_form, visuales)
+                       quiz, resumen, store, study_page, submission, token_form, visuales, whats_new)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -1643,7 +1643,8 @@ PAGE = ("En WhatsApp: le manda a su chat privado un botón que abre una página,
         "asegurado, lo que necesita para aprobar y el detalle por parcial, las mismas cuentas de grade_status). "
         "«album»: su álbum de cartas (las que tiene y las que le faltan; gana sobres al entregar a tiempo y al sacar "
         "8/10 o más en una lección o un examen). "
-        "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. Una página por "
+        "«token»: el formulario para crear un token nuevo del aula, con una imagen con los pasos. «features»: «Todo "
+        "lo que hace Vinci», cada función con un ejemplo que se manda con un toque. Una página por "
         "respuesta como máximo. Pedida en un grupo, también va a su chat privado.")
 PEOPLE = ("Los profesores y ayudantes de cada materia (nombre, rol «teacher» o «ta», y correo cuando el aula lo "
           "muestra; null si lo esconde) y sus grupos del aula con quién está en cada uno.")
@@ -1658,9 +1659,10 @@ GRADES_FEEDBACK = ("Cada tarea trae «feedback»: los comentarios que dejó el p
                    "«feedback_read: false», todavía no lo leí del aula. «curso» trae el promedio (mean), la nota más alta "
                    "(max) y la más baja (min) del curso en esa tarea, en los mismos puntos; sin «curso», el profe no "
                    "lo muestra.")
-PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "album", "token"],
+PAGE_PROPERTIES = {"page": {"type": "string", "enum": ["deliverables", "grades", "album", "token", "features"],
                             "description": "deliverables: su panel de entregas; grades: sus notas en todas las "
-                                           "materias; album: su álbum de cartas; token: el formulario del token"}}
+                                           "materias; album: su álbum de cartas; token: el formulario del token; "
+                                           "features: «Todo lo que hace Vinci», cada función con un ejemplo"}}
 
 
 def _send_grades(ctx: Ctx, chat: WhatsApp, now: datetime) -> dict:
@@ -1849,7 +1851,7 @@ def _show_page(ctx: Ctx, args: dict) -> dict:
 def _send_page(ctx: Ctx, args: dict) -> dict:
     page = args.get("page")
     if page not in PAGE_PROPERTIES["page"]["enum"]:
-        raise ToolError("page es deliverables, grades, album o token.")
+        raise ToolError("page es deliverables, grades, album, token o features.")
     chat = _whatsapp_chat(ctx)
     if chat is None:
         raise ToolError("En Telegram el panel está en el botón «📋 Entregas» del menú, y /token abre el formulario.")
@@ -1866,6 +1868,16 @@ def _send_page(ctx: Ctx, args: dict) -> dict:
                                "atrasado, en pocas líneas, y que el resto está en el panel."}
         if page == "grades":
             return _send_grades(ctx, chat, now)
+        if page == "features":
+            url = whats_new.page_url(ctx.cfg, now)
+            if not url:
+                raise ToolError("La página de funciones está apagada en esta instalación: cuéntaselo tú en el chat.")
+            chat.send("✨ Todo lo que hago, con un ejemplo para probar cada cosa.",
+                      link={"text": whats_new.BUTTON, "url": url})
+            return {"enviado": f"un botón «{whats_new.BUTTON}» a su chat privado",
+                    "mensaje": "Ya le llegó el botón. Dile en dos o tres líneas lo principal (avisos y entregas del "
+                               "aula, estudiar con su material, su Académico) y que en la página toca un ejemplo para "
+                               "probarlo. No hagas la lista completa."}
         if page == "album":
             found = album.whatsapp_link(ctx.conn, ctx.cfg, now)
             if found is None:

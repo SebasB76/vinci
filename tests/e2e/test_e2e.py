@@ -104,6 +104,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -333,6 +334,9 @@ CURRICULUM = [
 
 
 IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
+DOCUMENT_RE = re.compile(r"\[The user sent a (?:text )?document: '[^']*'\. (?:It|The file) is (?:also )?saved at: (\S+?)(?:\.\s|\])")
+# «entrégalo en …» → the assignment the scripted model hands a file in to
+HAND_IN = {"entrégalo en el informe de laboratorio": 3002}
 REPLY_RE = re.compile(r'\[Replying to[^:]*: "(.+?)"\]', re.S)
 QUIZ_SKILL = 'invoked the "quiz" skill'
 QUIZ_TOPIC = re.compile(r"instruction alongside the skill invocation: (.+)$", re.M)
@@ -629,6 +633,13 @@ class Script:
             return _call("mcp__vinci__chat_reminder", text=GROUP_REMINDER, at=["2026-10-01 09:00", "2026-10-02 12:00"])
         if "avísame mañana a las 9" in text and not called:
             return _call("mcp__vinci__chat_reminder", text=PRIVATE_REMINDER, at=["2026-10-01 09:00"])
+        documents = DOCUMENT_RE.findall(text)
+        hand_in = next((a for words, a in HAND_IN.items() if words in text), None)
+        if documents and hand_in and not called:
+            return _call("mcp__vinci__prepare_submission", assignment_id=hand_in, files=documents)
+        if "mcp__vinci__prepare_submission" in called and results:
+            return {"content": "Te lo mandé: revísalo y vota «Entregar»." if '"proposal"' in results[-1]
+                    else f"No lo preparé: {results[-1].split('</untrusted_tool_result>')[0][-300:]}"}
         flow = (self.plan(text, called, results) or self.portal(text, called, results)
                 or self.exams("vinci", text, called, results)
                 or self.vinci_material(text, called, results) or self.pending(text, called, results)
@@ -2271,6 +2282,46 @@ def test_whatsapp_captain(tmp_path):
         md.append(f"**Capitán**: /quiz integrales dobles → [2 encuestas]; vota la 1; «qué tengo esta semana»; "
                   f"«sigamos con el quiz» → Vinci: {normalize(resumed)} → [la 2/2 otra vez]; vota → "
                   f"{normalize(text_of(score))[:200]}\n")
+
+        # 10m3. A file he sends goes to the assignment he names as it is, with its own name, only on his vote; an
+        # assignment that takes PDF only is refused before any poll.
+        def send_file(name: str, caption: str) -> list[dict]:
+            cached = home / ".hermes" / "cache" / "documents" / f"doc_{uuid.uuid4().hex[:12]}_{name}"
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(b"PK\x03\x04 informe de prueba")
+            mark = len(wa.sent)
+            wa.document(captain_jid, captain_jid, cached, caption, name="Capitán")
+            md.append(f"**Capitán** (privado): [archivo {name}] {caption}\n")
+            got = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if m["path"] == "send"], 120)
+            assert got, fail(f"Vinci no contestó al archivo {name}")
+            return wa.sent[mark:]
+
+        db = sqlite3.connect(data_dir / "espol.db")
+        db.execute("UPDATE assignments SET allowed_extensions = 'pdf' WHERE id = 3002")
+        db.commit()
+        db.close()
+        refused = send_file("informe.docx", "entrégalo en el informe de laboratorio")
+        said = text_of([m for m in refused if m["path"] == "send"])
+        assert "solo acepta pdf" in said and not [m for m in refused if m["path"] == "send-poll"], refused
+        db = sqlite3.connect(data_dir / "espol.db")
+        db.execute("UPDATE assignments SET allowed_extensions = '' WHERE id = 3002")
+        db.commit()
+        db.close()
+        sent = send_file("informe-final.docx", "entrégalo en el informe de laboratorio")
+        shown = [m for m in sent if m["path"] == "send-media"]
+        assert [m.get("fileName") for m in shown] == ["informe-final.docx"], sent
+        assert "«informe-final.docx», tal como me lo mandaste" in shown[0].get("caption", ""), shown
+        poll = next(m for m in sent if m["path"] == "send-poll")
+        assert not canvas.uploads, "nada se sube antes del voto"
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, poll["messageId"], next(o for o in poll["options"] if "Entregar" in o))
+        done = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Entregué" in m.get("message", "")],
+                           60)
+        assert done and "«informe-final.docx»" in text_of(done), fail(f"no confirmó la entrega: {wa.sent[mark:]}")
+        assert [(u["file"], u["type"], u["token"]) for u in canvas.uploads] == [
+            ("informe-final.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", False)]
+        assert canvas.submissions == [{"assignment": 3002, "file_ids": [9001]}], canvas.submissions
+        md.append(f"→ [informe-final.docx con la encuesta] → vota «Entregar» → Vinci: {normalize(text_of(done))}\n")
 
         checked = run([str(VENV_BIN / "vinci-check"), "say", "qué tengo esta semana", "--timeout", "150"], T_VINCI,
                       check=False)

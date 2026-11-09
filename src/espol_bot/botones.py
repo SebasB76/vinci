@@ -170,8 +170,8 @@ def _grading_scheme(cfg: BotConfig, conn, proposal_id: int, save: bool, now: dat
 SUBMISSION_STATE = {
     "submitting": "La estoy entregando; espera un momento.",
     "submitted": "Ya la entregué en el aula.",
-    "cancelled": "La cancelaste. Si quieres entregarla, mándame las fotos otra vez.",
-    "replaced": "Este PDF ya no vale: te mandé uno más nuevo para la misma tarea.",
+    "cancelled": "La cancelaste. Si quieres entregarla, mándame las fotos o los archivos otra vez.",
+    "replaced": "Esta entrega ya no vale: te mandé una más nueva para la misma tarea.",
     "failed": "El aula no la aceptó; mira el mensaje de abajo.",
 }
 
@@ -187,20 +187,20 @@ def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetim
         return _answer("No la entregué", f"👌 Listo, no entregué «{name}».", remove_buttons=True)
     if not store.claim_submission(conn, proposal_id, now):
         return _answer(SUBMISSION_STATE.get(proposal["state"], "Esa entrega ya no está pendiente."))
-    pdf = Path(proposal["pdf"])
+    files = submission.files_of(Path(proposal["pdf"]))
     created = timefmt.parse(proposal["created_at"]) or now
     try:
-        if not pdf.is_file():
-            raise submission.SubmitError("ya no encuentro el PDF en tu PC. Mándame las fotos otra vez.", final=True)
-        assignment = submission.check(cfg.core, proposal["course_id"], proposal["assignment_id"], created)
-        result = submission.submit(cfg.core, proposal["course_id"], proposal["assignment_id"], pdf,
-                                   submission.upload_name(proposal["assignment_name"]))
+        if not files:
+            raise submission.SubmitError("ya no encuentro lo que ibas a entregar. Mándamelo otra vez.", final=True)
+        assignment = submission.check(cfg.core, proposal["course_id"], proposal["assignment_id"], created,
+                                      [f.name for f in files])
+        result = submission.submit(cfg.core, proposal["course_id"], proposal["assignment_id"], files)
     except submission.AlreadySubmitted as exc:
         store.set_submission_state(conn, proposal_id, "submitted", now)
         _mark_submitted(conn, proposal["assignment_id"], exc.submitted_at)
         when = timefmt.human(exc.submitted_at, cfg.core.tz)
         return _answer("Ya estaba entregada", f"✅ El aula ya tiene una entrega de «{name}» del {messages.e(when)}, "
-                                              "posterior a este PDF: no subí otra.", remove_buttons=True)
+                                              "posterior a esta: no subí otra.", remove_buttons=True)
     except submission.SubmitError as exc:
         store.set_submission_state(conn, proposal_id, "failed" if exc.final else "pending", now)
         retry = "" if exc.final else " Puedes volver a pulsar «Entregar»."
@@ -210,7 +210,9 @@ def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetim
     submitted_at = result.get("submitted_at") or timefmt.iso(now)
     _mark_submitted(conn, proposal["assignment_id"], submitted_at)
     pages = proposal["pages"]
-    reply = (f"✅ <b>Entregué «{name}»</b> en el aula: {pages} página{'s' if pages != 1 else ''}, "
+    what = (f"{pages} página{'s' if pages != 1 else ''}" if len(files) == 1 and pages else
+            f"«{messages.e(files[0].name)}»" if len(files) == 1 else f"{len(files)} archivos")
+    reply = (f"✅ <b>Entregué «{name}»</b> en el aula: {what}, "
              f"{messages.e(timefmt.human(submitted_at, cfg.core.tz))}.")
     if result.get("late"):
         reply += " El aula la marcó como atrasada."

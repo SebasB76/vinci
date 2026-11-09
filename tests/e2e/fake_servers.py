@@ -62,6 +62,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import mimetypes
 import re
 import threading
 import time
@@ -122,6 +123,10 @@ class FakeCanvas(_Server):
         # belongs to the same account; the captain's are the rest.
         self.accounts: dict[str, list] = {}
         self.extra: dict[str, list] = {}  # API path → items a test adds to the captain's list there, on any state
+        # A hand-in: each file that reached the upload slot ({name, type, size, token}), and each submission made
+        # with them ({assignment, file_ids}).
+        self.uploads: list[dict] = []
+        self.submissions: list[dict] = []
         self.lock = threading.Lock()
 
     def add_account(self, token: str, fixtures: str, purpose: str = "Vinci") -> None:
@@ -288,6 +293,19 @@ class FakeWhatsApp(_Server):
                                "nativeType": "pttMessage" if kind == "ptt" else "audioMessage",
                                "mediaUrls": [str(path)], "mentionedIds": [], "botIds": [self.BOT],
                                "timestamp": int(time.time()), "fromMe": False})
+        return message_id
+
+    def document(self, chat: str, sender: str, path: Path, caption: str, *, name: str = "") -> str:
+        """A file sent in a private chat as bridge.js reports it: already in Hermes' document cache, named
+        doc_<hex>_<its name>, with what the student wrote as its caption."""
+        message_id = f"E2E{next(self._ids):06d}"
+        with self.lock:
+            self.inbox.append({"messageId": message_id, "chatId": chat, "senderId": sender,
+                               "senderName": name or sender.split("@")[0], "chatName": name, "isGroup": False,
+                               "body": caption, "hasMedia": True, "mediaType": "document",
+                               "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                               "nativeType": "documentMessage", "mediaUrls": [str(path)], "mentionedIds": [],
+                               "botIds": [self.BOT], "timestamp": int(time.time()), "fromMe": False})
         return message_id
 
     def vote(self, chat: str, sender: str, poll_id: str, option: str) -> None:
@@ -473,9 +491,15 @@ class _CanvasHandler(_Quiet):
         with canvas.lock:
             canvas.requests.append(("POST", self.path))
             canvas.times.append(time.time())
+        path = urlsplit(self.path).path
+        if path.startswith("/upload/"):  # the file storage the upload slot points to: no token goes here
+            return self._upload(canvas, int(path.rsplit("/", 1)[1]))
         if not self._authorized(canvas):
             return self._json(401, {"errors": [{"message": "Invalid access token."}]})
-        if urlsplit(self.path).path != "/api/v1/users/self/tokens":
+        hand_in = re.fullmatch(r"/api/v1/courses/\d+/assignments/(\d+)/submissions(/self/files)?", path)
+        if hand_in:
+            return self._hand_in(canvas, int(hand_in[1]), bool(hand_in[2]))
+        if path != "/api/v1/users/self/tokens":
             return self._json(405, {"errors": [{"message": "El bot no puede cambiar el aula"}]})
         length = int(self.headers.get("Content-Length", 0) or 0)
         try:
@@ -493,6 +517,30 @@ class _CanvasHandler(_Quiet):
                 canvas.accounts[token] = canvas.accounts[requester]
             canvas.created.append(token)
             return self._json(200, canvas.token_json(token, fresh=True))
+
+    def _hand_in(self, canvas: FakeCanvas, assignment_id: int, slot: bool):
+        """Canvas's submission steps: an upload slot for a file, then the submission of the files uploaded."""
+        form = parse_qsl(self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)).decode())
+        with canvas.lock:
+            if slot:
+                n = len(canvas.uploads) + 1
+                canvas.uploads.append({"name": dict(form).get("name"), "slot_type": dict(form).get("content_type")})
+                return self._json(200, {"upload_url": f"{canvas.base}/upload/{n}", "file_param": "file",
+                                        "upload_params": {"filename": dict(form).get("name")}})
+            canvas.submissions.append({"assignment": assignment_id,
+                                       "file_ids": [int(v) for k, v in form if k == "submission[file_ids][]"]})
+        return self._json(201, {"assignment_id": assignment_id, "workflow_state": "submitted", "late": False,
+                                "submitted_at": "2026-09-30T18:00:00Z"})
+
+    def _upload(self, canvas: FakeCanvas, n: int):
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        part = re.search(rb'filename="([^"]+)"\r\nContent-Type: ([^\r]+)\r\n\r\n', body)
+        with canvas.lock:
+            if not part or n > len(canvas.uploads):
+                return self._json(400, {"errors": [{"message": "no file"}]})
+            canvas.uploads[n - 1].update(file=part[1].decode(), type=part[2].decode(),
+                                         token=bool(self.headers.get("Authorization")))
+        return self._json(201, {"id": 9000 + n, "display_name": part[1].decode()})
 
     def do_DELETE(self):
         canvas: FakeCanvas = self.server.owner
@@ -558,6 +606,11 @@ class _CanvasHandler(_Quiet):
                               {"X-Rate-Limit-Remaining": "0.0", "Retry-After": "0"})
 
         data = canvas.load(api, account)
+        one = re.fullmatch(r"courses/(\d+)/assignments/(\d+)", api)
+        if data is None and one:  # one assignment, as a hand-in checks it right before uploading
+            found = next((a for a in canvas.load(f"courses/{one[1]}/assignments", account) or []
+                          if a["id"] == int(one[2])), None)
+            data = found and {**found, "submission": {"submitted_at": None, "attempt": 0}}
         if data is None and EMPTY_UNLESS_GIVEN.fullmatch(api):
             data = []
         if data is None:

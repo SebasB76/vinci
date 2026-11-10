@@ -1212,6 +1212,9 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
             # Whisper's model, from the real cache: the temporary HOME would download it on every run
             "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE") or str(Path.home() / ".cache" / "huggingface" / "hub"),
         })
+        # Hermes' Python and Node (~500 MB), from the real store: otherwise each test's HOME gets its own copy in /tmp
+        if (Path.home() / ".hermes" / "tools").is_dir():
+            base_env["HERMES_RUNTIME_DIR"] = str(Path.home() / ".hermes" / "tools")
         # OCR: the real tesseract behind a wrapper that logs each call; while `ocr_off` exists it looks missing
         real_tesseract = shutil.which("tesseract")
         ocr_log, ocr_off = tmp_path / "tesseract.log", tmp_path / "tesseract-off"

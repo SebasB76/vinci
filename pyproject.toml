@@ -40,6 +40,9 @@ packages = ["src/aula_core", "src/aula", "src/espol_bot"]
 testpaths = ["tests"]
 # each E2E test builds its own install: one process per test, so the run lasts as long as the slowest
 addopts = "-n 5"
+# /tmp is RAM here and each E2E test leaves ~500 MB: keep only the last run's failures
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = 1
 
 [tool.ruff]
 extend-exclude = ["experiments", "artifacts"]

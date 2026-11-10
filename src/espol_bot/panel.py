@@ -30,12 +30,15 @@ from urllib.parse import parse_qs, urlparse
 import requests
 
 from aula_core import timefmt
-from aula_core.config import ConfigError, load_secret_values, update_secret_values
+from aula_core.config import REPO_ROOT, ConfigError, load_secret_values, update_secret_values
 from espol_bot import watch
 from espol_bot.config import BotConfig, hermes_root
 
 PAGE = Path(__file__).with_name("panel.html")
 LOGIN_PAGE = Path(__file__).with_name("panel-login.html")
+# The webviews' design system (docs/vinci/), served here too so the panel needs no third party for its fonts.
+DESIGN = REPO_ROOT / "docs" / "vinci"
+DESIGN_TYPES = {".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".png": "image/png"}
 GOOGLE_CLIENT = "PANEL_GOOGLE_CLIENT_ID"  # the OAuth web client of the captain's Google Cloud project
 GOOGLE_EMAIL = "PANEL_GOOGLE_EMAIL"       # the one Google account that may open the panel
 SESSION_SECRET = "PANEL_SESSION_SECRET"   # signs the session cookie after a Google sign-in
@@ -272,7 +275,7 @@ def snapshot(cfg: BotConfig, now: datetime, root: Path | None = None, *, guest: 
             "today": now.astimezone(tz).date().isoformat(), "days": DAYS,
             "gateway": gateway_state(root), "checks": checks, "people": people, "roster": roster(cfg),
             "jobs": jobs, "usage": usage,
-            "sessions": sessions[:30], "leases": leases,
+            "sessions": sessions, "leases": leases,
             "errors": errors,
             "profiles": [{k: p[k] for k in ("name", "kind", "parked")} for p in profiles],
             "model": f"{cfg.hermes_provider}/{cfg.hermes_model}"}
@@ -330,11 +333,11 @@ def roster(cfg: BotConfig) -> list[dict]:
         friends = amigos.load(cfg)
     except (ConfigError, OSError, ValueError, TypeError):
         friends = []
-    entries = [("Tú", None, amigos.ACTIVE, None, cfg.core.db_path.parent, cfg.core.db_path)]
+    entries = [("Tú", None, amigos.ACTIVE, None, cfg.core.db_path.parent, cfg.core.db_path, None)]
     entries += [(f.nombre, f.numero, f.estado, f.agregado or None, amigos.folder(cfg, f),
-                 amigos.folder(cfg, f) / "espol.db") for f in friends]
+                 amigos.folder(cfg, f) / "espol.db", amigos.profile_name(f)) for f in friends]
     rows = []
-    for name, number, joined, since, folder, db in entries:
+    for name, number, joined, since, folder, db, profile in entries:
         meta = _meta(db, keys)
         try:
             wrote = json.loads((folder / PENDING_LOG).read_text())
@@ -342,6 +345,7 @@ def roster(cfg: BotConfig) -> list[dict]:
             wrote = {}
         state = ("sin token" if joined != amigos.ACTIVE else "cortado" if meta.get(REFUSED_KEY) else "funciona")
         rows.append({"name": name, "phone": f"···{number[-3:]}" if number else None, "friend": number is not None,
+                     "profile": profile,
                      "state": state, "since": since, "renewed": meta.get(CURRENT_CREATED),
                      "reminders": int(meta.get("bot_alert_token_count") or 0),
                      "reminded_at": meta.get("bot_alert_token_at"), "form_until": meta.get(token_form.EXPIRES),
@@ -463,10 +467,27 @@ def serve(cfg: BotConfig, port: int, host: str = "127.0.0.1") -> None:
             self._send(status, json.dumps(data, ensure_ascii=False, default=str).encode(),
                        "application/json; charset=utf-8")
 
+        def _design(self, name: str) -> None:
+            files = {f.relative_to(DESIGN).as_posix(): f for f in DESIGN.rglob("*") if f.suffix in DESIGN_TYPES}
+            found = files.get(name)
+            if not found:
+                self._json({"error": "no existe"}, 404)
+                return
+            body = found.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", DESIGN_TYPES[found.suffix])
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self) -> None:  # noqa: N802 (http.server's name)
             url = urlparse(self.path)
             if url.path.startswith("/agente/"):  # its own key and signature, never the viewer's (agent_api.py)
                 agent_api.handle(self, cfg)
+                return
+            if url.path.startswith("/vinci/"):  # public: the same files GitHub Pages serves
+                self._design(url.path.removeprefix("/vinci/"))
                 return
             query = parse_qs(url.query)
             cookies = dict(part.strip().split("=", 1) for part in (self.headers.get("Cookie") or "").split(";")

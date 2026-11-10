@@ -2,116 +2,308 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Vinci · panel</title>
+<meta name="theme-color" content="#F7F4F0">
+<title>Panel de Vinci</title>
+<link rel="icon" href="/vinci/logo.png">
+<link rel="stylesheet" href="/vinci/vinci.css?v=5">
 <style>
-:root{--bg:#0f1115;--card:#171a21;--fg:#e7e9ee;--muted:#8b93a3;--border:#272b35;--ok:#3fb97f;--warn:#e0a63a;
-  --fail:#ef5b5b;--c1:#6c8cff;--c2:#2cc5b3;--c3:#f0b429;--c4:#b07cf2;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
-@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f27;--muted:#646c7a;--border:#e2e5ea;
-  --ok:#1f8f5a;--warn:#b07a12;--fail:#cf3434}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
-header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-h1{font-size:20px;margin:0}
-.muted{color:var(--muted)}.small{font-size:12px}
-.ok{color:var(--ok)}.warn{color:var(--warn)}.fail{color:var(--fail)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.tile,.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
-.tile .k{font-size:12px;color:var(--muted)}.tile .v{font-size:20px;font-weight:600;margin:4px 0 2px}
-.tile .s{font-size:12px;color:var(--muted)}
-h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.grid2{grid-template-columns:1fr}}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:top}
-th{font-weight:500;color:var(--muted);font-size:12px}
-td.n,th.n{text-align:right;font-family:var(--mono);white-space:nowrap}
-tr.click{cursor:pointer}tr.click:hover td{background:rgba(127,127,127,.08)}
-.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--border);color:var(--muted)}
-.checks div{padding:6px 0;border-bottom:1px solid var(--border)}.checks div:last-child{border:0}
-.bars{display:flex;align-items:flex-end;gap:4px;height:150px;border-bottom:1px solid var(--border)}
-.day{flex:1;display:flex;flex-direction:column-reverse;height:100%;min-width:0}
-.day div{min-height:0}.day.today{outline:1px dashed var(--border);outline-offset:2px}
-.chart{position:relative}.day{cursor:default;transition:opacity .12s}
-.bars.hovering .day{opacity:.45}.bars.hovering .day.on{opacity:1}
-.tip{position:absolute;z-index:5;min-width:210px;max-width:280px;pointer-events:none;background:var(--card);
-  border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
-.tip[hidden]{display:none}.tip b{font-size:13px}.tip .row{display:flex;justify-content:space-between;gap:12px;margin-top:3px}
-.tip .row span:last-child{font-family:var(--mono)}.tip hr{border:0;border-top:1px solid var(--border);margin:7px 0}
-.tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
-.labels{display:flex;gap:4px;margin-top:4px}.labels span{flex:1;text-align:center;font-size:10px;color:var(--muted)}
-.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
-.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.scroll{overflow-x:auto}
-#detail{margin-top:12px}
-.step{display:grid;grid-template-columns:70px 90px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
-.step pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.4 var(--mono)}
-.nowrap{white-space:nowrap}
-.err{font-family:var(--mono);font-size:12px;word-break:break-word}
-.sum{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;font-size:13px}.sum b{font-size:18px;margin-right:4px}
-details.how{margin-top:10px;font-size:13px;color:var(--muted)}details.how summary{cursor:pointer;color:var(--fg)}
-details.how p{margin:8px 0 0;max-width:760px}
-button{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer}
+:root { --warn: #946210; --warn-bg: #F6EAD0; }
+main.wrap { max-width: 1080px; gap: 16px; padding-top: calc(20px + env(safe-area-inset-top)); }
+.tnum { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+.done-t { color: var(--done); } .late-t { color: var(--late); } .warn-t { color: var(--warn); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.brand img { width: 48px; height: 48px; border-radius: 14px; flex: none; }
+.brand h1 { margin: 0; font: 500 24px/1.1 var(--display); letter-spacing: -0.015em; }
+.brand .mono { margin-top: 4px; }
+.vitals { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px;
+  background: var(--card); box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-4); flex: none; }
+.dot.done { background: var(--done); } .dot.late { background: var(--late); } .dot.warn { background: #D49A2A; }
+
+.tabs { max-width: 420px; width: 100%; }
+.tabs .badge { background: var(--late-bg); color: var(--late); }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.stat { display: grid; gap: 6px; text-align: left; padding: 14px 16px; border: 0; border-radius: var(--r-md); background: var(--card);
+  color: var(--ink); font: inherit; cursor: pointer; box-shadow: inset 0 0 0 1.5px transparent;
+  transition: box-shadow 160ms var(--ease-out), transform 140ms var(--ease-out); }
+.stat:active { transform: scale(0.98); }
+.stat b { font: 400 40px/0.9 var(--display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.stat span { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--ink-2); }
+.stat[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.stat.static { cursor: default; }
+.stat.static:active { transform: none; }
+
+.search { display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px; min-height: 54px; background: var(--card);
+  border-radius: 999px; transition: box-shadow 160ms var(--ease-out); }
+.search:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+.search svg.i { color: var(--ink-3); }
+.search input { flex: 1; min-width: 0; height: 50px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 16px var(--sans); }
+.search input::placeholder { color: var(--ink-4); }
+.search input::-webkit-search-cancel-button { display: none; }
+.clear { width: 36px; height: 36px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); display: grid; place-items: center;
+  cursor: pointer; transition: background-color 140ms var(--ease-out); }
+.clear:active { background: var(--line-soft); }
+.filters { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 6px; font-size: 13.5px; color: var(--ink-3); }
+.linkbtn { border: 0; background: none; padding: 6px 4px; font: 500 13.5px var(--sans); color: var(--ink); cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-color: var(--line); }
+
+.people { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.pcard { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 14px 16px; border: 0;
+  border-radius: var(--r-md); background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  transition: transform 140ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+.pcard:active { transform: scale(0.98); }
+.pcard .av { grid-row: span 2; }
+.pcard .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.pcard .nm { font-weight: 500; font-size: 15.5px; }
+.pcard .why { font-size: 13.5px; line-height: 1.35; color: var(--ink-2); }
+.pcard .foot { grid-column: 2; display: flex; gap: 12px; margin-top: 4px; }
+.av { width: 42px; height: 42px; border-radius: 50%; background: var(--c); color: var(--k); display: grid; place-items: center; flex: none;
+  font: 500 17px var(--display); }
+.av.me { background: var(--accent); color: var(--on-accent); overflow: hidden; }
+.av.me img { width: 100%; height: 100%; }
+.empty { padding: 28px 16px; text-align: center; color: var(--ink-3); font-size: 14px; background: var(--card); border-radius: var(--r-md); }
+
+details.how { background: var(--card); border-radius: var(--r-md); padding: 0 16px; font-size: 14px; color: var(--ink-2); }
+details.how summary { display: flex; align-items: center; justify-content: space-between; min-height: 52px; cursor: pointer; list-style: none;
+  font-weight: 500; color: var(--ink); }
+details.how summary::-webkit-details-marker { display: none; }
+details.how summary svg { transition: transform 200ms var(--ease-out); }
+details.how[open] summary svg { transform: rotate(180deg); }
+details.how .body { display: grid; gap: 10px; padding: 0 0 16px; max-width: 760px; line-height: 1.45; }
+details.how b { color: var(--ink); }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.sec { display: grid; gap: 0; min-width: 0; }
+.card.flush { padding: 4px 0; overflow: hidden; }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tbl th { padding: 10px 12px 8px; text-align: left; font: 400 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3);
+  white-space: nowrap; }
+.tbl td { padding: 10px 12px; border-top: 1px solid var(--line-soft); vertical-align: top; }
+.tbl th:first-child, .tbl td:first-child { padding-left: 16px; }
+.tbl th:last-child, .tbl td:last-child { padding-right: 16px; }
+.tbl .n { text-align: right; font-family: var(--mono); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tbl .nowrap { white-space: nowrap; }
+.tbl tr.click { cursor: pointer; }
+.tbl tr.click:active td { background: var(--strip); }
+.tbl .sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.err { font: 12px/1.4 var(--mono); word-break: break-word; }
+
+.checks { display: grid; }
+.check { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 11px 16px; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
+.check + .check { border-top: 1px solid var(--line-soft); }
+.check .dot { margin-top: 6px; }
+.check b { color: var(--ink); }
+.check .fix { display: block; margin-top: 2px; color: var(--ink-3); font-size: 12.5px; }
+.who { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line-soft); font-weight: 500; font-size: 14px; }
+.who:first-child { border-top: 0; }
+.who .muted { font-weight: 400; }
+
+.chart { position: relative; padding: 18px 16px 14px; }
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 170px; }
+.day { flex: 1; display: flex; flex-direction: column-reverse; height: 100%; min-width: 0; gap: 2px; border-radius: 6px; cursor: default;
+  transition: opacity 150ms var(--ease-out); }
+.day div { min-height: 0; border-radius: 4px; }
+.bars.hovering .day { opacity: .4; } .bars.hovering .day.on { opacity: 1; }
+.labels { display: flex; gap: 6px; margin-top: 8px; }
+.labels span { flex: 1; text-align: center; font: 10.5px var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; }
+.labels span.today { color: var(--ink); font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+.legend i, .tip i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.tip { position: absolute; z-index: 5; min-width: 220px; max-width: 290px; padding: 12px 14px; border-radius: 16px; background: var(--card);
+  box-shadow: 0 2px 6px rgb(30 25 15 / .08), 0 14px 34px rgb(30 25 15 / .14); pointer-events: none; font-size: 12.5px; }
+.tip .row { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.tip .row span:last-child { font-family: var(--mono); }
+.tip hr { border: 0; border-top: 1px solid var(--line-soft); margin: 8px 0; }
+
+.guest { padding: 10px 14px; border-radius: var(--r-sm); background: var(--warn-bg); color: var(--warn); font-size: 13.5px; }
+
+/* The person's sheet: from the right on a wide screen, from the bottom on a phone. */
+dialog.sheet { position: fixed; inset: 0 0 0 auto; width: min(520px, 100%); max-width: none; height: 100%; max-height: none; margin: 0; padding: 0;
+  border: 0; background: var(--paper); color: var(--ink); box-shadow: -10px 0 40px rgb(30 25 15 / .12);
+  transition: transform 260ms var(--ease-out), opacity 260ms var(--ease-out), overlay 260ms allow-discrete, display 260ms allow-discrete; }
+dialog.sheet:not([open]) { transform: translateX(24px); opacity: 0; }
+@starting-style { dialog.sheet[open] { transform: translateX(24px); opacity: 0; } }
+dialog.sheet::backdrop { background: rgb(20 16 10 / .28); transition: opacity 260ms var(--ease-out), overlay 260ms allow-discrete, display 260ms allow-discrete; }
+dialog.sheet:not([open])::backdrop { opacity: 0; }
+@starting-style { dialog.sheet[open]::backdrop { opacity: 0; } }
+.sheet-in { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 18px 16px calc(28px + env(safe-area-inset-bottom)); display: grid;
+  gap: 14px; align-content: start; }
+.sheet-head { display: flex; align-items: center; gap: 12px; position: sticky; top: -18px; z-index: 2; margin: -18px -16px 0; padding: 18px 16px 12px;
+  background: var(--paper); }
+.sheet-head .av { width: 52px; height: 52px; font-size: 21px; }
+.sheet-head h2 { margin: 0; font: 500 22px/1.1 var(--display); letter-spacing: -0.015em; }
+.sheet-head .t { flex: 1; min-width: 0; }
+.sheet-head .mono { margin-top: 4px; }
+.x { width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: var(--line-soft); color: var(--ink); display: grid; place-items: center;
+  cursor: pointer; transition: transform 140ms var(--ease-out), background-color 140ms var(--ease-out); }
+.x:active { transform: scale(0.94); background: var(--line); }
+.callout { padding: 14px 16px; border-radius: var(--r-md); display: grid; gap: 4px; font-size: 14px; line-height: 1.45; }
+.callout b { font: 500 16px/1.25 var(--display); }
+.callout.done { background: var(--done-bg); color: #1E5434; }
+.callout.late { background: var(--late-bg); color: #7E2D1E; }
+.callout.warn { background: var(--warn-bg); color: #6B460B; }
+.minis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mini { background: var(--card); border-radius: 16px; padding: 12px 14px; display: grid; gap: 4px; }
+.mini b { font: 400 24px/1 var(--display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.mini span { font-size: 12.5px; color: var(--ink-3); }
+.timeline { list-style: none; margin: 0; padding: 4px 0; }
+.timeline li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 10px 16px; font-size: 13.5px; color: var(--ink-2); }
+.timeline li + li { border-top: 1px solid var(--line-soft); }
+.timeline .mono { padding-top: 2px; }
+.spark { display: flex; align-items: flex-end; gap: 4px; height: 56px; padding: 14px 16px 0; }
+.spark div { flex: 1; min-height: 2px; border-radius: 3px; background: var(--k2); }
+.spark div.zero { background: var(--line-soft); }
+.spark-l { display: flex; justify-content: space-between; padding: 6px 16px 12px; }
+.convo { display: grid; gap: 0; }
+.step { display: grid; grid-template-columns: 64px 62px minmax(0, 1fr); gap: 8px; padding: 9px 16px; border-top: 1px solid var(--line-soft); font-size: 13px; }
+.step pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--mono); color: var(--ink-2); }
+.convo-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; font-size: 14px; }
+
+@media (hover: hover) {
+  .pcard:hover, .stat:not(.static):hover { box-shadow: 0 1px 2px rgb(30 25 15 / .05), 0 6px 18px rgb(30 25 15 / .08); }
+  .stat[aria-pressed="true"]:hover { box-shadow: inset 0 0 0 1.5px var(--ink), 0 6px 18px rgb(30 25 15 / .08); }
+  .tbl tr.click:hover td { background: var(--strip); }
+  .x:hover, .clear:hover { background: var(--line); }
+  .linkbtn:hover { text-decoration-color: var(--ink); }
+}
+@media (max-width: 760px) {
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .people { grid-template-columns: minmax(0, 1fr); }
+  .tabs { max-width: none; }
+  dialog.sheet { inset: auto 0 0 0; width: 100%; height: 92dvh; border-radius: 24px 24px 0 0; box-shadow: 0 -10px 40px rgb(30 25 15 / .14); }
+  dialog.sheet:not([open]) { transform: translateY(40px); }
+  @starting-style { dialog.sheet[open] { transform: translateY(40px); opacity: 0; } }
+  .sheet-head { border-radius: 24px 24px 0 0; }
+}
+@media (max-width: 480px) {
+  .stat b { font-size: 32px; }
+  .stat span { font-size: 12.5px; }
+  .stat { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcard:active, .stat:active, .x:active { transform: none; }
+  dialog.sheet, dialog.sheet:not([open]) { transform: none; }
+  @starting-style { dialog.sheet[open] { transform: none; } }
+}
 </style>
 </head>
 <body>
-<main>
-<header>
-  <h1>Vinci · panel</h1>
-  <span class="muted small" id="stamp">cargando…</span>
-</header>
-<section class="tiles" id="tiles"></section>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+</svg>
+<main class="wrap">
+  <header class="top">
+    <div class="brand">
+      <img src="/vinci/logo.png" alt="">
+      <div><h1>Panel de Vinci</h1><p class="mono" id="stamp">cargando…</p></div>
+    </div>
+    <div class="vitals" id="vitals"></div>
+  </header>
+  <p class="guest" id="guest" hidden>Entraste con el enlace: ves todo menos el texto de los chats.</p>
 
-<h2>Personas</h2>
-<div class="card">
-  <div class="sum" id="rosterSum"></div>
-  <div class="scroll"><table id="roster"></table></div>
-  <details class="how"><summary>Cómo funcionan el sondeo y el token</summary>
-    <p><b>Sondeo.</b> Cada 10 minutos, un servicio aparte lee el aula de cada persona con Vinci, una por una: tú
-      primero, después cada amigo. Compara con lo que vio antes y manda un aviso por cada tarea, nota o fecha nueva.</p>
-    <p><b>Renovación del token.</b> ESPOL invalida cada token a la hora. A los 40 minutos, Vinci usa el token actual
-      para crear el siguiente y borra el viejo: la cadena sigue sola, sin que nadie haga nada.</p>
-    <p><b>Token cortado.</b> Si Vinci pasa más de una hora sin renovar (el servidor caído o un deploy largo), el token
-      vence y no queda con qué crear otro. Solo la persona lo arregla: crea un token nuevo en el aula y lo manda con
-      el formulario. Su Vinci se lo pide solo, con el botón, una vez al día hasta que lo haga.</p>
-    <p><b>Sin token.</b> Recibió la invitación (el video, la página de funciones y el enlace), pero nunca mandó su
-      token. El enlace sirve un día; si escribe <code>/token</code>, le llega otro. Hasta entonces Vinci no usa el
-      modelo con esa persona.</p>
-  </details>
-</div>
+  <nav class="v-seg tabs" id="tabs" role="tablist">
+    <span class="ind"></span>
+    <button role="tab" data-tab="personas" aria-selected="true">Personas <span class="badge" id="tabBadge" hidden></span></button>
+    <button role="tab" data-tab="gasto" aria-selected="false">Gasto</button>
+    <button role="tab" data-tab="sistema" aria-selected="false">Sistema</button>
+  </nav>
 
-<h2>Salud de cada Vinci</h2>
-<div class="card checks" id="checks"></div>
+  <section id="tab-personas" class="sec" style="gap:12px">
+    <div class="stats" id="stats"></div>
+    <label class="search">
+      <svg class="i"><use href="#i-search"/></svg>
+      <input id="q" type="search" placeholder="Busca a alguien por nombre o número" autocomplete="off" enterkeyhint="search">
+      <button class="clear" id="qClear" type="button" aria-label="Borrar la búsqueda" hidden><svg class="i"><use href="#i-x"/></svg></button>
+    </label>
+    <div class="filters" id="filters"></div>
+    <div class="people" id="people"></div>
+    <details class="how">
+      <summary>Cómo funcionan el sondeo y el token <svg class="i"><use href="#i-down"/></svg></summary>
+      <div class="body">
+        <p><b>Sondeo.</b> Cada 10 minutos, un servicio aparte lee el aula de cada persona con Vinci, una por una: tú
+          primero, después cada amigo. Compara con lo que vio antes y manda un aviso por cada tarea, nota o fecha nueva.</p>
+        <p><b>Renovación del token.</b> ESPOL invalida cada token a la hora. A los 40 minutos, Vinci usa el token actual
+          para crear el siguiente y borra el viejo: la cadena sigue sola, sin que nadie haga nada.</p>
+        <p><b>Token cortado.</b> Si Vinci pasa más de una hora sin renovar (el servidor caído o un deploy largo), el token
+          vence y no queda con qué crear otro. Solo la persona lo arregla: crea un token nuevo en el aula y lo manda con
+          el formulario. Su Vinci se lo pide solo, con el botón, una vez al día entre las 8:00 y las 21:00.</p>
+        <p><b>Sin conectar.</b> Recibió la invitación (el video, la página de funciones y el enlace), pero nunca mandó su
+          token. El enlace sirve un día; si escribe <code>/token</code>, le llega otro. Hasta entonces Vinci no usa el
+          modelo con esa persona.</p>
+      </div>
+    </details>
+  </section>
 
-<h2>Gasto por día · estimado por Hermes</h2>
-<div class="card chart" id="chart">
-  <div class="bars" id="bars"></div>
-  <div class="tip" id="tip" hidden></div>
-  <div class="labels" id="labels"></div>
-  <div class="legend" id="legend"></div>
-</div>
+  <section id="tab-gasto" class="sec" style="gap:16px" hidden>
+    <div class="stats" id="spendStats"></div>
+    <div class="sec">
+      <div class="v-cap"><h2>Gasto por día</h2><span class="mono">estimado por Hermes</span></div>
+      <div class="card chart" id="chart">
+        <div class="bars" id="bars"></div>
+        <div class="tip" id="tip" hidden></div>
+        <div class="labels" id="labels"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="v-cap"><h2 id="byBotTitle">Gasto por bot</h2></div>
+      <div class="card flush scroll"><table class="tbl" id="byBot"></table></div>
+    </div>
+  </section>
 
-<div class="grid2">
-  <div>
-    <h2 id="byBotTitle">Gasto por bot</h2>
-    <div class="card scroll"><table id="byBot"></table></div>
-  </div>
-  <div>
-    <h2>Tareas automáticas</h2>
-    <div class="card scroll"><table id="jobs"></table></div>
-  </div>
-</div>
-
-<h2>Conversaciones recientes</h2>
-<div class="card scroll"><table id="sessions"></table><div id="detail"></div></div>
-
-<h2>Errores y avisos · últimas 24 h</h2>
-<div class="card scroll"><table id="errors"></table></div>
+  <section id="tab-sistema" class="sec" style="gap:16px" hidden>
+    <div class="sec">
+      <div class="v-cap"><h2>Salud de cada Vinci</h2><span class="mono" id="healthCount"></span></div>
+      <div class="card flush" id="checks"></div>
+    </div>
+    <div class="grid2">
+      <div class="sec">
+        <div class="v-cap"><h2>Tareas automáticas</h2></div>
+        <div class="card flush scroll"><table class="tbl" id="jobs"></table></div>
+      </div>
+      <div class="sec">
+        <div class="v-cap"><h2>Errores y avisos</h2><span class="mono">últimas 24 h</span></div>
+        <div class="card flush scroll"><table class="tbl" id="errors"></table></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="v-cap"><h2>Conversaciones recientes</h2><span class="mono">toca una para ver sus pasos</span></div>
+      <div class="card flush scroll"><table class="tbl" id="sessions"></table><div class="convo" id="detail"></div></div>
+    </div>
+  </section>
 </main>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheetName">
+  <div class="sheet-in">
+    <header class="sheet-head">
+      <span class="av" id="sheetAv"></span>
+      <div class="t"><h2 id="sheetName"></h2><p class="mono" id="sheetSub"></p></div>
+      <button class="x" id="sheetClose" type="button" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+    </header>
+    <div class="sec" id="sheetBody" style="gap:14px"></div>
+    <div class="sec" id="sheetConvo"></div>
+  </div>
+</dialog>
+
 <script>
-const KINDS = {vinci: ["Vinci", "var(--c1)"], materia: ["Bots de materia", "var(--c2)"],
-               amigo: ["Amigos", "var(--c3)"], otro: ["Otros", "var(--c4)"]};
+const KINDS = {vinci: ["Tu Vinci", "var(--k1)"], materia: ["Bots de materia", "var(--k0)"],
+               amigo: ["Amigos", "var(--k2)"], otro: ["Otros", "var(--k3)"]};
+const STATE = {"funciona": {label: "Funciona", cls: "done", many: "funcionan", order: 2},
+               "cortado": {label: "Token cortado", cls: "late", many: "con el token cortado", order: 0},
+               "sin token": {label: "Sin conectar", cls: "warn", many: "sin conectar", order: 1}};
+const LEVEL = {ok: "done", warn: "warn", fail: "late"};
 const $ = id => document.getElementById(id);
 const usd = v => v > 0 && v < 0.005 ? "<$0.01" : "$" + (v >= 10 ? v.toFixed(1) : v.toFixed(2));
 const kTok = v => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(Math.round(v));
@@ -121,71 +313,210 @@ const ago = iso => {
   if (s < 60) return "hace un momento";
   if (s < 3600) return `hace ${Math.round(s / 60)} min`;
   if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
-  return `hace ${Math.round(s / 86400)} d`;
+  const d = Math.round(s / 86400);
+  return d === 1 ? "ayer" : `hace ${d} días`;
 };
 const clock = iso => iso ? new Date(iso).toLocaleString("es-EC", {weekday: "short", day: "numeric", month: "short",
-                                                                  hour: "2-digit", minute: "2-digit",
-                                                                  hour12: false}).replace(/\.?,/g, "") : "—";
-const dayLabel = day => new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric", month: "short"});
-const stamped = iso => iso ? [clock(iso), el("div", {class: "muted small"}, ago(iso))] : "—";
+  hour: "2-digit", minute: "2-digit", hour12: false}).replace(/\.?,/g, "") : "—";
+const date = iso => iso ? new Date(iso).toLocaleDateString("es-EC", {weekday: "short", day: "numeric", month: "short"}).replace(/\.?,/g, "") : "—";
+const dayLabel = day => new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric", month: "short"}).replace(/\.?,/g, "");
 const dur = s => s == null ? "—" : s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} m ${Math.round(s % 60)} s`;
 const shortModel = m => (m || "").replace(/^claude-/, "").replace(/-\d+(-\d+)*$/, "");
-const level = l => ({ok: "ok", warn: "warn", fail: "fail"})[l] || "";
-const ICON = {ok: "✅", warn: "⚠️", fail: "❌"};
+const times = n => n === 1 ? "1 vez" : `${n} veces`;
+const plain = s => (s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const hue = name => [...name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 5;
 
 function el(tag, attrs = {}, ...kids) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
     if (k === "class") node.className = v; else if (k === "style") node.style.cssText = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v === true ? "" : v);
   }
-  for (const kid of kids.flat()) if (kid != null) node.append(kid instanceof Node ? kid : String(kid));
+  for (const kid of kids.flat()) if (kid != null && kid !== false) node.append(kid instanceof Node ? kid : String(kid));
   return node;
 }
-function table(node, head, rows) {
-  node.replaceChildren(el("tr", {}, head.map(([t, n]) => el("th", n ? {class: "n"} : {}, t))), ...rows);
+function table(node, head, rows, empty) {
+  const ths = el("tr", {}, head.map(([t, n]) => el("th", {class: n ? "n" : null}, t)));
+  node.replaceChildren(ths, ...(rows.length ? rows : [el("tr", {}, el("td", {colspan: head.length, class: "muted"}, empty || "Nada por ahora."))]));
 }
-function tile(k, v, s, cls = "") {
-  return el("div", {class: "tile"}, el("div", {class: "k"}, k), el("div", {class: "v " + cls}, v), el("div", {class: "s"}, s));
+// replaceChildren would print a null kid as the text «null».
+const put = (node, ...kids) => node.replaceChildren(...kids.flat().filter(k => k != null && k !== false));
+const pill = (cls, text) => el("span", {class: "pill " + cls}, text);
+function avatar(p, cls = "") {
+  if (!p.friend) return el("span", {class: "av me " + cls}, el("img", {src: "/vinci/logo.png", alt: ""}));
+  return el("span", {class: `av k${hue(p.name)} ${cls}`}, (p.name.trim()[0] || "?").toUpperCase());
+}
+
+let latest = null;
+let ui = {tab: "personas", query: "", state: null, person: null};
+let chart = {};
+
+const profilesOf = p => p.friend ? [p.profile] : latest.profiles.filter(x => x.kind !== "amigo").map(x => x.name);
+const shift = (day, n) => { const t = new Date(day + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+function spendOf(names, days) {
+  const from = shift(latest.today, -days);
+  return latest.usage.filter(u => names.includes(u.profile) && u.day > from).reduce((a, u) => a + u.usd, 0);
+}
+const healthOf = p => (latest.people || []).find(x => x.friend === p.friend && (!p.friend || x.name === p.name));
+
+function why(p) {
+  if (p.state === "funciona") return p.renewed ? `Token renovado ${ago(p.renewed)}.` : "Todo en orden.";
+  if (p.state === "cortado") {
+    const asked = p.reminders ? ` Le pedí reconectar ${times(p.reminders)}.` : p.reminded_at ? " Le pedí reconectar." : " Aún no le pido reconectar.";
+    return (p.renewed ? `Se cortó el ${date(p.renewed)}.` : "Se cortó.") + asked;
+  }
+  const open = p.form_until && new Date(p.form_until) > new Date();
+  return [p.since ? `Invitado el ${date(p.since)}.` : "Invitado.",
+          p.wrote ? `Te escribió ${times(p.wrote)} sin conectar.` : "",
+          open ? "Su enlace sigue vigente." : "Su enlace venció."].filter(Boolean).join(" ");
 }
 
 function render(d) {
-  $("stamp").className = "muted small";
-  $("stamp").textContent = (d.viewer === "guest" ? "Vista con enlace: sin el texto de los chats · " : "") + `Actualizado ${new Date(d.now).toLocaleTimeString("es-EC")} · se actualiza cada 30 s · modelo ${d.model}`;
-  const g = d.gateway;
+  latest = d;
+  $("stamp").className = "mono";
+  $("stamp").textContent = `actualizado ${new Date(d.now).toLocaleTimeString("es-EC", {hour: "2-digit", minute: "2-digit"})} · modelo ${shortModel(d.model)}`;
+  $("guest").hidden = d.viewer !== "guest";
+  renderVitals(d);
+  renderPeople();
+  renderSpend(d);
+  renderSystem(d);
+  if (ui.person && $("sheet").open) renderSheet(false);
+}
+
+function renderVitals(d) {
+  const g = d.gateway, wa = g.platforms.whatsapp;
   const gwOk = g.alive && g.state === "running";
-  const wa = g.platforms.whatsapp;
-  const stuck = d.leases.filter(l => l.stuck);
-  const unanswered = d.sessions.filter(s => s.unanswered);
-  const spend = days => d.usage.filter(u => u.day > shift(d.today, -days)).reduce((a, u) => a + u.usd, 0);
+  const stuck = d.leases.filter(l => l.stuck).length, unanswered = d.sessions.filter(s => s.unanswered).length;
   const errs = d.errors.filter(e => e.level !== "WARNING").reduce((a, e) => a + e.count, 0);
-  $("tiles").replaceChildren(
-    tile("Gateway", gwOk ? "● vivo" : "● " + (g.alive ? g.state : "caído"),
-         [g.restarts != null ? `${g.restarts} reinicios` : null, g.version ? `v${g.version}` : null].filter(Boolean).join(" · ") || "—",
-         gwOk ? "ok" : "fail"),
-    wa ? tile("WhatsApp", "● " + ({connected: "conectado"}[wa.state] || wa.state),
-              wa.error_message || (wa.retrying_since ? "reintentando desde " + clock(wa.retrying_since) : ago(wa.updated_at)),
-              wa.state === "connected" ? "ok" : wa.needs_attention ? "fail" : "warn") : null,
-    tile("Turnos", stuck.length ? `${stuck.length} trabado${stuck.length > 1 ? "s" : ""}` : String(d.leases.length) + " en curso",
-         unanswered.length ? `${unanswered.length} sin respuesta` : `${g.active_agents} agentes activos`,
-         stuck.length || unanswered.length ? "fail" : "ok"),
-    tile("Gasto hoy", usd(spend(1)), "estimado"),
-    tile("Gasto 7 días", usd(spend(7)), `${d.days} días: ${usd(spend(d.days))}`),
-    tile("Errores 24 h", String(errs), `${d.errors.length} tipos con avisos`, errs ? "warn" : "ok"),
+  const chip = (cls, text, title) => el("span", {class: "chip", title}, el("i", {class: "dot " + cls}), text);
+  put($("vitals"), 
+    chip(gwOk ? "done" : "late", gwOk ? "Vinci vivo" : `Vinci ${g.alive ? g.state : "caído"}`, g.version ? `Hermes v${g.version}` : null),
+    wa ? chip(wa.state === "connected" ? "done" : wa.needs_attention ? "late" : "warn",
+              wa.state === "connected" ? "WhatsApp conectado" : `WhatsApp ${wa.state}`, wa.error_message || null) : null,
+    stuck || unanswered ? chip("late", stuck ? `${stuck} turno${stuck > 1 ? "s" : ""} trabado${stuck > 1 ? "s" : ""}` : `${unanswered} sin respuesta`) : null,
+    chip(errs ? "warn" : "done", errs ? `${errs} error${errs > 1 ? "es" : ""} en 24 h` : "Sin errores"));
+}
+
+function renderPeople() {
+  const rows = latest.roster || [];
+  const count = s => rows.filter(p => p.state === s).length;
+  put($("stats"), ...["funciona", "cortado", "sin token"].map(key => [key, STATE[key]]).map(([key, s]) =>
+    el("button", {class: "stat", type: "button", "aria-pressed": String(ui.state === key),
+                  onclick: () => { ui.state = ui.state === key ? null : key; renderPeople(); }},
+       el("b", {class: s.cls + "-t"}, count(key)), el("span", {}, el("i", {class: "dot " + s.cls}), s.many))));
+  const broken = count("cortado");
+  $("tabBadge").hidden = !broken;
+  $("tabBadge").textContent = broken;
+
+  const q = plain(ui.query).trim(), digits = q.replace(/\D/g, "");
+  const shown = rows.filter(p => (!ui.state || p.state === ui.state) &&
+      (!q || plain(p.friend ? p.name : "tú yo vinci").includes(q) || (digits && (p.phone || "").includes(digits))))
+    .sort((a, b) => (a.friend - b.friend) || (STATE[a.state].order - STATE[b.state].order) || a.name.localeCompare(b.name));
+  const filtered = ui.state || q;
+  put($("filters"), 
+    el("span", {}, filtered ? `${shown.length} de ${rows.length} personas` : `${rows.length} personas`),
+    filtered ? el("button", {class: "linkbtn", type: "button", onclick: () => { ui.state = null; setQuery(""); }}, "Ver todas") : null);
+  put($("people"), ...(shown.length ? shown.map(card) :
+    [el("p", {class: "empty"}, q ? `Nadie coincide con «${ui.query.trim()}».` : "Nadie en este estado.")]));
+}
+
+function card(p) {
+  const s = STATE[p.state], names = profilesOf(p);
+  const spend = spendOf(names, 7), chats = latest.sessions.filter(x => names.includes(x.profile)).length;
+  return el("button", {class: "pcard", type: "button", onclick: () => openPerson(p)},
+    avatar(p),
+    el("div", {class: "row1"}, el("span", {class: "nm ellipsis"}, p.friend ? p.name : "Tú"), pill(s.cls, s.label)),
+    el("p", {class: "why"}, why(p)),
+    el("div", {class: "foot mono"},
+       p.phone ? el("span", {}, p.phone) : el("span", {}, "tu número"),
+       el("span", {}, `${usd(spend)} en 7 días`),
+       chats ? el("span", {}, `${chats} chat${chats > 1 ? "s" : ""}`) : null));
+}
+
+function openPerson(p) {
+  ui.person = {name: p.name, friend: p.friend};
+  put($("sheetConvo"), );
+  renderSheet(true);
+  const sheet = $("sheet");
+  if (!sheet.open) sheet.showModal();
+  sheet.querySelector(".sheet-in").scrollTop = 0;
+}
+
+function renderSheet() {
+  const p = (latest.roster || []).find(r => r.name === ui.person.name && r.friend === ui.person.friend);
+  if (!p) { $("sheet").close(); return; }
+  const s = STATE[p.state], names = profilesOf(p);
+  $("sheetAv").replaceWith(Object.assign(avatar(p), {id: "sheetAv"}));
+  $("sheetName").textContent = p.friend ? p.name : "Tu Vinci";
+  $("sheetSub").textContent = [p.phone, p.friend ? p.profile : "vinci y los bots de materia"].filter(Boolean).join(" · ");
+
+  const open = p.form_until && new Date(p.form_until) > new Date();
+  const callout = {
+    "funciona": ["Su Vinci funciona", `Lee su aula cada 10 minutos y renueva el token solo.${p.renewed ? ` La última renovación fue ${ago(p.renewed)}.` : ""}`],
+    "cortado": ["Su token se cortó", `Canvas rechazó su token y Vinci ya no ve su aula. Solo ${p.friend ? "esta persona" : "tú"} lo arregla: crea un token nuevo y lo manda con el formulario. ${p.reminded_at ? `Vinci se lo pidió por última vez ${ago(p.reminded_at)}` : "Vinci se lo pide"} y lo repite una vez al día, de 8:00 a 21:00.`],
+    "sin token": ["Aún no conecta su aula", `Recibió la invitación pero nunca mandó su token. ${open ? `Su enlace sirve hasta el ${clock(p.form_until)}.` : "Su enlace venció: si escribe /token, Vinci le manda otro."}`],
+  }[p.state];
+
+  const events = [
+    p.since && [p.since, "Recibió la invitación de Vinci."],
+    p.renewed && [p.renewed, p.state === "cortado" ? "Última renovación del token que funcionó." : "Vinci renovó su token."],
+    p.reminded_at && [p.reminded_at, `Vinci le pidió reconectar${p.reminders ? ` (${times(p.reminders)} en total)` : ""}.`],
+    p.wrote_at && [p.wrote_at, `Te escribió sin conectar (${times(p.wrote)} en total).`],
+    p.form_until && [p.form_until, open ? "Su enlace del formulario vence." : "Su enlace del formulario venció."],
+  ].filter(Boolean).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+
+  const days = [...Array(latest.days).keys()].map(i => shift(latest.today, i - latest.days + 1));
+  const perDay = days.map(day => latest.usage.filter(u => u.day === day && names.includes(u.profile)).reduce((a, u) => a + u.usd, 0));
+  const top = Math.max(0.0001, ...perDay);
+  const calls = latest.usage.filter(u => names.includes(u.profile)).reduce((a, u) => a + u.calls, 0);
+  const sessions = latest.sessions.filter(x => names.includes(x.profile));
+  const health = healthOf(p);
+  const cap = (title, extra) => el("div", {class: "v-cap"}, el("h2", {}, title), extra ? el("span", {class: "mono"}, extra) : null);
+
+  put($("sheetBody"), 
+    el("div", {class: "callout " + s.cls}, el("b", {}, callout[0]), el("span", {}, callout[1])),
+    el("div", {class: "minis"},
+      el("div", {class: "mini"}, el("b", {}, usd(spendOf(names, 7))), el("span", {}, "gasto en 7 días")),
+      el("div", {class: "mini"}, el("b", {}, Math.round(calls)), el("span", {}, `llamadas en ${latest.days} días`)),
+      el("div", {class: "mini"}, el("b", {class: p.news ? "done-t" : "muted"}, p.state === "sin token" ? "—" : p.news ? "Sí" : "No"),
+         el("span", {}, "le llegaron las novedades"))),
+    el("div", {class: "sec"}, cap("Gasto por día", `${latest.days} días`),
+      el("div", {class: "card flush"},
+        el("div", {class: "spark"}, perDay.map((v, i) => el("div", {class: v ? null : "zero", title: `${dayLabel(days[i])}: ${usd(v)}`,
+          style: `height:${v ? Math.max(6, v / top * 100) : 4}%`}))),
+        el("div", {class: "spark-l mono"}, el("span", {}, dayLabel(days[0])), el("span", {}, "hoy")))),
+    events.length ? el("div", {class: "sec"}, cap("Historia"),
+      el("ol", {class: "timeline card flush"}, events.map(([at, text]) =>
+        el("li", {}, el("span", {class: "mono"}, date(at)), el("span", {}, text))))) : null,
+    health ? el("div", {class: "sec"}, cap("Salud de su Vinci"),
+      el("div", {class: "card flush checks"}, health.checks.map(checkRow))) : null,
+    el("div", {class: "sec"}, cap("Conversaciones", sessions.length ? `${sessions.length}` : null),
+      el("div", {class: "card flush scroll"}, sessionTable(sessions, $("sheetConvo"), !p.friend))),
   );
+}
 
-  renderRoster(d.roster || []);
+function checkRow(c) {
+  return el("div", {class: "check"}, el("i", {class: "dot " + (LEVEL[c.level] || "")}),
+    el("div", {}, el("b", {}, c.name), ": ", c.detail, c.fix && c.level !== "ok" ? el("span", {class: "fix"}, `Arreglo: ${c.fix}`) : null));
+}
 
-  const check = (c, pad = "") => el("div", {style: pad}, `${ICON[c.level] || ""} `, el("b", {}, c.name), ": ", c.detail,
-    c.fix && c.level !== "ok" ? el("span", {class: "muted"}, ` → ${c.fix}`) : null);
-  const worst = cs => cs.some(c => c.level === "fail") ? "fail" : cs.some(c => c.level === "warn") ? "warn" : "ok";
-  const people = d.people || [{name: "Tú", friend: false, checks: d.checks}];
-  $("checks").replaceChildren(...people.flatMap(p => {
-    const bad = p.checks.filter(c => c.level !== "ok");
-    const head = el("div", {}, `${ICON[worst(p.checks)]} `, el("b", {}, p.friend ? `Vinci de ${p.name}` : "Tu Vinci"),
-                    p.friend && !bad.length ? el("span", {class: "muted"}, " · todo en orden") : null);
-    return [head, ...(p.friend ? bad : p.checks).map(c => check(c, "padding-left:22px"))];
-  }));
+function sessionTable(sessions, box, showBot = true) {
+  const t = el("table", {class: "tbl"});
+  table(t, [["Última"], ...(showBot ? [["Bot"]] : []), ["Chat"], ["Mens.", 1], ["Respuesta", 1], ["Costo", 1]],
+    sessions.slice(0, 40).map(s => el("tr", {class: "click", onclick: () => openSession(s, box)},
+      el("td", {class: "nowrap"}, clock(s.last)), showBot ? el("td", {}, s.profile) : null,
+      el("td", {}, pill("", [s.source, s.chat_type].filter(Boolean).join(" · ") || "—")),
+      el("td", {class: "n"}, s.messages),
+      el("td", {class: "n " + (s.unanswered ? "late-t" : s.reply_seconds > 90 ? "warn-t" : "")}, s.unanswered ? "sin respuesta" : dur(s.reply_seconds)),
+      el("td", {class: "n"}, usd(s.usd)))), "Sin conversaciones en estos días.");
+  return t;
+}
+
+function renderSpend(d) {
+  const spend = days => d.usage.filter(u => u.day > shift(d.today, -days)).reduce((a, u) => a + u.usd, 0);
+  const stat = (v, label) => el("div", {class: "stat static"}, el("b", {}, usd(v)), el("span", {}, label));
+  put($("spendStats"), stat(spend(1), "hoy"), stat(spend(7), "últimos 7 días"), stat(spend(d.days), `últimos ${d.days} días`));
 
   const days = [...Array(d.days).keys()].map(i => shift(d.today, i - d.days + 1));
   const byDay = {};
@@ -201,23 +532,21 @@ function render(d) {
   const kinds = Object.keys(KINDS).filter(k => days.some(day => byDay[day]?.kinds[k]));
   const average = days.reduce((a, day) => a + (byDay[day]?.usd || 0), 0) / days.length;
   chart = {...chart, byDay, kinds, average};
-  $("bars").replaceChildren(...days.map(day => {
+  put($("bars"), ...days.map(day => {
     const parts = byDay[day]?.kinds || {};
-    return el("div", {class: "day" + (day === d.today ? " today" : "") + (day === chart.on ? " on" : ""),
-                      "data-day": day, onmouseenter: e => showTip(e.currentTarget),
-                      onclick: e => showTip(e.currentTarget)},
-              kinds.map(k => el("div", {style: `height:${(parts[k] || 0) / top * 100}%;background:${KINDS[k][1]}`})));
+    return el("div", {class: "day" + (day === chart.on ? " on" : ""), "data-day": day,
+                      onmouseenter: e => showTip(e.currentTarget), onclick: e => showTip(e.currentTarget)},
+              kinds.map(k => parts[k] ? el("div", {style: `height:${parts[k] / top * 100}%;background:${KINDS[k][1]}`}) : null));
   }));
   const shown = chart.on && document.querySelector(`.day[data-day="${chart.on}"]`);
   if (shown) showTip(shown); else hideTip();
-  $("labels").replaceChildren(...days.map((day, i) => el("span", {}, i % 2 === (d.days - 1) % 2 ?
-    new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric"}) : "")));
-  $("legend").replaceChildren(...kinds.map(k => el("span", {}, el("i", {style: `background:${KINDS[k][1]}`}), KINDS[k][0])));
+  put($("labels"), ...days.map((day, i) => el("span", {class: day === d.today ? "today" : null},
+    day === d.today ? "hoy" : i % 2 === (d.days - 1) % 2 ? new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "short", day: "numeric"}).replace(/\.?,/g, "") : "")));
+  put($("legend"), ...kinds.map(k => el("span", {}, el("i", {style: `background:${KINDS[k][1]}`}), KINDS[k][0])));
 
   const bot = {};
   for (const u of d.usage) {
-    const key = u.profile + "|" + u.model;
-    const row = bot[key] ||= {profile: u.profile, model: u.model, calls: 0, tokens: 0, usd: 0, last: u.day};
+    const row = bot[u.profile + "|" + u.model] ||= {profile: u.profile, model: u.model, calls: 0, tokens: 0, usd: 0, last: u.day};
     if (u.day > row.last) row.last = u.day;
     row.calls += u.calls; row.tokens += u.input + u.output + u.cache_read + u.cache_write; row.usd += u.usd;
   }
@@ -225,64 +554,37 @@ function render(d) {
   table($("byBot"), [["Bot"], ["Modelo"], ["Último uso"], ["Llamadas", 1], ["Tokens", 1], ["Costo", 1]],
         Object.values(bot).sort((a, b) => b.usd - a.usd).map(r => el("tr", {},
           el("td", {}, r.profile), el("td", {}, shortModel(r.model)), el("td", {class: "nowrap"}, dayLabel(r.last)),
-          el("td", {class: "n"}, Math.round(r.calls)),
-          el("td", {class: "n"}, kTok(r.tokens)), el("td", {class: "n"}, usd(r.usd)))));
+          el("td", {class: "n"}, Math.round(r.calls)), el("td", {class: "n"}, kTok(r.tokens)), el("td", {class: "n"}, usd(r.usd)))));
+}
 
+function renderSystem(d) {
+  const worst = cs => cs.some(c => c.level === "fail") ? "fail" : cs.some(c => c.level === "warn") ? "warn" : "ok";
+  const people = d.people || [{name: "Tú", friend: false, checks: d.checks}];
+  const sick = people.filter(p => worst(p.checks) !== "ok").length;
+  $("healthCount").textContent = sick ? `${sick} de ${people.length} con problemas` : `${people.length} en orden`;
+  put($("checks"), ...people.flatMap(p => {
+    const bad = p.checks.filter(c => c.level !== "ok");
+    return [el("div", {class: "who"}, el("i", {class: "dot " + LEVEL[worst(p.checks)]}), p.friend ? `Vinci de ${p.name}` : "Tu Vinci",
+              !bad.length ? el("span", {class: "muted"}, "· todo en orden") : null),
+            ...(p.friend ? bad : p.checks).map(checkRow)];
+  }));
   table($("jobs"), [["Bot"], ["Tarea"], ["Última"], ["Próxima"], ["Estado"]],
         d.jobs.map(j => el("tr", {title: j.error || j.schedule || ""},
-          el("td", {}, j.profile), el("td", {}, j.name), el("td", {class: "nowrap"}, stamped(j.last_run)),
+          el("td", {}, j.profile), el("td", {}, j.name),
+          el("td", {class: "nowrap"}, j.last_run ? [clock(j.last_run), el("div", {class: "sub"}, ago(j.last_run))] : "—"),
           el("td", {class: "nowrap"}, j.paused ? "—" : clock(j.next_run)),
-          el("td", {class: j.paused ? "muted" : j.status === "ok" ? "ok" : "fail"},
-             j.paused ? "pausada" : j.status === "ok" ? "✓" : `✗ ${j.status || "sin correr"}${j.streak ? ` ×${j.streak}` : ""}`))));
-
-  table($("sessions"), [["Última"], ["Bot"], ["Chat"], ["Mensajes", 1], ["Herram.", 1], ["Tokens", 1],
-                        ["Respuesta", 1], ["Costo", 1]],
-        d.sessions.map(s => el("tr", {class: "click", onclick: () => openSession(s)},
-          el("td", {class: "nowrap"}, clock(s.last)), el("td", {}, s.profile),
-          el("td", {}, el("span", {class: "pill"}, [s.source, s.chat_type].filter(Boolean).join(" · "))),
-          el("td", {class: "n"}, s.messages), el("td", {class: "n"}, s.tools), el("td", {class: "n"}, kTok(s.tokens)),
-          el("td", {class: "n " + (s.unanswered ? "fail" : s.reply_seconds > 90 ? "warn" : "")},
-             s.unanswered ? "sin respuesta" : dur(s.reply_seconds)),
-          el("td", {class: "n"}, usd(s.usd)))));
-
-  table($("errors"), [["Error"], ["Veces", 1], ["Última"], ["Dónde"]],
+          el("td", {}, j.paused ? pill("", "pausada") : j.status === "ok" ? pill("done", "bien") :
+             pill("late", `${j.status || "sin correr"}${j.streak ? ` ×${j.streak}` : ""}`)))),
+        "Las tareas corren como servicios aparte, no como crons de Hermes.");
+  table($("errors"), [["Error"], ["Veces", 1], ["Última"]],
         d.errors.map(e => el("tr", {title: e.sample || ""},
-          el("td", {class: "err " + (e.level === "WARNING" ? "" : "fail")}, e.signature),
-          el("td", {class: "n"}, e.count), el("td", {}, e.last.slice(11, 16)), el("td", {class: "small muted"}, e.sources.join(", ")))));
+          el("td", {}, el("div", {class: "err " + (e.level === "WARNING" ? "" : "late-t")}, e.signature),
+             el("div", {class: "sub"}, e.sources.join(", "))),
+          el("td", {class: "n"}, e.count), el("td", {class: "n"}, e.last.slice(11, 16)))),
+        "Sin errores ni avisos.");
+  const recent = $("sessions");
+  recent.replaceWith(Object.assign(sessionTable(d.sessions.slice(0, 30), $("detail")), {id: "sessions"}));
 }
-
-const STATE = {"funciona": ["✅", "funciona", "ok"], "cortado": ["❌", "token cortado", "fail"],
-               "sin token": ["⏳", "sin conectar", "warn"]};
-const times = n => n === 1 ? "1 vez" : `${n} veces`;
-function why(p) {
-  if (p.state === "funciona") return p.renewed ? `token renovado ${ago(p.renewed)}` : "funciona";
-  if (p.state === "cortado") {
-    const sent = p.reminders ? `le pedí reconectar ${times(p.reminders)}` : p.reminded_at ? "le pedí reconectar" : "aún no le pido reconectar";
-    return [p.renewed ? `se cortó después de ${clock(p.renewed)}` : "se cortó", p.reminded_at ? `${sent}, la última ${clock(p.reminded_at)}` : sent].join(" · ");
-  }
-  const open = p.form_until && new Date(p.form_until) > new Date();
-  return [p.since ? `invitado ${clock(p.since)}` : "invitado",
-          p.wrote ? `te escribió ${times(p.wrote)} sin conectar, la última ${clock(p.wrote_at)}` : "no volvió a escribir",
-          open ? `su enlace sirve hasta ${clock(p.form_until)}` : "su enlace venció"].join(" · ");
-}
-function renderRoster(rows) {
-  const order = {"cortado": 0, "sin token": 1, "funciona": 2};
-  const sorted = [...rows].sort((a, b) => (a.friend - b.friend) || (order[a.state] - order[b.state]) || a.name.localeCompare(b.name));
-  const count = s => rows.filter(p => p.state === s).length;
-  $("rosterSum").replaceChildren(
-    el("span", {}, el("b", {class: "ok"}, count("funciona")), "funcionan"),
-    el("span", {}, el("b", {class: "fail"}, count("cortado")), "con el token cortado"),
-    el("span", {}, el("b", {class: "warn"}, count("sin token")), "sin conectar"));
-  table($("roster"), [["Persona"], ["Estado"], ["Qué pasó"], ["Novedades"]],
-        sorted.map(p => el("tr", {},
-          el("td", {class: "nowrap"}, p.friend ? p.name : "Tú", p.phone ? el("div", {class: "muted small"}, p.phone) : null),
-          el("td", {class: "nowrap " + STATE[p.state][2]}, `${STATE[p.state][0]} ${STATE[p.state][1]}`),
-          el("td", {class: "small"}, why(p)),
-          el("td", {class: "small " + (p.news ? "ok" : "muted")}, p.state === "sin token" ? "—" : p.news ? "✓ le llegaron" : "todavía no"))));
-}
-
-let chart = {};
-let latest = {};
 
 function showTip(bar) {
   const day = bar.dataset.day, data = chart.byDay[day];
@@ -290,26 +592,24 @@ function showTip(bar) {
   document.querySelectorAll(".day.on").forEach(b => b.classList.remove("on"));
   bar.classList.add("on");
   $("bars").classList.add("hovering");
-  const row = (label, value, color) => el("div", {class: "row"},
-    el("span", {}, color ? el("i", {style: `background:${color}`}) : null, label), el("span", {}, value));
+  const row = (label, value, color) => el("div", {class: "row"}, el("span", {}, color ? el("i", {style: `background:${color}`}) : null, label), el("span", {}, value));
   const title = new Date(day + "T12:00").toLocaleDateString("es-EC", {weekday: "long", day: "numeric", month: "short"});
   const tip = $("tip");
   if (!data || !data.usd) {
-    tip.replaceChildren(el("b", {}, title), el("div", {class: "muted", style: "margin-top:4px"}, "Sin gasto este día."));
+    tip.replaceChildren(el("b", {}, title), el("div", {class: "muted"}, "Sin gasto este día."));
   } else {
     const diff = chart.average ? (data.usd / chart.average - 1) * 100 : 0;
     const bots = Object.entries(data.bots).sort((a, b) => b[1].usd - a[1].usd);
     tip.replaceChildren(
       el("div", {class: "row"}, el("b", {}, title), el("b", {}, usd(data.usd))),
-      el("div", {class: "muted small"}, `${diff >= 0 ? "+" : ""}${Math.round(diff)} % frente al promedio de ${usd(chart.average)}`),
+      el("div", {class: "muted"}, `${diff >= 0 ? "+" : ""}${Math.round(diff)} % frente al promedio de ${usd(chart.average)}`),
       el("hr"),
       ...chart.kinds.filter(k => data.kinds[k]).map(k => row(KINDS[k][0], usd(data.kinds[k]), KINDS[k][1])),
       el("hr"),
-      ...bots.slice(0, 5).map(([name, b]) => row(`${name} · ${[...b.models].join("/")}`, usd(b.usd))),
-      ...(bots.length > 5 ? [el("div", {class: "muted small"}, `y ${bots.length - 5} más`)] : []),
+      ...bots.slice(0, 5).map(([name, b]) => row(name, usd(b.usd))),
+      ...(bots.length > 5 ? [el("div", {class: "muted"}, `y ${bots.length - 5} más`)] : []),
       el("hr"),
-      row("Llamadas al modelo", Math.round(data.calls)), row("Tokens", kTok(data.tokens)),
-      row("Costo por llamada", usd(data.usd / Math.max(1, data.calls))));
+      row("Llamadas al modelo", Math.round(data.calls)), row("Tokens", kTok(data.tokens)));
   }
   tip.hidden = false;
   const box = $("chart").getBoundingClientRect(), at = bar.getBoundingClientRect();
@@ -317,7 +617,6 @@ function showTip(bar) {
   tip.style.left = Math.max(8, left + tip.offsetWidth > box.width ? left - tip.offsetWidth - 20 : left) + "px";
   tip.style.top = "12px";
 }
-
 function hideTip() {
   chart.on = null;
   $("tip").hidden = true;
@@ -325,47 +624,77 @@ function hideTip() {
   document.querySelectorAll(".day.on").forEach(b => b.classList.remove("on"));
 }
 
-function shift(day, n) {
-  const t = new Date(day + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10);
-}
-
-async function openSession(s) {
-  const box = $("detail");
-  box.replaceChildren(el("p", {class: "muted"}, "cargando la conversación…"));
+async function openSession(s, box) {
+  put(box, el("p", {class: "convo-head muted"}, "Cargando la conversación…"));
+  box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest"});
   const res = await fetch(`/api/sesion?perfil=${encodeURIComponent(s.profile)}&id=${encodeURIComponent(s.id)}`);
   const d = await res.json();
-  if (!res.ok) { box.replaceChildren(el("p", {class: "fail"}, d.error || "error")); return; }
+  if (!res.ok) { put(box, el("p", {class: "convo-head late-t"}, d.error || "No pude abrirla.")); return; }
   let prev = null;
-  box.replaceChildren(
-    el("p", {}, el("b", {}, `${s.profile} · ${[s.source, s.chat_type].filter(Boolean).join(" · ")}`), " ",
-       d.readable ? "" : el("span", {class: "muted"}, latest.viewer === "guest"
-         ? "(vista con enlace: solo tiempos y herramientas)" : "(chat de un amigo o un grupo: solo tiempos y herramientas)"), " ",
-       el("button", {onclick: () => box.replaceChildren()}, "cerrar")),
+  put(box, 
+    el("div", {class: "convo-head"},
+       el("span", {}, el("b", {}, `${s.profile} · ${clock(s.last)}`), d.readable ? null : el("span", {class: "muted"},
+         latest.viewer === "guest" ? " · solo tiempos y herramientas" : " · chat de un amigo: solo tiempos y herramientas")),
+       el("button", {class: "btn btn-quiet sm", type: "button", onclick: () => box.replaceChildren()}, "Cerrar")),
     ...d.steps.map(st => {
       const gap = prev && st.ts ? st.ts - prev : null; prev = st.ts || prev;
       const what = st.role === "tool" ? `🔧 ${st.tool || "herramienta"}` : st.role === "user" ? "👤 mensaje" :
                    st.role === "assistant" ? (st.calls.length ? `🤖 llama ${st.calls.join(", ")}` : "🤖 responde") : st.role;
       return el("div", {class: "step"},
-        el("span", {class: "muted small"}, st.at ? new Date(st.at).toLocaleTimeString("es-EC") : ""),
-        el("span", {class: "small " + (gap > 60 ? "warn" : "muted")}, gap != null ? `+${dur(gap)}` : ""),
-        el("div", {}, el("div", {}, what, st.text == null && st.chars ? el("span", {class: "muted small"}, ` · ${st.chars} caracteres`) : null),
+        el("span", {class: "mono"}, st.at ? new Date(st.at).toLocaleTimeString("es-EC", {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : ""),
+        el("span", {class: "mono " + (gap > 60 ? "warn-t" : "")}, gap != null ? `+${dur(gap)}` : ""),
+        el("div", {}, el("div", {}, what, st.text == null && st.chars ? el("span", {class: "muted"}, ` · ${st.chars} caracteres`) : null),
            st.text ? el("pre", {}, st.text) : null));
     }));
 }
 
+function setTab(tab) {
+  ui.tab = tab;
+  const buttons = [...document.querySelectorAll("#tabs button")];
+  buttons.forEach((b, i) => {
+    const on = b.dataset.tab === tab;
+    b.setAttribute("aria-selected", String(on));
+    if (on) $("tabs").style.setProperty("--seg-at", i);
+    $("tab-" + b.dataset.tab).hidden = !on;
+  });
+  $("tabs").style.setProperty("--seg-n", buttons.length);
+  if (location.hash.slice(1) !== tab) history.replaceState(null, "", tab === "personas" ? location.pathname : "#" + tab);
+}
+function setQuery(v) {
+  ui.query = v;
+  $("q").value = v;
+  $("qClear").hidden = !v;
+  renderPeople();
+}
+
+document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+$("q").addEventListener("input", e => setQuery(e.target.value));
+$("q").addEventListener("keydown", e => {
+  if (e.key === "Enter") { const first = $("people").querySelector(".pcard"); if (first) first.click(); }
+  if (e.key === "Escape") setQuery("");
+});
+$("qClear").addEventListener("click", () => { setQuery(""); $("q").focus(); });
+$("sheetClose").addEventListener("click", () => $("sheet").close());
+$("sheet").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$("sheet").addEventListener("close", () => { ui.person = null; });
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== $("q") && !$("sheet").open) { e.preventDefault(); setTab("personas"); $("q").focus(); }
+});
+$("bars").addEventListener("mouseleave", hideTip);
+document.addEventListener("click", e => { if (!e.target.closest(".day")) hideTip(); });  // a tap elsewhere, on a phone
+
 async function refresh() {
   try {
     const res = await fetch("/api/estado", {cache: "no-store"});
-    if (!res.ok) throw new Error("el enlace ya no sirve o venció; pide uno nuevo");
-    latest = await res.json();
-    render(latest);
+    if (!res.ok) throw new Error(res.status === 404 ? "tu sesión venció; recarga la página para entrar de nuevo" : `error ${res.status}`);
+    render(await res.json());
   } catch (e) {
-    $("stamp").textContent = "No pude leer el estado: " + e;
-    $("stamp").className = "fail small";
+    $("stamp").textContent = "No pude leer el estado: " + (e.message || e);
+    $("stamp").className = "mono late-t";
   }
 }
-$("bars").addEventListener("mouseleave", hideTip);
-document.addEventListener("click", e => { if (!e.target.closest(".day")) hideTip(); });  // a tap elsewhere, on a phone
+setTab(["gasto", "sistema"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "personas");
+requestAnimationFrame(() => $("tabs").setAttribute("data-ready", ""));
 refresh();
 setInterval(refresh, 30000);
 </script>

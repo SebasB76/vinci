@@ -2507,7 +2507,11 @@ def test_whatsapp_captain(tmp_path):
                     page = requests.get(base, timeout=5)
                     break
                 time.sleep(0.2)
-            assert page.status_code == 200 and "Vinci · panel" in page.text
+            assert page.status_code == 200 and "Panel de Vinci" in page.text
+            style = requests.get(f"{base}/vinci/vinci.css", headers={"X-Forwarded-For": "203.0.113.7"}, timeout=5)
+            assert style.ok and style.headers["Content-Type"].startswith("text/css"), "el diseño de Vinci, sin entrar"
+            for outside in ("/vinci/../../config.toml", "/vinci/%2e%2e/%2e%2e/config.toml", "/vinci/index.html"):
+                assert requests.get(base + outside, timeout=5).status_code == 404, outside
             state = requests.get(f"{base}/api/estado", timeout=30).json()
             assert state["gateway"]["alive"] and state["gateway"]["state"] == "running", state["gateway"]
             assert {c["name"] for c in state["checks"]} == {"Sondeo", "Aula virtual", "Mantenimiento",
@@ -2515,7 +2519,8 @@ def test_whatsapp_captain(tmp_path):
             assert {"vinci-sondeo", "vinci-mantenimiento", "vinci-resumen"} <= {j["name"] for j in state["jobs"]}
             me = state["roster"][0]  # «Personas»: the captain first, his chain alive
             assert me["name"] == "Tú" and not me["friend"] and me["state"] == "funciona", state["roster"]
-            assert "Personas" in page.text and "Cómo funcionan el sondeo y el token" in page.text
+            assert all("profile" in p for p in state["roster"]), "la ficha de cada persona lleva su perfil"
+            assert "Personas" in page.text and "Busca a alguien" in page.text and "Cómo funcionan el sondeo" in page.text
             assert any(u["profile"] == "vinci" and u["calls"] for u in state["usage"]), "el gasto de Vinci sale"
             chat = next(s for s in state["sessions"] if s["profile"] == "vinci" and s["source"] == "whatsapp"
                         and s["chat_type"] == "dm")

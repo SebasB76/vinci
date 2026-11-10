@@ -4,36 +4,47 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Vinci · panel</title>
+<meta name="theme-color" content="#F7F4F0">
+<title>Panel de Vinci</title>
+<link rel="icon" href="/vinci/logo.png">
+<link rel="stylesheet" href="/vinci/vinci.css?v=5">
 <script src="https://accounts.google.com/gsi/client" async></script>
 <style>
-:root{--bg:#0f1115;--card:#171a21;--fg:#e7e9ee;--muted:#8b93a3;--border:#272b35;--fail:#ef5b5b}
-@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f27;--muted:#646c7a;--border:#e2e5ea;--fail:#cf3434}}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--fg);
-  font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-.card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 24px;
-  display:grid;gap:14px;justify-items:center;text-align:center}
-h1{margin:0;font-size:20px}
-p{margin:0;color:var(--muted);font-size:14px}
-#status{min-height:1.4em;font-size:13px}
-#status.fail{color:var(--fail)}
+body { min-height: 100dvh; display: grid; place-items: center; padding: 16px; }
+main.door { width: 100%; max-width: 400px; padding: 0; gap: 14px; }
+.v-sheet { display: grid; gap: 18px; justify-items: center; text-align: center; padding: 32px 24px 28px; }
+.v-sheet img { width: 72px; height: 72px; border-radius: 20px; }
+h1 { margin: 0; font: 500 26px/1.1 var(--display); letter-spacing: -0.02em; }
+.lead { margin-top: 6px; font-size: 15px; color: var(--ink-2); }
+.gbtn { min-height: 44px; display: grid; place-items: center; }
+#status[data-kind="busy"] { color: var(--ink-3); }
 </style>
 </head>
 <body>
-<main class="card">
-  <h1>Vinci · panel</h1>
-  <p>Entra con la cuenta de Google del dueño de este Vinci.</p>
-  <div id="g_id_onload" data-client_id="{{CLIENT_ID}}" data-callback="signedIn" data-auto_prompt="false"></div>
-  <div class="g_id_signin" data-type="standard" data-text="signin_with" data-shape="pill" data-locale="es"></div>
-  <p id="status"></p>
+<main class="door">
+  <div class="v-sheet">
+    <img src="/vinci/logo.png" alt="">
+    <div>
+      <h1>Panel de Vinci</h1>
+      <p class="lead">Mira cómo va Vinci con cada persona.</p>
+    </div>
+    <div id="g_id_onload" data-client_id="{{CLIENT_ID}}" data-callback="signedIn" data-auto_prompt="false"></div>
+    <div class="gbtn"><div class="g_id_signin" data-type="standard" data-text="signin_with" data-shape="pill" data-size="large" data-locale="es"></div></div>
+    <p class="status" id="status"></p>
+  </div>
+  <ul class="trust">
+    <li><svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      <span><b>Solo entra la cuenta del dueño.</b> Cualquier otra cuenta de Google ve un error.</span></li>
+    <li><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>El panel no muestra el texto de los chats de tus amigos, solo tiempos y herramientas.</span></li>
+  </ul>
 </main>
 <script>
 async function signedIn(response) {
   const status = document.getElementById("status");
-  status.className = "";
+  status.dataset.kind = "busy";
   status.textContent = "Entrando…";
   try {
     const res = await fetch("/entrar", {method: "POST", headers: {"Content-Type": "application/json"},
@@ -43,7 +54,7 @@ async function signedIn(response) {
   } catch (e) {
     status.textContent = "No pude entrar: " + e;
   }
-  status.className = "fail";
+  status.dataset.kind = "error";
 }
 </script>
 </body>

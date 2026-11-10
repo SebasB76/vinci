@@ -6,16 +6,19 @@ cada conversación. La página solo lee: no usa el modelo, no llama al aula y no
 
 ## Qué muestra
 
-| Parte | Qué ves |
+El panel tiene el diseño de las páginas de Vinci (el token y el dashboard) y tres pestañas. Arriba de las tres
+ves si Vinci está vivo, si WhatsApp está conectado, los turnos trabados (más de 5 min) y los errores de las últimas
+24 h.
+
+| Pestaña | Qué ves |
 |---|---|
-| Arriba | Si el gateway de Hermes está vivo y cuántas veces se reinició, si WhatsApp está conectado, los turnos en curso o trabados (más de 5 min), el gasto de hoy y de 7 días, y los errores de las últimas 24 h. |
-| Personas | Una fila por persona: tú y cada amigo, también los que aún no conectan su aula. Dice si su Vinci funciona, si el token se cortó o si nunca lo conectó, y por qué: cuándo se renovó su token por última vez, cuántas veces y cuándo Vinci le pidió reconectar, cuándo lo invitaste, cuántas veces te escribió sin conectar y si su enlace sigue vigente. También si le llegaron las novedades. De cada amigo ves su nombre y las 3 últimas cifras de su número. Debajo, «Cómo funcionan el sondeo y el token» lo explica en 4 párrafos. |
-| Salud de cada Vinci | Lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas, para tu Vinci y para el de cada amigo. De un amigo ves solo lo que falla. |
-| Gasto por día | Los últimos 14 días, por grupo: Vinci, bots de materia y amigos. Al pasar el mouse sobre un día (o tocarlo en el celular) ves su total frente al promedio, el gasto por grupo y por bot, las llamadas al modelo, los tokens y el costo por llamada. |
-| Gasto por bot | Llamadas al modelo, tokens, costo y el último día de uso de cada perfil y modelo en esos 14 días. |
-| Tareas automáticas | Cada tarea de Hermes, el día y la hora en que corrió, cuándo corre de nuevo y si falló. En una PC son el sondeo, el mantenimiento, el resumen, la agenda y los apuntes. En el servidor solo quedan la agenda y los apuntes: el sondeo, el resumen y el mantenimiento corren aparte, como servicios, y su última corrida sale en «Salud de cada Vinci». |
-| Conversaciones recientes | Cada chat con sus mensajes, herramientas, tokens, costo y cuánto tardó la última respuesta. Al tocar una fila ves sus pasos con el tiempo entre cada uno: ahí ves dónde se trabó. |
-| Errores y avisos | Las líneas de `errors.log` de Hermes, agrupadas por tipo, con cuántas veces salieron. |
+| Personas | Cuántas personas funcionan, cuántas tienen el token cortado y cuántas no conectan su aula. Toca un número para ver solo a esas. Debajo hay un buscador: escribe un nombre o las últimas cifras de un número (o presiona `/` en el teclado). Cada persona es una tarjeta con su estado, por qué está así en una línea y su gasto de 7 días. De cada amigo ves su nombre y las 3 últimas cifras de su número. Al final, «Cómo funcionan el sondeo y el token» lo explica en 4 párrafos. |
+| Ficha de una persona | Se abre al tocar su tarjeta (o con `Enter` en el buscador, para la primera). Arriba dice qué pasa y quién lo arregla. Debajo: su gasto de 7 días, sus llamadas al modelo, si le llegaron las novedades, su gasto de cada día, su historia (cuándo la invitaste, la última renovación del token, cuándo Vinci le pidió reconectar, cuándo te escribió sin conectar y cuándo vence su enlace), la salud de su Vinci y sus conversaciones. Al tocar una conversación ves sus pasos. |
+| Gasto | El gasto de hoy, de 7 días y de 14 días. El gráfico muestra los últimos 14 días, por grupo: tu Vinci, bots de materia y amigos. Al pasar el mouse sobre un día (o tocarlo en el celular) ves su total frente al promedio, el gasto por grupo y por bot, las llamadas al modelo y los tokens. Debajo, las llamadas, los tokens, el costo y el último día de uso de cada perfil y modelo. |
+| Sistema | La salud de cada Vinci (lo mismo que `/estado` y `espol-bot doctor`: el sondeo, la lectura del aula, el mantenimiento y el token de Canvas; de un amigo ves solo lo que falla), las tareas automáticas de Hermes, los errores y avisos de `errors.log` agrupados por tipo, y las conversaciones recientes. Al tocar una conversación ves sus pasos con el tiempo entre cada uno: ahí ves dónde se trabó. |
+
+En el servidor, las tareas automáticas de Hermes son solo la agenda y los apuntes: el sondeo, el resumen y el
+mantenimiento corren aparte, como servicios, y su última corrida sale en la salud de cada Vinci.
 
 El texto de un chat solo se ve en tus chats privados. De un amigo o de un grupo, el panel muestra solo los tiempos,
 las herramientas y el largo de cada mensaje.

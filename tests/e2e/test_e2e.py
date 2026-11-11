@@ -36,7 +36,7 @@ test_canvas, no gateway:
      back.
 
 test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes his WhatsApp to Vinci (and anyone else
-  to Vinci's guest tools); his week; work handed in outside the aula stays pending and late until he says it is done
+  to Vinci's guest tools); his week; a question split across two bubbles answered once; work handed in outside the aula stays pending and late until he says it is done
   (and back with «todavía no»), an exam held in class leaves on its own, and the summary lists the same; Física's
   Modules gain a class recording, a Zoom ID subheader and Perusall, and Vinci gives each with its aula link; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names,
@@ -647,6 +647,9 @@ class Script:
         return None
 
     def vinci(self, text: str, called: list[str], results: list[str]) -> dict:
+        if "cuánto saqué en la" in text:
+            whole = "lección de física" in text
+            return {"content": "Una sola pregunta: tu lección de Física." if whole else "¿En la qué?"}
         if "mándame eso en audio" in text:
             if not called:
                 return _call("text_to_speech", text="Esta semana tienes el Taller 2 de Cálculo.")
@@ -2181,6 +2184,19 @@ def test_whatsapp_captain(tmp_path):
         # 10a. The captain's own chat: his Vinci, his aula, no line per tool call
         week = say(captain_jid, captain_jid, "qué tengo esta semana", "Capitán")
         assert "Esta semana:" in text_of(week) and not any("⚙️" in m.get("message", "") for m in week), week
+
+        # 10a''. A question split across two bubbles is one turn: the first ends mid-clause, so Hermes waits for the rest
+        mark = len(wa.sent)
+        wa.say(captain_jid, captain_jid, "cuánto saqué en la", name="Capitán")
+        md.append("**Capitán** (privado): cuánto saqué en la\n")
+        time.sleep(1.5)
+        say(captain_jid, captain_jid, "lección de física", "Capitán")
+        time.sleep(4)
+        replies = [m.get("message", "") for m in wa.messages_to(captain_jid, mark)]
+        assert replies == ["Una sola pregunta: tu lección de Física."], \
+            f"dos burbujas de una misma pregunta son un solo turno: {replies}"
+        report.append("WhatsApp: una pregunta partida en dos burbujas («cuánto saqué en la» · «lección de física», "
+                      "1,5 s después) llega al modelo como un solo mensaje y tiene una sola respuesta")
 
         # 10a'. Work handed in outside the aula stays pending, late, until he says it is done (and back with «todavía
         # no»); an exam held in class leaves on its own; one the aula does not explain stays, as unknown, until he says.

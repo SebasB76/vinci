@@ -36,6 +36,9 @@ friend's and in the default one; it acts only on WhatsApp.
   sends (`espol-bot amigo inscribir`), and the captain hears of it; otherwise nothing.
 - A mention reaches Hermes as «@<number>»: what goes on to a Vinci says «@vinci» or the person's WhatsApp name
   instead, from the names of everyone who has written to Vinci (kept in NAMES), also in the message it quotes.
+- Bubbles one person sends in a row reach the model as one message (Hermes joins them), and the wait for the next one
+  reads the text so far (_wire_burst): 3 s after a bubble that ends mid-clause («la tarea de»), 0.3 s after a «?» or
+  a «.», 1 s otherwise, and never more than 20 s from the first bubble.
 - A sticker never reaches a Vinci: Hermes would hand it over as a document it cannot open.
 - A file that goes on to a Vinci is noted with its chat (ATTACHMENTS): WhatsApp's files land in Hermes' shared cache,
   and a tool takes one only for the chat that sent it (herramientas._media_file).
@@ -191,7 +194,73 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
 
 def _wire(native, adapter):
     _wire_votes(native, adapter)
+    _wire_burst(adapter)
     _quiet(adapter)
+
+
+# Endpointing ported from Jelou's Jey (services/jey/src/endpointing.ts): no model call, a wrong guess costs one wait.
+OPEN_WORDS = frozenset(
+    "y e o u ni pero aunque porque pues sino a al de del en con sin para por sobre entre hacia hasta desde contra "
+    "segun tras el la los las un una unos unas mi mis tu tus su sus este ese esos esas aquel aquella me te le les "
+    "muy tan tambien".split())
+DANGLING_WORDS = frozenset(
+    "quiero quisiera necesito deseo dame hazme ayudame dime muestrame puedes podes podrias puede puedo debo debes "
+    "tengo quiere hay estoy es son esta sea seria fuera que q como cual cuales cuando donde quien cuanto cuanta "
+    "cuantos cuantas se lo".split())
+MODALS = frozenset("quiero quisiera necesito deseo puedo puedes podes podrias debo debes gustaria".split())
+QUESTION_OPENERS = frozenset("que q como cual cuales cuando donde quien quienes cuanto cuanta cuantos cuantas por".split())
+BURST_QUIET, BURST_OPEN, BURST_DONE, BURST_WALL = 1.0, 3.0, 0.3, 20.0
+
+
+def _looks_open(text):
+    """The bubbles so far end mid-thought: a comma or «…», a connector («de», «y»), or a dangling «quiero saber»."""
+    text = text.strip()
+    if re.search(r"(?:[,:;]|\.\.\.|…)$", text):
+        return True
+    if not text or re.search(r"[.!?]$", text):
+        return False
+    words = re.sub(r"[^\w\s]+", " ", _plain(text)).split()
+    if not words or words == ["para"]:  # a bare «para» is «stop»
+        return False
+    if words[-1] in OPEN_WORDS:
+        return True
+    if words[0] in QUESTION_OPENERS:
+        return False
+    return words[-1] in DANGLING_WORDS or (
+        2 <= len(words) <= 4 and words[-2] in MODALS and re.search(r"(?:ar|er|ir)$", words[-1]) is not None)
+
+
+def _burst_wait(text, first_at, now):
+    stripped = (text or "").strip()
+    if _looks_open(stripped):
+        wait = BURST_OPEN
+    elif re.search(r"[.!?]$", stripped) and not re.search(r"(?:\.\.\.|…)$", stripped):
+        wait = BURST_DONE
+    else:
+        wait = BURST_QUIET
+    return max(0.0, min(wait, first_at + BURST_WALL - now))
+
+
+def _wire_burst(adapter):
+    """Hermes waits a flat 0.3 s for the next bubble; students split one question across several («cuánto saqué en
+    la» · «lección de física»), and each early flush became its own turn."""
+    if getattr(adapter, "_vinci_burst", False):
+        return
+    default = adapter._text_batch_delay_for
+
+    def delay_for(pending):
+        if pending is None:
+            return default(pending)
+        now = time.monotonic()
+        first_at = getattr(pending, "_vinci_first_at", None) or now
+        pending._vinci_first_at = first_at
+        wait = _burst_wait(pending.text, first_at, now)
+        if getattr(pending, "_last_chunk_len", 0) >= adapter._SPLIT_THRESHOLD:  # WhatsApp split a long paste
+            wait = max(wait, default(pending))
+        return wait
+
+    adapter._text_batch_delay_for = delay_for
+    adapter._vinci_burst = True
 
 
 def _quiet(adapter):

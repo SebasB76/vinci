@@ -48,6 +48,11 @@ que cada tarjeta te llega como mensaje con una **encuesta**: votar «✅ Hecho»
 horario», «Guardar esquema» o «📤 Entregar» hace lo mismo que el botón de Telegram, sin pasar por el modelo. Cambiar
 el voto lo deshace.
 
+**Una pregunta en varios mensajes.** Si partes una pregunta en varias burbujas («cuánto saqué en la» · «lección de
+física»), Vinci espera a que termines y te responde una sola vez. Espera unos 3 segundos si tu mensaje queda a medias
+(termina en «de», «y», «quiero» o en coma), casi nada si termina en «?» o en punto, y 1 segundo en lo demás. Nunca
+espera más de 20 segundos desde la primera burbuja.
+
 **Solo la respuesta de Vinci.** Si le escribes mientras todavía responde, Vinci toma tu mensaje nuevo sin avisar
 «Redirected current run». Tampoco te llegan los avisos internos de Hermes, como «💾 Self-improvement review» cuando
 Vinci actualiza su memoria.

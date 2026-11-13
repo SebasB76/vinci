@@ -250,6 +250,18 @@ def run(cfg: BotConfig, code: str, now: datetime) -> str:
     return _next_task(cfg, subject, now) or SKIP
 
 
+def _friend_reminders(cfg: BotConfig, now: datetime) -> None:
+    """Each friend's Vinci keeps its chat reminders in its own database; the captain's agenda sends them all."""
+    from espol_bot import amigos, avisos
+    groups = amigos.groups(cfg)
+    for friend in amigos.active(cfg):
+        try:
+            with amigos.scope(cfg, friend) as fcfg:
+                avisos.chat_reminders(fcfg, now, groups)
+        except Exception:  # one friend's broken database must not stop the others' reminders
+            log.exception("recordatorios de %s", friend.slug)
+
+
 def run_vinci(cfg: BotConfig, now: datetime) -> None:
     """One tick of Vinci's own agenda, without Telegram: the first subject with something to do gets its task in
     the captain's WhatsApp chat; the rest wait for the next tick."""
@@ -265,7 +277,8 @@ def run_vinci(cfg: BotConfig, now: datetime) -> None:
         aula.close()
     from espol_bot import avisos
     for notice, what in ((lambda: avisos.class_reminders(cfg, subjects, now), "avisos de clase"),
-                         (lambda: avisos.chat_reminders(cfg, now), "recordatorios")):
+                         (lambda: avisos.chat_reminders(cfg, now), "recordatorios"),
+                         (lambda: _friend_reminders(cfg, now), "recordatorios de amigos")):
         try:
             notice()
         except Exception:  # the groups must never hold back the captain's own brief

@@ -143,6 +143,7 @@ GROUP_IDLE = 25  # seconds a WhatsApp group stays one conversation here (4 h liv
 BOOK_ASK = "📘 *El libro principal de "
 GROUP_REMINDER = "Historias de usuario en formato requerimiento: se entregan el vie 2 oct"
 PRIVATE_REMINDER = "Repasar vectores antes de la lección"
+FRIEND_REMINDER = "Traer las calculadoras para el taller del viernes"
 # What Física's Modules gain after the gateway's first polls: the Zoom ID as a subheader, a class recording and Perusall.
 PHYSICS_MODULE = {
     "id": 8109, "name": "CLASES VIRTUALES", "position": 9, "state": "unlocked", "items_count": 3,
@@ -513,6 +514,11 @@ class Script:
             if not called:  # Hermes' session_search opens another profile's chats by its name, easy to guess
                 return _call("session_search", profile="vinci", query="vectores")
             return {"content": f"Busqué en el historial: {results[-1][:800]}"}
+        if "recuérdanos el viernes a mediodía" in text:
+            if not called:
+                return _call("mcp__vinci__chat_reminder", text=FRIEND_REMINDER, at=["2026-10-02 12:00"])
+            done = _json(results[-1])
+            return {"content": done["message"] if isinstance(done, dict) and "message" in done else _problem(results[-1])}
         if "anota: repasar integrales dobles" in text:
             if not called:
                 return _call("mcp__vinci__add_todo", text="repasar integrales dobles")
@@ -2696,7 +2702,7 @@ def test_academico(tmp_path):
 
 def test_whatsapp_friend(tmp_path):
     """Section 10 for a friend: a group the captain turns on, Angel invited with a Vinci of his own (his token through
-    the page and Vinci's relay, his week, slides, a quote, a sticker, a group that goes idle, a poll for a button, his
+    the page and Vinci's relay, his week, slides, a quote, a sticker, a group that goes idle, a reminder Angel's Vinci schedules for the group (sent by the captain's agenda), «manda los avisos de ayer» changing no setting, a guest's «@vinci /estado» reaching no one, «desactiva este grupo» also dropping its notices and trust, a poll for a button, his
     dashboard, his commands), voice notes and audio files heard by the real local Whisper (in a group, only one that
     says «Vinci»; a voice note only when asked for), his alerts, the block for whoever is not a Vinci's owner, and Angel removed with his tokens."""
     started = time.monotonic()
@@ -2964,6 +2970,29 @@ def test_whatsapp_friend(tmp_path):
         report.append("En el mismo grupo, «@vinci qué tengo esta semana» le contesta a Angel con su aula (Cálculo "
                       "de varias variables, Ecuaciones diferenciales) y al capitán con la suya: ninguna entrega se "
                       "cruza")
+
+        # 10e2. Angel's Vinci schedules a reminder for the group too, and the captain's agenda sends it
+        planned = text_of(say(GROUP_WA, angel_jid, "@vinci recuérdanos el viernes a mediodía que traigamos las "
+                              "calculadoras", "Angel", group=True))
+        assert "sale en este grupo el vie 2 oct, 12:00" in planned, planned
+        mark = len(wa.sent)
+        run([bot, "agenda"], "2026-10-02T12:00:20-05:00")
+        time.sleep(2)
+        reminded = text_of([m for m in wa.messages_to(GROUP_WA, mark) if "Recordatorio" in m.get("message", "")])
+        assert reminded.count(FRIEND_REMINDER) == 1, wa.sent[mark:]
+        report.append("«@vinci recuérdanos…» de Angel lo programa su propio Vinci, y la agenda del capitán lo manda al "
+                      "grupo a su hora, una vez")
+
+        # 10e3. Group settings change only with the phrase alone, and a guest's «@vinci /estado» reaches no one
+        before = (data_dir / "amigos" / "whatsapp.json").read_text()
+        said = text_of(say(GROUP_WA, captain_jid, "@vinci manda los avisos de ayer", "Capitán", group=True))
+        assert "Listo" not in said, said
+        assert (data_dir / "amigos" / "whatsapp.json").read_text() == before
+        calls = len(llm.requests)
+        say(GROUP_WA, stranger_jid, "@vinci /estado", "Alguien", group=True, expect=0)
+        assert len(llm.requests) == calls, "el comando de un invitado no llega al modelo"
+        report.append("«@vinci manda los avisos de ayer» no enciende los avisos: la frase cambia el grupo solo si va "
+                      "sola; «@vinci /estado» de un invitado no llega a nadie")
 
         # 10e'. One MCP process serves both Vincis: each profile its own path and token, neither token opens the
         # other's tools, and eight calls at once each get their own profile's aula
@@ -3577,6 +3606,8 @@ def test_whatsapp_friend(tmp_path):
         assert parse_env_file(home / ".hermes" / ".env")["WHATSAPP_ALLOWED_USERS"] == CAPTAIN_WA
         off = say(GROUP_WA, captain_jid, "@vinci desactiva este grupo", "Capitán", group=True)
         assert "ya no contesto" in text_of(off)
+        assert json.loads((data_dir / "amigos" / "whatsapp.json").read_text()) == {"grupos": []}, \
+            "apagar el grupo apaga también sus avisos y la confianza"
         say(GROUP_WA, captain_jid, "@vinci hola", "Capitán", group=True, expect=0)
         report.append("«/amigo quitar Angel» borra del aula todos los tokens que creó su cadena, su perfil y su carpeta; "
                       "«@vinci desactiva este grupo» lo apaga")

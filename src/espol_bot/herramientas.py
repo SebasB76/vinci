@@ -65,7 +65,7 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, album, citations, conversation, course_groups, dashboard, diapositivas, espol_calendar,
+from espol_bot import (academic_portal, agenda, album, citations, conversation, course_groups, dashboard, group_policy, diapositivas, espol_calendar,
                        grades, grades_page, health, horario, libros, materias, messages, plan, portal_login, priority,
                        quiz, resumen, store, study_page, submission, token_form, visuales, whats_new)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
@@ -271,7 +271,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 # are WhatsApp polls). No subject bots, notebooks or schedule: those are the captain's team.
 FRIEND_TOOLS = frozenset({
     "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "join_group", "marcar_entregada", "marcar_hecho",
-    "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
+    "add_todo", "chat_reminder", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
     "set_assignment_delivery", "study_activity", "show_page", "plan_carrera", "guardar_malla", "calendario_espol", "send_study_page"})
 
@@ -345,7 +345,7 @@ class Ctx:
 
 def _stale_note(ctx: Ctx) -> str:
     since = timefmt.human(ctx.stale.since, ctx.cfg.core.tz)
-    if _channel(ctx).get("tipo") == "group":  # /token does not work there, and the form already went to his chat
+    if _group_chat(ctx):  # /token does not work there, and the form already went to his chat
         return (f"No pude leer el aula virtual desde el {since}: estos datos son de esa hora. Estás en un grupo: "
                 f"dilo en media línea («según mi lectura del {since}»), sin la causa y sin pedirle el token, que "
                 f"eso ya le llegó por privado. Nunca digas que algo sigue sin entregar o sin nota: di «al {since} no "
@@ -415,18 +415,23 @@ def _task(ctx: Ctx, task: dict) -> dict:
 
 def _noting_stale(ctx: Ctx, tools: list[Tool]) -> list[Tool]:
     """Every tool whose answer came from an old copy of the aula says so in «stale_data», so the model does not
-    present how things were then (a homework not handed in yet) as how they are now."""
-    def wrap(handler):
+    present how things were then (a homework not handed in yet) as how they are now. Called from a group, a tool in
+    group_policy.TOOLS also says where its answer landed («en_grupo»)."""
+    def wrap(name, handler):
         def run(args):
             ctx.stale = None
             result = handler(args)
-            if ctx.stale is None:
+            extra = {}
+            if ctx.stale is not None:
+                extra["stale_data"] = _stale_note(ctx)
+            if line := group_policy.note(name, _channel(ctx)):
+                extra["en_grupo"] = line
+            if not extra:
                 return result
-            note = _stale_note(ctx)
-            return {**result, "stale_data": note} if isinstance(result, dict) else {"items": result, "stale_data": note}
+            return {**result, **extra} if isinstance(result, dict) else {"items": result, **extra}
         return run
     for tool in tools:
-        tool.handler = wrap(tool.handler)
+        tool.handler = wrap(tool.name, tool.handler)
     return tools
 
 
@@ -1278,9 +1283,7 @@ def _whatsapp_chat(ctx: Ctx) -> WhatsApp | None:
 
 def _group_chat(ctx: Ctx) -> str | None:
     """The WhatsApp group («…@g.us») this tool call's conversation happens in; None in a private chat."""
-    note = _channel(ctx)
-    chat = str(note.get("chat") or "").removeprefix("whatsapp:")
-    return chat if note.get("canal") == "whatsapp" and chat.endswith("@g.us") else None
+    return group_policy.group_of(_channel(ctx))
 
 
 def _show_card(ctx: Ctx, text: str, buttons: list[tuple[str, str]], sender: str | None = None) -> tuple[str, str]:
@@ -1292,7 +1295,7 @@ def _show_card(ctx: Ctx, text: str, buttons: list[tuple[str, str]], sender: str 
         if chat is not None:
             chat.send(text, buttons)
             return ("le llegó a su chat privado de WhatsApp como mensaje con una encuesta (votar una opción es lo "
-                    "mismo que pulsar el botón; si estás en un grupo, dile que se lo mandaste por privado)", "vote")
+                    "mismo que pulsar el botón)", "vote")
         Telegram(load_telegram_secrets(sender), api=ctx.cfg.telegram_api).send(text, buttons)
         return "se lo mostré en una tarjeta con botones en Telegram", "pulse"
     except (TelegramError, ConfigError) as exc:
@@ -1628,7 +1631,7 @@ def _academic_record(ctx: Ctx, args: dict) -> dict:
         sent = portal_login.request(ctx.cfg, _channel(ctx), topic, question, ctx.now())
     except portal_login.LoginError as exc:
         raise ToolError(str(exc)) from None
-    where = "their private chat (you are in a group: say so there)" if _group_chat(ctx) else "this chat"
+    where = "their private chat" if _group_chat(ctx) else "this chat"
     return {"connect": "button on its way",
             "mensaje": (f"I am sending the student a «🎓 Conectar Académico» button in {where} (it may take a few "
                         "seconds). Tell them in one or two lines to open it and sign in there with their ESPOL user, "
@@ -1842,10 +1845,7 @@ def _send_study_page(ctx: Ctx, args: dict) -> dict:
 
 
 def _show_page(ctx: Ctx, args: dict) -> dict:
-    sent = _send_page(ctx, args)
-    if _group_chat(ctx):  # the page holds their data: the button goes to their private chat even from a group
-        sent["mensaje"] += " Estás en un grupo: dile ahí, en la misma línea, que se lo mandaste por privado."
-    return sent
+    return _send_page(ctx, args)  # the page holds their data: from a group too, it goes to their private chat
 
 
 def _send_page(ctx: Ctx, args: dict) -> dict:
@@ -2015,8 +2015,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         except TelegramError as exc:
             store.set_submission_state(ctx.conn, proposal_id, "cancelled", ctx.now())
             raise ToolError(f"No pude mandarle la entrega por WhatsApp: {exc}") from None
-        where = ("Dile en una línea, en el grupo, que se lo mandaste por privado para que lo revise y vote, y que "
-                 "aviso aquí cuando quede entregado." if _group_chat(ctx) else "Dile en una línea que lo revise y vote.")
+        where = "Dile en una línea que lo revise y vote."
         return {"proposal": proposal_id, "assignment": name, "files": [f.name for f in files], "pages": pages,
                 "message": "Le mandé a su chat privado de WhatsApp lo que se va a entregar, con una encuesta «Entregar "
                            f"/ Cancelar». Se entrega solo cuando vote Entregar; tú no puedes entregarlo. {where}"}
@@ -2168,7 +2167,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         chat = str(where.get("chat") or "")
         if not chat.startswith("whatsapp:"):
             raise ToolError("Un recordatorio a una hora se programa desde un chat de WhatsApp; aquí usa add_todo.")
-        group = where.get("tipo") == "group"
+        group = _group_chat(ctx)
         tz, now = ctx.cfg.core.tz, ctx.now()
         try:
             if args.get("action") == "remove":

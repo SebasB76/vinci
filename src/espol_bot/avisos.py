@@ -303,7 +303,10 @@ def send_events(cfg: BotConfig, conn, events: list[dict], now: datetime) -> None
         conn.commit()
 
 
-def chat_reminders(cfg: BotConfig, now: datetime) -> None:
+def chat_reminders(cfg: BotConfig, now: datetime, groups: list[str] | None = None) -> None:
+    """The due reminders of this Vinci's chats (the captain's, or a friend's with their `cfg`). `groups`: the groups
+    turned on, from the captain's install; a friend's folder has no list of its own."""
+    groups = amigos.groups(cfg) if groups is None else groups
     aula = Aula(cfg.core)
     try:
         conn = store.ensure(aula.conn)
@@ -321,8 +324,7 @@ def chat_reminders(cfg: BotConfig, now: datetime) -> None:
             chat = r["chat"].removeprefix("whatsapp:")
             if now - timefmt.parse(r["remind_at"]) > LATE:
                 log.warning("avisos: recordatorio #%d de %s no salió a tiempo; lo descarto", r["id"], r["remind_at"])
-            # only the captain's own Vinci has chat_reminder, so a private chat here is his
-            elif chat.endswith("@g.us") and chat not in amigos.groups(cfg):
+            elif chat.endswith("@g.us") and chat not in groups:
                 log.info("avisos: recordatorio #%d de un grupo apagado; no sale", r["id"])
             elif not _remind(cfg, chat, r):
                 conn.execute("UPDATE group_reminders SET claimed_at = NULL WHERE id = ?", (r["id"],))

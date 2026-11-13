@@ -165,10 +165,11 @@ async def _dispatch(event=None, gateway=None, session_store=None, **_):
             return await _sort(event, source, gateway)
         names = _remember(source)  # anyone who mentions Vinci, even without their own Vinci yet
         result = await _sort(event, source, gateway)
-        if result is None:
+        rewritten = (result or {}).get("action") == "rewrite"  # /quiz: a request for the model, said by someone
+        if result is None or rewritten:
             _note_attachments(event, source)
             original = str(getattr(event, "text", "") or "")
-            text = original
+            text = result["text"] if rewritten else original
             kind, audio = _audio(event)
             if kind == "audio":
                 text = _with_transcript(text, await _hear(audio))
@@ -363,16 +364,17 @@ async def _sort(event, source, gateway):
 
     if chat.endswith("@g.us"):
         plain = _plain(text)
-        if captain and (TRUST_OFF_RE.search(plain) or TRUST_ON_RE.search(plain)):
-            action = "sin-confianza" if TRUST_OFF_RE.search(plain) else "confianza"
+        plain = _control(plain)
+        if captain and (TRUST_OFF_RE.fullmatch(plain) or TRUST_ON_RE.fullmatch(plain)):
+            action = "sin-confianza" if TRUST_OFF_RE.fullmatch(plain) else "confianza"
             await _answer(chat, await _run("whatsapp-grupo", action, chat), reply_to, gateway)
             return _skip(f"grupo {action}")
-        if captain and (NOTICES_OFF_RE.search(plain) or NOTICES_ON_RE.search(plain)):
-            action = "sin-avisos" if NOTICES_OFF_RE.search(plain) else "avisos"
+        if captain and (NOTICES_OFF_RE.fullmatch(plain) or NOTICES_ON_RE.fullmatch(plain)):
+            action = "sin-avisos" if NOTICES_OFF_RE.fullmatch(plain) else "avisos"
             await _answer(chat, await _run("whatsapp-grupo", action, chat), reply_to, gateway)
             return _skip(f"grupo {action}")
-        if captain and (OFF_RE.search(plain) or ON_RE.search(plain)):
-            action = "desactivar" if OFF_RE.search(plain) else "activar"
+        if captain and (OFF_RE.fullmatch(plain) or ON_RE.fullmatch(plain)):
+            action = "desactivar" if OFF_RE.fullmatch(plain) else "activar"
             await _answer(chat, await _run("whatsapp-grupo", action, chat), reply_to, gateway)
             return _skip(f"grupo {action}")
         if chat not in _read(GROUPS, "grupos"):
@@ -392,7 +394,7 @@ async def _sort(event, source, gateway):
                 await _answer(chat, {"respuesta": RAW_TOKEN_ACTIVE}, reply_to, gateway)
                 return _skip("token sin cifrar")
             return await _command(text, senders, chat, reply_to, gateway, group=True)
-        if text.startswith("/"):  # a command reaches Hermes without a mention: not necessarily for Vinci
+        if _strip_mention(text).startswith("/"):  # a guest's command, «@vinci /estado» too: Vinci's are for its owners
             return _skip("comando de alguien sin Vinci")
         return None  # a guest
 
@@ -656,6 +658,16 @@ def _aliases(user_id):
         return set(expand_whatsapp_aliases(str(user_id)))
     except Exception:
         return {re.sub(r"[:@].*$", "", str(user_id))}
+
+
+def _control(plain):
+    """A group setting phrase alone, so «¿cómo se activa este grupo?» or «manda los avisos de ayer» change nothing:
+    the mention, a leading «vinci», «por favor» and the final punctuation drop out; the regexes then match it whole."""
+    text = re.sub(r"^@\S+\s+", "", plain.strip())
+    text = re.sub(r"^(?:oye\s+)?vinci\b[\s,:]*", "", text)
+    text = re.sub(r"[\s,]*(?:por favor|porfa)\b", "", text)
+    text = re.sub(r"\s+(?:aqui|en este grupo)(?=[\s.!]*$)", "", text)
+    return text.strip(" .!¡")
 
 
 def _plain(text):

@@ -26,7 +26,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 - Te dice cuánto necesitas para pasar, materia por materia, y cómo te fue frente al promedio del curso.
 - Te ayuda a planear la matrícula con tu historial y tu malla.
 - Te regala sobres de cartas por entregar a tiempo, por tus buenas notas y uno cada mañana, con cambios y un ranking entre amigos.
-- Entrega tus deberes desde unas fotos o tus archivos, con tu voto.
+- Entrega tus deberes desde unas fotos o tus archivos, con tu voto, y te redacta en PDF el taller de la semana para que lo revises antes.
 - Te une al grupo de una materia («agrégame al grupo 6»), con tu voto.
 - Entiende audios, capturas y fotos de la pizarra, y te responde en audio si se lo pides.
 - Te cuenta sus novedades y todo lo que hace, con un ejemplo para probar cada cosa.

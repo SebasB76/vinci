@@ -107,6 +107,11 @@ solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para
   llega lo que va a entregar con la encuesta «📤 Entregar / Cancelar», y se sube al aula solo con tu voto. Si la
   tarea no acepta ese tipo de archivo, te lo dice antes. En un grupo, responde al archivo de un compañero con
   «@vinci sube esto al deber 3»: la encuesta te llega por privado y, al entregar, Vinci avisa en el grupo.
+- **Hacer un taller.** «Mira el taller de sostenibilidad, haz lo que pide y dame el PDF»: Vinci lee el enunciado y
+  el documento del profe, saca lo que pide del material de esa semana y de la web, te pregunta los integrantes si es
+  en grupo, y te manda el PDF con sus partes, sus tablas y sus referencias, con la encuesta «📤 Entregar / Cancelar».
+  Léelo antes de votar: lo escribió Vinci y la nota es tuya. Si algo no va, dile qué cambiar y te manda otro, que
+  reemplaza al anterior. Si un sitio que pide el taller no carga, te lo dice en vez de inventarlo.
 - **Quiz con encuestas.** `/quiz derivadas`: de 3 a 5 preguntas de tu material, una encuesta por pregunta. Al votar
   te dice si acertaste y por qué, y al final tu puntaje. Si lo dejas a medias para preguntar otra cosa, Vinci te
   contesta eso sin insistir con el quiz; «sigamos con el quiz» te vuelve a mandar solo las preguntas que faltan, al

@@ -41,7 +41,8 @@ OPTION_CHARS = 100
 QUESTION_CHARS = 255
 # What a poll asks, by the kind of button under it (botones.py); anything else asks the generic one.
 QUESTIONS = {"s": "¿Ya lo entregaste?", "t": "¿Ya lo hiciste?", "h": "¿Guardo este horario?",
-             "g": "¿Guardo este esquema de notas?", "u": "¿Lo entrego en el aula?", "p": "¿Te lo recuerdo otra vez?"}
+             "g": "¿Guardo este esquema de notas?", "u": "¿Lo entrego en el aula?", "p": "¿Te lo recuerdo otra vez?",
+             "j": "¿Te uno a este grupo en el aula?"}
 QUESTION = "Elige una opción"
 NOT_YET = "⏳ Todavía no"
 CANCEL = "Cancelar"

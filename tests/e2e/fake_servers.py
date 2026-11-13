@@ -130,6 +130,10 @@ class FakeCanvas(_Server):
         # with them ({assignment, file_ids}).
         self.uploads: list[dict] = []
         self.submissions: list[dict] = []
+        # Course groups open to self sign-up ({id, name, course_id, set_id, set, max, members: [user ids]}), and
+        # each group the student joined through POST groups/<id>/memberships.
+        self.signup_groups: list[dict] = []
+        self.joined: list[int] = []
         self.lock = threading.Lock()
 
     def add_account(self, token: str, fixtures: str, purpose: str = "Vinci") -> None:
@@ -508,6 +512,9 @@ class _CanvasHandler(_Quiet):
             return self._upload(canvas, int(path.rsplit("/", 1)[1]))
         if not self._authorized(canvas):
             return self._json(401, {"errors": [{"message": "Invalid access token."}]})
+        join = re.fullmatch(r"/api/v1/groups/(\d+)/memberships", path)
+        if join:
+            return self._join(canvas, int(join[1]))
         hand_in = re.fullmatch(r"/api/v1/courses/\d+/assignments/(\d+)/submissions(/self/files)?", path)
         if hand_in:
             return self._hand_in(canvas, int(hand_in[1]), bool(hand_in[2]))
@@ -543,6 +550,44 @@ class _CanvasHandler(_Quiet):
                                        "file_ids": [int(v) for k, v in form if k == "submission[file_ids][]"]})
         return self._json(201, {"assignment_id": assignment_id, "workflow_state": "submitted", "late": False,
                                 "submitted_at": "2026-09-30T18:00:00Z"})
+
+    def _join(self, canvas: FakeCanvas, group_id: int):
+        """Canvas moves the student out of their group in the same set, as self sign-up does."""
+        form = dict(parse_qsl(self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)).decode()))
+        with canvas.lock:
+            group = next((g for g in canvas.signup_groups if g["id"] == group_id), None)
+            if group is None or form.get("user_id") != "self":
+                return self._json(404, {"errors": [{"message": "The specified resource does not exist."}]})
+            for g in canvas.signup_groups:
+                if g["set_id"] == group["set_id"] and 42 in g["members"]:
+                    g["members"].remove(42)
+            group["members"].append(42)
+            canvas.joined.append(group_id)
+        return self._json(200, {"id": 7000 + group_id, "group_id": group_id, "user_id": 42,
+                                "workflow_state": "accepted"})
+
+    def _signup_get(self, canvas: FakeCanvas, api: str):
+        """The groups of `signup_groups` as Canvas lists them; None for any other path."""
+        def shown(g):
+            return {"id": g["id"], "name": g["name"], "course_id": g["course_id"], "group_category_id": g["set_id"],
+                    "members_count": len(g["members"]), "max_membership": g["max"], "join_level": "invitation_only",
+                    "context_type": "Course",
+                    "group_category": {"id": g["set_id"], "name": g["set"], "self_signup": "enabled"}}
+        with canvas.lock:
+            groups = [dict(g, members=list(g["members"])) for g in canvas.signup_groups]
+        if not groups:
+            return None
+        if m := re.fullmatch(r"courses/(\d+)/groups", api):
+            return [shown(g) for g in groups if g["course_id"] == int(m[1])]
+        if m := re.fullmatch(r"groups/(\d+)(/users)?", api):
+            group = next((g for g in groups if g["id"] == int(m[1])), None)
+            if group is None:
+                return None
+            return [{"id": u, "name": "Estudiante E2E" if u == 42 else f"Compañero {u}"} for u in group["members"]] \
+                if m[2] else shown(group)
+        if api == "users/self/groups":
+            return [shown(g) for g in groups if 42 in g["members"]]
+        return None
 
     def _upload(self, canvas: FakeCanvas, n: int):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
@@ -617,7 +662,7 @@ class _CanvasHandler(_Quiet):
             return self._send(429, b"429 Too Many Requests (Rate Limit Exceeded)", "text/plain",
                               {"X-Rate-Limit-Remaining": "0.0", "Retry-After": "0"})
 
-        data = canvas.load(api, account)
+        data = (self._signup_get(canvas, api) if account is None else None) or canvas.load(api, account)
         one = re.fullmatch(r"courses/(\d+)/assignments/(\d+)", api)
         if data is None and one:  # one assignment, as a hand-in checks it right before uploading
             found = next((a for a in canvas.load(f"courses/{one[1]}/assignments", account) or []

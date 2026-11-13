@@ -267,12 +267,14 @@ MODULE_NAME = {"type": "string", "description": "una palabra del ítem, del mód
                                                 "(«grabación», «perusall», «semana 3»)"}
 TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
 DRAFT_SUBMISSION = (
-    "En WhatsApp: el trabajo que redactaste para una tarea (un taller, un análisis, un cuestionario) como un PDF "
-    "ordenado, con el título, la materia, los integrantes, sus secciones (texto, puntos y tablas) y las referencias; "
+    "En WhatsApp: el trabajo que redactaste para una tarea (un taller, un análisis, un cuestionario) como el PDF "
+    "sencillo que entregaría un estudiante (texto negro, título centrado, «Asignatura:», integrantes A., B., C., sus "
+    "secciones con texto, puntos y tablas); "
     "se lo manda a su chat privado con una encuesta «Entregar / Cancelar», y se sube al aula solo si vota Entregar. "
     "Tú llenas el contenido; el formato lo pongo yo. Sigue la estructura que pide el documento del profesor (sus "
-    "partes, en su orden, y sus tablas con las mismas columnas). Si te pide cambios, vuelve a llamarla con el "
-    "documento entero: la nueva reemplaza a la anterior.")
+    "partes, en su orden, y sus tablas con las mismas columnas). Escribe como un estudiante: frases simples y "
+    "concretas, en primera persona del grupo, sin negritas, sin guiones largos y sin frases de relleno. Si te pide "
+    "cambios, vuelve a llamarla con el documento entero: la nueva reemplaza a la anterior.")
 DRAFT_TABLE = {"type": "object", "description": "una tabla con borde, como la del documento del profesor",
                "properties": {"columns": {"type": "array", "items": {"type": "string"}, "description": "los títulos"},
                               "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}},
@@ -293,8 +295,8 @@ DRAFT_PROPERTIES = {
                 "points": {"type": "array", "items": {"type": "string"}},
                 "table": DRAFT_TABLE}, "required": ["heading"]}},
         "references": {"type": "array", "items": {"type": "string"},
-                       "description": "de dónde salió cada cosa: el material del curso (archivo y página) y las "
-                                      "páginas web que leíste, con su URL"}},
+                       "description": "solo si el enunciado pide referencias o bibliografía: de dónde salió cada "
+                                      "cosa, con su URL; si no las pide, vacío"}},
         "required": ["title", "sections"]}}
 
 # A friend's own Vinci (amigos.py): Vinci's tools over the friend's aula, its list and its grading schemes (their cards

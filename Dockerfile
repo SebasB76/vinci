@@ -4,11 +4,11 @@ FROM nousresearch/hermes-agent:latest@sha256:9774f4f39a9bb8c2f68ce728ed5e99ddbad
 
 USER root
 
-# OCR for scanned PDFs (aula_core/ocr.py reads the system's tessdata when the data folder has none), and the font
-# of the PDF summaries (espol_bot/resumen.py).
+# OCR for scanned PDFs (aula_core/ocr.py reads the system's tessdata when the data folder has none), the font of the
+# PDF summaries (espol_bot/resumen.py), and Liberation Sans, Arial's metrics, for the homework Vinci drafts (homework.py).
 RUN apt-get -o Acquire::Retries=3 update && \
     apt-get -o Acquire::Retries=3 install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng \
-        fonts-dejavu-core && \
+        fonts-dejavu-core fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
 
 # The WhatsApp bridge's Node deps: the image ships bridge.js without them, and /opt/hermes is read-only at runtime.

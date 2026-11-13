@@ -104,6 +104,14 @@ def sent_name(path: Path) -> str:
 
 def take_pdf(source: Path, dest: Path) -> tuple[int, bytes]:
     """A PDF the student sent as it is; returns its page count and a thumbnail of its first page."""
+    pages, thumb = preview(source)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest)
+    return pages, thumb
+
+
+def preview(source: Path) -> tuple[int, bytes]:
+    """A PDF's page count and a thumbnail of its first page."""
     import pypdfium2 as pdfium
 
     try:
@@ -118,8 +126,6 @@ def take_pdf(source: Path, dest: Path) -> tuple[int, bytes]:
         pages = len(pdf)
     finally:
         pdf.close()
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, dest)
     return pages, _thumbnail(first)
 
 

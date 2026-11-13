@@ -612,7 +612,7 @@ class Script:
                 return _call("mcp__vinci__show_page", page="deliverables")
             sent = _json(results[-1])
             return {"content": "Te lo mandé por privado." if isinstance(sent, dict) and "por privado" in
-                    sent.get("mensaje", "") else _problem(results[-1])}
+                    sent.get("en_grupo", "") else _problem(results[-1])}
         if "qué puedes hacer" in text:
             if not called:
                 return _call("mcp__vinci__show_page", page="features")

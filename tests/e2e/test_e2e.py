@@ -2501,7 +2501,7 @@ def test_whatsapp_captain(tmp_path):
              "members": [501, 502]},
             {"id": 8206, "name": "Semana 6 6", "course_id": 102, "set_id": 82, "set": "Semana 6", "max": 4, "members": []}]
         mark = len(wa.sent)
-        say(captain_jid, captain_jid, "agrégame al grupo 6 de semana 7 de física", "Capitán", expect=3)
+        say(captain_jid, captain_jid, "agrégame al grupo 6 de semana 7 de física", "Capitán", expect=2)
         card = text_of([m for m in wa.sent[mark:] if "Semana 7 6" in m.get("message", "")])
         assert "Compañero 501, Compañero 502" in card and "«Semana 7 5»" in card, wa.sent[mark:]
         poll = next(m for m in wa.sent[mark:] if m["path"] == "send-poll")

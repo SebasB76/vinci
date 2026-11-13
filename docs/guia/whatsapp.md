@@ -53,6 +53,11 @@ dile «agrégame al grupo 6 de Semana 7 de Dirección de Proyectos». Te manda e
 encuesta «👥 Unirme / Cancelar»: te une solo cuando votas Unirme. Si ya estás en otro grupo de ese conjunto, el aula
 te saca de él, y la tarjeta te lo advierte. «¿Qué grupos tienen cupo en Estadística?» te los lista.
 
+**Una pregunta en varios mensajes.** Si partes una pregunta en varias burbujas («cuánto saqué en la» · «lección de
+física»), Vinci espera a que termines y te responde una sola vez. Espera unos 3 segundos si tu mensaje queda a medias
+(termina en «de», «y», «quiero» o en coma), casi nada si termina en «?» o en punto, y 1 segundo en lo demás. Nunca
+espera más de 20 segundos desde la primera burbuja.
+
 **Solo la respuesta de Vinci.** Si le escribes mientras todavía responde, Vinci toma tu mensaje nuevo sin avisar
 «Redirected current run». Tampoco te llegan los avisos internos de Hermes, como «💾 Self-improvement review» cuando
 Vinci actualiza su memoria.

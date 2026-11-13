@@ -65,7 +65,7 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, album, citations, conversation, dashboard, diapositivas, espol_calendar,
+from espol_bot import (academic_portal, agenda, album, citations, conversation, course_groups, dashboard, diapositivas, espol_calendar,
                        grades, grades_page, health, horario, libros, materias, messages, plan, portal_login, priority,
                        quiz, resumen, store, study_page, submission, token_form, visuales, whats_new)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
@@ -270,7 +270,7 @@ TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de 
 # A friend's own Vinci (amigos.py): Vinci's tools over the friend's aula, its list and its grading schemes (their cards
 # are WhatsApp polls). No subject bots, notebooks or schedule: those are the captain's team.
 FRIEND_TOOLS = frozenset({
-    "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "marcar_entregada", "marcar_hecho",
+    "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "join_group", "marcar_entregada", "marcar_hecho",
     "add_todo", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
     "set_assignment_delivery", "study_activity", "show_page", "plan_carrera", "guardar_malla", "calendario_espol", "send_study_page"})
@@ -2021,6 +2021,43 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                 "message": "Le mandé a su chat privado de WhatsApp lo que se va a entregar, con una encuesta «Entregar "
                            f"/ Cancelar». Se entrega solo cuando vote Entregar; tú no puedes entregarlo. {where}"}
 
+    def join_group(args):
+        chat = _whatsapp_chat(ctx)
+        if chat is None:
+            raise ToolError("Unirse a un grupo del aula va por WhatsApp.")
+        course_ids = _vinci_course_ids(ctx, str(args.get("materia") or "").strip() or None)
+        if not course_ids:
+            raise ToolError("Dime de qué materia es el grupo («materia»).")
+        aula = ctx.aula
+        try:
+            groups = course_groups.open_groups(aula, course_ids)
+            if not groups:
+                raise ToolError("En esa materia no hay grupos con inscripción abierta: los arma el profesor. Díselo.")
+            wanted = str(args.get("grupo") or "").strip()
+            if not wanted:
+                sets: dict[str, list[str]] = {}
+                for g in groups:
+                    sets.setdefault(g["set"], []).append(course_groups.describe(g))
+                return {"conjuntos": sets, "mensaje": "Estos son los grupos con inscripción abierta (integrantes/cupo). "
+                                                      "Pregúntale a cuál lo uno."}
+            group = course_groups.choose(groups, wanted, str(args.get("conjunto") or "").strip() or None)
+            people = course_groups.members(aula, group["id"])
+            current = course_groups.current_in_set(aula, group["set_id"])
+        except course_groups.GroupError as exc:
+            raise ToolError(str(exc)) from None
+        if current and current.get("id") == group["id"]:
+            return {"ya_esta": group["name"], "mensaje": "Ya está en ese grupo. Díselo en una línea."}
+        if group.get("max") and group["members"] >= group["max"]:
+            raise ToolError(f"«{group['name']}» está lleno ({group['members']}/{group['max']}). Díselo.")
+        row = ctx.conn.execute("SELECT name FROM courses WHERE id = ?", (group["course_id"],)).fetchone()
+        card = messages.join_group_card(group["name"], group["set"], row["name"] if row else "", people,
+                                        group.get("max"), current.get("name") if current else None)
+        where, _ = _show_card(ctx, card, [(messages.join_group_button(group["name"]), f"v1:j:{group['id']}:ok"),
+                                          (messages.SUBMIT_CANCEL_BUTTON, f"v1:j:{group['id']}:no")])
+        return {"grupo": group["name"], "conjunto": group["set"], "integrantes": people,
+                "mensaje": f"La tarjeta {where}. Se une solo si vota Unirme; tú no puedes unirlo. Dile en una línea "
+                           "que vote."}
+
     def study_activity(args):
         session = _channel(ctx).get("sesion", "")
         if not session:
@@ -2383,6 +2420,15 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
              "(entry_id); la cita la pongo yo. En Telegram, el quiz lo hace el bot de la materia.", send_quiz,
              {"materia": {"type": "string"}, "topic": {"type": "string", "description": "el tema, corto"},
               "questions": QUIZ_QUESTIONS}, ["materia", "topic", "questions"], read_only=False),
+        Tool("join_group", "Une al estudiante a un grupo de una materia en el aula (un equipo de proyecto, «Semana 7 "
+             "6»), cuando el profesor abrió la inscripción: le manda a su chat privado el grupo, quién está y una "
+             "encuesta «Unirme / Cancelar»; se une solo si vota Unirme. Sin «grupo», lista los grupos abiertos con "
+             "su cupo.", join_group,
+             {"materia": {"type": "string", "description": "nombre o código de la materia"},
+              "grupo": {"type": "string", "description": "el número («6») o el nombre del grupo"},
+              "conjunto": {"type": "string", "description": "el conjunto de grupos, si lo nombró («Semana 7», "
+                                                            "«Proyectos»)"}},
+             ["materia"], read_only=False),
         Tool("prepare_submission", "En WhatsApp: prepara una entrega en el aula, con el PDF que armas de las fotos de "
              "una actividad hecha a mano (una página por foto, en su orden) o con los archivos que te mandó tal cual "
              "(PDF, Word, Excel, ZIP, código…), y se la manda a su chat privado con una encuesta «Entregar / "

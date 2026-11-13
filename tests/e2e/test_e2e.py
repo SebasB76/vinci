@@ -45,7 +45,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
   first asks what it judges; «explícame bien two-phase commit» becomes a study page (send_study_page refuses
   a quiz answer that is not an option, the corrected page arrives as a button and draws in a real headless Chromium:
-  KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; `vinci-check say` talks to it;
+  KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; «agrégame al grupo 6 de semana 7» shows the group, who is in it and the
+  one he leaves, and only his «Unirme» vote joins it in Canvas; `vinci-check say` talks to it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
   masked logs, turns and files, and runs commands, each one in remote-access.log.
@@ -669,6 +670,12 @@ class Script:
         hand_in = next((a for words, a in HAND_IN.items() if words in text), None)
         if documents and hand_in and not called:
             return _call("mcp__vinci__prepare_submission", assignment_id=hand_in, files=documents)
+        if "agrégame al grupo 6 de semana 7" in text:
+            if not called:
+                return _call("mcp__vinci__join_group", materia="física", grupo="6", conjunto="Semana 7")
+            shown = _json(results[-1])
+            return {"content": "Te mandé el grupo: vota «Unirme»." if isinstance(shown, dict) and "grupo" in shown
+                    else _problem(results[-1])}
         if "mcp__vinci__prepare_submission" in called and results:
             return {"content": "Te lo mandé: revísalo y vota «Entregar»." if "proposal" in results[-1]
                     else f"No lo preparé: {results[-1].split('</untrusted_tool_result>')[0][-300:]}"}
@@ -2487,6 +2494,25 @@ def test_whatsapp_captain(tmp_path):
             ("informe-final.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", False)]
         assert canvas.submissions == [{"assignment": 3002, "file_ids": [9001]}], canvas.submissions
         md.append(f"→ [informe-final.docx con la encuesta] → vota «Entregar» → Vinci: {normalize(text_of(done))}\n")
+
+        canvas.signup_groups = [
+            {"id": 8105, "name": "Semana 7 5", "course_id": 102, "set_id": 81, "set": "Semana 7", "max": 4, "members": [42]},
+            {"id": 8106, "name": "Semana 7 6", "course_id": 102, "set_id": 81, "set": "Semana 7", "max": 4,
+             "members": [501, 502]},
+            {"id": 8206, "name": "Semana 6 6", "course_id": 102, "set_id": 82, "set": "Semana 6", "max": 4, "members": []}]
+        mark = len(wa.sent)
+        say(captain_jid, captain_jid, "agrégame al grupo 6 de semana 7 de física", "Capitán", expect=3)
+        card = text_of([m for m in wa.sent[mark:] if "Semana 7 6" in m.get("message", "")])
+        assert "Compañero 501, Compañero 502" in card and "«Semana 7 5»" in card, wa.sent[mark:]
+        poll = next(m for m in wa.sent[mark:] if m["path"] == "send-poll")
+        assert not canvas.joined, "nadie se une antes del voto"
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, poll["messageId"], next(o for o in poll["options"] if "Unirme" in o))
+        joined = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Ya estás" in m.get("message", "")],
+                             60)
+        assert joined and "Compañero 501" in text_of(joined), fail(f"no confirmó el grupo: {wa.sent[mark:]}")
+        assert canvas.joined == [8106] and [g["members"] for g in canvas.signup_groups] == [[], [501, 502, 42], []]
+        md.append(f"→ [el grupo con su encuesta] → vota «Unirme» → Vinci: {normalize(text_of(joined))}\n")
 
         checked = run([str(VENV_BIN / "vinci-check"), "say", "qué tengo esta semana", "--timeout", "150"], T_VINCI,
                       check=False)

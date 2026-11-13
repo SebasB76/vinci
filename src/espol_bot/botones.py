@@ -29,6 +29,9 @@ plugin should show:
                           subject's, its //vinci questions and its summary go to that bot
   v1:k:<nota>:no          «No es de clase»: the note is never read again
   v1:k:<nota>:cambiar     «Cambiar materia»: sends the card with every subject
+  v1:j:<grupo>:ok         «👥 Unirme a <grupo>» under a course group the student asked to join (course_groups.py):
+                          joins it in the aula, which takes them out of their group in the same set
+  v1:j:<grupo>:no         «Cancelar»: does nothing
   v1:p:<recordatorio>:1h|1d|ok
                           the poll under a reminder in the captain's WhatsApp chat (avisos.chat_reminders): the same
                           reminder an hour from the vote, or a day after it was due; «✅ Ya está» calls off the snooze
@@ -37,7 +40,8 @@ A tick on the dashboard comes in as `v1:s:…` or `v1:t:…` too (dashboard.py);
 dashboard, refreshes the snapshot behind the menu button.
 
 No model is involved: the schedule and a grading scheme are saved, a bot created or archived, and a PDF
-handed in to the aula only by the captain's own press.
+handed in to the aula or a course group joined
+only by the captain's own press.
 """
 
 from __future__ import annotations
@@ -50,13 +54,13 @@ from pathlib import Path
 
 from aula_core import Aula, timefmt
 from aula_core.store import file_lock, get_meta, set_marked_submitted, set_meta
-from espol_bot import conversation, dashboard, equipo, grades, horario, materias, messages, store, submission, whatsapp
+from espol_bot import conversation, course_groups, dashboard, equipo, grades, horario, materias, messages, store, submission, whatsapp
 from espol_bot.config import BotConfig, load_telegram_secrets
 from espol_bot.telegram import Telegram, TelegramError
 
 log = logging.getLogger(__name__)
 
-PATTERN = re.compile(r"v1:([aghckxrnpstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
+PATTERN = re.compile(r"v1:([aghcjkxrnpstu]):(-?\d{1,20}):([A-Za-z0-9]{2,12})")  # feed-only items have negative ids
 OFFER_KEY = "bot_creation_offer"  # the last creation message sent: {"code", "sent_at", "keyboard"}
 # A second «Crear» this soon is a double press: the keyboard button already sent is still the chat's latest.
 OFFER_AGAIN = timedelta(minutes=5)
@@ -78,6 +82,8 @@ def handle(cfg: BotConfig, data: str, now: datetime) -> dict:
     kind, ref, arg = match[1], int(match[2]), match[3]
     if kind in "cxrn":
         return _team(cfg, kind, arg.upper(), now)
+    if kind == "j":
+        return _join_group(cfg, ref, arg == "ok")
     aula = Aula(cfg.core)
     try:
         conn = store.ensure(aula.conn)
@@ -228,6 +234,22 @@ def _hand_in(cfg: BotConfig, conn, proposal_id: int, hand_in: bool, now: datetim
     if proposal.get("group_chat"):
         _tell_group(cfg, proposal["group_chat"], proposal["assignment_name"], files, pages, bool(result.get("late")))
     return _answer("Entregada", reply, remove_buttons=True)
+
+
+def _join_group(cfg: BotConfig, group_id: int, join: bool) -> dict:
+    if not join:
+        return _answer("No me uní", "👌 Listo, no te uní a ningún grupo.", remove_buttons=True)
+    try:
+        group = course_groups.join(cfg.core, group_id)
+    except course_groups.GroupError as exc:
+        return _answer("No pude unirte", f"⚠️ No pude unirte: {messages.e(exc)}", remove_buttons=True)
+    aula = Aula(cfg.core)
+    try:
+        others = course_groups.members(aula, group_id)
+        course_groups.remember(aula, group, others)
+    finally:
+        aula.close()
+    return _answer("Te uní al grupo", messages.group_joined(group.get("name") or "", others), remove_buttons=True)
 
 
 def _tell_group(cfg: BotConfig, group: str, assignment: str, files: list[Path], pages: int, late: bool) -> None:

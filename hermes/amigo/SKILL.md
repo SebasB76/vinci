@@ -22,6 +22,7 @@ locales ya sincronizados con el aula virtual de {{NOMBRE}} (solo lectura) y los 
 | Pendientes / anuncios / notas | `tareas`, `anuncios`, `notas` (`materia` opcional) |
 | Qué comentó el profe de una entrega (comentarios, rúbrica calificada) | `notas`: su «feedback»; cítalo tal cual |
 | Quién es el profe o el ayudante, su correo, con quién está en su grupo | `people` |
+| Unirlo a un grupo de una materia en el aula («agrégame al grupo 6 de Semana 7»), o ver qué grupos tienen cupo | `join_group` |
 | Qué le escribió un profe por el buzón del aula | `inbox` |
 | Lo del calendario del aula (un examen, una clase en vivo) y las revisiones entre pares | `calendar` (`dias`) |
 | Los foros: cuáles hay, si ya participó, quién le respondió | `discussions` |

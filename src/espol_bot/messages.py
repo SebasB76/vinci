@@ -584,6 +584,30 @@ def submission_card(assignment: str, course_name: str, due_at: str | None, pages
     return "\n".join(parts)
 
 
+def join_group_button(group: str) -> str:
+    short = group if len(group) <= 40 else group[:39].rstrip() + "…"
+    return f"👥 Unirme a «{short}»"
+
+
+def join_group_card(group: str, group_set: str, course_name: str, members: list[str], limit: int | None,
+                    current: str | None) -> str:
+    count = len(members)
+    parts = [f"👥 <b>{e(group)}</b>", course(course_name) + f" · {e(group_set)}",
+             (f"{count} de {limit} cupos ocupados" if limit else f"{count} integrante{'s' if count != 1 else ''}")
+             + (": " + e(", ".join(members)) if members else ".")]
+    if current and current != group:
+        parts.append(f"⚠️ Ahora estás en «{e(current)}»: al unirte, el aula te saca de ese grupo.")
+    parts.append("\nTe uno en el aula solo cuando votes <b>Unirme</b>.")
+    return "\n".join(parts)
+
+
+def group_joined(group: str, others: list[str]) -> str:
+    text = f"✅ <b>Ya estás en «{e(group)}»</b> en el aula."
+    if others:
+        text += " Con " + e(", ".join(others)) + "."
+    return text
+
+
 NOTE_CHANGE_BUTTON = "✏️ Cambiar materia"
 NOTE_NOT_CLASS_BUTTON = "🚫 No es de clase"
 

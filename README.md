@@ -27,6 +27,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 - Te ayuda a planear la matrícula con tu historial y tu malla.
 - Te regala sobres de cartas por entregar a tiempo, por tus buenas notas y uno cada mañana, con cambios y un ranking entre amigos.
 - Entrega tus deberes desde unas fotos o tus archivos, con tu voto.
+- Te une al grupo de una materia («agrégame al grupo 6»), con tu voto.
 - Entiende audios, capturas y fotos de la pizarra, y te responde en audio si se lo pides.
 - Te cuenta sus novedades y todo lo que hace, con un ejemplo para probar cada cosa.
 
@@ -41,7 +42,7 @@ Tu aula virtual, pero en WhatsApp.<br>
 
 ## Privacidad
 
-Solo lee tu aula, y solo entrega lo que tú apruebas. Tus datos se quedan en tu servidor.
+Solo lee tu aula, y solo entrega o te une a un grupo cuando tú lo apruebas. Tus datos se quedan en tu servidor.
 [Los detalles →](docs/guia/privacidad.md#seguridad-y-privacidad)
 
 ## Más

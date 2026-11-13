@@ -1,6 +1,7 @@
-"""Homework Vinci writes for an assignment (a weekly workshop, a short analysis), as the plain PDF a professor
-expects: a header with the course, the title, the members and the date, then sections of paragraphs, points and
-bordered tables, and the references. The model only fills fields; the layout is fixed here.
+"""Homework Vinci writes for an assignment (a weekly workshop, a short analysis), as a plain student document: black
+Arial-like text, the title centered, «Asignatura:», the members as A., B., C., then sections of paragraphs, points
+and simple bordered tables, and the references only when the work has them. The model only fills fields; the layout
+is fixed here, and it must read like a document a student typed in Word, not a designed report.
 """
 
 from __future__ import annotations
@@ -11,9 +12,8 @@ from pathlib import Path
 
 from fpdf.fonts import FontFace
 
-from espol_bot import submission
-from espol_bot.resumen import LINE, MONTHS, _Pdf
-from espol_bot.visuales import INK, MUTED, NAVY, NAVY_SOFT, RULE
+from espol_bot import resumen, submission
+from espol_bot.resumen import _Pdf
 
 MAX_SECTIONS = 20
 MAX_POINTS = 20
@@ -90,23 +90,49 @@ def parse(document: dict) -> dict:
             "references": _items(document.get("references"), MAX_REFERENCES, 500, "references")}
 
 
-def _paragraphs(pdf: _Pdf, text: str) -> None:
+BLACK = (0, 0, 0)
+LINE = 6
+# Liberation Sans has Arial's metrics (fonts-liberation in the Docker image); without it, the summaries' fonts.
+FAMILIES = (("LiberationSans-Regular", "LiberationSans-Bold", "LiberationSans-Italic", "LiberationSans-BoldItalic"),
+            *resumen.FAMILIES)
+
+
+class _Plain(_Pdf):
+    def __init__(self, title: str):
+        super().__init__(title, FAMILIES)
+        self.set_margins(25, 25, 25)
+        self.set_auto_page_break(True, margin=20)
+
+    def style(self, size: float, weight: str = "", color=BLACK) -> None:
+        super().style(size, weight, color)
+
+    def footer(self):
+        self.set_y(-14)
+        self.style(9)
+        self.cell(0, 5, str(self.page_no()), align="C")
+
+    def bold_line(self, text: str, size: float = 11, align: str = "L") -> None:
+        self.style(size, "B")
+        self.multi_cell(0, LINE, self.clean(text), align=align, new_x="LMARGIN", new_y="NEXT")
+
+
+def _paragraphs(pdf: _Plain, text: str) -> None:
     for paragraph in (p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()):
         pdf.style(11)
         pdf.multi_cell(0, LINE, pdf.md(paragraph), markdown=True, align="J", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(2.5)
+        pdf.ln(3)
 
 
-def _draw_table(pdf: _Pdf, table: dict) -> None:
-    pdf.style(10)
-    pdf.set_draw_color(*RULE)
-    pdf.set_line_width(0.25)
-    # The first column is usually a short label (a term, a criterion): narrower than the text beside it.
+def _draw_table(pdf: _Plain, table: dict) -> None:
+    pdf.style(11)
+    pdf.set_draw_color(*BLACK)
+    pdf.set_line_width(0.2)
     count = len(table["columns"])
+    # Two columns are usually a term and its explanation: the explanation gets the room.
     widths = [1] * count if count != 2 else [3, 7]
-    with pdf.table(col_widths=widths, line_height=5.6, markdown=True, text_align="LEFT", padding=1.8,
-                   headings_style=_heading_style(pdf),
-                   first_row_as_headings=True, repeat_headings=1) as grid:
+    heading = FontFace(family=pdf.family, emphasis="BOLD", color=BLACK, size_pt=11)
+    with pdf.table(col_widths=widths, line_height=5.4, markdown=True, text_align="LEFT", padding=1.5,
+                   headings_style=heading, first_row_as_headings=True, repeat_headings=1) as grid:
         header = grid.row()
         for column in table["columns"]:
             header.cell(pdf.clean(column))
@@ -117,62 +143,46 @@ def _draw_table(pdf: _Pdf, table: dict) -> None:
     pdf.ln(4)
 
 
-def _heading_style(pdf: _Pdf) -> FontFace:
-    return FontFace(family=pdf.family, emphasis="BOLD", color=NAVY, fill_color=NAVY_SOFT, size_pt=10)
-
-
 def build(dest: Path, document: dict, now: datetime) -> tuple[int, bytes]:
     """Writes the PDF at `dest`; returns its page count and a thumbnail of its first page."""
     doc = parse(document)
-    pdf = _Pdf(doc["title"])
+    pdf = _Plain(doc["title"])
     pdf.add_page()
+    pdf.bold_line(doc["title"], 13, "C")
+    pdf.ln(4)
+    pdf.style(11)
     if doc["course"]:
-        pdf.style(9.5, "B", MUTED)
-        pdf.multi_cell(0, 5, pdf.clean(doc["course"].upper()), align="L", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(1.5)
-    pdf.style(18, "B", NAVY)
-    pdf.multi_cell(0, 8.5, pdf.clean(doc["title"]), align="L", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
+        pdf.multi_cell(0, LINE, pdf.clean(f"Asignatura: {doc['course']}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
     if doc["members"]:
-        pdf.style(10.5, "B")
-        pdf.cell(0, 5.8, "Integrantes", new_x="LMARGIN", new_y="NEXT")
-        pdf.style(10.5)
-        for member in doc["members"]:
-            pdf.cell(0, 5.6, pdf.clean(member), new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(1.5)
-    pdf.style(10, color=MUTED)
-    pdf.cell(0, 5.6, f"{now.day} {MONTHS[now.month - 1]} {now.year}", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-    pdf.set_draw_color(*NAVY)
-    pdf.set_line_width(0.5)
-    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
-    pdf.ln(6)
+        pdf.cell(0, LINE, "Integrantes:", new_x="LMARGIN", new_y="NEXT")
+        for letter, member in zip("ABCDEFGH", doc["members"]):
+            pdf.cell(0, LINE, pdf.clean(f"{letter}. {member}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
 
     for section in doc["sections"]:
         if section["heading"]:
-            pdf.room(24)
-            pdf.style(13, "B", NAVY)
-            pdf.multi_cell(0, 6.8, pdf.clean(section["heading"]), align="L", new_x="LMARGIN", new_y="NEXT")
+            pdf.room(20)
+            pdf.bold_line(section["heading"])
             pdf.ln(2)
         if section["text"]:
             _paragraphs(pdf, section["text"])
         for point in section["points"]:
-            pdf.bullet(point)
+            pdf.bullet(point, color=BLACK)
         if section["points"]:
-            pdf.ln(1.5)
+            pdf.ln(2)
         if section["table"]:
             _draw_table(pdf, section["table"])
-        pdf.ln(3)
+        pdf.ln(2)
 
     if doc["references"]:
-        pdf.room(24)
-        pdf.style(13, "B", NAVY)
-        pdf.cell(0, 6.8, "Referencias", new_x="LMARGIN", new_y="NEXT")
+        pdf.room(20)
+        pdf.bold_line("Referencias")
         pdf.ln(2)
         for reference in doc["references"]:
-            pdf.style(9.5, color=INK)
-            pdf.multi_cell(0, 5, pdf.md(reference), markdown=True, align="L", new_x="LMARGIN", new_y="NEXT")
-            pdf.ln(1.2)
+            pdf.style(10)
+            pdf.multi_cell(0, 5.2, pdf.md(reference), markdown=True, align="L", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1.5)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(dest))

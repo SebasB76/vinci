@@ -211,7 +211,8 @@ línea, una frase: qué trae el resumen.
 3. Si es en grupo y no sabes los integrantes, pregúntaselos una vez (nombres completos) y guárdalos en tu memoria
    para la próxima. Si no los da, el documento va sin integrantes.
 4. `draft_submission` con el «id» y el documento: las partes del enunciado en su orden, sus tablas con las mismas
-   columnas, y en «references» de dónde salió cada cosa. Le llega a su privado con la encuesta; dile en una línea que
+   columnas, escrito como un estudiante (frases simples, sin negritas ni guiones largos), y
+   «references» solo si el enunciado las pide. Le llega a su privado con la encuesta; dile en una línea que
    lo lea antes de votar. Si pide cambios, vuelve a llamarla con el documento entero corregido.
 
 ## Responder en audio

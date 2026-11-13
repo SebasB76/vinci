@@ -22,7 +22,7 @@ MAX_SECTIONS = 20
 MAX_POINTS = 12
 MAX_TAKEAWAYS = 8
 FONT_DIRS = ("/usr/share/fonts/noto", "/usr/share/fonts/truetype/noto", "/usr/share/fonts/TTF",
-             "/usr/share/fonts/truetype/dejavu")
+             "/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/liberation", "/usr/share/fonts/truetype/liberation")
 FAMILIES = (("NotoSans-Regular", "NotoSans-Bold", "NotoSans-Italic", "NotoSans-BoldItalic"),
             ("DejaVuSans", "DejaVuSans-Bold", "DejaVuSans-Oblique", "DejaVuSans-BoldOblique"))
 FALLBACKS = ("NotoSansMath-Regular", "NotoSansSymbols2-Regular", "NotoSansSymbols-Regular", "DejaVuSans")
@@ -39,12 +39,12 @@ def _font(name: str) -> Path | None:
 
 
 class _Pdf(FPDF):
-    def __init__(self, title: str):
+    def __init__(self, title: str, families: tuple = FAMILIES):
         super().__init__(format="A4")
         self.title_text = title
         self.family = "helvetica"
         self.glyphs: set[int] | None = None  # None: the built-in font, Latin-1 only
-        family = next((paths for names in FAMILIES if all(paths := [_font(n) for n in names])), None)
+        family = next((paths for names in families if all(paths := [_font(n) for n in names])), None)
         if family:
             for style, path in zip(("", "B", "I", "BI"), family):
                 self.add_font("body", style, path)

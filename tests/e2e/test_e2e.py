@@ -2546,7 +2546,7 @@ def test_whatsapp_captain(tmp_path):
         from pypdf import PdfReader
         written = PdfReader(folder / "Informe de laboratorio 1.pdf").pages[0].extract_text()
         for piece in ("Informe de laboratorio: péndulo simple", "Integrantes", "Compañero 501", "Amplitud",
-                      "Referencias", "FÍSICA I"):
+                      "Referencias", "Asignatura: Física I", "A. Estudiante E2E"):
             assert piece in written, written
         poll = next(m for m in wa.sent[mark:] if m["path"] == "send-poll")
         uploaded = len(canvas.uploads)

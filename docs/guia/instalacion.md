@@ -86,7 +86,8 @@ WHATSAPP_CAPTAIN=…        # tu número de WhatsApp (con telegram = false; ver 
 `secrets.env` está en `.gitignore`: nunca se sube a GitHub. Los tokens de los bots de materia
 (`TELEGRAM_BOT_TOKEN_<CÓDIGO>`) no los escribes tú: Vinci los agrega cuando crea cada bot. `PANEL_KEY`, la clave del
 enlace al [panel](panel.md), la crea `espol-bot panel --nueva-clave`. `ALBUM_ART_KEY`, la clave que abre el arte
-cifrado del álbum (las cartas con caras de personas reales), la crea `uv run scripts/album_card.py key`.
+cifrado del álbum (las cartas con caras de personas reales), la crea `uv run scripts/album_card.py key`, y
+`ALBUM_TAWS_KEY`, la de la sección TAWS, `uv run scripts/album_card.py key --club taws`.
 `AGENT_KEY`, la clave con la que un agente en tu PC entra al contenedor ([«El agente desde tu PC»](panel.md#el-agente-desde-tu-pc)),
 la crea `espol-bot panel --clave-agente`. `PANEL_GOOGLE_EMAIL`, `PANEL_GOOGLE_CLIENT_ID` y `PANEL_SESSION_SECRET`, para
 entrar al panel con tu cuenta de Google ([«Entrar con Google»](panel.md#entrar-con-google)), los pone

@@ -7,7 +7,7 @@ friend's and in the default one; it acts only on WhatsApp.
 - The captain's private chat: «/amigo agregar 0991234567 Angel», «/amigo quitar Angel» and «/amigos» run
   `espol-bot amigo` (amigos.py); anything else goes on to his Vinci.
 - Vinci's own commands, for the captain and every friend with their Vinci, each over their own aula: /start,
-  /estado, /token, /entregas (a link to the dashboard), /marca (what a tick on it types), /cambio (card trades), /canje (3 repeats for a pack) and /ranking (the album ranking)
+  /estado, /token, /entregas (a link to the dashboard), /marca (what a tick on it types), /cambio (card trades), /canje (3 repeats for a pack), /ranking (the album ranking) and /taws (the album's TAWS section)
   run `espol-bot whatsapp-comando` (in a group, /estado, /token, /entregas, /marca and /canje answer in the sender's
   private chat, and the group reads «Te lo mandé por privado»); «/quiz derivadas» becomes a request for a quiz, which Vinci sends as polls (send_quiz). Hermes' own
   (/new, /usage, /stop, /help) go on to Hermes.
@@ -103,8 +103,8 @@ CANVAS_TOKEN_RE = re.compile(r"\b(?:\d{1,6}~)?(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9
                              r"[A-Za-z0-9]{64}\b")
 MENTION_RE = re.compile(r"@(\d{6,})\b")
 FRIEND_RE = re.compile(r"^/amigos?\b\s*(\S*)\s*(.*)$", re.S)
-COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca|cambio|canje|ranking)\b\s*(.*)$", re.S | re.I)
-PRIVATE_ONLY = ("estado", "token", "entregas", "marca", "canje")  # they show or change the sender's own aula or album
+COMMAND_RE = re.compile(r"^/(start|ayuda|estado|token|quiz|entregas|marca|cambio|canje|ranking|taws)\b\s*(.*)$", re.S | re.I)
+PRIVATE_ONLY = ("estado", "token", "entregas", "marca", "canje", "taws")  # they show or change the sender's own aula or album
 QUIZ = "Hazme un quiz corto{tema}: de 3 a 5 preguntas de opción múltiple sacadas de mi material."
 PRIVATE = "Te lo mandé por privado."
 ON_RE = re.compile(r"\bactiva(?:r|te)? (?:este|el) grupo\b")
@@ -459,7 +459,7 @@ async def _command(text, senders, chat, reply_to, gateway, *, group=False):
     who = CAPTAIN if CAPTAIN in senders else next(f["numero"] for f in _read(REGISTRY, "amigos")
                                                      if f.get("numero") in senders)
     result = await _run("whatsapp-comando", "start" if name == "ayuda" else name, who,
-                        stdin=rest if name in ("marca", "cambio", "ranking") else None)
+                        stdin=rest if name in ("marca", "cambio", "ranking", "taws") else None)
     if group and name in PRIVATE_ONLY:  # the answer is a page or a form of their own: it goes to their chat
         await _answer(f"{who}@s.whatsapp.net", result, None, gateway)
         await _answer(chat, {"respuesta": PRIVATE}, reply_to, gateway)

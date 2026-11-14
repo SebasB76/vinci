@@ -240,6 +240,7 @@ y Vinci los contesta sin gastar tokens:
 | `/cambio` | Tus cartas repetidas del álbum, y quién tiene repetidas las que te faltan. `/cambio Angel Bosque protector por Lago ESPOL` le ofrece a Angel tu repetida por la suya: le llega una encuesta y, si acepta, Vinci cambia las dos cartas. El botón «🔁 Ver los cambios» abre «Cambios» en el álbum, donde eliges el cambio con un toque. [Más sobre los cambios](uso.md#cambiar-cartas) |
 | `/canje` | 3 de tus cartas repetidas por un sobre nuevo. Vinci entrega primero las más comunes y nunca tu última copia. Desde un grupo, te contesta por privado. [Más sobre el canje](uso.md#canjear-repetidas-por-un-sobre) |
 | `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum, y ahí tocas a alguien para ver sus cartas. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
+| `/taws` | Si eres de TAWS, te abre la sección TAWS del álbum con tu primer sobre del club. Vinci te busca en la lista de taws.espol.edu.ec; si no estás, le pregunta al capitán. [Más sobre la sección TAWS](uso.md#la-sección-taws) |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
 En un grupo, `/estado`, `/token`, `/entregas`, `/marca` y `/canje` te contestan en tu chat privado, y el grupo lee «Te lo mandé por

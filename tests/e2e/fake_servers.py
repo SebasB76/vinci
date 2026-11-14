@@ -211,6 +211,8 @@ class FakeWeb(_Server):
         self.headers: list[dict[str, str]] = []  # each request's headers, in the order of `requests`
         self.lock = threading.Lock()
         self.espol_calendar: str | None = None  # ESPOL's calendar page; None answers 500, as the site did once
+        self.taws_members = [{"fullName": "Estudiante E2E", "status": "active"},
+                             {"fullName": "Otra Persona", "status": "active"}]  # the captain is in TAWS, Angel is not
 
 
 class _Quiet(BaseHTTPRequestHandler):
@@ -742,6 +744,8 @@ class _WebHandler(_Quiet):
             web.headers.append(dict(self.headers))
         if self._shared(urlsplit(self.path).path, dict(parse_qsl(urlsplit(self.path).query))):
             return
+        if urlsplit(self.path).path == "/api/members":  # taws.espol.edu.ec, the club's list of members
+            return self._send(200, json.dumps({"docs": web.taws_members}).encode(), "application/json")
         if urlsplit(self.path).path == "/es/vida-politecnica/calendario-grado":
             page = web.espol_calendar
             self._send(200 if page else 500, (page or "The website encountered an unexpected error.").encode(),

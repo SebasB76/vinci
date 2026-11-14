@@ -2114,8 +2114,16 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         row = ctx.conn.execute("SELECT name FROM courses WHERE id = ?", (group["course_id"],)).fetchone()
         card = messages.join_group_card(group["name"], group["set"], row["name"] if row else "", people,
                                         group.get("max"), current.get("name") if current else None)
-        where, _ = _show_card(ctx, card, [(messages.join_group_button(group["name"]), f"v1:j:{group['id']}:ok"),
-                                          (messages.SUBMIT_CANCEL_BUTTON, f"v1:j:{group['id']}:no")])
+        buttons = [(messages.join_group_button(group["name"]), f"v1:j:{group['id']}:ok"),
+                   (messages.JOIN_GROUP_CANCEL_BUTTON, f"v1:j:{group['id']}:no")]
+        if (here := _group_chat(ctx)) is not None:  # only the one who asked can vote it (amigos.group_vote)
+            try:
+                WhatsApp(here, ctx.cfg.whatsapp_bridge, polls=ctx.cfg.core.data_dir).send(card, buttons)
+            except TelegramError as exc:
+                raise ToolError(f"No pude mandar la tarjeta al grupo: {exc}") from None
+            where = "salió aquí en el grupo con una encuesta"
+        else:
+            where, _ = _show_card(ctx, card, buttons)
         return {"grupo": group["name"], "conjunto": group["set"], "integrantes": people,
                 "mensaje": f"La tarjeta {where}. Se une solo si vota Unirme; tú no puedes unirlo. Dile en una línea "
                            "que vote."}

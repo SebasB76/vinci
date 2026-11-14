@@ -612,9 +612,10 @@ class Setup:
             "unauthorized_dm_behavior": "ignore",
             # «vinci, …» or «@vinci …» typed by hand also counts, not only a mention picked from the list. A voice
             # note cannot mention anyone: the bridge's text for one lets it through, and the plugin hears it. A vote
-            # on a group quiz reaches Hermes as the option's text, which starts with 🇦 🇧 🇨 🇩.
+            # on a group quiz reaches Hermes as the option's text, which starts with 🇦 🇧 🇨 🇩; one on a card to join
+            # an aula group, with 👥.
             "mention_patterns": [r"(?<![\w@])@?vinci\w*\b", r"^\[(?:ptt|audio) received\]$",
-                                 f"^[{quiz.GROUP_LETTERS}] "],
+                                 f"^[{quiz.GROUP_LETTERS}] ", "^👥 "],
         })
         test = self.cfg.core.raw.get("test") or {}
         if test.get("whatsapp_puente"):  # E2E: the stand-in bridge already running on its own port

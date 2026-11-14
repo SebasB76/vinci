@@ -596,6 +596,9 @@ def join_group_button(group: str) -> str:
     return f"👥 Unirme a «{short}»"
 
 
+JOIN_GROUP_CANCEL_BUTTON = "👥 No me unas"
+
+
 def join_group_card(group: str, group_set: str, course_name: str, members: list[str], limit: int | None,
                     current: str | None) -> str:
     count = len(members)

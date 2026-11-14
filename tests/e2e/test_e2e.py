@@ -47,7 +47,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   a quiz answer that is not an option, the corrected page arrives as a button and draws in a real headless Chromium:
   KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; «haz el taller» becomes a PDF Vinci wrote (a table
   row short of a cell goes back to the model to fix) that goes up only on his vote; «agrégame al grupo 6 de semana 7» shows the group, who is in it and the
-  one he leaves, and only his «Unirme» vote joins it in Canvas; `vinci-check say` talks to it;
+  one he leaves, and only his «Unirme» vote joins it in Canvas (asked in the group, the card goes there and a
+  classmate's vote does nothing); `vinci-check say` talks to it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
   masked logs, turns and files, and runs commands, each one in remote-access.log.
@@ -2823,6 +2824,27 @@ def test_whatsapp_friend(tmp_path):
                       "capitán le responde «@vinci sube esto al informe de laboratorio», Hermes trae el archivo citado, "
                       "la encuesta va a su privado, y al votar «Entregar» se sube a su aula y el grupo lee que quedó "
                       "entregado")
+
+        # 10b'. Joining an aula group from the WhatsApp group: the card and its poll go out there, and only the vote of
+        # whoever asked counts (a classmate's «Unirme» does nothing).
+        canvas.signup_groups = [
+            {"id": 8106, "name": "Semana 7 6", "course_id": 102, "set_id": 81, "set": "Semana 7", "max": 4,
+             "members": [501, 502]}]
+        mark = len(wa.sent)
+        say(GROUP_WA, captain_jid, "@vinci agrégame al grupo 6 de semana 7 de física", "Capitán", group=True, expect=2)
+        poll = next((m for m in wa.sent[mark:] if m["path"] == "send-poll"), None)
+        assert poll and poll["chatId"] == GROUP_WA and not wa.polls_to(captain_jid, mark), wa.sent[mark:]
+        unirme = next(o for o in poll["options"] if "Unirme" in o)
+        mark = len(wa.sent)
+        wa.vote(GROUP_WA, stranger_jid, poll["messageId"], unirme)
+        time.sleep(4)
+        assert not canvas.joined and not wa.messages_to(GROUP_WA, mark), "el voto de otro no lo une"
+        wa.vote(GROUP_WA, captain_jid, poll["messageId"], unirme)
+        joined = wa.wait_for(lambda b: [m for m in b.messages_to(GROUP_WA, mark) if "Ya estás" in m.get("message", "")],
+                             60)
+        assert joined and canvas.joined == [8106], fail(f"no lo unió desde el grupo: {wa.sent[mark:]}")
+        md.append(f"→ [la tarjeta y su encuesta, en el grupo] → un compañero vota «Unirme»: nada → el capitán vota → "
+                  f"grupo: {normalize(text_of(joined))}\n")
 
         # 10b''. What holds in one chat stays there: the group asks to be spoken to in plural (chat_note). Every turn
         # ends with the clock and that chat's notes; the captain's private chat gets the clock, not the group's note.

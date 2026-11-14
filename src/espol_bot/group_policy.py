@@ -20,7 +20,7 @@ TOOLS: dict[str, tuple[str, str]] = {
     "add_todo": (PRIVATE, TELL_PRIVATE + " Si era algo para todo el grupo a una hora, era chat_reminder."),
     "propose_grading_scheme": (PRIVATE, TELL_PRIVATE),
     "proponer_horario": (PRIVATE, TELL_PRIVATE),
-    "join_group": (PRIVATE, TELL_PRIVATE),
+    "join_group": (GROUP, TELL_GROUP + " Solo cuenta el voto de quien lo pidió: los demás no pueden unirlo."),
     "prepare_submission": (PRIVATE, TELL_PRIVATE + " Cuando vote Entregar, yo aviso aquí que quedó entregado; tú no "
                                                    "lo anuncias."),
     "draft_submission": (PRIVATE, TELL_PRIVATE + " Cuando vote Entregar, yo aviso aquí que quedó entregado; tú no "

@@ -102,7 +102,8 @@ def launch(cfg: BotConfig, path: Path, now: datetime) -> None:
         # a crash before its own logging starts (an import, the config) still leaves a trace
         trace = cfg.core.data_dir / WORKER_LOG
         with open(os.open(trace, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as err:
-            subprocess.Popen([sys.executable, "-m", "espol_bot", "portal-worker", mailbox], stdin=subprocess.DEVNULL,
+            # "--": a token_urlsafe mailbox starts with "-" one time in 64, and argparse took it for an option
+            subprocess.Popen([sys.executable, "-m", "espol_bot", "portal-worker", "--", mailbox], stdin=subprocess.DEVNULL,
                              stdout=err, stderr=err, start_new_session=True,
                              env={k: v for k, v in os.environ.items() if k not in ("AULA_DATA_DIR", "ESPOL_AMIGO")})
         log.info("academico: proceso de ingreso iniciado")

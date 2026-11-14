@@ -18,9 +18,10 @@ ID, ethnic group and photo: only the academic rows are kept (`GENERAL_FACTS`). W
 subject, needs the curriculum, which this does not read yet.
 
 The curriculum (malla) is on another site, mallacurricular.espol.edu.ec: «Información General» links it from the
-career's name with a one-time token, and the page it opens lists every subject by level with its credits and status.
-Each subject's requisites come from a POST that needs only the curriculum's id and the subject's position. Vinci reads
-it right after «Información General», while the token is fresh.
+career's name with a token. Opening that link starts the site's own session; the page itself is only a drawing with
+each subject's position, and its JavaScript then asks the session for the levels (getNiveles) and each level's subjects
+with their credits and status (getMateriasPorNivel), as JSON. Each subject's requisites come from a POST that needs only
+the curriculum's id and the subject's position. Vinci reads it right after «Información General».
 
 Beyond «Información Académica», the copy also keeps what helps to plan and to answer: the subjects registered this
 term with their exam grades, the subjects the portal offers to register (and the itinerary ones), the internship hours
@@ -98,10 +99,12 @@ EXAM_KINDS = re.compile(r"parcial|final|mejora", re.I)
 CURRICULUM_LINK = re.compile(r"AbrirVentanaMalla\('([^']+)'\)")
 CURRICULUM_HOST = "mallacurricular.espol.edu.ec"  # its https answers only without «www.», the host the link names
 CURRICULUM_POSITION = re.compile(r"consultarMateriasRequisitos\((\d+),\s*(\d+)")
-CURRICULUM_LEVEL = re.compile(r'class="[^"]*niveltitulo[^"]*">\s*([^<]+?)\s*<')
-CURRICULUM_ROW = re.compile(
-    r'textonegroCodigo">\s*([^<]*?)\s*</p>\s*<p[^>]*textonegro">\s*([^<]+?)\s*</p>\s*<p[^>]*textogris">\s*\(\s*([\d.,]+)'
-    r'.*?(?:alt="([^"]*)"|</tr>)', re.S)
+# getMateriasPorNivel's ESTADO, as the page's getImagen() shows it; none or empty is pending.
+CURRICULUM_STATUS = {"AP1": "Aprobado 1º vez", "AP2": "Aprobado 2º vez", "AP3": "Aprobado 3º vez", "CV": "Convalidado",
+                     "EC1": "En curso 1º vez", "EC2": "En curso 2º vez", "EC3": "En curso 3º vez"}
+# A row with no NOMBRE is a slot, named by its IDTIPOCREDITO as the page names it.
+CURRICULUM_SLOTS = {1: "OPTATIVA", 2: "LIBRE OPCIÓN", 17: "PRÁCTICAS COMUNITARIAS",
+                    19: "COMPLEMENTARIAS DE ARTE, DEPORTE E IDIOMAS", 20: "COMPLEMENTARIAS DE HUMANÍSTICA"}
 REQUISITE_ROW = re.compile(r"<td[^>]*>\s*([A-Z]{4}\d{4})\s*</td>\s*<td[^>]*>.*?</td>\s*<td[^>]*>\s*([A-Z-]+)\s*</td>",
                            re.I | re.S)
 REQUISITE_SUBJECT = re.compile(r"C[oó]digo:\s*(?:<[^>]+>\s*)*([A-Z]{4}\d{4})", re.I)
@@ -646,7 +649,7 @@ class Portal:
                     section = {"datos": {label: value for label, value in rows(self.page).items()
                                          if GENERAL_FACTS.search(label)}}
                     link = CURRICULUM_LINK.search(self.html)
-                    if link:  # its token works once: now, before another page
+                    if link:
                         progress("Leyendo tu malla…")
                         try:
                             sections["malla"] = read_curriculum(link[1], self.cfg)
@@ -710,18 +713,20 @@ def read_curriculum(link: str, cfg: BotConfig) -> dict:
         page = http.get(route(index, cfg.core), timeout=TIMEOUT)
         if page.status_code != 200:
             raise PortalError(f"la página de la malla respondió {page.status_code}")
-        html = page.text
-        positions = list(dict.fromkeys(CURRICULUM_POSITION.findall(html)))[:MAX_CURRICULUM]
-        subjects, level = [], None
-        for chunk in re.split(r"(?=<p[^>]*niveltitulo)", html):
-            if found := CURRICULUM_LEVEL.search(chunk):
-                level = unescape(found[1]).strip()
-            for code, name, credits, status in CURRICULUM_ROW.findall(chunk):
-                if code.strip() and any(s["code"] == code.strip().upper() for s in subjects):
+        positions = list(dict.fromkeys(CURRICULUM_POSITION.findall(page.text)))[:MAX_CURRICULUM]
+        subjects = []
+        for level in _curriculum_json(http, urljoin(index, "getNiveles"), cfg, {}) or []:
+            answer = _curriculum_json(http, urljoin(index, "getMateriasPorNivel"), cfg, {"nivel": level.get("NIVEL")})
+            for row in (answer or {}).get("Data") or []:
+                code = str(row.get("CODIGOMATERIA") or "").strip().upper() or None
+                name = str(row.get("NOMBRE") or "").strip() or CURRICULUM_SLOTS.get(row.get("IDTIPOCREDITO"))
+                if not name or (code and any(s["code"] == code for s in subjects)):
                     continue
-                subjects.append({"code": code.strip().upper() or None, "name": unescape(name).strip(),
-                                 "credits": float(credits.replace(",", ".")), "level": level,
-                                 "status": unescape(status).strip() or None,
+                credits = row.get("NUMHORASTEORICAS")  # what the page shows as «(N créditos)»
+                subjects.append({"code": code, "name": name,
+                                 "credits": float(credits) if isinstance(credits, (int, float)) else None,
+                                 "level": f"Nivel {level.get('NIVEL')}",
+                                 "status": CURRICULUM_STATUS.get(str(row.get("ESTADO") or "").strip()),
                                  "prerequisites": [], "corequisites": []})
         by_code = {s["code"]: s for s in subjects if s["code"]}
         requests_url = urljoin(index, "MateriasRequisitos")
@@ -747,6 +752,15 @@ def read_curriculum(link: str, cfg: BotConfig) -> dict:
     if not subjects:
         raise PortalError("la página de la malla no trajo materias")
     return {"source": "Académico", "subjects": subjects[:MAX_CURRICULUM]}
+
+
+def _curriculum_json(http: requests.Session, url: str, cfg: BotConfig, data: dict):
+    """One of the page's own JSON calls. Without the session the token opened, the site answers its HTML instead."""
+    answer = http.post(route(url, cfg.core), data=data, timeout=TIMEOUT)
+    try:
+        return answer.json() if answer.status_code == 200 else None
+    except ValueError:
+        raise PortalError("la malla no abrió su sesión con el enlace del Académico") from None
 
 
 # -- the copy ---------------------------------------------------------------------------------------

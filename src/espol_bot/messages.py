@@ -562,9 +562,12 @@ def submit_button(assignment: str) -> str:
 
 
 def submission_card(assignment: str, course_name: str, due_at: str | None, pages: int, tz: ZoneInfo, now: datetime,
-                    *, has_submission: bool, from_photos: bool = True, files: list[str] | None = None) -> str:
+                    *, has_submission: bool, from_photos: bool = True, drafted: bool = False,
+                    files: list[str] | None = None) -> str:
     files = files or []
-    if from_photos:
+    if drafted:
+        what = f"«{e(files[0])}», el documento que redacté ({pages} página{'s' if pages != 1 else ''})."
+    elif from_photos:
         what = f"{pages} página{'s' if pages != 1 else ''}, en el orden en que me mandaste las fotos."
     elif len(files) == 1:
         what = f"«{e(files[0])}», tal como me lo mandaste" + (f" ({pages} página{'s' if pages != 1 else ''})."
@@ -578,8 +581,12 @@ def submission_card(assignment: str, course_name: str, due_at: str | None, pages
         parts.append("⚠️ Ya venció: el aula la marcará como atrasada.")
     if has_submission:
         parts.append("⚠️ Ya tienes una entrega en esta tarea: esta sería un nuevo intento.")
-    parts.append("\nAbre el PDF y revisa que estén todas las hojas y se lean bien." if from_photos else
-                 "\nRevisa que sea la versión final.")
+    if drafted:
+        parts.append("\nLéelo entero antes de votar: lo escribí yo y la nota es tuya. Si algo no va, dime qué "
+                     "cambio y te mando otro.")
+    else:
+        parts.append("\nAbre el PDF y revisa que estén todas las hojas y se lean bien." if from_photos else
+                     "\nRevisa que sea la versión final.")
     parts[-1] += " La entrego en el aula solo cuando pulses <b>Entregar</b>."
     return "\n".join(parts)
 

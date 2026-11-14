@@ -65,8 +65,8 @@ from aula_core.catalog import PUBLIC, normalized_name
 from aula_core.config import ConfigError, load_secret_values
 from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
-from espol_bot import (academic_portal, agenda, album, citations, conversation, course_groups, dashboard, group_policy, diapositivas, espol_calendar,
-                       grades, grades_page, health, horario, libros, materias, messages, plan, portal_login, priority,
+from espol_bot import (academic_portal, agenda, album, citations, conversation, course_groups, dashboard, diapositivas, espol_calendar,
+                       grades, grades_page, group_policy, health, homework, horario, libros, materias, messages, plan, portal_login, priority,
                        quiz, resumen, store, study_page, submission, token_form, visuales, whats_new)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
@@ -266,11 +266,43 @@ MODULES = ("La página Módulos del aula tal como la ve el estudiante, en orden:
 MODULE_NAME = {"type": "string", "description": "una palabra del ítem, del módulo o del título que lo encabeza "
                                                 "(«grabación», «perusall», «semana 3»)"}
 TASK_PROPERTIES = {"tarea_id": {"type": "integer", "description": "el «id» de la tarea en tareas o semana"}}
+DRAFT_SUBMISSION = (
+    "En WhatsApp: el trabajo que redactaste para una tarea (un taller, un análisis, un cuestionario) como el PDF "
+    "sencillo que entregaría un estudiante (texto negro, título centrado, «Asignatura:», integrantes A., B., C., sus "
+    "secciones con texto, puntos y tablas); "
+    "se lo manda a su chat privado con una encuesta «Entregar / Cancelar», y se sube al aula solo si vota Entregar. "
+    "Tú llenas el contenido; el formato lo pongo yo. Sigue la estructura que pide el documento del profesor (sus "
+    "partes, en su orden, y sus tablas con las mismas columnas). Escribe como un estudiante: frases simples y "
+    "concretas, en primera persona del grupo, sin negritas, sin guiones largos y sin frases de relleno. Si te pide "
+    "cambios, vuelve a llamarla con el documento entero: la nueva reemplaza a la anterior.")
+DRAFT_TABLE = {"type": "object", "description": "una tabla con borde, como la del documento del profesor",
+               "properties": {"columns": {"type": "array", "items": {"type": "string"}, "description": "los títulos"},
+                              "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}},
+                                       "description": "las filas, cada una con una celda por columna"}},
+               "required": ["columns", "rows"]}
+DRAFT_PROPERTIES = {
+    "assignment_id": {"type": "integer", "description": "el «id» de la tarea en tareas"},
+    "document": {"type": "object", "properties": {
+        "title": {"type": "string", "description": "el título del trabajo, el del documento del profesor"},
+        "course": {"type": "string", "description": "la materia; vacío: la pongo yo"},
+        "members": {"type": "array", "items": {"type": "string"},
+                    "description": "los integrantes, si es en grupo (pregúntaselos, no los inventes)"},
+        "sections": {"type": "array", "description": "las partes, en el orden del enunciado", "items": {
+            "type": "object", "properties": {
+                "heading": {"type": "string"},
+                "text": {"type": "string", "description": "párrafos separados por una línea en blanco; admite "
+                                                          "**negrita** y *cursiva*"},
+                "points": {"type": "array", "items": {"type": "string"}},
+                "table": DRAFT_TABLE}, "required": ["heading"]}},
+        "references": {"type": "array", "items": {"type": "string"},
+                       "description": "solo si el enunciado pide referencias o bibliografía: de dónde salió cada "
+                                      "cosa, con su URL; si no las pide, vacío"}},
+        "required": ["title", "sections"]}}
 
 # A friend's own Vinci (amigos.py): Vinci's tools over the friend's aula, its list and its grading schemes (their cards
 # are WhatsApp polls). No subject bots, notebooks or schedule: those are the captain's team.
 FRIEND_TOOLS = frozenset({
-    "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "join_group", "marcar_entregada", "marcar_hecho",
+    "semana", "tareas", "ver_tarea", "send_quiz", "prepare_submission", "draft_submission", "join_group", "marcar_entregada", "marcar_hecho",
     "add_todo", "chat_reminder", "propose_grading_scheme", "record_grade", "anuncios", "notas", "people", "inbox", "calendar", "discussions", "grade_status", "archivos", "modulos", "buscar_material",
     "leer_archivo", "find_past_exams", "open_past_exam", "libro_principal", "crear_diapositivas", "crear_resumen", "academic_record", "chat_note",
     "set_assignment_delivery", "study_activity", "show_page", "plan_carrera", "guardar_malla", "calendario_espol", "send_study_page"})
@@ -1209,10 +1241,10 @@ PORTAL_PROPERTIES = {
 }
 
 
-def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
+def _submission(ctx: Ctx, row, code: str, paths, document: dict | None = None) -> tuple:
     """Checks that the aula takes files (of these kinds) for the assignment `row`, and gets what goes up ready: one PDF
-    from the photos the student sent, or their files as they are; (name, proposal id, folder, files, pages,
-    thumbnail, card) for the bot to show with «Entregar»."""
+    from the photos the student sent, their files as they are, or the PDF of a `document` Vinci wrote (homework.py);
+    (name, proposal id, folder, files, pages, thumbnail, card) for the bot to show with «Entregar»."""
     assignment_id, name, now = row["id"], row["name"], ctx.now()
     if not row["active"]:
         raise ToolError(f"«{name}» ya no está en el aula.")
@@ -1223,6 +1255,8 @@ def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
     lock = timefmt.parse(row["lock_at"])
     if lock and lock < now:
         raise ToolError(f"El aula cerró «{name}» el {timefmt.human(lock, ctx.cfg.core.tz)}. Díselo.")
+    if document is not None:
+        return _drafted(ctx, row, code, document)
     if not isinstance(paths, list) or not paths or not all(isinstance(f, str) and f.strip() for f in paths):
         raise ToolError("«files» es la lista de rutas de las fotos, en el orden de las páginas, o la de sus archivos.")
     sources = [_document(ctx, str(f)) for f in paths]
@@ -1254,6 +1288,29 @@ def _submission(ctx: Ctx, row, code: str, paths) -> tuple:
                                                 str(dest), pages, now, group_chat=_group_chat(ctx))
     card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
                                     has_submission=bool(row["done"]), from_photos=bool(photos),
+                                    files=[f.name for f in files])
+    return name, proposal_id, dest, files, pages, thumb, card
+
+
+def _drafted(ctx: Ctx, row, code: str, document: dict) -> tuple:
+    name, now = row["name"], ctx.now()
+    upload = submission.upload_name(name)
+    allowed = sorted(set((row["allowed_extensions"] or "").split(",")) - {""})
+    if submission.refused([upload], allowed):
+        raise ToolError(f"«{name}» solo acepta {', '.join(allowed)} en el aula, no PDF. Díselo; no prepares nada.")
+    if isinstance(document, dict) and not str(document.get("course") or "").strip():
+        document = {**document, "course": materias.short_name(row["course_name"])}
+    dest = submission.new_folder(ctx.cfg.core, code, row["id"], now)
+    try:
+        pages, thumb = homework.build(dest / upload, document, now)
+    except homework.HomeworkError as exc:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise ToolError(f"No pude armar el documento: {exc}. Corrígelo y vuelve a llamarme.") from None
+    files = submission.files_of(dest)
+    proposal_id = store.new_submission_proposal(ctx.conn, code, row["course_id"], row["id"], name, str(dest), pages,
+                                                now, group_chat=_group_chat(ctx))
+    card = messages.submission_card(name, row["course_name"], row["due_at"], pages, ctx.cfg.core.tz, now,
+                                    has_submission=bool(row["done"]), from_photos=False, drafted=True,
                                     files=[f.name for f in files])
     return name, proposal_id, dest, files, pages, thumb, card
 
@@ -1992,7 +2049,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         finally:
             nb.close()
 
-    def prepare_submission(args):
+    def prepare_submission(args, document: dict | None = None):
         chat = _whatsapp_chat(ctx)
         if chat is None:
             raise ToolError("En Telegram la entrega la arma el bot de la materia: pásale las fotos con "
@@ -2005,7 +2062,7 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
             raise ToolError("No conozco esa tarea: busca su «id» con tareas.")
         subject = materias.for_course(ctx.subjects(), row["course_id"], row["course_code"])
         code = subject.code if subject else materias.base_code(row["course_code"]) or f"C{row['course_id']}"
-        name, proposal_id, dest, files, pages, _, card = _submission(ctx, row, code, args.get("files"))
+        name, proposal_id, dest, files, pages, _, card = _submission(ctx, row, code, args.get("files"), document)
         try:
             for f in files[:-1]:
                 chat.send_document(f, f.name, "")
@@ -2019,6 +2076,12 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
         return {"proposal": proposal_id, "assignment": name, "files": [f.name for f in files], "pages": pages,
                 "message": "Le mandé a su chat privado de WhatsApp lo que se va a entregar, con una encuesta «Entregar "
                            f"/ Cancelar». Se entrega solo cuando vote Entregar; tú no puedes entregarlo. {where}"}
+
+    def draft_submission(args):
+        document = args.get("document")
+        if not isinstance(document, dict):
+            raise ToolError("«document» es un objeto con «title», «sections» y, si los hay, «members» y «references».")
+        return prepare_submission(args, document)
 
     def join_group(args):
         chat = _whatsapp_chat(ctx)
@@ -2438,6 +2501,8 @@ def _vinci_tools(ctx: Ctx) -> list[Tool]:
                         "description": "las rutas de las fotos, en el orden de las páginas, o las de sus archivos "
                                        "(saved at: …)"}},
              ["assignment_id", "files"], read_only=False),
+        Tool("draft_submission", DRAFT_SUBMISSION, draft_submission, DRAFT_PROPERTIES, ["assignment_id", "document"],
+             read_only=False),
         Tool("study_activity", STUDY_ACTIVITY, study_activity, STUDY_PROPERTIES, ["action"], read_only=False),
         Tool("marcar_entregada", MARK_SUBMITTED, marcar_entregada,
              {**TASK_PROPERTIES, "entregada": {"type": "boolean", "description": "false: vuelve a sus pendientes"}},

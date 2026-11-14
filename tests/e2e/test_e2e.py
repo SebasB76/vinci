@@ -45,7 +45,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   poll; «tengo 20 minutos» plans from his open doubts and saves what he struggled with to the notebook, and a jury
   first asks what it judges; «explícame bien two-phase commit» becomes a study page (send_study_page refuses
   a quiz answer that is not an option, the corrected page arrives as a button and draws in a real headless Chromium:
-  KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; «agrégame al grupo 6 de semana 7» shows the group, who is in it and the
+  KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; «haz el taller» becomes a PDF Vinci wrote (a table
+  row short of a cell goes back to the model to fix) that goes up only on his vote; «agrégame al grupo 6 de semana 7» shows the group, who is in it and the
   one he leaves, and only his «Unirme» vote joins it in Canvas; `vinci-check say` talks to it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
@@ -355,6 +356,15 @@ IMAGE_RE = re.compile(r"\[Image attached at: ([^\]]+)\]")
 DOCUMENT_RE = re.compile(r"\[The user sent a (?:text )?document: '[^']*'\. (?:It|The file) is (?:also )?saved at: (\S+?)(?:\.\s|\])")
 # «entrégalo en …» → the assignment the scripted model hands a file in to
 HAND_IN = {"entrégalo en el informe de laboratorio": 3002, "sube esto al informe de laboratorio": 3002}
+# What the scripted Vinci writes for «haz el taller del informe»: first with a row short of a cell, then fixed.
+DRAFT = {"title": "Informe de laboratorio: péndulo simple", "members": ["Estudiante E2E", "Compañero 501"],
+         "sections": [{"heading": "1. Términos", "table": {"columns": ["Término", "Definición"], "rows": [
+             ["Periodo", "Tiempo de una oscilación completa."], ["Amplitud", "Máximo desplazamiento angular."]]}},
+             {"heading": "2. Análisis", "text": "El periodo **no depende** de la masa.",
+              "points": ["Depende de la longitud.", "Y de la gravedad."]}],
+         "references": ["Guía de laboratorio, página 2"]}
+DRAFT_BROKEN = {**DRAFT, "sections": [{"heading": "1. Términos", "table": {"columns": ["Término", "Definición"],
+                                                                          "rows": [["Periodo"]]}}]}
 REPLY_RE = re.compile(r'\[Replying to[^:]*: "(.+?)"\]', re.S)
 QUIZ_SKILL = 'invoked the "quiz" skill'
 QUIZ_TOPIC = re.compile(r"instruction alongside the skill invocation: (.+)$", re.M)
@@ -679,6 +689,15 @@ class Script:
         hand_in = next((a for words, a in HAND_IN.items() if words in text), None)
         if documents and hand_in and not called:
             return _call("mcp__vinci__prepare_submission", assignment_id=hand_in, files=documents)
+        if "haz el taller del informe de laboratorio" in text:
+            if not called:
+                return _call("mcp__vinci__draft_submission", assignment_id=3002, document=DRAFT_BROKEN)
+            if len(called) == 1:
+                if "celdas" not in results[-1]:
+                    return {"content": _problem(results[-1])}
+                return _call("mcp__vinci__draft_submission", assignment_id=3002, document=DRAFT)
+            return {"content": "Te lo mandé: léelo y vota «Entregar»." if "proposal" in results[-1]
+                    else _problem(results[-1])}
         if "agrégame al grupo 6 de semana 7" in text:
             if not called:
                 return _call("mcp__vinci__join_group", materia="física", grupo="6", conjunto="Semana 7")
@@ -2516,6 +2535,36 @@ def test_whatsapp_captain(tmp_path):
             ("informe-final.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", False)]
         assert canvas.submissions == [{"assignment": 3002, "file_ids": [9001]}], canvas.submissions
         md.append(f"→ [informe-final.docx con la encuesta] → vota «Entregar» → Vinci: {normalize(text_of(done))}\n")
+
+        # 10m4. «haz el taller»: Vinci writes the work, the tool lays it out as a PDF (a short table row goes back to
+        # the model to fix), and it goes up only on his vote
+        mark = len(wa.sent)
+        wa.say(captain_jid, captain_jid, "haz el taller del informe de laboratorio y dame el PDF", name="Capitán")
+        md.append("**Capitán** (privado): haz el taller del informe de laboratorio y dame el PDF\n")
+        got = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if m["path"] == "send"], 120)
+        assert got and "vota «Entregar»" in text_of(got), fail(f"no armó el taller: {wa.sent[mark:]}")
+        drafted = [m for m in wa.sent[mark:] if m["path"] == "send-media"]
+        assert [m.get("fileName") for m in drafted] == ["Informe de laboratorio 1.pdf"], drafted
+        assert "el documento que redacté (1 página)" in drafted[0].get("caption", ""), drafted
+        db = sqlite3.connect(data_dir / "espol.db")
+        folder = Path(db.execute("SELECT pdf FROM submission_proposals ORDER BY id DESC").fetchone()[0])
+        db.close()
+        from pypdf import PdfReader
+        written = PdfReader(folder / "Informe de laboratorio 1.pdf").pages[0].extract_text()
+        for piece in ("Informe de laboratorio: péndulo simple", "Integrantes", "Compañero 501", "Amplitud",
+                      "Referencias", "Asignatura: Física I", "A. Estudiante E2E"):
+            assert piece in written, written
+        poll = next(m for m in wa.sent[mark:] if m["path"] == "send-poll")
+        uploaded = len(canvas.uploads)
+        mark = len(wa.sent)
+        wa.vote(captain_jid, captain_jid, poll["messageId"], next(o for o in poll["options"] if "Entregar" in o))
+        done = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "Entregué" in m.get("message", "")],
+                           60)
+        assert done, fail(f"no confirmó la entrega del taller: {wa.sent[mark:]}")
+        assert [(u["file"], u["type"]) for u in canvas.uploads[uploaded:]] == [
+            ("Informe de laboratorio 1.pdf", "application/pdf")], canvas.uploads
+        md.append(f"→ [Informe de laboratorio 1.pdf, que Vinci redactó, con la encuesta] → vota «Entregar» → Vinci: "
+                  f"{normalize(text_of(done))}\n")
 
         canvas.signup_groups = [
             {"id": 8105, "name": "Semana 7 5", "course_id": 102, "set_id": 81, "set": "Semana 7", "max": 4, "members": [42]},

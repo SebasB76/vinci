@@ -23,6 +23,8 @@ TOOLS: dict[str, tuple[str, str]] = {
     "join_group": (PRIVATE, TELL_PRIVATE),
     "prepare_submission": (PRIVATE, TELL_PRIVATE + " Cuando vote Entregar, yo aviso aquí que quedó entregado; tú no "
                                                    "lo anuncias."),
+    "draft_submission": (PRIVATE, TELL_PRIVATE + " Cuando vote Entregar, yo aviso aquí que quedó entregado; tú no "
+                                                 "lo anuncias."),
     "send_quiz": (GROUP, TELL_GROUP + " Vota quien quiera; los resultados los mando yo al grupo, tú no los anuncias."),
     "send_study_page": (GROUP, TELL_GROUP + " El repaso sale solo del material del curso, nunca de su cuaderno."),
     "chat_reminder": (GROUP, TELL_GROUP + " El recordatorio sale en este grupo a su hora."),

@@ -1936,8 +1936,10 @@ def test_canvas(tmp_path):
                 sent, times = canvas.requests[mark:], canvas.times[mark:]
             downloads.append([int(path.split("/")[2]) for _, path in sent if path.startswith("/files/")])
             if i == 1:
-                gaps = [b - a for a, b in itertools.pairwise(times)]
-                assert len(times) > 10 and min(gaps) >= 0.08, f"el sondeo no espació sus consultas: {min(gaps):.3f} s"
+                # The fake stamps a request when its handler thread wakes, so one late stamp shortens the next gap.
+                # That delay does not add up: no stretch of k gaps may run faster than k intervals, minus one delay.
+                slack = min(times[j] - times[i] - 0.1 * (j - i) for i, j in itertools.combinations(range(len(times)), 2))
+                assert len(times) > 10 and slack >= -0.05, f"el sondeo no espació sus consultas: {slack:.3f} s de adelanto"
             failing = ", ".join(names[p] for p in sorted(paths)) or "nada"
             polls.append(take(f"Resiliencia · sondeo {i} ({now[11:16]}), fallando: {failing}"))
             if i == 4:

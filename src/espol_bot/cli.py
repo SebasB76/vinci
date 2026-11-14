@@ -229,8 +229,10 @@ def _friend_outcome(cfg, args):
         on = args.accion == "activar"
         changed = amigos.set_group(cfg, args.grupo, on)
         text = (("✅ Listo: en este grupo le contesto a quien me mencione con @vinci, a cada uno con lo suyo. Quien "
-                 "todavía no tiene su Vinci, que te pida que lo agregues." if changed else "Ya estaba activo aquí.")
-                if on else ("Listo: ya no contesto en este grupo." if changed else "No estaba activo aquí."))
+                 + ("todavía no tiene su Vinci, que me escriba por privado y le mando cómo conectar su aula."
+                    if cfg.open_signup else "todavía no tiene su Vinci, que te pida que lo agregues.")
+                 if changed else "Ya estaba activo aquí.")
+                if on else ("Listo: ya no contesto ni mando avisos en este grupo." if changed else "No estaba activo aquí."))
         outcome = amigos.Outcome(text)
     elif args.accion == "agregar":
         # «099 123 4567 Angel»: people type the number with spaces

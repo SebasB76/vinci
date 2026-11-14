@@ -133,7 +133,7 @@ def trusted_groups(cfg: BotConfig) -> list[str]:
 
 def set_group(cfg: BotConfig, group: str, on: bool, key: str = "grupos") -> bool:
     """`key` is «grupos» (Vinci answers mentions there), «avisos» (it also gets the notices) or «confianza» (its
-    members share their aula with each other, avisos.py)."""
+    members share their aula with each other, avisos.py). Turning «grupos» off turns the other two off too."""
     if not re.fullmatch(r"[\d-]+@g\.us", group):
         raise ConfigError(f"{group} no es el ID de un grupo de WhatsApp (termina en @g.us)")
     data = {k: [str(g) for g in _read(groups_path(cfg), k)] for k in ("grupos", "avisos", "confianza")}
@@ -142,6 +142,8 @@ def set_group(cfg: BotConfig, group: str, on: bool, key: str = "grupos") -> bool
     if wanted == current:
         return False
     data[key] = wanted
+    if key == "grupos" and not on:  # a group turned off hears nothing more, notices included
+        data = {k: [g for g in v if g != group] for k, v in data.items()}
     _write(groups_path(cfg), {k: v for k, v in data.items() if v or k == "grupos"})
     return True
 

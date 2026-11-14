@@ -142,7 +142,9 @@ solo (24 h y 3 h antes, si aún no la entregas) y nunca te promete un aviso para
 contesta a quien lo menciona («@vinci …» o «vinci, …»); el resto de la conversación no le llega. Una nota de voz
 no puede mencionar a nadie: Vinci contesta la tuya o la de un amigo con su Vinci si dice «Vinci» o responde a un
 mensaje suyo. Las notas de voz de quien no tiene su Vinci ni se transcriben. «@vinci desactiva este grupo» lo
-apaga. Solo tú puedes encender o apagar un grupo.
+apaga del todo: deja de contestar y también de mandar avisos, y deja de ser de confianza. Solo tú puedes encender o
+apagar un grupo, y la frase va sola en el mensaje: «¿cómo se activa este grupo?» o «manda los avisos de ayer» no
+cambian nada.
 
 **Avisos en un grupo.** Escribe en el grupo «@vinci activa los avisos». Desde entonces Vinci manda ahí, sin que
 nadie se lo pida:
@@ -153,7 +155,7 @@ nadie se lo pida:
   en un solo mensaje.
 
 Los avisos nunca llevan notas, entregas hechas ni tu cuaderno. «@vinci desactiva los avisos» los apaga. Solo tú
-puedes encenderlos, y funcionan aunque el grupo esté apagado para las preguntas.
+puedes encenderlos, y siguen aunque el grupo no conteste preguntas, hasta que desactivas el grupo.
 
 **Grupo de confianza.** En un grupo de amigos que comparten su aula entre sí, escribe «@vinci este grupo es de
 confianza» (también enciende los avisos). Ahí los avisos usan el aula de cada amigo con su Vinci que está en el
@@ -190,8 +192,8 @@ tus mensajes: guarda lo que tú le dices que acordaron.
 entregamos las historias de usuario». Vinci te confirma el día y la hora de cada uno, y a esa hora el recordatorio
 sale en el grupo, para todos. Si no dices la hora, Vinci usa las 9:00 y te lo dice. «@vinci borra el recordatorio
 del viernes» quita uno. Si WhatsApp se cae a esa hora, el recordatorio sale apenas vuelve. Si el servidor estuvo
-apagado o WhatsApp caído y un recordatorio se atrasa más de 6 horas, no sale. Solo tu
-Vinci los programa: el Vinci de un amigo no puede escribir en el grupo por su cuenta.
+apagado o WhatsApp caído y un recordatorio se atrasa más de 6 horas, no sale. El Vinci de un amigo también los
+programa: «@vinci recuérdanos…» de Angel sale en el grupo igual que uno tuyo.
 
 **Un Vinci para cada amigo.** Cada amigo tiene su propio Vinci, con su token del aula, sus datos y sus notas:
 
@@ -240,15 +242,17 @@ y Vinci los contesta sin gastar tokens:
 | `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum, y ahí tocas a alguien para ver sus cartas. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
-En un grupo, `/estado`, `/token` y `/entregas` te contestan en tu chat privado, y el grupo lee «Te lo mandé por
+En un grupo, `/estado`, `/token`, `/entregas`, `/marca` y `/canje` te contestan en tu chat privado, y el grupo lee «Te lo mandé por
 privado». Lo mismo pasa con tus páginas («Tu semana», «Tus notas», tu álbum), el botón «🎓 Conectar Académico» y las
 encuestas de tus tarjetas («Ya lo entregué», el horario, una entrega). Las de un quiz sí salen en el grupo. Si
 conectas el Académico desde un grupo, Vinci contesta tu pregunta en ese grupo.
 
-El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con sus recordatorios), su calculadora de
+El Vinci de cada amigo tiene además su lista de pendientes («anota: …», con sus recordatorios), los recordatorios a
+una hora para su chat o el grupo, su calculadora de
 notas con el esquema que guarda con su voto, y los recordatorios del aula con la encuesta «✅ Ya lo entregué».
 
 En un grupo activo, Vinci también le contesta a quien todavía no tiene su Vinci, como invitado: charla, explica,
 busca en la web, el material de los cursos, exámenes anteriores, diapositivas, resúmenes en PDF y un quiz en el grupo. No ve su aula ni le muestra nada
-tuyo, y si pide sus tareas o sus notas, le dice que le escriba por privado para conectar su aula. Esas respuestas usan tu modelo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
+tuyo, y si pide sus tareas o sus notas, le dice que le escriba por privado para conectar su aula. Los comandos
+(«@vinci /estado») son solo para quien tiene su Vinci: los de un invitado no reciben respuesta. Esas respuestas usan tu modelo. Los datos de cada amigo viven en `amigos/<nombre>/` de la carpeta de datos, con su propio
 `secrets.env`.

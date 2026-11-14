@@ -83,7 +83,7 @@ test_academico: ESPOL's Académico (FakePortal: ASP.NET Web Forms, two-step logi
   asks for his GPA with no copy; the tool asks for a sign-in and a «🎓 Conectar Académico» button reaches his chat. On
   its page (in a real headless Chromium when there is one) he gives his user, then a wrong CAPTCHA and the right one;
   one portal session reads every section, the copy is saved with its date and term, and his question comes back to
-  Vinci by itself in the same Hermes session. The sign-in also follows the career's one-time link to the curriculum
+  Vinci by itself in the same Hermes session. The sign-in also follows the career's link to the curriculum
   (mallacurricular), so «¿qué materias puedo tomar?» answers from it with no photo: what he can take, what waits on a
   prerequisite or a count of approved subjects, and what he takes now. Later questions are answered from the copy, also what the portal offers to
   register and whether he owes anything; «actualiza mi Académico»
@@ -3926,10 +3926,12 @@ def academico_flow(w) -> None:
                       "porque la malla todavía no se lee")
 
         # 4b. The degree plan from the same copy: credits left per category, and what to take from the curriculum the
-        # sign-in read from mallacurricular (its token used once), with no photo
+        # sign-in read from mallacurricular (the JSON its page fetches, within the session its link opens), with no photo
         tokens = portal.curriculum_tokens
         assert tokens and all(tokens.values()), f"la malla se lee con el enlace de Información General: {tokens}"
-        assert not any("cookie=True" in r for r in portal.curriculum_requests), "ninguna cookie del Académico va a la malla"
+        asked = portal.curriculum_requests
+        assert not any(sid in r for sid in portal.sessions for r in asked), f"ninguna cookie del Académico va a la malla: {asked}"
+        assert any("getmateriaspornivel cookie=ASP.NET_SessionId=malla" in r for r in asked), asked
         plan_text = text_of(say(captain_jid, captain_jid, PLAN_ASK, "Capitán"))
         assert "Formación Profesional 50" in plan_text and "Educación General 21" in plan_text, plan_text
         assert "Según tu malla del Académico: ya puedes tomar" in plan_text and "ÁLGEBRA LINEAL" in plan_text \

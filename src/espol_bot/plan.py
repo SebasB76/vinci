@@ -120,6 +120,9 @@ def _next(curriculum: dict, done: list[dict], taking: set[str] = frozenset()) ->
     rest with what they still lack. A prerequisite is matched by code or by name; a corequisite is taken along."""
     passed = {s.get("code", "").strip().upper() for s in done} | {_key(s.get("name") or "") for s in done}
     subjects = curriculum.get("subjects") or []
+    # The Académico's curriculum carries its own status: a credited subject or an elective slot may not be in the history.
+    approved = [s for s in subjects if fold(s.get("status") or "").startswith(("aprobado", "convalidado"))]
+    passed |= {(s.get("code") or "").upper() for s in approved} - {""}
     names = {(s.get("code") or "").upper(): s["name"] for s in subjects if s.get("code")}
     codes = {_key(s["name"]): s["code"].upper() for s in subjects if s.get("code")}
 
@@ -129,7 +132,7 @@ def _next(curriculum: dict, done: list[dict], taking: set[str] = frozenset()) ->
 
     ready, locked, current = [], [], []
     for s in subjects:
-        if is_passed(s.get("code") or "") or _key(s["name"]) in passed:
+        if s in approved or is_passed(s.get("code") or "") or _key(s["name"]) in passed:
             continue
         row = {"name": s["name"], **{k: s[k] for k in ("code", "credits", "level") if s.get(k) is not None}}
         if (s.get("code") or "").upper() in taking:

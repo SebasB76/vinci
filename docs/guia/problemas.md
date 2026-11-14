@@ -76,8 +76,8 @@
   ASP.NET (VIEWSTATE, EVENTVALIDATION, ingreso en dos pasos, CAPTCHA) y copia la forma de las páginas reales. Si
   ESPOL cambia una página, el lector puede necesitar ajustes. Corre `.venv/bin/espol-bot academico --conectar --html
   …` para ver qué lee con tu cuenta.
-- **La malla viene del Académico:** Vinci la lee de mallacurricular.espol.edu.ec con el enlace de un solo uso que
-  trae «Información General», así que solo se actualiza cuando reconectas el Académico. Si esa página cambia o no
+- **La malla viene del Académico:** Vinci la lee de mallacurricular.espol.edu.ec con el enlace que trae
+  «Información General», así que solo se actualiza cuando reconectas el Académico. Si esa página cambia o no
   responde, Vinci te pide una foto o el PDF de la malla; revisa lo que leyó antes de decirle que la guarde.
 - **El promedio simulado es un estimado:** el portal no publica su fórmula. Vinci suma a tu promedio del portal el
   cambio que da el promedio ponderado por créditos, que se acerca al del portal en unas décimas.

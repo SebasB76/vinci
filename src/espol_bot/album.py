@@ -11,10 +11,16 @@ URL's fragment, as on «Tus notas» (grades_page.py). Only the catalog (docs/alb
 the page's own site, so new cards need no change in code. Art with people's faces is stored there encrypted
 (scripts/album_card.py); its key, ALBUM_ART_KEY in secrets.env, rides in the fragment too, so only a link from Vinci
 shows it.
+
+A club (CLUBS: TAWS) has a section of its own that only its members see. Its catalog is encrypted too
+(docs/album/clubs/<club>.bin, with its own key), so neither the page's code nor the public repo shows a member's
+card to anyone else; its packs come only as club gifts (club.py) and draw only club cards, which never go into a
+regular pack, a trade, the ranking or /canje.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -24,6 +30,8 @@ import sqlite3
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from aula_core import timefmt
 from aula_core.catalog import fold
@@ -53,6 +61,8 @@ PENDING_HINT = ("\n\nGanas más sobres cuando entregas a tiempo y cuando sacas b
                 "virtual desde el enlace que te mandé: yo solo la leo, no cambio nada. Si el enlace ya no abre, "
                 "escríbeme /token.")
 MAX_PER_POLL = 4  # the rest wait for the next poll, so a busy day does not flood the chat
+CLUB = "club:"  # a club pack's source: club:<club>:<when or why>
+CLUBS = {"taws": "ALBUM_TAWS_KEY"}  # each club's catalog and art key, in the captain's secrets.env
 BUTTON = "🎴 Abrir mi sobre"
 ALBUM_BUTTON = "🎴 Ver mi álbum"
 
@@ -60,6 +70,41 @@ ALBUM_BUTTON = "🎴 Ver mi álbum"
 @lru_cache(maxsize=1)
 def catalog() -> tuple[dict, ...]:
     return tuple(json.loads(CATALOG.read_text(encoding="utf-8"))["cards"])
+
+
+def _secret(name: str) -> str:
+    """A key from the captain's secrets.env, the only one that holds the album's keys; "" without it."""
+    captain = os.environ.get(CAPTAIN_SECRETS)
+    try:
+        return load_secret_values(Path(captain) if captain else None).get(name, "")
+    except ConfigError:
+        return ""
+
+
+def club_key(club: str) -> str:
+    return _secret(CLUBS[club])
+
+
+def club_catalog(club: str) -> tuple[dict, ...]:
+    """The club's cards, decrypted from docs/album/clubs/<club>.bin (12-byte IV first, the club as associated data);
+    () without its key or file."""
+    folder = Path(os.environ.get("VINCI_ALBUM_CLUBS") or CATALOG.parent / "clubs")  # the E2E's own catalog
+    key, path = club_key(club), folder / f"{club}.bin"
+    if not key or not path.exists():
+        return ()
+    sealed = path.read_bytes()
+    try:
+        raw = AESGCM(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4))).decrypt(sealed[:12], sealed[12:],
+                                                                                    club.encode())
+    except Exception:
+        log.exception("álbum: no pude abrir el catálogo de %s", club)
+        return ()
+    return tuple(json.loads(raw)["cards"])
+
+
+def clubs_of(conn: sqlite3.Connection) -> list[str]:
+    """The clubs this album's owner belongs to (club.py writes them)."""
+    return [c for c in CLUBS if get_meta(conn, f"{CLUB}{c}")]
 
 
 def draw(cards: tuple[dict, ...], rng: random.Random, have: dict[str, int], *, gold: bool = False,
@@ -191,6 +236,21 @@ def give_welcome(conn: sqlite3.Connection, now: datetime, rng: random.Random | N
     return True
 
 
+def give_club(conn: sqlite3.Connection, now: datetime, club: str, reason: str, tag: str = "",
+              rng: random.Random | None = None) -> bool:
+    """A pack of the club's cards for a member, once per `tag` (a gift's is its time); False without its catalog. It
+    starts the album, as a welcome pack does."""
+    cards = club_catalog(club)
+    source = f"{CLUB}{club}:{tag or timefmt.iso(now)}"
+    if not cards or conn.execute("SELECT 1 FROM album_packs WHERE source = ?", (source,)).fetchone():
+        return False
+    if get_meta(conn, SINCE) is None:
+        set_meta(conn, SINCE, timefmt.iso(now))
+    _store(conn, now, source, reason, draw(cards, rng or random.Random(), collection(conn)), False)
+    conn.commit()
+    return True
+
+
 def spare(have: dict[str, int]) -> int:
     """The copies beyond the first of each card in the catalog: what /cambio and /canje can spend."""
     ids = {c["id"] for c in catalog()}
@@ -234,17 +294,15 @@ def trade(conn: sqlite3.Connection, given: str, got: str, now: datetime) -> None
 def art_key() -> str:
     """The key of the encrypted art (base64url), or "" without one: the page then shows initials. A friend's Vinci
     reads it from the captain's secrets.env, the only one that holds it."""
-    captain = os.environ.get(CAPTAIN_SECRETS)
-    try:
-        return load_secret_values(Path(captain) if captain else None).get("ALBUM_ART_KEY", "")
-    except ConfigError:
-        return ""
+    return _secret("ALBUM_ART_KEY")
 
 
 def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None = None) -> dict:
     data = {"v": VERSION, "at": timefmt.iso(now), "have": collection(conn)}
     if key := art_key():
         data["k"] = key
+    if keys := {c: k for c in clubs_of(conn) if (k := club_key(c))}:
+        data["club"] = keys
     if pack is not None:
         data["pack"] = {"id": pack["id"], "reason": messages.plain(pack["reason"]), "gold": bool(pack["gold"]),
                         "cards": json.loads(pack["cards"])}
@@ -254,6 +312,8 @@ def snapshot(conn: sqlite3.Connection, now: datetime, pack: sqlite3.Row | None =
             data["pack"]["gift"] = True
         elif pack["source"].startswith(EXCHANGE):
             data["pack"]["swap"] = True
+        elif pack["source"].startswith(CLUB):
+            data["pack"]["club"] = pack["source"].split(":")[1]
     return data
 
 
@@ -276,6 +336,9 @@ def page_url(cfg: BotConfig, data: dict) -> str:
 
 
 def message(pack: sqlite3.Row) -> str:
+    if pack["source"].startswith(CLUB):
+        club = pack["source"].split(":")[1].upper()
+        return f"🎴 {pack['reason']}: te llegó un <b>sobre {club}</b> con 3 cartas del club."
     if pack["source"].startswith(DAILY):
         return "🎴 Tu sobre del día: 3 cartas para tu álbum. Mañana con el resumen te llega otro."
     if pack["source"].startswith(GIFT):

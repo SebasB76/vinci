@@ -2,6 +2,8 @@
 
 ## Límites conocidos
 
+- **Sección TAWS del álbum:** `/taws` busca tu nombre del aula virtual en la lista de taws.espol.edu.ec. Si la web
+  cambia, no responde o tu nombre está escrito distinto, Vinci no te encuentra y le pregunta al capitán.
 - **Entregar desde un grupo:** Vinci toma el archivo al que respondes solo si llegó al grupo después del último
   reinicio de Vinci (el puente de WhatsApp los guarda en memoria). Si es más viejo, pide que lo reenvíen y responde
   a ese.

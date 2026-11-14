@@ -186,7 +186,7 @@ corre `.venv/bin/espol-bot dashboard`.
   [Token nuevo desde Telegram](#token-nuevo-desde-telegram-token)).
 - Al escribir `/` en tu chat con un bot, el menú muestra primero estos comandos y debajo los de Hermes. Si no
   aparecen, cierra y abre el chat: Telegram guarda el menú un rato.
-- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz`, y además `/cambio`, `/canje` y `/ranking` para el
+- Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz`, y además `/cambio`, `/canje`, `/ranking` y `/taws` para el
   álbum (mira [Vinci en WhatsApp](whatsapp.md#vinci-en-whatsapp)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
@@ -489,6 +489,20 @@ Por WhatsApp, el ranking muestra quién tiene más cartas distintas del álbum. 
 Quien entra al ranking muestra sus cartas a los demás del ranking. Nadie más las ve.
 
 `/ranking` también funciona en un grupo. Cuenta solo a quien tiene su Vinci: el capitán y cada amigo con su token.
+
+### La sección TAWS
+
+Si eres de TAWS, el club de la FIEC, tu álbum tiene una sección más, con cartas del club. Solo la ven sus miembros.
+
+1. Escribe `/taws` a Vinci por WhatsApp. Vinci compara tu nombre del aula virtual con la lista de miembros de
+   [taws.espol.edu.ec](https://taws.espol.edu.ec/nosotros).
+2. Si estás en la lista, te llega al momento tu primer sobre TAWS. Si no, Vinci le pregunta al capitán, y el sobre te
+   llega cuando él te acepta.
+3. En tu álbum, arriba, eliges entre «Álbum» y «TAWS».
+
+Las cartas TAWS llegan solo en sobres TAWS, que el capitán regala en los eventos del club. No salen en los sobres
+normales, ni se cambian, ni cuentan para el ranking o `/canje`. Si sales de la lista de la web, conservas tus cartas,
+pero ya no te llegan sobres nuevos.
 
 ## Tu Académico de ESPOL
 

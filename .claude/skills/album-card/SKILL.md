@@ -29,6 +29,8 @@ The captain sends photos (in the chat they arrive as attachment paths) and says 
 4. In a worktree, add it: `AULA_SECRETS=~/Projects/espol-academic-bot/secrets.env uv run scripts/album_card.py add
    --id <id> --image <png> --name "<name>" --collection <c> --group "<group>" --rarity <r> [--wide]`. A PNG the captain
    made elsewhere (ChatGPT) goes straight to this step.
+   A TAWS card (only club members see it) takes `--club taws` instead of `--collection`: it goes to the encrypted
+   catalog `docs/album/clubs/taws.bin`, its art to `docs/album/clubs/taws/`, both sealed with `ALBUM_TAWS_KEY`.
 5. Bump `album.js`'s and `album.css`'s `?v=` only if the page changed; a card alone needs no bump (the art's file name
    carries its hash and `cards.json` is fetched fresh).
 6. PR and merge. The page shows the card once Pages builds, but Vinci draws packs from its own copy of

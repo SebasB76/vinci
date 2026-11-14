@@ -6,6 +6,8 @@
 // its rarity's frame. «Cambios» lists the cards others have repeated (`trade`) and opens WhatsApp with the «/cambio …».
 // «Ranking» lists who has the most cards among those who joined it (`rank`, espol_bot/ranking.py); a tap on someone
 // shows their cards, sent as catalog numbers (`c`). «/canje» trades 3 repeats for a pack.
+// A club's section (TAWS) shows only to its members: their link carries the club's key (`club`), which opens its
+// catalog (clubs/<club>.bin) and art. Club cards number on their own, so the ranking's numbers never point at them.
 
 const RL = { com: "Común", rare: "Rara", epic: "Épica", leg: "Legendaria" };
 const TAG = { com: "COMUN", rare: "RARA", epic: "EPICA", leg: "★ LEGENDARIA ★" };
@@ -43,16 +45,18 @@ export function initials(name) {
 
 // Only the cards this person owns or is opening: one fetch each, decrypted once per page load.
 async function unlock(data, cards) {
-  if (!data.k || !crypto.subtle) return;
+  if (!crypto.subtle) return;
   const offered = (data.trade?.people || []).flatMap((p) => Object.keys(p.cards || {}));
-  const byN = new Map([...cards.values()].map((c) => [c.n, c.id]));
+  const byN = new Map([...cards.values()].filter((c) => !c.club).map((c) => [c.n, c.id]));
   const ranked = (data.rank?.people || []).flatMap((p) => (p.c || []).map((n) => byN.get(n)).filter(Boolean));
   const wanted = new Set([...Object.keys(data.have || {}), ...(data.pack?.cards || []).map((e) => e.id), ...offered, ...ranked]);
+  const keys = {};
+  const keyOf = (raw) => raw ? (keys[raw] ||= crypto.subtle.importKey("raw", bytesOf(raw), "AES-GCM", false, ["decrypt"])) : null;
   try {
-    const key = await crypto.subtle.importKey("raw", bytesOf(data.k), "AES-GCM", false, ["decrypt"]);
     await Promise.all([...wanted].map(async (id) => {
       const c = cards.get(id);
-      if (!c?.art) return;
+      const key = c?.art && await keyOf(c.club ? data.club?.[c.club] : data.k);
+      if (!key) return;
       try {
         const sealed = new Uint8Array(await (await fetch(c.art)).arrayBuffer());
         const webp = await crypto.subtle.decrypt({ name: "AES-GCM", iv: sealed.slice(0, 12), additionalData: new TextEncoder().encode(id) },
@@ -128,12 +132,12 @@ function openPack(data, cards) {
   const pulled = pack.cards.map((entry) => ({ entry, c: cards.get(entry.id) })).filter((p) => p.c);
   const repeated = Boolean(data.trade) && pulled.some((p) => !p.entry.new);
   document.body.classList.add("opening");
-  const title = pack.gold ? "Tu sobre dorado" : pack.daily ? "Tu sobre del día" : pack.gift ? "Un sobre de regalo" : pack.swap ? "Tu sobre del canje" : "Tu sobre";
+  const title = pack.gold ? "Tu sobre dorado" : pack.club ? `Tu sobre ${pack.club.toUpperCase()}` : pack.daily ? "Tu sobre del día" : pack.gift ? "Un sobre de regalo" : pack.swap ? "Tu sobre del canje" : "Tu sobre";
   app.innerHTML = `<header class="ohead"><div class="v-eyebrow"><span>${longDate(data.at)}</span></div>
       <h1>${title}</h1>${pack.reason ? `<p>${esc(pack.reason)}</p>` : ""}</header><section class="stage"><div class="ghost"></div><div class="sheet">
       <div class="stack">${pulled.map((p, i) => `<div class="slot" data-i="${i}">${card(p.c, "", p.entry.new ? '<span class="pill hi flag">Nueva</span>' : `<span class="pill flag">×${data.have[p.c.id] || 2}</span>`)}</div>`).reverse().join("")}</div>
       <div class="pack"><div class="pk${pack.gold ? " gold" : ""}"><div class="mark">V</div><span class="mono n3">${pulled.length} cartas</span>
-        <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">${pack.daily ? "de hoy." : pack.gift ? "de regalo." : pack.swap ? "del canje." : "de esta semana."}</span></h2>${pack.gold ? '<p class="why">Trae una carta épica o mejor.</p>' : ""}</div><span class="grab"></span></div>
+        <h2>${pack.gold ? "Sobre dorado" : "Tu sobre"}<span class="s">${pack.club ? `${pack.club.toUpperCase()}.` : pack.daily ? "de hoy." : pack.gift ? "de regalo." : pack.swap ? "del canje." : "de esta semana."}</span></h2>${pack.gold ? '<p class="why">Trae una carta épica o mejor.</p>' : ""}</div><span class="grab"></span></div>
       <div class="cap"><div class="t">Desliza el sobre hacia arriba</div><div class="h">Tus cartas están debajo.</div></div>
       <div class="foot"><div class="segs">${pulled.map(() => "<i></i>").join("")}</div><button class="btn btn-accent block" type="button">Pegar en mi álbum</button>${repeated ? `<button class="btn btn-quiet block" type="button" data-trade>${icon("swap")}Cambiar mi repetida</button>` : ""}</div>
     </div></section>`;
@@ -234,7 +238,7 @@ function openPack(data, cards) {
   });
   button.addEventListener("click", () => {
     remember(pack.id);
-    showAlbum(data, cards, true);
+    showAlbum(data, cards, true, pack.club);
   });
   trade?.addEventListener("click", () => {
     remember(pack.id);
@@ -391,7 +395,7 @@ function showRanking(data, cards, fresh) {
 
 // Someone's cards from the ranking: only the ones they have, and a filter for the ones you lack.
 function showPerson(data, cards, fresh, person) {
-  const byN = new Map([...cards.values()].map((c) => [c.n, c]));
+  const byN = new Map([...cards.values()].filter((c) => !c.club).map((c) => [c.n, c]));
   const theirs = (person.c || []).map((n) => byN.get(n)).filter(Boolean).sort((a, b) => a.n - b.n);
   const have = data.have || {}, lack = theirs.filter((c) => !have[c.id]);
   let filter = "all";
@@ -427,11 +431,14 @@ function showPerson(data, cards, fresh, person) {
 // Every card in one list, by number: what you have with its art, what you lack as a silhouette in its rarity's frame.
 function showAlbum(data, cards, fresh, tab) {
   document.body.classList.remove("opening");
-  const all = [...cards.values()].sort((a, b) => a.n - b.n);
+  const clubs = Object.keys(data.club || {}).filter((k) => [...cards.values()].some((c) => c.club === k));
+  const club = clubs.includes(tab) ? tab : "";
   const have = data.have || {};
-  const mine = all.filter((c) => (have[c.id] || 0) > 1).sort(byRarity(1));
+  const mine = [...cards.values()].filter((c) => !c.club && (have[c.id] || 0) > 1).sort(byRarity(1));
   if (tab === TRADES && data.trade) return showTrades(data, cards, fresh, mine);
   if (tab === RANKING && data.rank) return showRanking(data, cards, fresh);
+  const all = [...cards.values()].filter((c) => (c.club || "") === club).sort((a, b) => a.n - b.n);
+  const sections = clubs.length ? `<div class="club-seg">${segmented([["", "Álbum"], ...clubs.map((k) => [k, k.toUpperCase()])], club, "club", "Sección")}</div>` : "";
   const owned = all.filter((c) => have[c.id]).length;
   const repeats = all.reduce((sum, c) => sum + Math.max(0, (have[c.id] || 0) - 1), 0);
   const newIds = new Set(fresh && data.pack ? data.pack.cards.filter((e) => e.new).map((e) => e.id) : []);
@@ -446,11 +453,12 @@ function showAlbum(data, cards, fresh, tab) {
   }).join("");
   const share = all.length ? Math.floor(owned / all.length * 100) : 0;
   const rank = data.rank?.people || [], at = rank.findIndex((p) => p.me);
-  const links = data.trade || data.rank ? `<div class="pair">${data.trade ? `<button class="go-to" type="button" data-trades><span class="ic">${icon("swap")}</span>
+  const links = !club && (data.trade || data.rank) ? `<div class="pair">${data.trade ? `<button class="go-to" type="button" data-trades><span class="ic">${icon("swap")}</span>
       <span class="x"><b>Cambios</b><span class="mono">${market.length ? plural(market.length, "te sirve", "te sirven") : "nada por ahora"}</span></span></button>` : ""}${
     data.rank ? `<button class="go-to" type="button" data-ranking><span class="ic">${icon("trophy")}</span>
       <span class="x"><b>Ranking</b><span class="mono">${at >= 0 ? `vas ${at + 1}º de ${rank.length}` : plural(rank.length, "persona", "personas")}</span></span></button>` : ""}</div>` : "";
-  app.innerHTML = sheet({ eyebrow: "tu álbum", aside: repeats ? plural(repeats, "repetida", "repetidas") : "", title: "Tu colección", big: owned,
+  app.innerHTML = sections + sheet({ eyebrow: club ? "sección del club" : "tu álbum", aside: repeats ? plural(repeats, "repetida", "repetidas") : "",
+    title: club ? club.toUpperCase() : "Tu colección", big: owned,
     label: `de ${all.length}<br>cartas`,
     side: `<span class="lt${owned ? "" : " mute"}"><i></i>${owned === all.length && owned ? "completo" : `${share} % completo`}</span>`,
     extra: `<div class="rars">${rars}</div>` })
@@ -462,7 +470,9 @@ function showAlbum(data, cards, fresh, tab) {
     ${data.pack && !fresh ? '<button class="btn btn-quiet sm again" type="button" data-again>Abrir el sobre otra vez</button>' : ""}
     <div class="zoom" aria-hidden="true"><div class="big"></div></div>${OFFER}`;
   const grid = app.querySelector(".grid"), count = app.querySelector(".count"), heading = app.querySelector(".ttl2");
-  const dens = app.querySelector(".dens"), seg = app.querySelector(".v-seg");
+  const dens = app.querySelector(".dens"), seg = app.querySelector(".tools .v-seg");
+  const clubSeg = app.querySelector(".club-seg .v-seg");
+  if (clubSeg) moveSeg(clubSeg, club, "club");
   fill(app);
   const cell = (c) => {
     if (!have[c.id]) return `<button class="cell" type="button" data-miss="${esc(c.id)}" aria-label="Nº${pad(c.n)}: te falta">${ghost(c)}</button>`;
@@ -488,6 +498,7 @@ function showAlbum(data, cards, fresh, tab) {
   settle(app);
   app.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => { view.rarity = view.rarity === b.dataset.r ? null : b.dataset.r; draw(); }));
   app.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { view.sort = b.dataset.s; keep(view); draw(); }));
+  app.querySelectorAll("[data-club]").forEach((b) => b.addEventListener("click", () => { if (b.dataset.club !== club) showAlbum(data, cards, fresh, b.dataset.club); }));
   dens.addEventListener("click", () => { view.cols = view.cols === 3 ? 4 : 3; keep(view); draw(); });
   app.querySelector(".search").addEventListener("input", (e) => { view.q = e.target.value; draw(); });
   app.querySelector("[data-trades]")?.addEventListener("click", () => showTrades(data, cards, fresh, mine));
@@ -525,6 +536,15 @@ async function main() {
     return;
   }
   const cards = new Map(catalog.cards.map((c) => [c.id, c]));
+  await Promise.all(Object.entries(data.club || {}).map(async ([club, raw]) => {
+    try {
+      const key = await crypto.subtle.importKey("raw", bytesOf(raw), "AES-GCM", false, ["decrypt"]);
+      const sealed = new Uint8Array(await (await fetch(`clubs/${club}.bin`, { cache: "no-cache" })).arrayBuffer());
+      const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: sealed.slice(0, 12), additionalData: new TextEncoder().encode(club) },
+        key, sealed.slice(12));
+      for (const c of JSON.parse(new TextDecoder().decode(plain)).cards) cards.set(c.id, { ...c, club });
+    } catch { /* no catalog or a wrong key: the album opens without that section */ }
+  }));
   await unlock(data, cards);
   if (data.pack && !opened().has(data.pack.id)) openPack(data, cards);
   else showAlbum(data, cards, false, readFragment(location.hash, "t"));

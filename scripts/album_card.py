@@ -10,6 +10,10 @@ repo, in ~/.local/share/espol-academic-bot/album-art/.
   uv run scripts/album_card.py draw --id ID --photo a.jpg [--photo b.jpg] --brief "..." [--wide]
   uv run scripts/album_card.py add --id ID --image art.png --name NAME --collection espol --group GROUP \\
       --rarity com|rare|epic|leg [--wide]
+  uv run scripts/album_card.py add --club taws --id ID --image art.png --name NAME --group GROUP --rarity R
+
+A club's cards (--club, also on `key`) go to its own encrypted catalog, docs/album/clubs/<club>.bin, with their art
+under docs/album/clubs/<club>/, both sealed with the club's key (ALBUM_<CLUB>_KEY): only its members' links open them.
 """
 
 from __future__ import annotations
@@ -57,23 +61,30 @@ def b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def key_bytes() -> bytes:
-    value = load_secret_values().get("ALBUM_ART_KEY", "")
+def key_name(club: str | None) -> str:
+    return f"ALBUM_{club.upper()}_KEY" if club else "ALBUM_ART_KEY"
+
+
+def key_bytes(club: str | None = None) -> bytes:
+    name = key_name(club)
+    value = load_secret_values().get(name, "")
     if not value:
-        sys.exit("Falta ALBUM_ART_KEY en secrets.env: corre primero `uv run scripts/album_card.py key`.")
+        flag = f" --club {club}" if club else ""
+        sys.exit(f"Falta {name} en secrets.env: corre primero `uv run scripts/album_card.py key{flag}`.")
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
 def cmd_key(args: argparse.Namespace) -> None:
+    name = key_name(args.club)
     values = load_secret_values() if secrets_path().exists() else {}
-    if not values.get("ALBUM_ART_KEY"):
-        update_secret_values({"ALBUM_ART_KEY": b64url(os.urandom(32))})
-        print(f"Creé ALBUM_ART_KEY en {secrets_path()}.")
+    if not values.get(name):
+        update_secret_values({name: b64url(os.urandom(32))})
+        print(f"Creé {name} en {secrets_path()}.")
     else:
-        print(f"ALBUM_ART_KEY ya está en {secrets_path()}.")
+        print(f"{name} ya está en {secrets_path()}.")
     if args.copy:  # the value never reaches the terminal: straight to the clipboard, for Coolify's variables
-        subprocess.run(["wl-copy"], input=load_secret_values()["ALBUM_ART_KEY"].encode(), check=True)
-        print("La copié al portapapeles: pégala en Coolify como la variable ALBUM_ART_KEY.")
+        subprocess.run(["wl-copy"], input=load_secret_values()[name].encode(), check=True)
+        print(f"La copié al portapapeles: pégala en Coolify como la variable {name}.")
 
 
 def cmd_draw(args: argparse.Namespace) -> None:
@@ -104,7 +115,7 @@ def cmd_draw(args: argparse.Namespace) -> None:
     print(out)
 
 
-def encrypt_art(card_id: str, image: Path) -> str:
+def encrypt_art(card_id: str, image: Path, club: str | None = None) -> str:
     """The art as WebP, encrypted with AES-GCM (12-byte IV first, the card id as associated data); its path under
     docs/album/. The name carries a hash of the art, so a redrawn card never hits a cached old file."""
     picture = Image.open(image).convert("RGB")
@@ -113,32 +124,55 @@ def encrypt_art(card_id: str, image: Path) -> str:
     picture.save(buffer, "WEBP", quality=84, method=6)
     webp = buffer.getvalue()
     iv = os.urandom(12)
-    sealed = iv + AESGCM(key_bytes()).encrypt(iv, webp, card_id.encode())
-    folder = ALBUM / "art"
-    folder.mkdir(exist_ok=True)
+    sealed = iv + AESGCM(key_bytes(club)).encrypt(iv, webp, card_id.encode())
+    where = f"clubs/{club}" if club else "art"
+    folder = ALBUM / where
+    folder.mkdir(parents=True, exist_ok=True)
     for old in folder.glob(f"{card_id}-*.bin"):
         old.unlink()
-    name = f"art/{card_id}-{hashlib.sha256(webp).hexdigest()[:10]}.bin"
+    name = f"{where}/{card_id}-{hashlib.sha256(webp).hexdigest()[:10]}.bin"
     (ALBUM / name).write_bytes(sealed)
     print(f"Arte: {len(webp) // 1024} KB en WebP, {ALBUM / name}")
     return name
 
 
+def read_club(club: str) -> dict:
+    path = ALBUM / "clubs" / f"{club}.bin"
+    if not path.exists():
+        return {"version": 1, "cards": []}
+    sealed = path.read_bytes()
+    return json.loads(AESGCM(key_bytes(club)).decrypt(sealed[:12], sealed[12:], club.encode()))
+
+
+def write_club(club: str, catalog: dict) -> None:
+    """The club's catalog, sealed the way its art is, with the club's name as associated data."""
+    iv = os.urandom(12)
+    raw = json.dumps(catalog, ensure_ascii=False).encode()
+    path = ALBUM / "clubs" / f"{club}.bin"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(iv + AESGCM(key_bytes(club)).encrypt(iv, raw, club.encode()))
+
+
 def cmd_add(args: argparse.Namespace) -> None:
-    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    if args.collection not in {c["id"] for c in catalog["collections"]}:
-        sys.exit(f"No hay una colección «{args.collection}» en cards.json")
-    art = encrypt_art(args.id, Path(args.image).expanduser())
+    catalog = read_club(args.club) if args.club else json.loads(CATALOG.read_text(encoding="utf-8"))
+    collection = args.club or args.collection
+    if not args.club and collection not in {c["id"] for c in catalog["collections"]}:
+        sys.exit(f"No hay una colección «{collection}» en cards.json")
+    art = encrypt_art(args.id, Path(args.image).expanduser(), args.club)
     card = next((c for c in catalog["cards"] if c["id"] == args.id), None)
     if card is None:
-        card = {"id": args.id, "n": max(c["n"] for c in catalog["cards"]) + 1}
+        card = {"id": args.id, "n": max((c["n"] for c in catalog["cards"]), default=0) + 1}
         catalog["cards"].append(card)
-    card.update(name=args.name, collection=args.collection, group=args.group, rarity=args.rarity, art=art)
+    card.update(name=args.name, collection=collection, group=args.group, rarity=args.rarity, art=art)
     card.pop("img", None)
     if args.wide:
         card["wide"] = True
     else:
         card.pop("wide", None)
+    if args.club:
+        write_club(args.club, catalog)
+        print(f"Carta Nº {card['n']:03d} «{args.name}» en el catálogo cifrado de {args.club}")
+        return
     CATALOG.write_text(json.dumps(catalog, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"Carta Nº {card['n']:03d} «{args.name}» en {CATALOG}")
 
@@ -148,6 +182,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     key = sub.add_parser("key", help="crea ALBUM_ART_KEY en secrets.env")
     key.add_argument("--copy", action="store_true", help="la copia al portapapeles, para Coolify")
+    key.add_argument("--club", choices=["taws"], help="la clave de ese club, no la del álbum")
     draw = sub.add_parser("draw", help="Codex dibuja la carta desde fotos")
     draw.add_argument("--id", required=True)
     draw.add_argument("--photo", action="append", default=[], help="sin fotos, Codex dibuja de memoria")
@@ -157,11 +192,14 @@ def main() -> None:
     add.add_argument("--id", required=True)
     add.add_argument("--image", required=True)
     add.add_argument("--name", required=True)
-    add.add_argument("--collection", required=True)
+    add.add_argument("--collection", help="espol o iconos; con --club, el club")
+    add.add_argument("--club", choices=["taws"], help="al catálogo cifrado de ese club")
     add.add_argument("--group", required=True)
     add.add_argument("--rarity", required=True, choices=RARITIES)
     add.add_argument("--wide", action="store_true")
     args = parser.parse_args()
+    if args.command == "add" and not (args.club or args.collection):
+        parser.error("add necesita --collection o --club")
     {"key": cmd_key, "draw": cmd_draw, "add": cmd_add}[args.command](args)
 
 

@@ -50,8 +50,10 @@ el voto lo deshace.
 
 **Unirte a un grupo del aula.** Si el profe abrió la inscripción a grupos (un equipo de proyecto, «Semana 7 6»),
 dile «agrégame al grupo 6 de Semana 7 de Dirección de Proyectos». Te manda el grupo, quién está y el cupo, con una
-encuesta «👥 Unirme / Cancelar»: te une solo cuando votas Unirme. Si ya estás en otro grupo de ese conjunto, el aula
-te saca de él, y la tarjeta te lo advierte. «¿Qué grupos tienen cupo en Estadística?» te los lista.
+encuesta «👥 Unirme / No me unas»: te une solo cuando votas Unirme. Si ya estás en otro grupo de ese conjunto, el aula
+te saca de él, y la tarjeta te lo advierte. «¿Qué grupos tienen cupo en Estadística?» te los lista. En un grupo de
+WhatsApp («@vinci agrégame al grupo 6…») la tarjeta sale ahí mismo, pero solo cuenta tu voto: si un compañero vota
+Unirme, no pasa nada.
 
 **Una pregunta en varios mensajes.** Si partes una pregunta en varias burbujas («cuánto saqué en la» · «lección de
 física»), Vinci espera a que termines y te responde una sola vez. Espera unos 3 segundos si tu mensaje queda a medias

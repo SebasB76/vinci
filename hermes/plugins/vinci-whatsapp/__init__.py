@@ -24,7 +24,8 @@ friend's and in the default one; it acts only on WhatsApp.
   whoever voted, over their own aula (`espol-bot whatsapp-comando voto`), without the model. In a group Hermes only
   lets through a vote on a quiz (its options start with 🇦 🇧…, a mention pattern in setup): anyone's vote there
   counts (`espol-bot whatsapp-grupo voto`). Once every member answered it all, or 15 minutes after the quiz went out
-  (QUIZ_CLOSES, checked by the relay loop), the group gets everyone's results, tagged. A vote skips Hermes' sessions
+  (QUIZ_CLOSES, checked by the relay loop), the group gets everyone's results, tagged. A card to join an aula group
+  (options start with 👥) also lets votes through, and only the vote of whoever asked for it counts. A vote skips Hermes' sessions
   altogether (_wire_votes): one cast while Vinci's turn still runs is not queued for the model.
 - Hermes' notices for an operator (the «💾 Self-improvement review» line, a busy ack and its first-time tip) are
   dropped before they reach WhatsApp (_quiet).

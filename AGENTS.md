@@ -107,8 +107,9 @@ Each of these breaks the live bots or leaks the captain's data. Do the safe thin
   "check the baseline". A failed test leaves `artifacts/e2e/fallo-<test>.md` (the error, the last
   WhatsApp messages and model turns, the gateway log): read it before rerunning anything. Skip it for small changes (copy, `SOUL.md`, `config.toml`, about 50 lines). For a
   behavior change, run it once at the end, and never rerun it for a one-line fix. The captain
-  asked for this 12 times, so `tests/conftest.py` enforces it: it refuses a run with no change against `main`, a
-  rerun with nothing changed, and a rerun after 3 changed lines or fewer. Only the captain overrides it, with
+  asked for this 12 times, so `tests/conftest.py` enforces it: it refuses a run with no change against `main`, one whose
+  changes are all files the E2E never reads (guides, `.md` outside `hermes/`, images, `.claude/`, `scripts/`), a
+  rerun with nothing changed, and a rerun after 3 changed lines or fewer. When it refuses, do not work around it. Only the captain overrides it, with
   `E2E_FORCE="<reason>" uv run pytest`. `docs/guia/contribuir.md` is for outside contributors.
 - No unit tests and no extra review rounds.
 - "Improve the project" means features the student notices, not refactors.

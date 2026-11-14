@@ -18,6 +18,10 @@ ORDER = ["test_canvas", "test_whatsapp_captain", "test_whatsapp_friend", "test_a
 LAST_RUN = REPO / "artifacts" / ".e2e-last-run"
 # changed lines since the last run that still count as a one-line fix
 SMALL_FIX = 3
+# what the E2E never reads: a change only here has nothing for it to check. hermes/*.md stays out (the fake model
+# tells the bots apart by their SOUL.md), and so do docs/'s webviews, which it opens in Chromium.
+UNREAD_DIRS = (".claude/", ".github/", "scripts/", "experiments/", "docs/guia/", "docs/images/")
+UNREAD_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm")
 
 
 def _controller(config) -> bool:
@@ -45,8 +49,15 @@ def _changed_lines(old: str, new: str) -> int:
     return sum(100 if added == "-" else int(added) + int(deleted) for added, deleted, _ in rows)
 
 
+def _e2e_reads(path: str) -> bool:
+    if path.startswith(UNREAD_DIRS) or path.lower().endswith(UNREAD_SUFFIXES):
+        return False
+    return not (path.endswith(".md") and not path.startswith(("hermes/", "tests/")))
+
+
 def _guard_e2e_run() -> None:
-    """AGENTS.md's E2E rule, enforced: no baseline run, no rerun without a change, none for a one-line fix."""
+    """AGENTS.md's E2E rule, enforced: no baseline run, none for docs only, no rerun without a change, none for a
+    one-line fix."""
     if os.environ.get("E2E_FORCE", "").strip():
         return
     try:
@@ -57,6 +68,9 @@ def _guard_e2e_run() -> None:
     refusal = None
     if not _changed_lines(base, tree):
         refusal = "esta copia no cambia nada frente a main. No lo corras al empezar ni para ver la línea base."
+    elif not any(_e2e_reads(path) for path in _git("diff", "--name-only", base, tree).splitlines()):
+        refusal = ("esta rama solo cambia docs, guías o imágenes, que el E2E no lee. Abre el PR; lo que cambie en los "
+                   "bots se prueba con vinci-check.")
     elif LAST_RUN.exists():
         try:
             since = _changed_lines(LAST_RUN.read_text().strip(), tree)

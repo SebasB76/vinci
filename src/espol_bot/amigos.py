@@ -395,7 +395,7 @@ def listing(cfg: BotConfig) -> Outcome:
 
 def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) -> Outcome:
     """Vinci's own slash commands on WhatsApp, for the captain or an active friend, each over their own aula:
-    /start, /estado, /token, /entregas, /cambio and /canje (trades.py) and /ranking (ranking.py), plus the ciphertext the captain pastes after his /token, and a vote on one of
+    /start, /estado, /token, /entregas, /cambio and /canje (trades.py), /ranking (ranking.py) and /taws (club.py), plus the ciphertext the captain pastes after his /token, and a vote on one of
     the polls that stand in for a card's buttons (`data`: {"encuesta", "opcion"})."""
     captain = number == captain_number(cfg)
     friend = None if captain else next((f for f in active(cfg) if f.numero == number), None)
@@ -411,6 +411,9 @@ def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) ->
     if name == "ranking":
         from espol_bot import ranking
         return ranking.command(cfg, number, data, now)
+    if name == "taws":
+        from espol_bot import club
+        return club.command(cfg, number, data, now)
     if name == "voto" and (traded := trades.vote(cfg, number, friend, data, now)) is not None:
         return traded
     if name in ("voto", "marca", "entregas"):

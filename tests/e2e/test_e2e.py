@@ -75,7 +75,8 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   then Angel's, one at a time, and the summary the same way, sent once a day even when the pass repeats; his Vinci
   never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; a card trade (/cambio, and the album's «Cambios» tab with Angel's repeats) with the captain,
-  swapped by Angel's vote; /canje (3 repeats for a pack); the ranking, with each person's cards for the album page; Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
+  swapped by Angel's vote; /canje (3 repeats for a pack); the ranking, with each person's cards for the album page; the album's TAWS section (/taws: the captain's Canvas name on the club's list, Angel accepted by
+  the captain, the club's key only in members' links, a club gift that reads the list again); Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
 
@@ -1213,13 +1214,14 @@ def world(tmp_path: Path, env: dict[str, str] | None = None):
         hosts += f', "dspace.espol.edu.ec" = "{dspace.base}", "academico.espol.edu.ec" = "{portal.base}"'
         hosts += f', "mallacurricular.espol.edu.ec" = "{portal.base}"'  # the curriculum the Académico links'
         hosts += f', "www.espol.edu.ec" = "{web.base}"'  # ESPOL's calendar page
+        hosts += f', "taws.espol.edu.ec" = "{web.base}"'  # the TAWS club's list of members
         config += (f"\n[test]\nlink_hosts = {{ {hosts} }}  # Google and SharePoint are FakeWeb here, DSpace FakeDSpace\n"
                    f'whatsapp_puente = "{wa.base}"\nwhatsapp_script = "{stand_in / "bridge.js"}"\n'
                    f"whatsapp_grupo_inactivo_segundos = {GROUP_IDLE}\n")
         config_file = tmp_path / "config.toml"
         config_file.write_text(config, encoding="utf-8")
         secrets = tmp_path / "secrets.env"
-        secrets.write_text(f"CANVAS_TOKEN={CANVAS_TOKEN}\nWHATSAPP_CAPTAIN={CAPTAIN_WA}\n"
+        secrets.write_text(f"CANVAS_TOKEN={CANVAS_TOKEN}\nWHATSAPP_CAPTAIN={CAPTAIN_WA}\nALBUM_TAWS_KEY={TAWS_KEY}\n"
                            f"WHATSAPP_RELAY_URL={relay.base}\nWHATSAPP_RELAY_TOKEN={FakeRelay.KEY}\n")
         secrets.chmod(0o600)
         llm = stack.enter_context(ScriptedLLM(Script(tmp_path / "pwned", secrets)))
@@ -2749,6 +2751,22 @@ def test_academico(tmp_path):
     write_part("test_academico", "El Académico de ESPOL", w.report, started)
 
 
+TAWS_KEY = "dGF3cy1lMmUta2V5LWZvci10aGUtdGVzdC1vbmx5ISE"  # 32 bytes, base64url: the test's own TAWS catalog
+TAWS_CARDS = [{"id": f"taws-e2e-{i}", "n": i, "name": f"TAWS {i}", "collection": "taws", "group": "Sticker",
+               "rarity": r} for i, r in enumerate(("com", "com", "com", "rare", "rare", "epic", "leg"), 1)]
+
+
+def taws_catalog(folder: Path) -> Path:
+    """The club catalog sealed as scripts/album_card.py seals it, with the test's key."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    folder.mkdir(parents=True, exist_ok=True)
+    iv = os.urandom(12)
+    key = base64.urlsafe_b64decode(TAWS_KEY + "=" * (-len(TAWS_KEY) % 4))
+    raw = json.dumps({"version": 1, "cards": TAWS_CARDS}).encode()
+    (folder / "taws.bin").write_bytes(iv + AESGCM(key).encrypt(iv, raw, b"taws"))
+    return folder
+
+
 def test_whatsapp_friend(tmp_path):
     """Section 10 for a friend: a group the captain turns on, Angel invited with a Vinci of his own (his token through
     the page and Vinci's relay, his week, slides, a quote, a sticker, a group that goes idle, a reminder Angel's Vinci schedules for the group (sent by the captain's agenda), «manda los avisos de ayer» changing no setting, a guest's «@vinci /estado» reaching no one, «desactiva este grupo» also dropping its notices and trust, a poll for a button, his
@@ -2757,7 +2775,9 @@ def test_whatsapp_friend(tmp_path):
     started = time.monotonic()
     # as in the container: the s6 services vinci-mantenimiento and vinci-sondeo renew every chain and run every poll
     # and summary, not Hermes cron
-    with world(tmp_path, env={"VINCI_MAINTENANCE_SERVICE": "1", "VINCI_POLL_SERVICE": "1"}) as w:
+    clubs = taws_catalog(tmp_path / "clubs")
+    with world(tmp_path, env={"VINCI_MAINTENANCE_SERVICE": "1", "VINCI_POLL_SERVICE": "1",
+                              "VINCI_ALBUM_CLUBS": str(clubs)}) as w:
         if not w.hermes:
             pytest.skip("Hermes no está instalado aquí")
         w.md += ["# Vinci en WhatsApp: el grupo y el Vinci de Angel\n",
@@ -3643,6 +3663,48 @@ def test_whatsapp_friend(tmp_path):
                       "los dos con medallas y el botón «🏆 Ver el ranking» abre esa vista del álbum, con las cartas de "
                       "cada uno; «/ranking salir» "
                       "saca a Angel, sin el modelo")
+
+        # 10i-taws. The album's TAWS section (/taws): the captain's Canvas name is on the club's list, Angel's is not
+        calls, mark = len(llm.requests), len(wa.sent)
+        taws_ids = {c["id"] for c in TAWS_CARDS}
+
+        def album_data(message: dict) -> dict:
+            return dashboard_module.decode(message["url"].split("#d=", 1)[1].split("&", 1)[0])
+
+        def taws_cards(db: Path) -> dict:
+            return {c: n for c, n in album_of(db).items() if c in taws_ids}
+
+        joined = say(captain_jid, captain_jid, "/taws", "Capitán")
+        assert "Estás en la lista de miembros de TAWS" in text_of(joined), joined
+        pack = album_data(next(m for m in joined if m.get("buttonText") == "🎴 Abrir mi sobre"))
+        assert pack["club"] == {"taws": TAWS_KEY} and pack["pack"]["club"] == "taws", pack
+        assert {e["id"] for e in pack["pack"]["cards"]} <= taws_ids and len(pack["pack"]["cards"]) == 3, pack
+        assert sum(taws_cards(data_dir / "espol.db").values()) == 3
+        assert "Ya eres de TAWS" in text_of(say(captain_jid, captain_jid, "/taws", "Capitán"))
+        asked = text_of(say(angel_jid, angel_jid, "/taws", "Angel"))
+        assert "le pregunté al capitán" in asked and not taws_cards(angel_dir / "espol.db"), asked
+        told = wa.wait_for(lambda b: [m for m in b.messages_to(captain_jid, mark) if "/taws acepta Angel" in
+                                      m.get("message", "")], 30)
+        assert told and "Amigo E2E" in told[0]["message"], told
+        angel_link = album_data(say(angel_jid, angel_jid, "/ranking", "Angel")[-1])
+        assert "club" not in angel_link, "quien no es de TAWS no recibe la clave del club"
+        accepted = text_of(say(captain_jid, captain_jid, "/taws acepta Angel", "Capitán"))
+        assert "Angel ya es de TAWS" in accepted, accepted
+        welcome = wa.wait_for(lambda b: [m for m in b.messages_to(angel_jid, mark) if "te aceptó en TAWS" in
+                                         m.get("message", "")], 30)
+        assert welcome and album_data(welcome[0])["club"] == {"taws": TAWS_KEY}, welcome
+        assert sum(taws_cards(angel_dir / "espol.db").values()) == 3
+        # a gift to the club reads the list again: the captain left the site; Angel, whom the captain accepted, stays
+        w.web.taws_members = [{"fullName": "Otra Persona", "status": "active"}]
+        gift = run([bot, "album-regalo", "Por la reunión", "--club", "taws"], T_VINCI).stdout
+        assert "ya no está en la lista" in gift and "🎁 Angel" in gift, gift
+        assert sum(taws_cards(angel_dir / "espol.db").values()) == 6
+        assert sum(taws_cards(data_dir / "espol.db").values()) == 3
+        assert len(llm.requests) == calls, "la sección TAWS no usa el modelo"
+        report.append("«/taws» del capitán: su nombre de Canvas está en la lista de taws.espol.edu.ec, así que entra con un "
+                      "sobre TAWS cuyo enlace lleva la clave del club; Angel no está, el capitán recibe «/taws acepta "
+                      "Angel» y al aceptarlo le llega su sobre; antes, su enlace no traía la clave. «album-regalo --club "
+                      "taws» vuelve a leer la lista: quien salió de ella no recibe más; nada usa el modelo")
 
         # 10j. The captain lists and removes Angel; then turns the group off
         listed = say(captain_jid, captain_jid, "/amigos", "Capitán")

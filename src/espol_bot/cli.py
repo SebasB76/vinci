@@ -16,6 +16,8 @@
     espol-bot album-regalo [MOTIVO] [--para AMIGO]
                                      a gift pack for the captain and each friend (or that friend only), sent by
                                      the next poll
+    espol-bot album-regalo [MOTIVO] --club taws
+                                     a pack of TAWS cards for each member still on the club's list, sent now
     espol-bot doctor                 system health: last poll and sync, token chain (read-only;
                                      exits 1 when something is broken)
     espol-bot hermes-perfil          create/update the Hermes profiles (called by setup.sh)
@@ -201,7 +203,7 @@ def _friend_outcome(cfg, args):
     from espol_bot.whatsapp import normalize_number as whatsapp_number
     now = now_utc()
     if args.cmd == "whatsapp-comando":
-        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca", "cambio", "ranking") else ""
+        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca", "cambio", "ranking", "taws") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
     if args.cmd == "whatsapp-grupo" and args.accion == "voto":
         return amigos.group_vote(cfg, args.grupo, sys.stdin.read(), now)
@@ -417,6 +419,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("album-regalo", help="regalar un sobre del álbum a ti y a cada amigo; lo manda el próximo sondeo")
     p.add_argument("motivo", nargs="?", default="Un regalo de Vinci, porque sí")
     p.add_argument("--para", metavar="AMIGO", help="solo a ese amigo: su nombre o su número")
+    p.add_argument("--club", choices=["taws"], help="un sobre del club a cada miembro, en vez del sobre de todos")
     p = sub.add_parser("panel", help="el panel de administración en el navegador: gateway, tareas, gasto y turnos "
                                      "(solo lectura)")
     p.add_argument("--puerto", type=int, default=8787)
@@ -500,7 +503,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("whatsapp-comando", help="/start, /estado, /token, /cambio, /canje y /ranking por WhatsApp, del capitán o de un amigo "
                                                 "(lo usa el plugin vinci-whatsapp)")
     p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado", "voto", "marca", "entregas",
-                                      "cambio", "canje", "ranking"])
+                                      "cambio", "canje", "ranking", "taws"])
     p.add_argument("numero", help="quién lo escribió (593…)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-rele", help="lo que el formulario del token y el dashboard mandaron por el relé de "
@@ -559,6 +562,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd in ("doctor", "estado"):
             return _health(cfg, telegram=args.cmd == "estado")
+        if args.cmd == "album-regalo" and args.club:
+            from espol_bot import club
+            print("\n".join(club.gift(cfg, args.motivo, now_utc())))
+            return 0
         if args.cmd == "album-regalo":
             return _album_gift(cfg, args.motivo, args.para)
         if args.cmd == "whatsapp-vincular":

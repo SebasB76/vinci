@@ -475,9 +475,10 @@ QUIZ_CLOSES = "quiz-cierres.json"  # group quizzes still open: when each one's r
 
 
 def group_vote(cfg: BotConfig, group: str, data: str, now: datetime) -> Outcome:
-    """A vote on a quiz poll in a WhatsApp group, by anyone there (`data`: {"encuesta", "opcion", "votante": their JID,
-    "numeros": their numbers}). The quiz is the captain's Vinci's or a friend's. Once every member answered it all,
-    the results; until then the quiz waits in QUIZ_CLOSES for its deadline."""
+    """A vote on a poll in a WhatsApp group (`data`: {"encuesta", "opcion", "votante": their JID, "numeros": their
+    numbers}), on the captain's Vinci's or a friend's. A quiz counts anyone's vote: once every member answered it all,
+    the results; until then it waits in QUIZ_CLOSES for its deadline. A card to join an aula group counts only its
+    owner's vote."""
     from espol_bot import quiz
     vote = json.loads(data or "{}")
     poll, voter = str(vote.get("encuesta") or ""), str(vote.get("votante") or "")
@@ -487,6 +488,13 @@ def group_vote(cfg: BotConfig, group: str, data: str, now: datetime) -> Outcome:
             options = whatsapp.read_polls(owner_cfg.core.data_dir).get(poll)
             if options is None:
                 continue
+            callback = options.get(str(vote.get("opcion") or "").strip(), "")
+            if callback.startswith("v1:j:"):  # joining an aula group writes to its owner's aula: only they vote it
+                if number not in numbers:
+                    return Outcome("")
+                from espol_bot import botones
+                answer = botones.handle(owner_cfg, callback, now)
+                return Outcome(whatsapp.from_html(answer.get("respuesta") or answer.get("aviso") or ""))
             match = re.fullmatch(r"q:([A-Z0-9]{2,12}):(\d)", options.get(str(vote.get("opcion") or "").strip(), ""))
             if not match or not voter:
                 return Outcome("")

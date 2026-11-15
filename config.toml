@@ -120,6 +120,11 @@ perfil = "vinci"
 # solo las respuestas, los briefs y lo que les pases).
 proveedor = "anthropic"
 modelo = "claude-haiku-5-5"
+# Cuántos tokens puede pesar una conversación antes de que Hermes la resuma. Resumir tarda unos 25 segundos y
+# Vinci pierde detalle de lo anterior, así que conviene alto con un modelo de ventana grande donde releer lo ya
+# enviado casi no cuesta (DeepSeek: 1 M de tokens). Con un modelo caro por token de entrada (Claude), bájalo a
+# 80000. Una conversación privada igual empieza de cero tras 4 horas sin mensajes.
+summarize_at_tokens = 200000
 
 [hermes.herramientas]
 # Herramientas de Hermes que cada bot tiene APAGADAS y puedes encender. Nadie las trae de fábrica:

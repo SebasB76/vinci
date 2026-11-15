@@ -385,7 +385,7 @@ def _stale_note(ctx: Ctx) -> str:
     fix = ""
     if ctx.stale.token and ctx.code is not None:
         fix = ", y que renueve el token mandándole /token a Vinci"
-    elif ctx.stale.token and _whatsapp_chat(ctx) is not None:
+    elif ctx.stale.token and _whatsapp_chat(ctx, to_send=False) is not None:
         fix = (", y mándale el formulario del token con show_page (page: token) si todavía no se lo mandaste en esta "
                "conversación")
     elif ctx.stale.token:
@@ -849,9 +849,11 @@ def _working(ctx: Ctx, kind: str, text: str):
     the academic calendar."""
     key = f"notice:{ctx.bot}:{kind}"
     last = get_meta(ctx.conn, key)
-    if not last or time.time() - float(last) >= NOTICE_GAP:
+    if (not last or time.time() - float(last) >= NOTICE_GAP) and not _no_chat(ctx):
         try:
-            Telegram(load_telegram_secrets(ctx.code), api=ctx.cfg.telegram_api).send(text)
+            group = _group_chat(ctx)
+            chat = WhatsApp(group, ctx.cfg.whatsapp_bridge) if group else _whatsapp_chat(ctx)
+            (chat or Telegram(load_telegram_secrets(ctx.code), api=ctx.cfg.telegram_api)).send(text)
         except (TelegramError, ConfigError) as exc:  # a courtesy: the work goes on without it
             log.warning("aviso «%s»: %s", kind, exc)
     try:
@@ -1323,9 +1325,17 @@ def _press(ctx: Ctx, data: str) -> dict:
             "mensaje": "Confírmaselo en una línea, con tus palabras."}
 
 
-def _whatsapp_chat(ctx: Ctx) -> WhatsApp | None:
+def _no_chat(ctx: Ctx) -> bool:
+    """A terminal session (`hermes chat`, `vinci-check eval`): it is nobody's chat, so nothing goes out to one."""
+    return _channel(ctx).get("canal") == "cli"
+
+
+def _whatsapp_chat(ctx: Ctx, *, to_send: bool = True) -> WhatsApp | None:
     """The owner's private WhatsApp chat when this conversation happens on WhatsApp; a friend's Vinci lives there.
-    None: Telegram."""
+    None: Telegram. `to_send` False only asks where the conversation is."""
+    if to_send and _no_chat(ctx):
+        raise ToolError("Esta conversación es de la terminal, no de un chat: no hay a dónde mandarlo. Contesta con "
+                        "texto.")
     owner = None
     if ctx.cfg.friend:
         owner = load_secret_values().get("WHATSAPP_OWNER")

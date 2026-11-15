@@ -305,7 +305,8 @@ las facultades, del 2007 a hoy, sin solución. Vinci y los bots de materia saben
 les preguntas por exámenes: nada corre en segundo plano.
 
 1. Le pides exámenes a Vinci (de cualquier materia) o al bot de la materia. Puedes pedir años o un parcial.
-2. El bot te avisa «🔎 Un momento, busco exámenes anteriores en DSpace…» y busca en vivo. Una búsqueda tarda de 1 a
+2. El bot te avisa «🔎 Un momento, busco exámenes anteriores en DSpace…» en el chat donde se lo pediste (por WhatsApp,
+   en tu chat o en el grupo) y busca en vivo. Una búsqueda tarda de 1 a
    20 segundos.
 3. Los títulos de DSpace no traen el código de la materia, así que el bot busca por el nombre y prueba otras formas
    si la primera no encuentra nada: el nombre completo, abreviado («Prog. Orientada a Objetos»), el nombre viejo o

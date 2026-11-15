@@ -395,7 +395,7 @@ def listing(cfg: BotConfig) -> Outcome:
 
 def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) -> Outcome:
     """Vinci's own slash commands on WhatsApp, for the captain or an active friend, each over their own aula:
-    /start, /estado, /token, /entregas, /cambio and /canje (trades.py), /ranking (ranking.py) and /taws (club.py), plus the ciphertext the captain pastes after his /token, and a vote on one of
+    /start, /estado, /token, /entregas, /cambio and /canje (trades.py), /ranking (ranking.py), /taws (club.py) and /mal (quality.py), plus the ciphertext the captain pastes after his /token, and a vote on one of
     the polls that stand in for a card's buttons (`data`: {"encuesta", "opcion"})."""
     captain = number == captain_number(cfg)
     friend = None if captain else next((f for f in active(cfg) if f.numero == number), None)
@@ -414,6 +414,8 @@ def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) ->
     if name == "taws":
         from espol_bot import club
         return club.command(cfg, number, data, now)
+    if name == "mal":
+        return _report_problem(cfg, friend, data)
     if name == "voto" and (traded := trades.vote(cfg, number, friend, data, now)) is not None:
         return traded
     if name in ("voto", "marca", "entregas"):
@@ -428,6 +430,24 @@ def command(cfg: BotConfig, name: str, number: str, data: str, now: datetime) ->
         return submit_token(cfg, number, data, now)
     with scope(cfg, friend) as fcfg:
         return _command(fcfg, name, data, now)
+
+
+def _report_problem(cfg: BotConfig, friend: Friend | None, note: str) -> Outcome:
+    """«/mal»: the last answer of their Vinci, kept for the captain (quality.py); a friend's also reaches his chat."""
+    from espol_bot import quality
+    if friend is None:
+        return Outcome(quality.report_problem(cfg, cfg.hermes_profile, note)[0])
+    with scope(cfg, friend) as fcfg:
+        answer, kept = quality.report_problem(fcfg, profile_name(friend), note)
+    if kept:
+        said = " ".join(note.split())[:200]
+        try:
+            whatsapp.WhatsApp(captain_number(cfg), cfg.whatsapp_bridge).send(
+                f"👎 {friend.nombre} marcó como mala una respuesta de su Vinci{f': «{said}»' if said else ''}. "
+                "Está en `vinci-check quality --feedback`.")
+        except whatsapp.WhatsAppError as exc:
+            log.warning("no pude avisarle al capitán: %s", exc)
+    return Outcome(answer)
 
 
 MARK_RE = re.compile(r"\s*([st])(\d{1,12})\s+(ok|no)\b", re.I)
@@ -574,6 +594,7 @@ def _greeting(friend: Friend | None) -> str:
              "/canje · 3 repetidas por un sobre nuevo",
              "/ranking · quién lleva más cartas en el álbum",
              "/estado · cómo va la lectura de tu aula",
+             "/mal · mi última respuesta estuvo mal: la anoto para arreglarla",
              "/token · poner un token nuevo del aula",
              "/new · empezar la conversación de cero",
              "",

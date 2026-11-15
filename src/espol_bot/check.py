@@ -9,6 +9,10 @@
     vinci-check vote "<option>"              vote on Vinci's latest poll in the captain's WhatsApp chat
     vinci-check page token|dashboard|notas   open the GitHub Pages page in headless Chrome
     vinci-check smoke                        all of the above that is safe, in about a minute
+    vinci-check quality [--days 14]          each Vinci in numbers: answer time, failed tools, summaries of the
+                                             chat, spend, «/mal» reports (--feedback lists them)
+    vinci-check eval                         the same student questions to the real model, checked by rule
+                                             (espol_bot/evals.py; `vinci-check eval --help`)
     vinci-check remote …                     from the PC: logs, errors, turns, commands and files of the live
                                              container (espol_bot/remote.py; `vinci-check remote --help`)
 
@@ -35,7 +39,7 @@ from pathlib import Path
 
 from aula_core.config import ConfigError, load_config, now_utc
 from aula_core.store import get_meta
-from espol_bot import dashboard, grades_page, health, materias, panel, relay, whatsapp as wa
+from espol_bot import dashboard, grades_page, health, materias, panel, quality, relay, whatsapp as wa
 from espol_bot.config import BotConfig, hermes_root, load_bot_config, whatsapp_settings
 
 TG = Path(os.environ.get("VINCI_TG", "~/.local/share/tg-user/tg")).expanduser()
@@ -363,6 +367,15 @@ def smoke(cfg: BotConfig, timeout: float) -> list[Result]:
     return results
 
 
+def _quality(cfg: BotConfig, days: int, feedback: bool, as_json: bool) -> int:
+    found = quality.feedback(cfg, days) if feedback else quality.survey(cfg, days)
+    if as_json:
+        print(json.dumps(found, ensure_ascii=False, indent=1))
+    else:
+        print(quality.render_feedback(found) if feedback else quality.render(found, days))
+    return 0
+
+
 def _print(results: list[Result], as_json: bool) -> None:
     if as_json:
         print(json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=1))
@@ -387,6 +400,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["remote"]:  # runs on the PC, with no config or Hermes of its own
         from espol_bot import remote
         return remote.main(argv[1:])
+    if argv[:1] == ["eval"]:  # its own options, and a run of several minutes that prints as it goes
+        from espol_bot import evals
+        return evals.main(argv[1:])
     parser = argparse.ArgumentParser(prog="vinci-check", description=__doc__.splitlines()[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog="\n".join(__doc__.splitlines()[1:]))
@@ -419,10 +435,16 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("smoke", help="status, /estado to Vinci, /start to each subject bot (with Telegram on), both pages")
     p.add_argument("--timeout", type=float, default=90)
     sub.add_parser("remote", help="from the PC: the live container's logs, turns, commands and files")
+    p = sub.add_parser("quality", help="each Vinci in numbers, and what people flagged with /mal")
+    p.add_argument("--days", type=int, default=14, help="how far back (default 14)")
+    p.add_argument("--feedback", action="store_true", help="the «/mal» reports, with the answer each one is about")
+    sub.add_parser("eval", help="student questions to the real model with the live prompt, checked by rule")
     args = parser.parse_args(argv)
 
     try:
         cfg = load_bot_config(load_config())
+        if args.cmd == "quality":
+            return _quality(cfg, args.days, args.feedback, args.json)
         if args.cmd == "status":
             results = [status(cfg)]
         elif args.cmd == "bots":

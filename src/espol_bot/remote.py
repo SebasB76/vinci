@@ -11,6 +11,7 @@
                                                         recent turns of a profile; friends' text only with --raw
     vinci-check remote run <command…> [--timeout 300]   a shell command in the container, as hermes, in /opt/data
     vinci-check remote doctor | restart                 `espol-bot doctor` | `hermes gateway restart`
+    vinci-check remote quality [--days 14] [--feedback] `vinci-check quality` in the container: each Vinci in numbers
     vinci-check remote get <path> [local] | put <local> <path>
                                                         copy a file under /opt/data down or up
 """
@@ -275,6 +276,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--timeout", type=float, default=300)
     sub.add_parser("doctor", help="espol-bot doctor in the container")
     sub.add_parser("restart", help="hermes gateway restart in the container")
+    p = sub.add_parser("quality", help="vinci-check quality in the container: each Vinci in numbers")
+    p.add_argument("--days", type=int, default=14)
+    p.add_argument("--feedback", action="store_true", help="the «/mal» reports instead")
     p = sub.add_parser("get", help="download a file under /opt/data")
     p.add_argument("path")
     p.add_argument("local", nargs="?")
@@ -302,6 +306,8 @@ def main(argv: list[str]) -> int:
             return run("espol-bot doctor", 120)
         if args.cmd == "restart":
             return run("hermes gateway restart", 180)
+        if args.cmd == "quality":
+            return run(f"vinci-check quality --days {args.days}{' --feedback' if args.feedback else ''}", 120)
         if args.cmd == "get":
             return get(args.path, args.local)
         return put(args.local, args.path)

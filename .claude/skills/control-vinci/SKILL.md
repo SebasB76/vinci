@@ -36,6 +36,7 @@ him to run commands in the Terminal and paste the output.
 | `vinci-check remote turns [--profile vinci] [-n 30] [--session id] [--raw]` | recent turns and tool calls of a profile |
 | `vinci-check remote run <command>` | a shell command in the container, as `hermes`, in `/opt/data` (options before the command) |
 | `vinci-check remote doctor` / `restart` | `espol-bot doctor` / `hermes gateway restart` |
+| `vinci-check remote quality [--days 14] [--feedback]` | `vinci-check quality` in the container |
 | `vinci-check remote get <path> [local]` / `put <local> <path>` | copy a file under `/opt/data` (`state.db` to query it locally) |
 
 Logs and turns mask phone numbers, WhatsApp ids, friends' names and message text by default. Add `--raw` only when
@@ -62,6 +63,9 @@ The bots run `main` as of the last **Redeploy**: a behavior change is only live 
 | `vinci-check vote "<option>"` | vote on Vinci's latest poll in the captain's WhatsApp chat |
 | `vinci-check page token\|dashboard\|notas` | open the GitHub Pages page in headless Chrome; the dashboard and «Tus notas» carry the real data |
 | `vinci-check smoke` | the standard round (about 45 s): status, `/estado`, both pages; with Telegram on, `/start` to each subject bot |
+| `vinci-check quality [--days 14]` | each Vinci in numbers: messages, answer time (median, p90), failed tools, summaries of the chat per 100 messages, spend, `/mal` reports, corrected citations; no chat text, friends masked |
+| `vinci-check quality --feedback` | the `/mal` reports: the note, the person's last message, Vinci's answer and its tools |
+| `vinci-check eval [--only a,b] [--model id] [--show]` | 33 student questions to the real model with the live prompt, each checked by rule (tools called, what the reply must or must not say); compares with the previous run. Several minutes and real tokens |
 
 All take `--json` and exit 1 on failure; a failure says what to run next.
 
@@ -83,6 +87,15 @@ All take `--json` and exit 1 on failure; a failure says what to run next.
 - When the captain sends a screenshot of a bot chat, also `chat`/`tg read` or `whatsapp` that chat.
 - Report what you checked with the command output. What only a phone shows (the iPhone webview
   inside WhatsApp, how a poll looks) stays on the captain's list.
+
+## After a change to a prompt, a tool description or the model
+
+Run `vinci-check remote run --timeout 3000 vinci-check eval` before the Redeploy and again after it (about a minute
+per case): the second run says which cases started failing and how the fixed context moved («hola» in tokens).
+Read a failing case with `--only <case> --show`. A week later, `vinci-check remote quality` shows whether the
+summaries per 100 messages, the failed tools and the `/mal` reports moved. A real turn that went wrong becomes a
+case: add it to `CASES` in `src/espol_bot/evals.py` when any install can answer it, or to a JSON file in the data
+folder (`--cases`) when it names this semester's material.
 
 ## Feature map
 

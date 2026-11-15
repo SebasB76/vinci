@@ -48,7 +48,8 @@ test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes h
   KaTeX, the sequence diagram's steps, the quiz's score); a PDF waiting for his vote shows in every private turn as not handed in; «haz el taller» becomes a PDF Vinci wrote (a table
   row short of a cell goes back to the model to fix) that goes up only on his vote; «agrégame al grupo 6 de semana 7» shows the group, who is in it and the
   one he leaves, and only his «Unirme» vote joins it in Canvas (asked in the group, the card goes there and a
-  classmate's vote does nothing); `vinci-check say` talks to it;
+  classmate's vote does nothing); `vinci-check say` talks to it; «/mal» keeps his last message and Vinci's answer
+  without the model, `vinci-check quality --feedback` lists it and `vinci-check quality` counts it;
   `espol-bot panel` shows the gateway, health, jobs, spend and his chat step by step; through Funnel it is a 404
   without PANEL_KEY, and its link shows no chat text; `vinci-check remote`, with AGENT_KEY alone, reads the state,
   masked logs, turns and files, and runs commands, each one in remote-access.log.
@@ -2309,6 +2310,15 @@ def test_whatsapp_captain(tmp_path):
         calls = len(llm.requests)
         captain_hello = text_of(say(captain_jid, captain_jid, "/start", "Capitán"))
         assert "/amigo agregar" in captain_hello and "/estado" in captain_hello, captain_hello
+        # «/mal»: his Vinci's last answer and what he asked, kept for whoever maintains it
+        flagged = text_of(say(captain_jid, captain_jid, "/mal Cálculo sí tiene su esquema", "Capitán"))
+        assert "Anotado" in flagged and "quien me mantiene" in flagged, flagged
+        vc = str(VENV_BIN / "vinci-check")
+        reports = run([vc, "quality", "--feedback"], T_VINCI).stdout
+        assert "Cálculo sí tiene su esquema" in reports and "muéstrame mis notas" in reports, reports
+        numbers = json.loads(run([vc, "--json", "quality"], T_VINCI).stdout)[0]
+        assert numbers["who"] == "captain" and numbers["reports"] == 1, numbers
+        assert numbers["messages"] >= 5 and numbers["tool_calls"] >= 1 and numbers["median_seconds"], numbers
         wa.missing.add("send-url-button")  # Hermes' own bridge.js: the page goes as a plain link
         form = text_of(say(captain_jid, captain_jid, "/token", "Capitán", expect=2))  # the guide, then the form
         wa.missing.discard("send-url-button")
@@ -2320,7 +2330,7 @@ def test_whatsapp_captain(tmp_path):
         reseeded = text_of(say(captain_jid, captain_jid, page_seal(form_url, CAPTAIN_WA_TOKEN), "Capitán"))
         assert "Token verificado y guardado" in reseeded, reseeded
         assert parse_env_file(secrets)["CANVAS_TOKEN"] in canvas.valid_tokens
-        assert len(llm.requests) == calls, "/start, /token y el texto cifrado no pasan por el modelo"
+        assert len(llm.requests) == calls, "/start, /mal, /token y el texto cifrado no pasan por el modelo"
         mark = len(wa.sent)
         run([bot, "resumen"], T_VINCI)
         summary = wa.messages_to(captain_jid, mark)
@@ -2335,7 +2345,8 @@ def test_whatsapp_captain(tmp_path):
             "sin bots de materia no hay «Consultar con …»"
         md.append(f"**(resumen de las 7:00 del capitán)** → Vinci: {normalize(text_of(summary))[:300]}…\n")
         report.append("Los comandos de Vinci van por WhatsApp sin el modelo: /start (con los de /amigo, solo para el "
-                      "capitán) y /token. Con un puente sin la ruta de botones, /token llega como enlace; el capitán "
+                      "capitán), /mal (guarda su último mensaje y la respuesta de Vinci, que `vinci-check quality "
+                      "--feedback` lista; `vinci-check quality` da sus números) y /token. Con un puente sin la ruta de botones, /token llega como enlace; el capitán "
                       "pegó el texto cifrado que muestra la página cuando no alcanza el relé, y su cadena del token "
                       "volvió a arrancar. El resumen de las 7:00 llega con formato de WhatsApp, sin HTML")
 

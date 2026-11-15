@@ -67,7 +67,7 @@ from aula_core.materials import safe_filename
 from aula_core.store import get_meta, set_delivery, set_meta
 from espol_bot import (academic_portal, agenda, album, citations, conversation, course_groups, dashboard, diapositivas, espol_calendar,
                        grades, grades_page, group_policy, health, homework, horario, libros, materias, messages, plan, portal_login, priority,
-                       quiz, resumen, store, study_page, submission, token_form, visuales, whats_new)
+                       quality, quiz, resumen, store, study_page, submission, token_form, visuales, whats_new)
 from espol_bot.config import BotConfig, load_telegram_secrets, whatsapp_settings
 from espol_bot.cuaderno import FILE_KINDS, KINDS, NOTE_KINDS, Notebook, NotebookError
 from espol_bot.cuaderno import root as notebooks_root
@@ -3148,4 +3148,5 @@ def check_citations(cfg: BotConfig, code: str | None, text: str, session: str = 
         ctx.aula.close()
     for change in changes:
         log.info("citas %s: %s «%s»", ctx.bot, change["cambio"], change["cita"])
+        quality.record(cfg.core.data_dir, "citation", change=change["cambio"], cited=change["cita"])
     return {"respuesta": checked, "cambios": changes} if changes else {}

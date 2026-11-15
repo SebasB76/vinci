@@ -203,7 +203,7 @@ def _friend_outcome(cfg, args):
     from espol_bot.whatsapp import normalize_number as whatsapp_number
     now = now_utc()
     if args.cmd == "whatsapp-comando":
-        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca", "cambio", "ranking", "taws") else ""
+        data = sys.stdin.read() if args.accion in ("token-cifrado", "voto", "marca", "cambio", "ranking", "taws", "mal") else ""
         return amigos.command(cfg, args.accion, whatsapp_number(args.numero), data, now)
     if args.cmd == "whatsapp-grupo" and args.accion == "voto":
         return amigos.group_vote(cfg, args.grupo, sys.stdin.read(), now)
@@ -503,7 +503,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("whatsapp-comando", help="/start, /estado, /token, /cambio, /canje y /ranking por WhatsApp, del capitán o de un amigo "
                                                 "(lo usa el plugin vinci-whatsapp)")
     p.add_argument("accion", choices=["start", "estado", "token", "token-cifrado", "voto", "marca", "entregas",
-                                      "cambio", "canje", "ranking", "taws"])
+                                      "cambio", "canje", "ranking", "taws", "mal"])
     p.add_argument("numero", help="quién lo escribió (593…)")
     p.add_argument("--json", action="store_true", help="responder en JSON (para el plugin)")
     p = sub.add_parser("whatsapp-rele", help="lo que el formulario del token y el dashboard mandaron por el relé de "

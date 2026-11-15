@@ -94,9 +94,6 @@ VINCI_TOOLSETS = ["web", "memory", "session_search", "clarify", "skills", "mcp-v
 VINCI_BLOCKED = [t for t in BLOCKED_TOOLSETS if t not in VINCI_TOOLSETS]
 SUBJECT_TOOLSETS = ["memory", "session_search", "clarify", "skills", "mcp-materia", "vinci-paginas"]
 APPROVALS_DENY = ["*secrets.env*", "*CANVAS_TOKEN*", "*api/v1*"]
-# Every message resends the chat so far. After a summary the fixed prompt, the summary and Hermes'
-# 25K verbatim tail already weigh ~50K, so a lower trigger would summarize again every question or two.
-COMPRESSION_THRESHOLD_TOKENS = 80_000
 # Hermes tools (besides the MCP ones in herramientas.GUEST_TOOLS) someone in a WhatsApp group other than the
 # captain may use: the web and reading skills. Not memory or skill_manage: what a guest says must never become
 # something Vinci remembers or does for the captain. Not session_search: it reads the captain's private chats too.
@@ -325,7 +322,9 @@ class Setup:
             "agent": {"disabled_toolsets": blocked},
             "tools": {"tool_search": {"enabled": "off"}},
             "skills": {"auto_load": [skill], "project_discovery": False},
-            "compression": {"threshold_tokens": COMPRESSION_THRESHOLD_TOKENS},
+            # Hermes' own default is half the model's window. The fixed prompt and the tools already weigh ~40K
+            # and a summary frees only 10-20K, so a low trigger summarizes again every question or two.
+            "compression": {"threshold_tokens": self.cfg.summarize_at_tokens},
             "mcp_servers": {mcp_name: {
                 "command": str(self.bot_bin), "args": ["mcp", *mcp_args],
                 "env": {"AULA_CONFIG": self.values["CONFIG"], "AULA_SECRETS": self.values["SECRETS"],

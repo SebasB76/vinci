@@ -194,6 +194,7 @@ Todo lo ajustable está en [`config.toml`](../../config.toml). Después de cambi
 | `almacenamiento.carpeta_datos` | `~/.local/share/espol-academic-bot` | Base de datos, material y cuadernos |
 | `hermes.perfil` | `vinci` | Perfil de Vinci; cada materia usa `<perfil>-<código>` |
 | `hermes.proveedor` · `hermes.modelo` | `anthropic` · `claude-sonnet-5-5` | Modelo de Vinci y de los bots de materia |
+| `hermes.summarize_at_tokens` | `200000` (`80000` si falta) | Cuánto puede pesar una conversación antes de que Hermes la resuma. Resumir tarda unos 25 segundos y Vinci pierde detalle; con un modelo caro por token de entrada (Claude), usa `80000` |
 
 Otros archivos que puedes editar:
 

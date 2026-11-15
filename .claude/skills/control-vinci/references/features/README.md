@@ -87,7 +87,7 @@ subject bots' work itself. The Telegram column is what `telegram = true` brings 
 | Assignment detail | `ver_tarea` in `herramientas.py`, `src/aula_core/queries.py`, `materials.py` | ask «¿qué pide <tarea>?» through `chat`; check annexes, rubric and dates (uses the model) |
 | Finding an assignment and searching its annexes | `queries.find_assignments` (`tareas` with `buscar`), `_search` with `tarea_id`, `search.search(file_ids=…)` | `vinci-check say "en el <tarea por su tema>, qué piden de …?"`, then `vinci-check whatsapp --chat dm`: hits marked `de_la_tarea` first |
 | What happened to a submission | `conversation.submissions` (line «Entregas en el aula» of the turn context) | after a `prepare_submission`, the next DM turn says it waits for the vote |
-| DSpace | `src/aula_core/dspace.py` | ask for past exams through `chat` (uses the model) |
+| DSpace | `src/aula_core/dspace.py` (the «un momento» line goes to the chat that asked: `herramientas._working`; a terminal session sends nothing to a chat: `_no_chat`) | ask for past exams through `say` (uses the model) |
 | Schedule | `src/espol_bot/horario.py` | `chat <subject bot> /start` |
 | Chat context | `src/espol_bot/conversation.py`, `espol-bot contexto`, hook `pre_llm_call` in `hermes/plugins/vinci-botones/` | `vinci-check whatsapp --chat dm`: the user turn ends with «[Contexto de este chat…]» and today's clock |
 | Focus and activities | `conversation.py` (`note_turn`, `open_activities`), `materias.mentioned`, `study_activity` and `send_quiz` in `herramientas.py`, `quiz.resend` | `vinci-check say "estamos en <materia>"`, then `vinci-check whatsapp --chat dm`: «Materia en foco» in the next turn |

@@ -38,7 +38,8 @@ test_canvas, no gateway:
 test_whatsapp_captain, the gateway serving the captain's chat: setup.sh routes his WhatsApp to Vinci (and anyone else
   to Vinci's guest tools); his week; a question split across two bubbles answered once; work handed in outside the aula stays pending and late until he says it is done
   (and back with «todavía no»), an exam held in class leaves on its own, and the summary lists the same; Física's
-  Modules gain a class recording, a Zoom ID subheader and Perusall, and Vinci gives each with its aula link; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
+  Modules gain a class recording, a Zoom ID subheader and Perusall, and Vinci gives each with its aula link; past
+  exams from DSpace, whose «un momento» line goes to his WhatsApp chat; /start and /token without the model; the 07:00 summary in WhatsApp's format; the
   brief before a class as a system task Vinci answers in his chat; Vinci writes the notebook of the subject he names,
   and a note with no subject goes to the one he named a moment ago (the focus in every turn's context); a /quiz left
   half answered stays open in that context («respondió 1 de 2») and «sigamos con el quiz» re-sends only the missing
@@ -2272,6 +2273,16 @@ def test_whatsapp_captain(tmp_path):
                 f"{canvas.base}/courses/102/modules/items/81093") in perusall, perusall
         assert "CLASES VIRTUALES · título: ID ZOOM: 829 0000 0001" in recording, recording
         md.append(f"→ Vinci (grabación): {normalize(recording)}\n→ Vinci (Perusall): {normalize(perusall)}\n")
+        # 10a-3. Past exams: the «un momento» line of a slow search goes to the chat that asked, not to Telegram
+        # (the world's tripwire records any request there).
+        exams = say(captain_jid, captain_jid, "búscame exámenes anteriores de POO", "Capitán", expect=2)
+        assert "busco exámenes anteriores en DSpace" in exams[0]["message"], exams
+        assert "Programación Orientada a Objetos" in text_of(exams[1:]), exams
+        assert w.tripwire.requests == [], w.tripwire.requests
+        report.append("«búscame exámenes anteriores de POO»: el aviso «Un momento, busco exámenes anteriores en "
+                      "DSpace…» llega al chat de WhatsApp donde lo pidió, una sola vez aunque busque por dos nombres, "
+                      "y después la lista")
+
         # 10f'. «¿qué tengo pendiente?» in private: a short answer, with a button to his dashboard (show_page)
         asked = say(captain_jid, captain_jid, "qué tengo pendiente esta semana", "Capitán", expect=2)
         [panel] = [m for m in asked if m["path"] == "send-url-button"]

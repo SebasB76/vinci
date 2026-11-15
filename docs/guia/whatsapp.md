@@ -243,6 +243,7 @@ y Vinci los contesta sin gastar tokens:
 | `/canje` | 3 de tus cartas repetidas por un sobre nuevo. Vinci entrega primero las más comunes y nunca tu última copia. Desde un grupo, te contesta por privado. [Más sobre el canje](uso.md#canjear-repetidas-por-un-sobre) |
 | `/ranking` | Quién tiene más cartas del álbum, entre quienes entraron al ranking. `/ranking entrar` te pone en él y `/ranking salir` te saca. El botón «🏆 Ver el ranking» lo abre en el álbum, y ahí tocas a alguien para ver sus cartas. [Más sobre el ranking](uso.md#el-ranking-del-álbum) |
 | `/taws` | Si eres de TAWS, te abre la sección TAWS del álbum con tu primer sobre del club. Vinci te busca en la lista de taws.espol.edu.ec; si no estás, le pregunta al capitán. [Más sobre la sección TAWS](uso.md#la-sección-taws) |
+| `/mal` | Avisa que la última respuesta de Vinci estuvo mal. Vinci guarda tu último mensaje y lo que te contestó para quien lo mantiene; `/mal la fecha estaba equivocada` le dice además qué falló. Si lo manda un amigo, al capitán le llega un aviso. |
 | `/new`, `/usage`, `/stop`, `/help` | Los comandos de Hermes, igual que en Telegram |
 
 En un grupo, `/estado`, `/token`, `/entregas`, `/marca` y `/canje` te contestan en tu chat privado, y el grupo lee «Te lo mandé por

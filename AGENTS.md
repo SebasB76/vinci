@@ -112,6 +112,9 @@ Each of these breaks the live bots or leaks the captain's data. Do the safe thin
   rerun with nothing changed, and a rerun after 3 changed lines or fewer. When it refuses, do not work around it. Only the captain overrides it, with
   `E2E_FORCE="<reason>" uv run pytest`. `docs/guia/contribuir.md` is for outside contributors.
 - No unit tests and no extra review rounds.
+- The E2E's model is scripted, so it cannot tell whether a prompt change made Vinci worse. After a change to a
+  `SOUL.md`, a `SKILL.md`, a tool description or the model, run `vinci-check eval` on the live container before
+  and after the Redeploy (`control-vinci` skill): it asks the real model and says which cases started failing.
 - "Improve the project" means features the student notices, not refactors.
 - For a new feature idea, restate the goal and the user flow in 3 to 5 lines, then build it.
   When the captain already gave the flow, build it directly.
@@ -161,6 +164,8 @@ under `/opt/data` (`docs/guia/servidor.md`).
 vinci-check remote status                 # from the PC: the live container's health (also errors, logs, turns, run)
 vinci-check remote logs all --grep "inbound message" -n 50   # every profile's log; masked unless --raw
 vinci-check remote run vinci-check smoke  # any command in the container, as hermes, in /opt/data
+vinci-check remote quality                # each Vinci in numbers: answer time, failed tools, chat summaries, spend, /mal
+vinci-check remote run --timeout 3000 vinci-check eval   # 33 questions to the real model, checked by rule (real tokens)
 uv sync                                   # dependencies, dev included
 uv run pytest                             # the E2E: 5 tests in parallel (fake Canvas and WhatsApp, real Hermes)
 ./setup.sh                                # install or update profiles, crons, `aula`; sends a test message

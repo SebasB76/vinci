@@ -16,6 +16,7 @@ Todo se guarda en tu PC, en `~/.local/share/espol-academic-bot/`:
 | `entregas/<CÓDIGO>/` | Lo que Vinci le pasó a un bot y todavía no llegó a su cuaderno |
 | `submissions/<CÓDIGO>/` | Los PDF que un bot de materia armó con tus fotos para entregar |
 | `bot.log` | Registro del sondeo, la agenda y los botones |
+| `quality.jsonl` | Lo que marcaste con `/mal` (tu último mensaje, la respuesta de Vinci y tu nota) y cada cita que Vinci corrigió antes de mandarla |
 
 Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.hermes/profiles/vinci/` y
 `~/.hermes/profiles/vinci-<código>/`.
@@ -50,6 +51,10 @@ Hermes guarda las conversaciones y la memoria de cada bot en su perfil: `~/.herm
   conversaciones anteriores, y con la regla de no contarle nada tuyo, ni lo que Vinci recuerda de ti. Un archivo que
   alguien manda por WhatsApp solo lo toman las herramientas del chat donde llegó. El token de un amigo viaja cifrado como el tuyo en `/token`, y un token del
   aula pegado tal cual en WhatsApp no se usa: Vinci le pide que lo borre.
+- **`/mal` comparte una respuesta, y lo dice.** Cuando alguien escribe `/mal`, Vinci guarda su último mensaje y lo
+  que le contestó para quien lo mantiene, y se lo dice en la respuesta. Es el único texto de un amigo que el capitán
+  puede leer (`vinci-check quality --feedback`). Los números de `vinci-check quality` (tiempos, herramientas que
+  fallaron, gasto) no traen texto, y los amigos salen con el nombre enmascarado.
 - **El panel no lee los chats de otros.** El [panel de administración](panel.md) muestra el texto solo de tus chats
   privados, y solo a ti, desde tu red de Tailscale. De un amigo o de un grupo, muestra solo tiempos, herramientas y
   gasto. Desde internet, sin el enlace con la clave, responde «no existe»; con el enlace, no muestra el texto de

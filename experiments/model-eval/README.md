@@ -1,5 +1,8 @@
 # Model comparison for Vinci
 
+Superseded by `vinci-check eval` (`src/espol_bot/evals.py`), which checks each reply by rule and compares runs.
+This spike and its one run stay as the record of why Sonnet replaced Haiku.
+
 `run.py` sends the same ten student messages to Vinci with each model given, each in a fresh `hermes chat` session
 (`--source e2e-check`), and appends the reply, the tools called, the tokens and the time to a JSONL file. The prompts
 only read: nothing is written to the aula or sent to a chat. The replies hold real course data, so keep the output

@@ -59,6 +59,7 @@ class BotConfig:
     hermes_provider: str
     hermes_model: str
     telegram_api: str
+    summarize_at_tokens: int = 80_000  # when Hermes summarizes a chat ([hermes] summarize_at_tokens)
     token_form_url: str = DEFAULT_TOKEN_FORM_URL
     dashboard_url: str = DEFAULT_DASHBOARD_URL  # empty: no dashboard, the chat keeps its usual menu button
     dashboard_page: str = DEFAULT_DASHBOARD_URL  # the same page, which /entregas links to on WhatsApp (a friend's too)
@@ -178,6 +179,10 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
     if not 5 <= login_minutes <= 60:
         raise ConfigError("[academic_portal] login_minutes debe estar entre 5 y 60")
 
+    summarize_at = hermes.get("summarize_at_tokens", 80_000)
+    if not isinstance(summarize_at, int) or summarize_at < 50_000:
+        raise ConfigError("[hermes] summarize_at_tokens debe ser un número de 50000 en adelante")
+
     friend = os.environ.get("ESPOL_AMIGO") or None
     telegram = section(core.raw, "channels").get("telegram", True)
     if not isinstance(telegram, bool):
@@ -199,6 +204,7 @@ def load_bot_config(core: CoreConfig | None = None) -> BotConfig:
         hermes_profile=profile,
         hermes_provider=str(hermes.get("proveedor", "anthropic")),
         hermes_model=str(hermes.get("modelo", "claude-sonnet-5-5")),
+        summarize_at_tokens=summarize_at,
         telegram_api=api.rstrip("/"),
         token_form_url=form_url,
         # On WhatsApp only (a friend's Vinci too) there is no Telegram dashboard button; class notes are the captain's.

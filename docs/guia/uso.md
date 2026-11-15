@@ -187,7 +187,7 @@ corre `.venv/bin/espol-bot dashboard`.
 - Al escribir `/` en tu chat con un bot, el menú muestra primero estos comandos y debajo los de Hermes. Si no
   aparecen, cierra y abre el chat: Telegram guarda el menú un rato.
 - Por WhatsApp también funcionan `/start`, `/estado`, `/token` y `/quiz`, y además `/cambio`, `/canje`, `/ranking` y `/taws` para el
-  álbum (mira [Vinci en WhatsApp](whatsapp.md#vinci-en-whatsapp)).
+  álbum, y `/mal` para avisar que una respuesta estuvo mal (mira [Vinci en WhatsApp](whatsapp.md#vinci-en-whatsapp)).
 - Los comandos de Hermes también funcionan en cada chat, por ejemplo `/new` (empieza una conversación de cero;
   la memoria y el cuaderno se quedan), `/usage` (tokens y costo de la conversación), `/stop` y `/help`.
 

@@ -8,8 +8,9 @@
     vinci-check eval --show               print each reply too (real course data: keep it out of the repo)
 
 Run it after a change to a SOUL.md, a SKILL.md, a tool description or the model, never in CI: it spends real
-tokens. Each case is one fresh `hermes chat` session of Vinci's profile (source `e2e-check`), so it never touches a
-WhatsApp chat, and every question only reads: a case fails when the model calls a tool that writes. The checks are
+tokens. Each case is one fresh `hermes chat` session of Vinci's profile (source `e2e-check`): a terminal session,
+where the tools send nothing to a chat (herramientas._no_chat). Every question only reads, and a case fails when
+the model calls a tool that writes. The checks are
 rules, not a judge: which tools it called, what the reply must or must not say, how long it is. A run is saved in
 the data folder (`evals/<time>.jsonl`), and the next one says which cases changed.
 """

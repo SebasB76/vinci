@@ -1537,7 +1537,7 @@ def test_canvas(tmp_path):
                 set(vcfg["agent"]["disabled_toolsets"]) and "skills" not in vcfg["agent"]["disabled_toolsets"]
             assert vcfg["tools"]["tool_search"]["enabled"] == "off"
             assert vcfg["skills"]["auto_load"] == ["vinci"]
-            assert vcfg["compression"]["threshold_tokens"] == 80_000, "Vinci resume su chat a los 80 mil tokens"
+            assert vcfg["compression"]["threshold_tokens"] == 200_000, "Vinci resume su chat a los 200 mil tokens"
             assert vcfg["mcp_servers"]["vinci"]["command"] == str(VENV_BIN / "espol-bot")
             assert vcfg["mcp_servers"]["vinci"]["args"][:1] == ["mcp"]
             assert "vinci-botones" in vcfg["plugins"]["enabled"]

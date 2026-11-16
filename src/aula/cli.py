@@ -61,6 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--curso", help="parte del nombre o código de la materia")
     p.add_argument("--dias", type=int, help="solo las que vencen en los próximos N días")
 
+    p = sub.add_parser("entregas", parents=[common], help="lo que entregaste en el aula y los archivos que subiste")
+    p.add_argument("--curso")
+
     p = sub.add_parser("anuncios", parents=[common], help="anuncios recientes")
     p.add_argument("--curso")
     p.add_argument("-n", type=int, default=10, help="cuántos (por defecto 10)")
@@ -152,6 +155,22 @@ def render_tasks(rows, aula: Aula) -> str:
         flag = f" [{', '.join(flags)}]" if flags else ""
         lines.append(f"• {when} — {t['curso']}: {t['tarea']}{flag}\n  {t['url']}")
     return "\n".join(lines)
+
+
+def render_submissions(rows, aula: Aula) -> str:
+    if not rows:
+        return "No hay entregas en el aula."
+    blocks = []
+    for t in rows:
+        sub = t["tu_entrega"]
+        if sub is None:  # read before sync kept the files: the next sync fills them
+            blocks.append(f"• {t['curso']}: {t['tarea']}\n  (lo que subiste se ve tras la próxima lectura del aula)\n  {t['url']}")
+            continue
+        what = [f"  📎 {f['archivo']} {_size(f['tamano'])}".rstrip() for f in sub["archivos"]]
+        what += [f"  🔗 {sub['enlace']}"] if sub["enlace"] else []
+        blocks.append(f"• {timefmt.human(sub['entregada_en'], aula.cfg.tz)} — {t['curso']}: {t['tarea']}\n"
+                      + "".join(f"{line}\n" for line in what) + f"  {t['url']}")
+    return "\n".join(blocks)
 
 
 def render_announcements(rows, aula: Aula) -> str:
@@ -365,6 +384,8 @@ def run(args, aula: Aula) -> int:
         _out(queries.courses(conn), as_json, render_courses)
     elif cmd == "tareas":
         _out(queries.pending(conn, aula.now(), ids, days=args.dias), as_json, lambda r: render_tasks(r, aula))
+    elif cmd == "entregas":
+        _out(queries.submissions(conn, aula.now(), ids), as_json, lambda r: render_submissions(r, aula))
     elif cmd == "anuncios":
         _out(queries.announcements(conn, ids, limit=args.n), as_json, lambda r: render_announcements(r, aula))
     elif cmd == "notas":

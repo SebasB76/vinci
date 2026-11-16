@@ -203,8 +203,9 @@ GUEST_TOOLS: dict[str, frozenset[str]] = {
 TASK = ("Una tarea del aula con su consigna (lo que escribió el profesor: qué pide, formato, extensión), tipo de "
         "entrega, puntos, la rúbrica con la que la califican, las fechas ya en hora de Ecuador («vence»; «cierra»: "
         "hasta cuándo el aula acepta una entrega atrasada) y los anexos de la consigna (archivos y enlaces; léelos "
-        "con leer_archivo). Los anexos son de esta tarea aunque estén en una carpeta de otro año. Úsala siempre que "
-        "pregunten de qué trata o qué pide una tarea, antes de decir que no lo sabes.")
+        "con leer_archivo). Los anexos son de esta tarea aunque estén en una carpeta de otro año. «tu_entrega»: lo que "
+        "subió al aula (sus archivos o su enlace, cuándo, qué intento). Úsala siempre que pregunten de qué trata o qué "
+        "pide una tarea, o qué entregó en ella, antes de decir que no lo sabes.")
 MARK_SUBMITTED = ("Cuenta una tarea del aula como entregada cuando dice que ya la entregó por fuera del aula (en papel, "
                   "por correo, en el laboratorio) o que no la va a entregar: deja de recordársela y sale de sus "
                   "pendientes. Con «entregada»: false vuelve a sus pendientes. No cambia nada en el aula.")

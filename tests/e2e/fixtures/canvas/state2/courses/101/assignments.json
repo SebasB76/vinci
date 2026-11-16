@@ -190,7 +190,17 @@
       "preview_url": "{{BASE}}/courses/x/assignments/2002/submissions/88123?preview=1",
       "cached_due_date": null,
       "extra_attempts": null,
-      "redo_request": false
+      "redo_request": false,
+      "attachments": [
+        {
+          "id": 9202,
+          "display_name": "Deber2_Continuidad.pdf",
+          "filename": "Deber2_Continuidad.pdf",
+          "content-type": "application/pdf",
+          "size": 482133,
+          "url": "{{BASE}}/files/9202/download?download_frd=1&verifier=fixture"
+        }
+      ]
     }
   },
   {

@@ -16,6 +16,7 @@ Always pass `--json` and parse the output.
 |---|---|
 | Active courses | `aula cursos --json` |
 | Pending work, by due date | `aula tareas --json` (`--dias 7`, `--curso calculo`) |
+| What you handed in through the aula (files uploaded, link, attempt), newest first | `aula entregas --json` (`--curso ...`) |
 | Announcements | `aula anuncios --json` (`--curso fisica -n 5`) |
 | Grades (with the professor's comments, rubric and late penalty) | `aula notas --json` |
 | Professors, assistants and your groups | `aula personas --json` |

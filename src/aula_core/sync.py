@@ -204,6 +204,7 @@ class _Syncer:
                 "peer_reviews": int(bool(a.get("peer_reviews"))),
                 # The course's mean, max and min; Canvas leaves it out when the professor hides it.
                 "stats": _stats(a.get("score_statistics")),
+                "submission": _handed_in(sub),
             }
             seen.append(row["id"])
             prev = self.conn.execute("SELECT * FROM assignments WHERE id = ?", (row["id"],)).fetchone()
@@ -238,10 +239,12 @@ class _Syncer:
             self.conn.execute(
                 """INSERT INTO assignments(id, course_id, name, due_at, lock_at, html_url, points_possible, submission_types,
                      allowed_extensions, asks_scan, description, material, rubric, sub_state, submitted_at, score, grade,
-                     graded_at, excused, missing, late, group_id, feedback, points_deducted, peer_reviews, stats, active, first_seen)
+                     graded_at, excused, missing, late, group_id, feedback, points_deducted, peer_reviews, stats, submission, active,
+                     first_seen)
                    VALUES (:id, :course_id, :name, :due_at, :lock_at, :html_url, :points_possible, :submission_types,
                      :allowed_extensions, :asks_scan, :description, :material, :rubric, :sub_state, :submitted_at, :score,
-                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, :points_deducted, :peer_reviews, :stats, 1,
+                     :grade, :graded_at, :excused, :missing, :late, :group_id, :feedback, :points_deducted, :peer_reviews, :stats,
+                     :submission, 1,
                      :now)
                    ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id, name=excluded.name, due_at=excluded.due_at,
                      lock_at=excluded.lock_at, html_url=excluded.html_url, points_possible=excluded.points_possible,
@@ -252,7 +255,7 @@ class _Syncer:
                      graded_at=excluded.graded_at, excused=excluded.excused, missing=excluded.missing,
                      late=excluded.late, group_id=excluded.group_id, feedback=excluded.feedback,
                      points_deducted=excluded.points_deducted, peer_reviews=excluded.peer_reviews, stats=excluded.stats,
-                     active=1""",
+                     submission=excluded.submission, active=1""",
                 {**row, "now": self.now_iso},
             )
         self._deactivate("assignments", course["id"], seen)
@@ -692,6 +695,16 @@ def _rubric(a: dict) -> str | None:
                                    "points": r.get("points")} for r in c.get("ratings") or []]}
                      for c in criteria],
     }, ensure_ascii=False)
+
+
+def _handed_in(sub: dict) -> str | None:
+    """What the student handed in (the files, or the link), as JSON; None while nothing is."""
+    if not sub.get("submitted_at"):
+        return None
+    files = [{"name": f.get("display_name") or f.get("filename"), "size": f.get("size"), "url": f.get("url")}
+             for f in sub.get("attachments") or []]
+    return json.dumps({"attempt": sub.get("attempt"), "type": sub.get("submission_type"), "files": files,
+                       "url": sub.get("url")}, ensure_ascii=False)
 
 
 def _submission_feedback(sub: dict, rubric: list[dict]) -> dict | None:

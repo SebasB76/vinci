@@ -1671,6 +1671,14 @@ def test_canvas(tmp_path):
         report.append("La nota de la Tarea 1 llega con el comentario del profe y su PDF adjunto, sin el comentario "
                       "del estudiante, y con el promedio, la más alta y la más baja del curso; `aula notas` (lo que "
                       "lee la herramienta `notas` de los bots) lo devuelve")
+        entregas = json.loads(run([aula, "entregas", "--curso", "CÁLCULO", "--json"], T_POLL2).stdout)
+        assert [t["tarea"] for t in entregas] == ["Deber 2: Continuidad", "Lección 1: Límites"], entregas
+        deber2 = entregas[0]["tu_entrega"]
+        assert [(f["archivo"], f["tamano"]) for f in deber2["archivos"]] == [("Deber2_Continuidad.pdf", 482133)] \
+            and deber2["entregada_en"].startswith("2026-09-28"), deber2
+        assert "Deber2_Continuidad.pdf 471 KB" in run([aula, "entregas", "--curso", "CÁLCULO"], T_POLL2).stdout
+        report.append("Tras entregar el Deber 2, `aula entregas` (y `tu_entrega` en ver_tarea) dice qué archivo subió "
+                      "y cuándo, la más reciente primero")
         by_title = {m["text"].split("\n")[1]: m["text"] for m in poll2 if "\n" in m["text"]}
         assert "Ya lo leí" in by_title["Sílabo MATG1049 2026-2T.pdf"], "el sílabo se baja y se lee solo"
         assert "Lo bajo y lo leo cuando haga falta" in by_title["Semana 2 - Cinemática.pptx"], \

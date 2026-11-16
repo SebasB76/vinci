@@ -6,6 +6,7 @@ El comando `aula` consulta lo mismo desde la terminal (añade `--json` para sali
 aula cursos
 aula tareas                            # pendientes, por fecha de entrega
 aula tareas --curso calculo --dias 7
+aula entregas --curso fisica          # lo que ya entregaste en el aula y los archivos que subiste
 aula anuncios --curso fisica -n 5
 aula notas
 aula archivos --curso calculo --nombre "semana 3"   # el catálogo: leído o no, con módulo y carpeta

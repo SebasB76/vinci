@@ -109,6 +109,30 @@ def _assignment(r: sqlite3.Row, now: datetime) -> dict:
     }
 
 
+def handed_in(r: sqlite3.Row) -> dict | None:
+    """What the student uploaded to the aula for this assignment; None when nothing is there or it was read before
+    sync kept it."""
+    if not r["submission"]:
+        return None
+    sub = json.loads(r["submission"])
+    return {"entregada_en": r["submitted_at"], "intento": sub["attempt"], "tipo": sub["type"],
+            "archivos": [{"archivo": f["name"], "tamano": f["size"], "url": f["url"]} for f in sub["files"]],
+            "enlace": sub["url"]}
+
+
+def submissions(conn: sqlite3.Connection, now: datetime, ids: list[int] | None = None) -> list[dict]:
+    """What the student handed in through the aula, newest first, with the files they uploaded."""
+    extra, params = _course_filter(ids, "a.course_id")
+    rows = conn.execute(
+        f"""SELECT a.*, c.name AS course_name, {DONE_SQL} AS done, {QUIZ_SQL} FROM assignments a
+            JOIN courses c ON c.id = a.course_id {QUIZ_JOIN}
+            WHERE a.active = 1 AND c.active = 1 AND a.submitted_at IS NOT NULL{extra}
+            ORDER BY a.submitted_at DESC""",
+        params,
+    ).fetchall()
+    return [{**_assignment(r, now), "tu_entrega": handed_in(r)} for r in rows]
+
+
 def quiz_info(r, prefix: str = "") -> dict | None:
     """A quiz's settings as alerts and tools show them; None when the assignment is not a quiz read so far."""
     if r is None or r["quiz_id"] is None:
@@ -212,7 +236,7 @@ def assignment(conn: sqlite3.Connection, now: datetime, assignment_id: int, ids:
     order = {fid: n for n, fid in enumerate(fids)}  # as the professor listed them
     return {**_assignment(row, now), "cierra": row["lock_at"], "tipos_de_entrega": row["submission_types"],
             "consigna": row["description"] or None,
-            "rubrica": json.loads(row["rubric"]) if row["rubric"] else None,
+            "rubrica": json.loads(row["rubric"]) if row["rubric"] else None, "tu_entrega": handed_in(row),
             "archivos": [_file(f, set(fids)) for f in sorted(files, key=lambda f: order.get(f["id"], len(order)))],
             "enlaces": [_link(li) for li in links]}
 

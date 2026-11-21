@@ -2,10 +2,20 @@
 
 ## Purpose
 
-Vinci is an ESPOL academic assistant on Telegram and WhatsApp, built on Hermes Agent and
-the university's Canvas (aulavirtual). It has one maintainer, called "the captain" in code
-and docs, and a few friends who each get their own Vinci on WhatsApp. It is a side project:
-shipping speed beats ceremony, and a bug found later is fixed in a new session.
+Vinci is an ESPOL academic assistant on WhatsApp, built on Hermes Agent and the university's Canvas
+(aulavirtual). It has one maintainer, called "the captain" in code and docs. It is a side project: shipping speed
+beats ceremony, and a bug found later is fixed in a new session.
+
+How it works today:
+
+- Each student has their own Vinci: the captain's `vinci` Hermes profile, plus one `amigo-<name>` profile per
+  friend (open signup, up to `cupo_amigos`). One chat holds every subject, with a notebook per subject and the
+  brief before each class. There is no bot or agent per subject.
+- One container on Coolify runs one Hermes gateway for all those profiles. One process (`vinci-mcp`) serves every
+  profile's MCP tools, each request in a forked child that sees only that profile's data.
+- Polls, the 07:00 summary, OCR and Canvas token renewal run as s6 services outside the gateway, without the model.
+- Telegram, with one `vinci-<code>` bot per subject, was the original design. It is parked, not deleted:
+  `[channels] telegram = true` brings it back.
 
 ## Status (2026-11-04)
 
@@ -199,8 +209,8 @@ Each bot's memory lives in its Hermes profile under `~/.hermes/profiles/`.
 - `src/aula_core/`: Canvas client (GET only, except a submission), sync, SQLite store, search,
   OCR, syllabus and DSpace readers.
 - `src/aula/`: the `aula` CLI over `aula_core`; also a Claude Code skill (`claude/skills/aula/`).
-- `src/espol_bot/`: Vinci itself: poller and alerts (`poller.py`), Telegram and WhatsApp
-  (`telegram.py`, `whatsapp.py`), buttons, schedule and class briefs, notebooks and quizzes,
+- `src/espol_bot/`: Vinci itself: poller and alerts (`poller.py`), WhatsApp (`whatsapp.py`) and the parked
+  Telegram (`telegram.py`), buttons, schedule and class briefs, notebooks and quizzes,
   the token chain (`token_renewal.py`, `token_form.py`), the Académico sign-in and its copy
   (`portal_login.py`, `academic_portal.py`), friends (`amigos.py`), the MCP server
   the bots call (`mcp_server.py`), Hermes profile setup (`hermes_setup.py`) and `vinci-check`

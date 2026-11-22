@@ -79,7 +79,7 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; a card trade (/cambio, and the album's «Cambios» tab with Angel's repeats) with the captain,
   swapped by Angel's vote; /canje (3 repeats for a pack); the ranking, with each person's cards for the album page; the album's TAWS section (/taws: the captain's Canvas name on the club's list, Angel accepted by
-  the captain, the club's key only in members' links, a club gift that reads the list again); Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
+  the captain, the club's key only in members' links, a club gift that reads the list again, a club pack right after a member's regular one); Angel removed with his tokens. With open signup, a stranger who writes privately gets the token
   link on their own (a fresh one with /token) and one welcome album pack, the captain hears of it, and no model
   turn is spent; a gift pack reaches them at once.
 
@@ -3754,11 +3754,20 @@ def test_whatsapp_friend(tmp_path):
         assert "ya no está en la lista" in gift and "🎁 Angel" in gift, gift
         assert sum(taws_cards(angel_dir / "espol.db").values()) == 6
         assert sum(taws_cards(data_dir / "espol.db").values()) == 3
+        # a member's regular pack brings a club pack along, sent right after it
+        mark = len(wa.sent)
+        run([bot, "album-regalo", "Por el finde"], T_VINCI)
+        run([bot, "sondeo"], T_VINCI)
+        packs = [m for m in wa.messages_to(captain_jid, mark) if m.get("buttonText") == "🎴 Abrir mi sobre"]
+        at = next(i for i, m in enumerate(packs) if "Por el finde" in m["message"])
+        assert "sobre TAWS" in packs[at + 1]["message"] and album_data(packs[at + 1])["pack"]["club"] == "taws", packs
+        assert sum(taws_cards(data_dir / "espol.db").values()) == 6
         assert len(llm.requests) == calls, "la sección TAWS no usa el modelo"
         report.append("«/taws» del capitán: su nombre de Canvas está en la lista de taws.espol.edu.ec, así que entra con un "
                       "sobre TAWS cuyo enlace lleva la clave del club; Angel no está, el capitán recibe «/taws acepta "
                       "Angel» y al aceptarlo le llega su sobre; antes, su enlace no traía la clave. «album-regalo --club "
-                      "taws» vuelve a leer la lista: quien salió de ella no recibe más; nada usa el modelo")
+                      "taws» vuelve a leer la lista: quien salió de ella no recibe más; un sobre de regalo le llega al capitán seguido "
+                      "de un sobre TAWS; nada usa el modelo")
 
         # 10j. The captain lists and removes Angel; then turns the group off
         listed = say(captain_jid, captain_jid, "/amigos", "Capitán")

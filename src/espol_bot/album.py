@@ -14,8 +14,8 @@ shows it.
 
 A club (CLUBS: TAWS) has a section of its own that only its members see. Its catalog is encrypted too
 (docs/album/clubs/<club>.bin, with its own key), so neither the page's code nor the public repo shows a member's
-card to anyone else; its packs come only as club gifts (club.py) and draw only club cards, which never go into a
-regular pack, a trade, the ranking or /canje.
+card to anyone else. Its packs draw only club cards, which never go into a regular pack, a trade, the ranking or
+/canje: a member gets one with each regular pack Vinci sends, and with each club gift (club.py).
 """
 
 from __future__ import annotations
@@ -62,6 +62,8 @@ PENDING_HINT = ("\n\nGanas más sobres cuando entregas a tiempo y cuando sacas b
                 "escríbeme /token.")
 MAX_PER_POLL = 4  # the rest wait for the next poll, so a busy day does not flood the chat
 CLUB = "club:"  # a club pack's source: club:<club>:<when or why>
+WITH = "con:"  # the tag of a club pack that came with the regular pack of that id
+COMPANION = re.compile(rf"^{CLUB}[^:]+:{WITH}(\d+)$")
 CLUBS = {"taws": "ALBUM_TAWS_KEY"}  # each club's catalog and art key, in the captain's secrets.env
 BUTTON = "🎴 Abrir mi sobre"
 ALBUM_BUTTON = "🎴 Ver mi álbum"
@@ -251,6 +253,23 @@ def give_club(conn: sqlite3.Connection, now: datetime, club: str, reason: str, t
     return True
 
 
+def give_companions(conn: sqlite3.Connection, now: datetime, rng: random.Random | None = None) -> None:
+    """A club pack with each regular pack not sent yet, for each club this album's owner belongs to."""
+    clubs = clubs_of(conn)
+    if not clubs:
+        return
+    for pack in conn.execute("SELECT id FROM album_packs WHERE sent_at IS NULL AND source NOT LIKE ?",
+                             (f"{CLUB}%",)).fetchall():
+        for club in clubs:
+            give_club(conn, now, club, "Llegó junto con tu sobre", tag=f"{WITH}{pack['id']}", rng=rng)
+
+
+def _sent_order(pack: sqlite3.Row) -> tuple[int, int]:
+    """A club pack goes right after the regular pack it came with."""
+    found = COMPANION.match(pack["source"])
+    return (int(found[1]) if found else pack["id"], pack["id"])
+
+
 def spare(have: dict[str, int]) -> int:
     """The copies beyond the first of each card in the catalog: what /cambio and /canje can spend."""
     ids = {c["id"] for c in catalog()}
@@ -338,6 +357,8 @@ def page_url(cfg: BotConfig, data: dict) -> str:
 def message(pack: sqlite3.Row) -> str:
     if pack["source"].startswith(CLUB):
         club = pack["source"].split(":")[1].upper()
+        if COMPANION.match(pack["source"]):
+            return f"🎴 Y como eres de {club}, otro más: un <b>sobre {club}</b> con 3 cartas del club."
         return f"🎴 {pack['reason']}: te llegó un <b>sobre {club}</b> con 3 cartas del club."
     if pack["source"].startswith(DAILY):
         return "🎴 Tu sobre del día: 3 cartas para tu álbum. Mañana con el resumen te llega otro."
@@ -355,9 +376,10 @@ def deliver(conn: sqlite3.Connection, cfg: BotConfig, sender, now: datetime, hin
     if not cfg.album_page:
         return []
     give(conn, now)
+    give_companions(conn, now)
     sent = []
-    pending = conn.execute("SELECT * FROM album_packs WHERE sent_at IS NULL ORDER BY id LIMIT ?",
-                           (MAX_PER_POLL,)).fetchall()
+    pending = sorted(conn.execute("SELECT * FROM album_packs WHERE sent_at IS NULL").fetchall(),
+                     key=_sent_order)[:MAX_PER_POLL]
     for pack in pending:
         text = message(pack) + hint
         url = page_url(cfg, snapshot(conn, now, pack))

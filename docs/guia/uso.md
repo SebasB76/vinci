@@ -501,9 +501,10 @@ Si eres de TAWS, el club de la FIEC, tu álbum tiene una sección más, con cart
    llega cuando él te acepta.
 3. En tu álbum, arriba, eliges entre «Álbum» y «TAWS».
 
-Las cartas TAWS llegan solo en sobres TAWS, que el capitán regala en los eventos del club. No salen en los sobres
-normales, ni se cambian, ni cuentan para el ranking o `/canje`. Si sales de la lista de la web, conservas tus cartas,
-pero ya no te llegan sobres nuevos.
+Las cartas TAWS llegan solo en sobres TAWS. Te llega uno junto con cada sobre normal (por una entrega a tiempo, una
+buena nota, el del día o un regalo), y otro cuando el capitán regala sobres en los eventos del club. No salen en los
+sobres normales, ni se cambian, ni cuentan para el ranking o `/canje`. Si sales de la lista de la web, conservas tus
+cartas, pero ya no te llegan los regalos del club.
 
 ## Tu Académico de ESPOL
 

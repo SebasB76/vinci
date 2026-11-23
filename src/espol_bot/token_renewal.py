@@ -28,6 +28,7 @@ CURRENT_CREATED = "canvas_renewal_created_at"
 CURRENT_ID = "canvas_renewal_token_id"
 PROBE_CREATED = "canvas_renewal_probe_created_at"
 PROBE_ID = "canvas_renewal_probe_id"
+RESEEDED = "canvas_reseeded_at"  # health counts a paused poll's lateness from here (maintenance_service.targets)
 DISABLED = "canvas_renewal_disabled"
 PROBE_TOKEN_KEY = "CANVAS_TOKEN_PROBE"
 PURPOSE = "Vinci (renovación automática)"
@@ -146,6 +147,7 @@ class TokenRenewal:
         update_secret_values({"CANVAS_TOKEN": token}, remove=(PROBE_TOKEN_KEY,))
         delete_meta(self.conn, CURRENT_FINGERPRINT, CURRENT_CREATED, CURRENT_ID,
                     PROBE_CREATED, PROBE_ID, DISABLED, REFUSED_KEY)
+        set_meta(self.conn, RESEEDED, timefmt.iso(self.now))
         self.conn.commit()
         try:
             return self.maintain(force=True)

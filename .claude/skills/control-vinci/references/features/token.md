@@ -5,7 +5,9 @@ chain alive (successor at 40 min). In the container, the s6 service `vinci-mante
 (`maintenance_service.py`, `deploy/s6/vinci-mantenimiento`) renews the captain's chain and each active friend's every
 10 min, one at a time with a 5-min limit each, outside the gateway; on a PC it is still the Hermes cron
 `*-mantenimiento`. When Vinci was down for over an hour the chain breaks and the student must paste a new token. The
-model never sees a token.
+model never sees a token. While a friend's chain is cut, the container pauses them (`health.paused_friend`): their
+maintenance runs only in the :02 pass (the daily form reminder still goes out), and `vinci-sondeo` skips their poll and
+OCR; the next pass after a reseed takes them back.
 
 | Step | Telegram | WhatsApp |
 |---|---|---|

@@ -8,6 +8,8 @@ Thresholds (P = intervalo_minutos, 30 by default):
   aula sync       ⚠️ when older than 2·P
   maintenance     ❌ when older than 25 min (it runs every 10; the token dies at one hour)
   token           ⚠️ from 50 min old (a renewal missed), ❌ from 60 min or when Canvas refused it
+A friend whose token Canvas refused is paused on the container (maintenance_service.targets): their poll is not late
+and their maintenance may be 75 min old. Both count from a new token too, until their next run.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ MAINTENANCE_LATE = timedelta(minutes=25)  # it runs every 10 minutes (maintenanc
 TOKEN_LATE = token_renewal.RENEW_AFTER + timedelta(minutes=10)
 TOKEN_DEAD = timedelta(hours=1)           # ESPOL silently invalidates a personal token after an hour
 POLL_LATE = 2.5                           # periods; a friend late in a slow pass waits about two
+PAUSED_LATE = timedelta(minutes=75)       # a paused friend's maintenance runs once an hour
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 ICON = {OK: "✅", WARN: "⚠️", FAIL: "❌"}
@@ -68,8 +71,27 @@ def checks(cfg: BotConfig, conn: sqlite3.Connection | None, now: datetime) -> li
     except ConfigError:
         secrets = {}
     ago = _Ago(now, cfg.core.tz)
-    return [_poll(cfg, meta, now, ago), _sync(cfg, meta, now, ago), _maintenance(meta, now, ago),
-            _token(meta, secrets, now, ago)]
+    cut = cfg.friend and _cut(meta, secrets)
+    return [_poll(cfg, meta, now, ago, cut and poll_service.enabled()), _sync(cfg, meta, now, ago),
+            _maintenance(meta, now, ago, cut and maintenance_service.enabled()), _token(meta, secrets, now, ago)]
+
+
+def _cut(meta: dict[str, str], secrets: dict[str, str]) -> bool:
+    token = secrets.get("CANVAS_TOKEN", "")
+    return bool(token) and meta.get(REFUSED_KEY) == token_fingerprint(token)
+
+
+def paused_friend(cfg: BotConfig) -> bool:
+    """A friend's Vinci whose token Canvas refused: nothing to read or renew until the form brings a new one."""
+    if not cfg.friend:
+        return False
+    conn = open_readonly(cfg.core.db_path)
+    if conn is None:
+        return False
+    try:
+        return _cut(dict(conn.execute("SELECT key, value FROM meta").fetchall()), load_secret_values())
+    finally:
+        conn.close()
 
 
 class _Ago:
@@ -95,12 +117,20 @@ def _run(meta: dict[str, str], key: str) -> tuple[datetime | None, dict]:
     return timefmt.parse(run.get("at")), run
 
 
+def _since(meta: dict[str, str], at: datetime | None) -> datetime | None:
+    """When a paused run was last due: its last run, or the new token that ended the pause, if later."""
+    reseeded = timefmt.parse(meta.get(token_renewal.RESEEDED))
+    return max(at, reseeded) if at and reseeded else at
+
+
 def _bot_command(name: str) -> str:
     return f"{Path(sys.executable).with_name('espol-bot')} {name}"
 
 
-def _poll(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Check:
+def _poll(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago, paused: bool = False) -> Check:
     name, every = "Sondeo", timedelta(minutes=cfg.poll_minutes)
+    if paused:
+        return Check(name, OK, "en pausa mientras el aula esté desconectada; vuelve solo con el token nuevo.")
     at, run = _run(meta, POLL_RUN)
     service = poll_service.enabled()
     runner = f"el servicio {poll_service.SERVICE}" if service else "el gateway de Hermes"
@@ -110,7 +140,7 @@ def _poll(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Che
                      f"{cfg.poll_minutes} min; si no, revisa {runner}.")
     if at is None:
         return Check(name, FAIL, "todavía no ha corrido nunca: sin él no llegan avisos ni recordatorios.", fix)
-    if now - at > POLL_LATE * every:
+    if now - _since(meta, at) > POLL_LATE * every:
         return Check(name, FAIL, f"no corre desde {ago(at)}; debería cada {cfg.poll_minutes} min. Sin él no te "
                      f"llegan avisos ni recordatorios: ¿Vinci estuvo apagado o se detuvo {runner}?", fix)
     if run.get("error"):
@@ -158,7 +188,7 @@ def _sync(cfg: BotConfig, meta: dict[str, str], now: datetime, ago: _Ago) -> Che
     return Check(name, WARN if pause else OK, f"leída {ago(last)}." + pause)
 
 
-def _maintenance(meta: dict[str, str], now: datetime, ago: _Ago) -> Check:
+def _maintenance(meta: dict[str, str], now: datetime, ago: _Ago, paused: bool = False) -> Check:
     name = "Mantenimiento"
     at, run = _run(meta, MAINTENANCE_RUN)
     service = maintenance_service.enabled()
@@ -170,9 +200,11 @@ def _maintenance(meta: dict[str, str], now: datetime, ago: _Ago) -> Check:
                      f"no, revisa {runner}.")
     if at is None:
         return Check(name, FAIL, "todavía no ha corrido nunca: es el que renueva el token antes de que venza.", fix)
-    if now - at > MAINTENANCE_LATE:
-        return Check(name, FAIL, f"no corre desde {ago(at)}; debería cada 10 min. Sin él el token de Canvas "
-                     f"vence a la hora y la cadena se corta. Lo corre {runner}.", fix)
+    if now - _since(meta, at) > (PAUSED_LATE if paused else MAINTENANCE_LATE):
+        return Check(name, FAIL, f"no corre desde {ago(at)}; debería cada {'hora' if paused else '10 min'}. Sin él "
+                     f"el token de Canvas vence a la hora y la cadena se corta. Lo corre {runner}.", fix)
+    if paused:
+        return Check(name, OK, f"corrió {ago(at)}; corre cada hora mientras el aula esté desconectada.")
     return Check(name, OK, f"corrió {ago(at)}; corre cada 10 min.")
 
 

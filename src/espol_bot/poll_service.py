@@ -43,14 +43,15 @@ def enabled() -> bool:
 def run_all(cfg: BotConfig, command: str, limit: int = LIMIT,
             until: datetime | None = None) -> list[maintenance_service.Run]:
     """Everyone's poll (or summary), then everyone's OCR until `until` (the next slot); the polls' runs."""
-    runs = maintenance_service.run_all(cfg, limit, command, {"VINCI_OCR_MINUTES": "0"})
+    runs = maintenance_service.run_all(cfg, limit, command, {"VINCI_OCR_MINUTES": "0"},
+                                       skip_paused=command == "sondeo")  # the 07:00 summary still goes to everyone
     read_scans(cfg, until)
     return runs
 
 
 def read_scans(cfg: BotConfig, until: datetime | None) -> None:
     runs = []
-    for who, env in maintenance_service.targets(cfg):
+    for who, env in maintenance_service.targets(cfg, skip_paused=True):
         seconds = OCR_MINUTES * 60
         if until is not None:
             seconds = min(seconds, int((until - datetime.now(until.tzinfo)).total_seconds()) - OCR_MARGIN)

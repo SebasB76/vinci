@@ -75,7 +75,7 @@ test_whatsapp_friend: a group the captain turns on, a note that holds in that gr
   the renewal service (the container's s6 vinci-mantenimiento, in place of the Hermes crons): the captain, a friend who
   hangs and is cut at the limit, then Angel's chain renewed, with the WhatsApp bridge down and the watchdog's message
   sent on the next pass; the poll service (s6 vinci-sondeo, also in place of the Hermes crons): the captain's poll
-  then Angel's, one at a time, and the summary the same way, sent once a day even when the pass repeats; his Vinci
+  then Angel's, one at a time, skipping a friend whose token Canvas refused (poll and OCR), and the summary the same way, sent once a day even when the pass repeats; his Vinci
   never searching the captain's chats, even by his profile's name; the block for whoever is
   not a Vinci's owner; a card trade (/cambio, and the album's «Cambios» tab with Angel's repeats) with the captain,
   swapped by Angel's vote; /canje (3 repeats for a pack); the ranking, with each person's cards for the album page; the album's TAWS section (/taws: the captain's Canvas name on the club's list, Angel accepted by
@@ -129,6 +129,7 @@ import pytest
 import requests
 import yaml
 
+from aula_core import token_fingerprint
 from aula_core.config import parse_env_file
 from espol_bot import quiz as quiz_module
 from espol_bot.config import DEFAULT_TOKEN_FORM_URL
@@ -3569,11 +3570,26 @@ def test_whatsapp_friend(tmp_path):
         def last_poll(db: Path) -> str:
             with contextlib.closing(sqlite3.connect(db)) as conn:
                 return json.loads(conn.execute("SELECT value FROM meta WHERE key = 'bot_run_poll'").fetchone()[0])["at"]
+        # Caro's token was refused: with nothing to read until her new one, both her poll and her OCR are skipped
+        caro_dir = data_dir / "amigos" / "caro"
+        caro_dir.mkdir(mode=0o700)
+        (caro_dir / "secrets.env").write_text("CANVAS_TOKEN=7~caro-rechazado\nWHATSAPP_OWNER=593990000008\n")
+        with contextlib.closing(sqlite3.connect(caro_dir / "espol.db")) as conn:
+            conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute("INSERT INTO meta VALUES ('canvas_token_refused', ?)", (token_fingerprint("7~caro-rechazado"),))
+            conn.commit()
+        registry.write_text(json.dumps({"amigos": [*json.loads(registered)["amigos"],
+                                                   {"slug": "caro", "nombre": "Caro", "numero": "593990000008",
+                                                    "estado": "activo", "agregado": ""}]}))
         polled = run([bot, "sondeo", "--todos"], "2026-09-30T10:05:00-05:00").stdout.strip()
         assert re.fullmatch(r"sondeo --todos: capitán ✓ \d+ s · angel ✓ \d+ s", polled), polled
-        ocr_line = [line for line in (data_dir / "bot.log").read_text().splitlines() if "ocr --todos:" in line]
+        log_lines = (data_dir / "bot.log").read_text().splitlines()
+        ocr_line = [line for line in log_lines if "ocr --todos:" in line]
         assert ocr_line and re.search(r"ocr --todos: capitán ✓ \d+ s · angel ✓ \d+ s$", ocr_line[-1]), \
-            f"las páginas escaneadas se leen después de los sondeos de todos: {ocr_line[-1:]}"
+            f"las páginas escaneadas se leen después de los sondeos de todos, sin Caro: {ocr_line[-1:]}"
+        assert any("1 con el aula desconectada" in line for line in log_lines), "la pausa de Caro queda en el log"
+        registry.write_text(registered)
+        shutil.rmtree(caro_dir)
         assert last_poll(data_dir / "espol.db") == last_poll(angel_dir / "espol.db") == "2026-09-30T15:05:00Z"
         mark = len(wa.sent)
         summed = run([bot, "resumen", "--todos"], "2026-09-30T10:10:00-05:00").stdout.strip()
@@ -3585,7 +3601,7 @@ def test_whatsapp_friend(tmp_path):
         md.append(f"→ servicio del sondeo: `{normalize(polled)}`\n")
         report.append("El servicio del sondeo (vinci-sondeo, aparte del gateway) corrió el sondeo del capitán y luego "
                       "el de Angel, uno por uno, y el resumen de las 7:00 de la misma forma: a Angel le llegó una vez, "
-                      "aunque la pasada se repitió")
+                      "aunque la pasada se repitió. Caro, con su token rechazado, quedó en pausa: ni sondeo ni OCR")
         report.append("El servicio de renovación (vinci-mantenimiento, aparte del gateway) corrió el mantenimiento del "
                       "capitán y luego el de cada amigo, uno por uno: el de Beto, colgado en su candado, se cortó a los "
                       "15 s y el de Angel renovó su cadena igual. Con el puente de WhatsApp caído la renovación siguió, "

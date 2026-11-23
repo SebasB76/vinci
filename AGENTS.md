@@ -34,10 +34,11 @@ How it works today:
 - Live: Canvas token renewal runs outside the gateway, as the s6 service `vinci-mantenimiento`
   (`maintenance_service.py`): every 10 min, the captain and then each active friend, one at a time, so a frozen
   gateway no longer cuts the chains. `VINCI_MAINTENANCE_SERVICE` (set in the `Dockerfile`) drops the
-  `*-mantenimiento` Hermes crons; a PC install keeps them.
+  `*-mantenimiento` Hermes crons; a PC install keeps them. A friend whose chain is cut is renewed only once an hour.
 - Live: the polls and the 07:00 summary run outside the gateway too, as the s6 service `vinci-sondeo`
   (`poll_service.py`): at each poll slot the captain and then each active friend, one at a time, each with 10 min at
-  most; then each one's OCR (`espol-bot ocr`, 3 min at most) in the time left before the next slot. A pass also runs 3 min after each start, and right away when the last one ran past its slot. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
+  most; then each one's OCR (`espol-bot ocr`, 3 min at most) in the time left before the next slot. A friend whose
+  Canvas token was refused is skipped (poll and OCR) until a new one arrives; the 07:00 summary still reaches them. A pass also runs 3 min after each start, and right away when the last one ran past its slot. `VINCI_POLL_SERVICE` drops the `*-sondeo` and `*-resumen` crons. Each Vinci service has
   a raised `oom_score_adj`, so at the memory limit the kernel kills a poll before the gateway.
 - The admin panel (`espol-bot panel`, `docs/guia/panel.md`) runs in the container as the s6 service `vinci-panel` on
   port 8787; Coolify's proxy publishes it on the app's domain, and it answers only the `PANEL_KEY` link. The

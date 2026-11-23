@@ -8,6 +8,10 @@ burst), each a child process with its own environment and a time limit, so one t
 others. Each child takes its own bot.lock, like the poll and the token form. A message it cannot send (the WhatsApp
 bridge belongs to the gateway) is retried by a later run.
 
+A friend whose token Canvas refused has nothing to renew until the form brings a new one (the gateway saves it, not
+this loop): their maintenance runs once an hour, enough for the daily reminder it sends, and the poll service skips
+their poll and OCR (health.paused_friend).
+
 With VINCI_MAINTENANCE_SERVICE set (the Dockerfile sets it) hermes_setup removes the `*-mantenimiento` crons; without
 it (a PC install) Hermes cron keeps running each maintenance.
 """
@@ -44,15 +48,30 @@ class Run:
     error: str | None = None
 
 
-def targets(cfg: BotConfig) -> list[tuple[str, dict[str, str]]]:
-    """The captain first, then each active friend (read on every pass: one added or removed counts at once)."""
+def targets(cfg: BotConfig, skip_paused: bool = False) -> list[tuple[str, dict[str, str]]]:
+    """The captain first, then each active friend (read on every pass: one added or removed counts at once), without
+    the friends whose token Canvas refused when `skip_paused`."""
     from espol_bot import amigos
     try:
         friends = amigos.active(cfg)
     except (OSError, ValueError, TypeError) as exc:
         log.error("--todos: no pude leer la lista de amigos: %s", exc)
         friends = []
+    if skip_paused:
+        paused = [f for f in friends if _paused(cfg, f)]
+        if paused:
+            log.info("--todos: %d con el aula desconectada, en pausa hasta su token nuevo", len(paused))
+        friends = [f for f in friends if f not in paused]
     return [("capitán", {})] + [(f.slug, amigos.env(cfg, f)) for f in friends]
+
+
+def _paused(cfg: BotConfig, friend) -> bool:
+    from espol_bot import amigos, health
+    try:
+        with amigos.scope(cfg, friend) as fcfg:
+            return health.paused_friend(fcfg)
+    except Exception:  # noqa: BLE001 (an unreadable friend runs, and their own run says what is wrong)
+        return False
 
 
 def run_one(who: str, env: dict[str, str], limit: int, command: str = "mantenimiento") -> Run:
@@ -72,9 +91,9 @@ def run_one(who: str, env: dict[str, str], limit: int, command: str = "mantenimi
 
 
 def run_all(cfg: BotConfig, limit: int = LIMIT, command: str = "mantenimiento",
-            extra: dict[str, str] | None = None) -> list[Run]:
+            extra: dict[str, str] | None = None, skip_paused: bool = False) -> list[Run]:
     runs = []
-    for who, env in targets(cfg):
+    for who, env in targets(cfg, skip_paused):
         run = run_one(who, {**env, **(extra or {})}, limit, command)
         if run.error:
             log.error("%s de %s: %s", command, who, run.error)
@@ -99,8 +118,8 @@ def serve(cfg: BotConfig, every: int, limit: int) -> None:
     """Runs a pass at once (a restart may have taken a while), then at each slot. A pass that overruns a slot skips
     it rather than queueing passes."""
     while True:
-        try:
-            print(summary(run_all(cfg, limit)), flush=True)
+        try:  # the friends whose chain is cut only in the first pass of each hour
+            print(summary(run_all(cfg, limit, skip_paused=datetime.now().minute >= every)), flush=True)
         except Exception:  # noqa: BLE001 (the loop is what keeps every chain alive)
             log.exception("mantenimiento --todos: falló una pasada")
         time.sleep(seconds_to_next(datetime.now(), every))

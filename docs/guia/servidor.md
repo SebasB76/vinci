@@ -71,6 +71,9 @@ mantiene encendido. Así, si el gateway se cuelga o se queda sin memoria, ningú
 
 - Cada 10 minutos (a las :02, :12, :22…) corre `espol-bot mantenimiento` para ti y luego para cada amigo activo, uno
   por uno. A cada uno le da 5 minutos; si uno falla o se pasa, sigue con el siguiente.
+- Un amigo con el aula desconectada (Canvas rechazó su token) no tiene nada que renovar: su mantenimiento corre una
+  sola vez por hora, en la vuelta de las :02, y basta para el aviso diario con el formulario del token. Vuelve a
+  cada 10 minutos apenas llega su token nuevo.
 - También corre en cada arranque del contenedor, apenas termina la preparación.
 - Con el gateway caído, WhatsApp tampoco funciona. El token se renueva igual, y un aviso que no salió sale en una
   corrida siguiente.
@@ -90,6 +93,9 @@ Antes eran cron jobs de Hermes dentro del gateway, y todos leían el aula en el 
   `espol-bot sondeo` para ti y luego para cada amigo activo, uno por uno. A cada uno le da 10 minutos; si uno
   falla o se pasa, sigue con el siguiente. Cuando todos recibieron sus avisos, `espol-bot ocr` lee las páginas
   escaneadas de cada uno (3 minutos como mucho por persona) con el tiempo que queda antes del siguiente turno.
+- Un amigo con el aula desconectada se salta: ni revisión ni OCR hasta que llegue su token nuevo, porque sin token
+  no hay aula que leer. El resumen de las 7:00 sí le llega. En el panel y en `espol-bot doctor` su «Sondeo» dice
+  «en pausa», y la vigilancia no lo cuenta como caído.
 - A la hora de `resumen_diario` hace lo mismo con el resumen, que revisa el aula antes de escribirlo. Si el
   contenedor se reinició justo a esa hora, el resumen sale en el siguiente turno, hasta 2 horas después. Cada
   persona lo recibe una sola vez al día.
